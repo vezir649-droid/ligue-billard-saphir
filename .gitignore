@@ -1,0 +1,22 @@
+# Fichiers de configuration sensibles et sauvegardes temporaires
+config_email.json
+sauvegarde_saisie_secours.json
+*.log
+
+# Fichiers de données locales
+historique_matchs.json
+
+# Cache Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Environnements virtuels
+.venv/
+venv/
+ENV/
+env/
+
+# Streamlit
+.streamlit/secrets.toml
