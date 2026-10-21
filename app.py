@@ -55,13 +55,24 @@ def sauvegarder_donnees(data):
         st.error(f"Erreur lors de la sauvegarde automatique : {e}")
 
 def charger_config_email():
+    """Charge la configuration SMTP au démarrage de l'application."""
+    defaut = {
+        "destinataires": "",
+        "smtp_serveur": "smtp.gmail.com",
+        "smtp_port": 587,
+        "smtp_expediteur": "",
+        "smtp_mdp": "",
+        "smtp_ssl": False
+    }
     if os.path.exists(CONFIG_EMAIL_FILE):
         try:
             with open(CONFIG_EMAIL_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                donnees = json.load(f)
+                defaut.update(donnees)
+                return defaut
         except Exception:
-            return {}
-    return {}
+            return defaut
+    return defaut
 
 def sauvegarder_config_email(cfg):
     try:
@@ -160,7 +171,7 @@ def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, date_
     return texte, html
 
 def envoyer_courriel(destinataires_str, sujet, texte_brut, html_contenu, config):
-    """Envoie un courriel via SMTP selon la configuration spécifiée."""
+    """Envoie un courriel automatique via SMTP selon la configuration chargée."""
     destinataires = [d.strip() for d in destinataires_str.split(",") if d.strip()]
     if not destinataires:
         return False, "Aucune adresse de destinataire valide spécifiée."
@@ -207,8 +218,8 @@ def envoyer_courriel(destinataires_str, sujet, texte_brut, html_contenu, config)
 if "saisie_en_cours" not in st.session_state:
     st.session_state.saisie_en_cours = charger_sauvegarde()
 
-# Configuration email sauvegardée
-config_email_actuelle = charger_config_email()
+# Chargement de la configuration email au démarrage
+config_email = charger_config_email()
 
 # Chargement du fichier équipes CSV
 equipes_disponibles = charger_equipes_csv()
@@ -227,135 +238,96 @@ if noms_equipes:
     options_rec = noms_equipes + ["Autre / Personnalisée"]
     options_vis = noms_equipes + ["Autre / Personnalisée"]
     
-    # Choix équipe receveuse
     choix_rec = st.sidebar.selectbox("Équipe Receveuse :", options_rec, index=0, key="sel_equipe_rec")
     if choix_rec == "Autre / Personnalisée":
-        equipe_receveur = st.sidebar.text_input("Nom de l'équipe receveuse", value="Équipe 1", key="input_custom_rec")
-        def_j1_rec, def_j2_rec, def_j3_rec = "Joueur 1", "Joueur 2", "Joueur 3"
+        equipe_receveur = st.sidebar.text_input("Nom équipe receveuse", value="Équipe 1", key="input_custom_rec")
+        roster_rec = ["Joueur 1", "Joueur 2", "Joueur 3"]
     else:
         equipe_receveur = choix_rec
-        def_j1_rec, def_j2_rec, def_j3_rec = equipes_disponibles[choix_rec]
+        roster_rec = equipes_disponibles[choix_rec]
 
-    # Détection de changement de sélection d'équipe receveuse pour mettre à jour les noms
-    if "prev_choix_rec" in st.session_state and st.session_state["prev_choix_rec"] != choix_rec:
-        st.session_state["nom_j1_rec"] = def_j1_rec
-        st.session_state["nom_j2_rec"] = def_j2_rec
-        st.session_state["nom_j3_rec"] = def_j3_rec
-    st.session_state["prev_choix_rec"] = choix_rec
-
-    # Choix équipe visiteuse
     default_vis_idx = 1 if len(noms_equipes) > 1 else 0
     choix_vis = st.sidebar.selectbox("Équipe Visiteuse :", options_vis, index=default_vis_idx, key="sel_equipe_vis")
     if choix_vis == "Autre / Personnalisée":
-        equipe_visiteur = st.sidebar.text_input("Nom de l'équipe visiteuse", value="Équipe 2", key="input_custom_vis")
-        def_j1_vis, def_j2_vis, def_j3_vis = "Joueur 1", "Joueur 2", "Joueur 3"
+        equipe_visiteur = st.sidebar.text_input("Nom équipe visiteuse", value="Équipe 2", key="input_custom_vis")
+        roster_vis = ["Joueur 1", "Joueur 2", "Joueur 3"]
     else:
         equipe_visiteur = choix_vis
-        def_j1_vis, def_j2_vis, def_j3_vis = equipes_disponibles[choix_vis]
-
-    # Détection de changement de sélection d'équipe visiteuse
-    if "prev_choix_vis" in st.session_state and st.session_state["prev_choix_vis"] != choix_vis:
-        st.session_state["nom_j1_vis"] = def_j1_vis
-        st.session_state["nom_j2_vis"] = def_j2_vis
-        st.session_state["nom_j3_vis"] = def_j3_vis
-    st.session_state["prev_choix_vis"] = choix_vis
-
+        roster_vis = equipes_disponibles[choix_vis]
 else:
-    equipe_receveur = st.sidebar.text_input(
-        "Équipe Receveuse",
-        value=st.session_state.saisie_en_cours.get("receveur", "Équipe 1")
-    )
-    equipe_visiteur = st.sidebar.text_input(
-        "Équipe Visiteuse",
-        value=st.session_state.saisie_en_cours.get("visiteur", "Équipe 2")
-    )
-    def_j1_rec, def_j2_rec, def_j3_rec = "Jean-François", "Christian", "Antoine"
-    def_j1_vis, def_j2_vis, def_j3_vis = "Michel", "Nicolas", "Guy"
+    equipe_receveur = st.sidebar.text_input("Équipe Receveuse", value="Équipe 1")
+    equipe_visiteur = st.sidebar.text_input("Équipe Visiteuse", value="Équipe 2")
+    roster_rec = ["Jean-François", "Christian", "Antoine"]
+    roster_vis = ["Michel", "Nicolas", "Guy"]
 
-st.sidebar.markdown("### ⚙️ Règle des Absences")
-pts_forfait_defaut = st.sidebar.number_input(
-    "Pointage par défaut pour un joueur absent :",
-    min_value=0,
-    max_value=7,
-    value=0,
-    help="Points attribués au joueur absent dans ses manches. L'adversaire présent reçoit quant à lui automatiquement 8 points."
-)
-
+# --- SÉLECTION DES JOUEURS : ÉQUIPE RECEVEUSE ---
 st.sidebar.markdown(f"### 👥 Joueurs — {equipe_receveur}")
 
-# Pré-remplissage des session states si non existants
-if "nom_j1_rec" not in st.session_state:
-    st.session_state["nom_j1_rec"] = def_j1_rec
-if "nom_j2_rec" not in st.session_state:
-    st.session_state["nom_j2_rec"] = def_j2_rec
-if "nom_j3_rec" not in st.session_state:
-    st.session_state["nom_j3_rec"] = def_j3_rec
-
-if "nom_j1_vis" not in st.session_state:
-    st.session_state["nom_j1_vis"] = def_j1_vis
-if "nom_j2_vis" not in st.session_state:
-    st.session_state["nom_j2_vis"] = def_j2_vis
-if "nom_j3_vis" not in st.session_state:
-    st.session_state["nom_j3_vis"] = def_j3_vis
-
-# Joueur 1 Receveur
+# Joueur 1 (Sélection)
 col_j1_r1, col_j1_r2 = st.sidebar.columns([3, 2])
-j1_rec = col_j1_r1.text_input("Receveur 1", key="nom_j1_rec")
+options_j1_rec = list(roster_rec) + ["Remplaçant..."]
+sel_j1_rec = col_j1_r1.selectbox("Sélection Joueur 1 :", options_j1_rec, index=0, key="sel_j1_rec")
+if sel_j1_rec == "Remplaçant...":
+    j1_rec = st.sidebar.text_input("Nom Joueur 1 (Remplaçant)", value="Remplaçant 1", key="cust_j1_rec")
+else:
+    j1_rec = sel_j1_rec
 j1_rec_pres = col_j1_r2.toggle("Présent", value=True, key="pres_j1_rec")
-j1_rec_pts = pts_forfait_defaut
-if not j1_rec_pres:
-    j1_rec_pts = st.sidebar.number_input(f"Points de {j1_rec} (Absent)", 0, 7, value=pts_forfait_defaut, key="pts_j1_rec")
 
-# Joueur 2 Receveur
+# Joueur 2 (Sélection parmi les joueurs restants)
 col_j2_r1, col_j2_r2 = st.sidebar.columns([3, 2])
-j2_rec = col_j2_r1.text_input("Receveur 2", key="nom_j2_rec")
+options_j2_rec = [p for p in roster_rec if p != sel_j1_rec] + ["Remplaçant..."]
+sel_j2_rec = col_j2_r1.selectbox("Sélection Joueur 2 :", options_j2_rec, index=0, key="sel_j2_rec")
+if sel_j2_rec == "Remplaçant...":
+    j2_rec = st.sidebar.text_input("Nom Joueur 2 (Remplaçant)", value="Remplaçant 2", key="cust_j2_rec")
+else:
+    j2_rec = sel_j2_rec
 j2_rec_pres = col_j2_r2.toggle("Présent", value=True, key="pres_j2_rec")
-j2_rec_pts = pts_forfait_defaut
-if not j2_rec_pres:
-    j2_rec_pts = st.sidebar.number_input(f"Points de {j2_rec} (Absent)", 0, 7, value=pts_forfait_defaut, key="pts_j2_rec")
 
-# Joueur 3 Receveur
+# Joueur 3 (Évident / Déduit automatiquement)
 col_j3_r1, col_j3_r2 = st.sidebar.columns([3, 2])
-j3_rec = col_j3_r1.text_input("Receveur 3", key="nom_j3_rec")
+restants_rec = [p for p in roster_rec if p != sel_j1_rec and p != sel_j2_rec]
+j3_rec = restants_rec[0] if restants_rec else "Joueur 3"
+col_j3_r1.markdown(f"**Joueur 3 (défini) :**<br>`{j3_rec}`", unsafe_allow_html=True)
 j3_rec_pres = col_j3_r2.toggle("Présent", value=True, key="pres_j3_rec")
-j3_rec_pts = pts_forfait_defaut
-if not j3_rec_pres:
-    j3_rec_pts = st.sidebar.number_input(f"Points de {j3_rec} (Absent)", 0, 7, value=pts_forfait_defaut, key="pts_j3_rec")
 
+# --- SÉLECTION DES JOUEURS : ÉQUIPE VISITEUSE ---
 st.sidebar.markdown(f"### 👥 Joueurs — {equipe_visiteur}")
 
-# Joueur 1 Visiteur
+# Joueur 1 (Sélection)
 col_j1_v1, col_j1_v2 = st.sidebar.columns([3, 2])
-j1_vis = col_j1_v1.text_input("Visiteur 1", key="nom_j1_vis")
+options_j1_vis = list(roster_vis) + ["Remplaçant..."]
+sel_j1_vis = col_j1_v1.selectbox("Sélection Joueur 1 :", options_j1_vis, index=0, key="sel_j1_vis")
+if sel_j1_vis == "Remplaçant...":
+    j1_vis = st.sidebar.text_input("Nom Visiteur 1 (Remplaçant)", value="Remplaçant 1", key="cust_j1_vis")
+else:
+    j1_vis = sel_j1_vis
 j1_vis_pres = col_j1_v2.toggle("Présent", value=True, key="pres_j1_vis")
-j1_vis_pts = pts_forfait_defaut
-if not j1_vis_pres:
-    j1_vis_pts = st.sidebar.number_input(f"Points de {j1_vis} (Absent)", 0, 7, value=pts_forfait_defaut, key="pts_j1_vis")
 
-# Joueur 2 Visiteur
+# Joueur 2 (Sélection parmi les joueurs restants)
 col_j2_v1, col_j2_v2 = st.sidebar.columns([3, 2])
-j2_vis = col_j2_v1.text_input("Visiteur 2", key="nom_j2_vis")
+options_j2_vis = [p for p in roster_vis if p != sel_j1_vis] + ["Remplaçant..."]
+sel_j2_vis = col_j2_v1.selectbox("Sélection Joueur 2 :", options_j2_vis, index=0, key="sel_j2_vis")
+if sel_j2_vis == "Remplaçant...":
+    j2_vis = st.sidebar.text_input("Nom Visiteur 2 (Remplaçant)", value="Remplaçant 2", key="cust_j2_vis")
+else:
+    j2_vis = sel_j2_vis
 j2_vis_pres = col_j2_v2.toggle("Présent", value=True, key="pres_j2_vis")
-j2_vis_pts = pts_forfait_defaut
-if not j2_vis_pres:
-    j2_vis_pts = st.sidebar.number_input(f"Points de {j2_vis} (Absent)", 0, 7, value=pts_forfait_defaut, key="pts_j2_vis")
 
-# Joueur 3 Visiteur
+# Joueur 3 (Évident / Déduit automatiquement)
 col_j3_v1, col_j3_v2 = st.sidebar.columns([3, 2])
-j3_vis = col_j3_v1.text_input("Visiteur 3", key="nom_j3_vis")
+restants_vis = [p for p in roster_vis if p != sel_j1_vis and p != sel_j2_vis]
+j3_vis = restants_vis[0] if restants_vis else "Joueur 3"
+col_j3_v1.markdown(f"**Joueur 3 (défini) :**<br>`{j3_vis}`", unsafe_allow_html=True)
 j3_vis_pres = col_j3_v2.toggle("Présent", value=True, key="pres_j3_vis")
-j3_vis_pts = pts_forfait_defaut
-if not j3_vis_pres:
-    j3_vis_pts = st.sidebar.number_input(f"Points de {j3_vis} (Absent)", 0, 7, value=pts_forfait_defaut, key="pts_j3_vis")
 
 # Dictionnaire complet des joueurs
 dict_joueurs = {
-    "j1_rec": {"nom": j1_rec, "present": j1_rec_pres, "pts_absent": j1_rec_pts, "equipe": equipe_receveur},
-    "j2_rec": {"nom": j2_rec, "present": j2_rec_pres, "pts_absent": j2_rec_pts, "equipe": equipe_receveur},
-    "j3_rec": {"nom": j3_rec, "present": j3_rec_pres, "pts_absent": j3_rec_pts, "equipe": equipe_receveur},
-    "j1_vis": {"nom": j1_vis, "present": j1_vis_pres, "pts_absent": j1_vis_pts, "equipe": equipe_visiteur},
-    "j2_vis": {"nom": j2_vis, "present": j2_vis_pres, "pts_absent": j2_vis_pts, "equipe": equipe_visiteur},
-    "j3_vis": {"nom": j3_vis, "present": j3_vis_pres, "pts_absent": j3_vis_pts, "equipe": equipe_visiteur},
+    "j1_rec": {"nom": j1_rec, "present": j1_rec_pres, "equipe": equipe_receveur},
+    "j2_rec": {"nom": j2_rec, "present": j2_rec_pres, "equipe": equipe_receveur},
+    "j3_rec": {"nom": j3_rec, "present": j3_rec_pres, "equipe": equipe_receveur},
+    "j1_vis": {"nom": j1_vis, "present": j1_vis_pres, "equipe": equipe_visiteur},
+    "j2_vis": {"nom": j2_vis, "present": j2_vis_pres, "equipe": equipe_visiteur},
+    "j3_vis": {"nom": j3_vis, "present": j3_vis_pres, "equipe": equipe_visiteur},
 }
 
 # ==============================================================================
@@ -373,35 +345,31 @@ matchs_pairs = [
     (9, "j3_rec", "j2_vis")
 ]
 
-# Synchronisation automatique des scores lors d'un changement de présence ou de points forfait
+# Synchronisation automatique des scores lors d'un changement d'état Présent/Absent
 for p_id in dict_joueurs:
     info_j = dict_joueurs[p_id]
     state_key = f"prev_state_{p_id}"
-    pts_key = f"prev_pts_{p_id}"
-    
     presence_changed = (state_key in st.session_state and st.session_state[state_key] != info_j["present"])
-    pts_changed = (pts_key in st.session_state and st.session_state[pts_key] != info_j["pts_absent"])
 
-    if presence_changed or pts_changed:
+    if presence_changed:
         for num_m, k_a, k_b in matchs_pairs:
             if k_a == p_id or k_b == p_id:
                 info_a = dict_joueurs[k_a]
                 info_b = dict_joueurs[k_b]
                 if not info_a["present"] and info_b["present"]:
-                    st.session_state[f"s_a_{num_m}"] = info_a["pts_absent"]
+                    st.session_state[f"s_a_{num_m}"] = 0
                     st.session_state[f"s_b_{num_m}"] = 8
                 elif not info_b["present"] and info_a["present"]:
                     st.session_state[f"s_a_{num_m}"] = 8
-                    st.session_state[f"s_b_{num_m}"] = info_b["pts_absent"]
+                    st.session_state[f"s_b_{num_m}"] = 0
                 elif not info_a["present"] and not info_b["present"]:
-                    st.session_state[f"s_a_{num_m}"] = info_a["pts_absent"]
-                    st.session_state[f"s_b_{num_m}"] = info_b["pts_absent"]
+                    st.session_state[f"s_a_{num_m}"] = 0
+                    st.session_state[f"s_b_{num_m}"] = 0
                 else:
                     st.session_state[f"s_a_{num_m}"] = 8
                     st.session_state[f"s_b_{num_m}"] = 0
 
     st.session_state[state_key] = info_j["present"]
-    st.session_state[pts_key] = info_j["pts_absent"]
 
 # --- BOUTON DE RÉCUPÉRATION DE SECOURS ---
 col_recup1, col_recup2 = st.columns([3, 1])
@@ -424,12 +392,12 @@ with col_recup2:
 # Liste des absents pour information
 absents_detectes = [f"{j['nom']} ({j['equipe']})" for j in dict_joueurs.values() if not j["present"]]
 if absents_detectes:
-    st.warning(f"⚠️ **Joueur(s) absent(s) détecté(s) :** {', '.join(absents_detectes)}. Leurs pointages par défaut ont été automatiquement préremplis.")
+    st.warning(f"⚠️ **Joueur(s) absent(s) :** {', '.join(absents_detectes)}. Le score de forfait (0 point) est automatiquement appliqué (8 points pour l'adversaire présent).")
 
 st.markdown("### 🎯 Grille de saisie des 9 manches (Rotation alternée 3 contre 3)")
 st.info(
     "📌 **Règle de rotation :** Aucun joueur ne joue deux manches consécutives.\n\n"
-    "🎱 **Règle du jeu au 8 :** Le vainqueur obtient **8 points**, le perdant obtient de **0 à 7 points** (selon le nombre de boules empochées ou la règle de forfait)."
+    "🎱 **Règle du jeu au 8 :** Le vainqueur obtient **8 points**, le perdant obtient de **0 à 7 points** (0 point en cas de forfait/absence)."
 )
 
 # Sauvegarde automatique dynamique au fil de la saisie
@@ -437,7 +405,7 @@ donnees_a_sauvegarder = {
     "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
     "receveur": equipe_receveur,
     "visiteur": equipe_visiteur,
-    "joueurs": {p_id: {"nom": j["nom"], "present": j["present"], "pts_absent": j["pts_absent"]} for p_id, j in dict_joueurs.items()},
+    "joueurs": {p_id: {"nom": j["nom"], "present": j["present"]} for p_id, j in dict_joueurs.items()},
     "matchs": {}
 }
 
@@ -471,20 +439,20 @@ for num_manche, id_a, id_b in matchs_pairs:
             def_score_b = saved_scores["score_b"]
         else:
             if not a_pres and b_pres:
-                def_score_a = info_a["pts_absent"]
+                def_score_a = 0
                 def_score_b = 8
             elif not b_pres and a_pres:
                 def_score_a = 8
-                def_score_b = info_b["pts_absent"]
+                def_score_b = 0
             elif not a_pres and not b_pres:
-                def_score_a = info_a["pts_absent"]
-                def_score_b = info_b["pts_absent"]
+                def_score_a = 0
+                def_score_b = 0
             else:
                 def_score_a = 8
                 def_score_b = 0
 
         with c1:
-            label_champ_a = f"Points de {joueur_a}" + (" (Absent)" if not a_pres else "")
+            label_champ_a = f"Points de {joueur_a}" + (" (Absent : 0)" if not a_pres else "")
             score_a = st.number_input(
                 label_champ_a, 
                 0, 8, 
@@ -492,7 +460,7 @@ for num_manche, id_a, id_b in matchs_pairs:
                 key=f"s_a_{num_manche}"
             )
         with c2:
-            label_champ_b = f"Points de {joueur_b}" + (" (Absent)" if not b_pres else "")
+            label_champ_b = f"Points de {joueur_b}" + (" (Absent : 0)" if not b_pres else "")
             score_b = st.number_input(
                 label_champ_b, 
                 0, 8, 
@@ -539,45 +507,44 @@ with col_res3:
 
 st.divider()
 
-# --- OPTION D'ENVOI PAR COURRIEL ---
-st.markdown("### 📧 Envoi des résultats par courrier électronique")
+# --- CONFIGURATION ET ENVOI AUTOMATIQUE PAR COURRIEL ---
+st.markdown("### 📧 Envoi automatique des résultats par courriel")
 
-col_mail1, col_mail2 = st.columns([2, 1])
+# Affichage des destinataires configurés
+dest_actuels = config_email.get("destinataires", "").strip()
+if dest_actuels:
+    st.info(f"✉️ **Envoi automatique configuré vers :** `{dest_actuels}` (chargé depuis `{CONFIG_EMAIL_FILE}`)")
+else:
+    st.warning(f"⚠️ **Aucun destinataire configuré dans `{CONFIG_EMAIL_FILE}`.** Ouvrez les paramètres ci-dessous pour renseigner l'adresse courriel.")
 
-with col_mail1:
-    envoyer_email = st.checkbox(
-        "Activer l'envoi automatique des résultats par courriel lors de la validation",
-        value=config_email_actuelle.get("activer_envoi", False)
-    )
-    destinataires_email = st.text_input(
-        "Destinataire(s) (séparer par une virgule pour plusieurs adresses) :",
-        value=config_email_actuelle.get("destinataires", "")
-    )
+with st.expander("⚙️ Modifier et mémoriser la configuration SMTP"):
+    smtp_dest = st.text_input("Destinataire(s) (séparés par virgule)", value=config_email.get("destinataires", ""))
+    col_c1, col_c2 = st.columns(2)
+    smtp_serveur = col_c1.text_input("Serveur SMTP", value=config_email.get("smtp_serveur", "smtp.gmail.com"))
+    smtp_port = col_c2.number_input("Port SMTP", value=int(config_email.get("smtp_port", 587)))
+    smtp_expediteur = col_c1.text_input("Courriel expéditeur", value=config_email.get("smtp_expediteur", ""))
+    smtp_mdp = col_c2.text_input("Mot de passe / Clé d'application", type="password", value=config_email.get("smtp_mdp", ""))
+    smtp_ssl = st.checkbox("Utiliser SSL (Port 465)", value=config_email.get("smtp_ssl", False))
 
-with col_mail2:
-    st.markdown("<br>", unsafe_allow_html=True)
-    with st.expander("⚙️ Configuration du compte d'envoi (SMTP)"):
-        smtp_serveur = st.text_input("Serveur SMTP", value=config_email_actuelle.get("smtp_serveur", "smtp.gmail.com"))
-        smtp_port = st.number_input("Port SMTP", value=int(config_email_actuelle.get("smtp_port", 587)))
-        smtp_expediteur = st.text_input("Courriel expéditeur", value=config_email_actuelle.get("smtp_expediteur", ""))
-        smtp_mdp = st.text_input("Mot de passe / Clé d'application", type="password", value=config_email_actuelle.get("smtp_mdp", ""))
-        smtp_ssl = st.checkbox("Utiliser SSL (Port 465)", value=config_email_actuelle.get("smtp_ssl", False))
-
-        if st.button("💾 Mémoriser ces paramètres d'envoi"):
-            sauvegarder_config_email({
-                "activer_envoi": envoyer_email,
-                "destinataires": destinataires_email,
-                "smtp_serveur": smtp_serveur,
-                "smtp_port": smtp_port,
-                "smtp_expediteur": smtp_expediteur,
-                "smtp_mdp": smtp_mdp,
-                "smtp_ssl": smtp_ssl
-            })
-            st.success("Configuration d'envoi mémorisée avec succès !")
+    if st.button("💾 Enregistrer la configuration dans le fichier"):
+        nouvelle_cfg = {
+            "destinataires": smtp_dest,
+            "smtp_serveur": smtp_serveur,
+            "smtp_port": smtp_port,
+            "smtp_expediteur": smtp_expediteur,
+            "smtp_mdp": smtp_mdp,
+            "smtp_ssl": smtp_ssl
+        }
+        if sauvegarder_config_email(nouvelle_cfg):
+            config_email = nouvelle_cfg
+            st.success("Configuration SMTP enregistrée avec succès dans le fichier !")
+            st.rerun()
+        else:
+            st.error("Erreur lors de la sauvegarde du fichier.")
 
 st.divider()
 
-# --- VALIDATION FINALE DU MATCH ---
+# --- VALIDATION FINALE DU MATCH ET ENVOI AUTOMATIQUE ---
 date_du_match = datetime.now().strftime("%d/%m/%Y à %H:%M")
 texte_resume, html_resume = generer_resume_match(
     equipe_receveur,
@@ -616,41 +583,35 @@ with col_valid1:
 
             st.success(f"✅ Le match entre **{equipe_receveur}** ({total_pts_receveur} pts) et **{equipe_visiteur}** ({total_pts_visiteur} pts) a été archivé avec succès !")
 
-            # Envoi du courriel si activé
-            if envoyer_email:
-                if not destinataires_email.strip():
-                    st.warning("⚠️ L'envoi par courriel est activé, mais aucun destinataire n'a été spécifié.")
+            # Envoi automatique par courriel au moment de la validation finale
+            destinataires_envoi = config_email.get("destinataires", "").strip()
+            if not destinataires_envoi:
+                st.warning("⚠️ L'envoi automatique par courriel a été ignoré car aucun destinataire n'est configuré dans `config_email.json`.")
+            else:
+                sujet = f"🎱 Ligue du Saphir : {equipe_receveur} ({total_pts_receveur}) vs {equipe_visiteur} ({total_pts_visiteur}) - {date_du_match}"
+                with st.spinner("Envoi automatique du courriel en cours..."):
+                    succes_mail, msg_mail = envoyer_courriel(
+                        destinataires_envoi,
+                        sujet,
+                        texte_resume,
+                        html_resume,
+                        config_email
+                    )
+                if succes_mail:
+                    st.success(f"✉️ {msg_mail} (Envoyé automatiquement à : `{destinataires_envoi}`)")
                 else:
-                    sujet = f"🎱 Ligue du Saphir : {equipe_receveur} ({total_pts_receveur}) vs {equipe_visiteur} ({total_pts_visiteur}) - {date_du_match}"
-                    cfg_envoi = {
-                        "smtp_serveur": smtp_serveur,
-                        "smtp_port": smtp_port,
-                        "smtp_expediteur": smtp_expediteur,
-                        "smtp_mdp": smtp_mdp,
-                        "smtp_ssl": smtp_ssl
-                    }
-                    with st.spinner("Envoi du courriel en cours..."):
-                        succes_mail, msg_mail = envoyer_courriel(
-                            destinataires_email,
-                            sujet,
-                            texte_resume,
-                            html_resume,
-                            cfg_envoi
-                        )
-                    if succes_mail:
-                        st.success(f"✉️ {msg_mail} (Envoyé à : {destinataires_email})")
-                    else:
-                        st.warning(f"⚠️ {msg_mail}")
-                        st.info("💡 Les résultats sont néanmoins sauvegardés sur l'ordinateur.")
+                    st.warning(f"⚠️ {msg_mail}")
+                    st.info("💡 Les résultats ont bien été sauvegardés sur l'ordinateur.")
 
             # Nettoyage du fichier de secours après validation réussie
             if os.path.exists(BACKUP_FILE):
                 os.remove(BACKUP_FILE)
 
 with col_valid2:
+    dest_mailto = config_email.get("destinataires", "")
     sujet_encoded = urllib.parse.quote(f"Ligue du Saphir : {equipe_receveur} vs {equipe_visiteur}")
     corps_encoded = urllib.parse.quote(texte_resume)
-    mailto_url = f"mailto:{destinataires_email}?subject={sujet_encoded}&body={corps_encoded}"
+    mailto_url = f"mailto:{dest_mailto}?subject={sujet_encoded}&body={corps_encoded}"
     st.markdown(f"""
         <a href="{mailto_url}" target="_blank" style="text-decoration: none;">
             <button style="width: 100%; padding: 10px; background-color: #f0f2f6; border: 1px solid #d1d5db; border-radius: 8px; cursor: pointer;">
