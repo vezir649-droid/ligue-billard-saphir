@@ -109,8 +109,8 @@ def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, date_
         ja_abs = m.get("joueur_a_absent", False)
         jb_abs = m.get("joueur_b_absent", False)
 
-        label_a = f"{ja} (Absent)" if ja_abs else ja
-        label_b = f"{jb} (Absent)" if jb_abs else jb
+        label_a = f"{ja} (Absent : {sa} pts)" if ja_abs else ja
+        label_b = f"{jb} (Absent : {sb} pts)" if jb_abs else jb
 
         gagnant = ja if sa > sb else (jb if sb > sa else "Égalité")
         lignes_texte.append(f"Manche {num} : {label_a} ({sa}) vs {label_b} ({sb}) -> Gagnant : {gagnant}")
@@ -260,6 +260,8 @@ else:
     roster_rec = ["Jean-François", "Christian", "Antoine"]
     roster_vis = ["Michel", "Nicolas", "Guy"]
 
+saved_joueurs = st.session_state.saisie_en_cours.get("joueurs", {})
+
 # --- SÉLECTION DES JOUEURS : ÉQUIPE RECEVEUSE ---
 st.sidebar.markdown(f"### 👥 Joueurs — {equipe_receveur}")
 
@@ -271,7 +273,19 @@ if sel_j1_rec == "Remplaçant...":
     j1_rec = st.sidebar.text_input("Nom Joueur 1 (Remplaçant)", value="Remplaçant 1", key="cust_j1_rec")
 else:
     j1_rec = sel_j1_rec
-j1_rec_pres = col_j1_r2.toggle("Présent", value=True, key="pres_j1_rec")
+j1_rec_pres_def = saved_joueurs.get("j1_rec", {}).get("present", True)
+j1_rec_pres = col_j1_r2.toggle("Présent", value=j1_rec_pres_def, key="pres_j1_rec")
+j1_rec_pts_def = saved_joueurs.get("j1_rec", {}).get("pts_absent", 0)
+if not j1_rec_pres:
+    j1_rec_pts = st.sidebar.number_input(
+        f"Score par défaut de {j1_rec} (absent) :",
+        min_value=0, max_value=7,
+        value=j1_rec_pts_def,
+        key="pts_j1_rec",
+        help=f"Points attribués à {j1_rec} pour chaque manche où il est absent (0 à 7)."
+    )
+else:
+    j1_rec_pts = st.session_state.get("pts_j1_rec", j1_rec_pts_def)
 
 # Joueur 2 (Sélection parmi les joueurs restants)
 col_j2_r1, col_j2_r2 = st.sidebar.columns([3, 2])
@@ -281,14 +295,38 @@ if sel_j2_rec == "Remplaçant...":
     j2_rec = st.sidebar.text_input("Nom Joueur 2 (Remplaçant)", value="Remplaçant 2", key="cust_j2_rec")
 else:
     j2_rec = sel_j2_rec
-j2_rec_pres = col_j2_r2.toggle("Présent", value=True, key="pres_j2_rec")
+j2_rec_pres_def = saved_joueurs.get("j2_rec", {}).get("present", True)
+j2_rec_pres = col_j2_r2.toggle("Présent", value=j2_rec_pres_def, key="pres_j2_rec")
+j2_rec_pts_def = saved_joueurs.get("j2_rec", {}).get("pts_absent", 0)
+if not j2_rec_pres:
+    j2_rec_pts = st.sidebar.number_input(
+        f"Score par défaut de {j2_rec} (absent) :",
+        min_value=0, max_value=7,
+        value=j2_rec_pts_def,
+        key="pts_j2_rec",
+        help=f"Points attribués à {j2_rec} pour chaque manche où il est absent (0 à 7)."
+    )
+else:
+    j2_rec_pts = st.session_state.get("pts_j2_rec", j2_rec_pts_def)
 
 # Joueur 3 (Évident / Déduit automatiquement)
 col_j3_r1, col_j3_r2 = st.sidebar.columns([3, 2])
 restants_rec = [p for p in roster_rec if p != sel_j1_rec and p != sel_j2_rec]
 j3_rec = restants_rec[0] if restants_rec else "Joueur 3"
 col_j3_r1.markdown(f"**Joueur 3 (défini) :**<br>`{j3_rec}`", unsafe_allow_html=True)
-j3_rec_pres = col_j3_r2.toggle("Présent", value=True, key="pres_j3_rec")
+j3_rec_pres_def = saved_joueurs.get("j3_rec", {}).get("present", True)
+j3_rec_pres = col_j3_r2.toggle("Présent", value=j3_rec_pres_def, key="pres_j3_rec")
+j3_rec_pts_def = saved_joueurs.get("j3_rec", {}).get("pts_absent", 0)
+if not j3_rec_pres:
+    j3_rec_pts = st.sidebar.number_input(
+        f"Score par défaut de {j3_rec} (absent) :",
+        min_value=0, max_value=7,
+        value=j3_rec_pts_def,
+        key="pts_j3_rec",
+        help=f"Points attribués à {j3_rec} pour chaque manche où il est absent (0 à 7)."
+    )
+else:
+    j3_rec_pts = st.session_state.get("pts_j3_rec", j3_rec_pts_def)
 
 # --- SÉLECTION DES JOUEURS : ÉQUIPE VISITEUSE ---
 st.sidebar.markdown(f"### 👥 Joueurs — {equipe_visiteur}")
@@ -301,7 +339,19 @@ if sel_j1_vis == "Remplaçant...":
     j1_vis = st.sidebar.text_input("Nom Visiteur 1 (Remplaçant)", value="Remplaçant 1", key="cust_j1_vis")
 else:
     j1_vis = sel_j1_vis
-j1_vis_pres = col_j1_v2.toggle("Présent", value=True, key="pres_j1_vis")
+j1_vis_pres_def = saved_joueurs.get("j1_vis", {}).get("present", True)
+j1_vis_pres = col_j1_v2.toggle("Présent", value=j1_vis_pres_def, key="pres_j1_vis")
+j1_vis_pts_def = saved_joueurs.get("j1_vis", {}).get("pts_absent", 0)
+if not j1_vis_pres:
+    j1_vis_pts = st.sidebar.number_input(
+        f"Score par défaut de {j1_vis} (absent) :",
+        min_value=0, max_value=7,
+        value=j1_vis_pts_def,
+        key="pts_j1_vis",
+        help=f"Points attribués à {j1_vis} pour chaque manche où il est absent (0 à 7)."
+    )
+else:
+    j1_vis_pts = st.session_state.get("pts_j1_vis", j1_vis_pts_def)
 
 # Joueur 2 (Sélection parmi les joueurs restants)
 col_j2_v1, col_j2_v2 = st.sidebar.columns([3, 2])
@@ -311,23 +361,47 @@ if sel_j2_vis == "Remplaçant...":
     j2_vis = st.sidebar.text_input("Nom Visiteur 2 (Remplaçant)", value="Remplaçant 2", key="cust_j2_vis")
 else:
     j2_vis = sel_j2_vis
-j2_vis_pres = col_j2_v2.toggle("Présent", value=True, key="pres_j2_vis")
+j2_vis_pres_def = saved_joueurs.get("j2_vis", {}).get("present", True)
+j2_vis_pres = col_j2_v2.toggle("Présent", value=j2_vis_pres_def, key="pres_j2_vis")
+j2_vis_pts_def = saved_joueurs.get("j2_vis", {}).get("pts_absent", 0)
+if not j2_vis_pres:
+    j2_vis_pts = st.sidebar.number_input(
+        f"Score par défaut de {j2_vis} (absent) :",
+        min_value=0, max_value=7,
+        value=j2_vis_pts_def,
+        key="pts_j2_vis",
+        help=f"Points attribués à {j2_vis} pour chaque manche où il est absent (0 à 7)."
+    )
+else:
+    j2_vis_pts = st.session_state.get("pts_j2_vis", j2_vis_pts_def)
 
 # Joueur 3 (Évident / Déduit automatiquement)
 col_j3_v1, col_j3_v2 = st.sidebar.columns([3, 2])
 restants_vis = [p for p in roster_vis if p != sel_j1_vis and p != sel_j2_vis]
 j3_vis = restants_vis[0] if restants_vis else "Joueur 3"
 col_j3_v1.markdown(f"**Joueur 3 (défini) :**<br>`{j3_vis}`", unsafe_allow_html=True)
-j3_vis_pres = col_j3_v2.toggle("Présent", value=True, key="pres_j3_vis")
+j3_vis_pres_def = saved_joueurs.get("j3_vis", {}).get("present", True)
+j3_vis_pres = col_j3_v2.toggle("Présent", value=j3_vis_pres_def, key="pres_j3_vis")
+j3_vis_pts_def = saved_joueurs.get("j3_vis", {}).get("pts_absent", 0)
+if not j3_vis_pres:
+    j3_vis_pts = st.sidebar.number_input(
+        f"Score par défaut de {j3_vis} (absent) :",
+        min_value=0, max_value=7,
+        value=j3_vis_pts_def,
+        key="pts_j3_vis",
+        help=f"Points attribués à {j3_vis} pour chaque manche où il est absent (0 à 7)."
+    )
+else:
+    j3_vis_pts = st.session_state.get("pts_j3_vis", j3_vis_pts_def)
 
 # Dictionnaire complet des joueurs
 dict_joueurs = {
-    "j1_rec": {"nom": j1_rec, "present": j1_rec_pres, "equipe": equipe_receveur},
-    "j2_rec": {"nom": j2_rec, "present": j2_rec_pres, "equipe": equipe_receveur},
-    "j3_rec": {"nom": j3_rec, "present": j3_rec_pres, "equipe": equipe_receveur},
-    "j1_vis": {"nom": j1_vis, "present": j1_vis_pres, "equipe": equipe_visiteur},
-    "j2_vis": {"nom": j2_vis, "present": j2_vis_pres, "equipe": equipe_visiteur},
-    "j3_vis": {"nom": j3_vis, "present": j3_vis_pres, "equipe": equipe_visiteur},
+    "j1_rec": {"nom": j1_rec, "present": j1_rec_pres, "pts_absent": j1_rec_pts, "equipe": equipe_receveur},
+    "j2_rec": {"nom": j2_rec, "present": j2_rec_pres, "pts_absent": j2_rec_pts, "equipe": equipe_receveur},
+    "j3_rec": {"nom": j3_rec, "present": j3_rec_pres, "pts_absent": j3_rec_pts, "equipe": equipe_receveur},
+    "j1_vis": {"nom": j1_vis, "present": j1_vis_pres, "pts_absent": j1_vis_pts, "equipe": equipe_visiteur},
+    "j2_vis": {"nom": j2_vis, "present": j2_vis_pres, "pts_absent": j2_vis_pts, "equipe": equipe_visiteur},
+    "j3_vis": {"nom": j3_vis, "present": j3_vis_pres, "pts_absent": j3_vis_pts, "equipe": equipe_visiteur},
 }
 
 # ==============================================================================
@@ -345,31 +419,34 @@ matchs_pairs = [
     (9, "j3_rec", "j2_vis")
 ]
 
-# Synchronisation automatique des scores lors d'un changement d'état Présent/Absent
+# Synchronisation automatique des scores lors d'un changement d'état Présent/Absent ou de score par défaut
 for p_id in dict_joueurs:
     info_j = dict_joueurs[p_id]
     state_key = f"prev_state_{p_id}"
+    pts_key = f"prev_pts_{p_id}"
     presence_changed = (state_key in st.session_state and st.session_state[state_key] != info_j["present"])
+    pts_changed = (not info_j["present"] and pts_key in st.session_state and st.session_state[pts_key] != info_j["pts_absent"])
 
-    if presence_changed:
+    if presence_changed or pts_changed:
         for num_m, k_a, k_b in matchs_pairs:
             if k_a == p_id or k_b == p_id:
                 info_a = dict_joueurs[k_a]
                 info_b = dict_joueurs[k_b]
                 if not info_a["present"] and info_b["present"]:
-                    st.session_state[f"s_a_{num_m}"] = 0
+                    st.session_state[f"s_a_{num_m}"] = info_a["pts_absent"]
                     st.session_state[f"s_b_{num_m}"] = 8
                 elif not info_b["present"] and info_a["present"]:
                     st.session_state[f"s_a_{num_m}"] = 8
-                    st.session_state[f"s_b_{num_m}"] = 0
+                    st.session_state[f"s_b_{num_m}"] = info_b["pts_absent"]
                 elif not info_a["present"] and not info_b["present"]:
-                    st.session_state[f"s_a_{num_m}"] = 0
-                    st.session_state[f"s_b_{num_m}"] = 0
+                    st.session_state[f"s_a_{num_m}"] = info_a["pts_absent"]
+                    st.session_state[f"s_b_{num_m}"] = info_b["pts_absent"]
                 else:
                     st.session_state[f"s_a_{num_m}"] = 8
                     st.session_state[f"s_b_{num_m}"] = 0
 
     st.session_state[state_key] = info_j["present"]
+    st.session_state[pts_key] = info_j["pts_absent"]
 
 # --- BOUTON DE RÉCUPÉRATION DE SECOURS ---
 col_recup1, col_recup2 = st.columns([3, 1])
@@ -390,14 +467,14 @@ with col_recup2:
             st.warning("Aucune sauvegarde trouvée.")
 
 # Liste des absents pour information
-absents_detectes = [f"{j['nom']} ({j['equipe']})" for j in dict_joueurs.values() if not j["present"]]
+absents_detectes = [f"{j['nom']} ({j['equipe']}) — défaut: {j['pts_absent']} pts" for j in dict_joueurs.values() if not j["present"]]
 if absents_detectes:
-    st.warning(f"⚠️ **Joueur(s) absent(s) :** {', '.join(absents_detectes)}. Le score de forfait (0 point) est automatiquement appliqué (8 points pour l'adversaire présent).")
+    st.warning(f"⚠️ **Joueur(s) absent(s) :** {', '.join(absents_detectes)}. Leurs scores de défaut sont automatiquement appliqués dans leurs manches respectives.")
 
 st.markdown("### 🎯 Grille de saisie des 9 manches (Rotation alternée 3 contre 3)")
 st.info(
     "📌 **Règle de rotation :** Aucun joueur ne joue deux manches consécutives.\n\n"
-    "🎱 **Règle du jeu au 8 :** Le vainqueur obtient **8 points**, le perdant obtient de **0 à 7 points** (0 point en cas de forfait/absence)."
+    "🎱 **Règle du jeu au 8 :** Le vainqueur obtient **8 points**, le perdant obtient de **0 à 7 points**."
 )
 
 # Sauvegarde automatique dynamique au fil de la saisie
@@ -405,7 +482,7 @@ donnees_a_sauvegarder = {
     "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
     "receveur": equipe_receveur,
     "visiteur": equipe_visiteur,
-    "joueurs": {p_id: {"nom": j["nom"], "present": j["present"]} for p_id, j in dict_joueurs.items()},
+    "joueurs": {p_id: {"nom": j["nom"], "present": j["present"], "pts_absent": j["pts_absent"]} for p_id, j in dict_joueurs.items()},
     "matchs": {}
 }
 
@@ -424,9 +501,9 @@ for num_manche, id_a, id_b in matchs_pairs:
     if not a_pres and not b_pres:
         status_label = " ❌ (Forfait double : 2 absents)"
     elif not a_pres:
-        status_label = f" ❌ ({joueur_a} absent)"
+        status_label = f" ❌ ({joueur_a} absent : {info_a['pts_absent']} pts)"
     elif not b_pres:
-        status_label = f" ❌ ({joueur_b} absent)"
+        status_label = f" ❌ ({joueur_b} absent : {info_b['pts_absent']} pts)"
 
     with st.expander(f"Manche {num_manche} : {joueur_a} ({equipe_receveur}) vs {joueur_b} ({equipe_visiteur}){status_label}", expanded=True):
         c1, c2 = st.columns(2)
@@ -439,20 +516,20 @@ for num_manche, id_a, id_b in matchs_pairs:
             def_score_b = saved_scores["score_b"]
         else:
             if not a_pres and b_pres:
-                def_score_a = 0
+                def_score_a = info_a["pts_absent"]
                 def_score_b = 8
             elif not b_pres and a_pres:
                 def_score_a = 8
-                def_score_b = 0
+                def_score_b = info_b["pts_absent"]
             elif not a_pres and not b_pres:
-                def_score_a = 0
-                def_score_b = 0
+                def_score_a = info_a["pts_absent"]
+                def_score_b = info_b["pts_absent"]
             else:
                 def_score_a = 8
                 def_score_b = 0
 
         with c1:
-            label_champ_a = f"Points de {joueur_a}" + (" (Absent : 0)" if not a_pres else "")
+            label_champ_a = f"Points de {joueur_a}" + (f" (Absent : {info_a['pts_absent']} pts)" if not a_pres else "")
             score_a = st.number_input(
                 label_champ_a, 
                 0, 8, 
@@ -460,7 +537,7 @@ for num_manche, id_a, id_b in matchs_pairs:
                 key=f"s_a_{num_manche}"
             )
         with c2:
-            label_champ_b = f"Points de {joueur_b}" + (" (Absent : 0)" if not b_pres else "")
+            label_champ_b = f"Points de {joueur_b}" + (f" (Absent : {info_b['pts_absent']} pts)" if not b_pres else "")
             score_b = st.number_input(
                 label_champ_b, 
                 0, 8, 
