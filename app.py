@@ -18,6 +18,25 @@ st.set_page_config(
 BACKUP_FILE = "sauvegarde_saisie_secours.json"
 HISTORIQUE_FILE = "historique_matchs.json"
 CONFIG_EMAIL_FILE = "config_email.json"
+EQUIPES_CSV_FILE = "equipes-saphir.csv"
+
+def charger_equipes_csv():
+    """Charge la liste des équipes et joueurs depuis le fichier CSV."""
+    equipes = {}
+    if os.path.exists(EQUIPES_CSV_FILE):
+        try:
+            with open(EQUIPES_CSV_FILE, "r", encoding="utf-8") as f:
+                for line in f:
+                    parts = [p.strip() for p in line.strip().split(",") if p.strip()]
+                    if len(parts) >= 2:
+                        nom_eq = parts[0]
+                        joueurs = parts[1:]
+                        while len(joueurs) < 3:
+                            joueurs.append(f"Joueur {len(joueurs)+1}")
+                        equipes[nom_eq] = joueurs[:3]
+        except Exception as e:
+            st.error(f"Erreur lors de la lecture du fichier {EQUIPES_CSV_FILE} : {e}")
+    return equipes
 
 def charger_sauvegarde():
     if os.path.exists(BACKUP_FILE):
@@ -191,6 +210,10 @@ if "saisie_en_cours" not in st.session_state:
 # Configuration email sauvegardée
 config_email_actuelle = charger_config_email()
 
+# Chargement du fichier équipes CSV
+equipes_disponibles = charger_equipes_csv()
+noms_equipes = list(equipes_disponibles.keys())
+
 # --- ENTÊTE DU SITE WEB DE RÉFÉRENCE ---
 st.title("🎱 Ligue de billard du Saphir")
 st.subheader("Application de saisie des résultats - Format 3 contre 3")
@@ -199,14 +222,55 @@ st.divider()
 
 # --- BARRE LATÉRALE : SÉLECTION DU MATCH ET JOUEURS ---
 st.sidebar.header("📋 Paramètres du Match")
-equipe_receveur = st.sidebar.text_input(
-    "Équipe Receveuse",
-    value=st.session_state.saisie_en_cours.get("receveur", "Équipe 1")
-)
-equipe_visiteur = st.sidebar.text_input(
-    "Équipe Visiteuse",
-    value=st.session_state.saisie_en_cours.get("visiteur", "Équipe 2")
-)
+
+if noms_equipes:
+    options_rec = noms_equipes + ["Autre / Personnalisée"]
+    options_vis = noms_equipes + ["Autre / Personnalisée"]
+    
+    # Choix équipe receveuse
+    choix_rec = st.sidebar.selectbox("Équipe Receveuse :", options_rec, index=0, key="sel_equipe_rec")
+    if choix_rec == "Autre / Personnalisée":
+        equipe_receveur = st.sidebar.text_input("Nom de l'équipe receveuse", value="Équipe 1", key="input_custom_rec")
+        def_j1_rec, def_j2_rec, def_j3_rec = "Joueur 1", "Joueur 2", "Joueur 3"
+    else:
+        equipe_receveur = choix_rec
+        def_j1_rec, def_j2_rec, def_j3_rec = equipes_disponibles[choix_rec]
+
+    # Détection de changement de sélection d'équipe receveuse pour mettre à jour les noms
+    if "prev_choix_rec" in st.session_state and st.session_state["prev_choix_rec"] != choix_rec:
+        st.session_state["nom_j1_rec"] = def_j1_rec
+        st.session_state["nom_j2_rec"] = def_j2_rec
+        st.session_state["nom_j3_rec"] = def_j3_rec
+    st.session_state["prev_choix_rec"] = choix_rec
+
+    # Choix équipe visiteuse
+    default_vis_idx = 1 if len(noms_equipes) > 1 else 0
+    choix_vis = st.sidebar.selectbox("Équipe Visiteuse :", options_vis, index=default_vis_idx, key="sel_equipe_vis")
+    if choix_vis == "Autre / Personnalisée":
+        equipe_visiteur = st.sidebar.text_input("Nom de l'équipe visiteuse", value="Équipe 2", key="input_custom_vis")
+        def_j1_vis, def_j2_vis, def_j3_vis = "Joueur 1", "Joueur 2", "Joueur 3"
+    else:
+        equipe_visiteur = choix_vis
+        def_j1_vis, def_j2_vis, def_j3_vis = equipes_disponibles[choix_vis]
+
+    # Détection de changement de sélection d'équipe visiteuse
+    if "prev_choix_vis" in st.session_state and st.session_state["prev_choix_vis"] != choix_vis:
+        st.session_state["nom_j1_vis"] = def_j1_vis
+        st.session_state["nom_j2_vis"] = def_j2_vis
+        st.session_state["nom_j3_vis"] = def_j3_vis
+    st.session_state["prev_choix_vis"] = choix_vis
+
+else:
+    equipe_receveur = st.sidebar.text_input(
+        "Équipe Receveuse",
+        value=st.session_state.saisie_en_cours.get("receveur", "Équipe 1")
+    )
+    equipe_visiteur = st.sidebar.text_input(
+        "Équipe Visiteuse",
+        value=st.session_state.saisie_en_cours.get("visiteur", "Équipe 2")
+    )
+    def_j1_rec, def_j2_rec, def_j3_rec = "Jean-François", "Christian", "Antoine"
+    def_j1_vis, def_j2_vis, def_j3_vis = "Michel", "Nicolas", "Guy"
 
 st.sidebar.markdown("### ⚙️ Règle des Absences")
 pts_forfait_defaut = st.sidebar.number_input(
@@ -219,9 +283,24 @@ pts_forfait_defaut = st.sidebar.number_input(
 
 st.sidebar.markdown(f"### 👥 Joueurs — {equipe_receveur}")
 
+# Pré-remplissage des session states si non existants
+if "nom_j1_rec" not in st.session_state:
+    st.session_state["nom_j1_rec"] = def_j1_rec
+if "nom_j2_rec" not in st.session_state:
+    st.session_state["nom_j2_rec"] = def_j2_rec
+if "nom_j3_rec" not in st.session_state:
+    st.session_state["nom_j3_rec"] = def_j3_rec
+
+if "nom_j1_vis" not in st.session_state:
+    st.session_state["nom_j1_vis"] = def_j1_vis
+if "nom_j2_vis" not in st.session_state:
+    st.session_state["nom_j2_vis"] = def_j2_vis
+if "nom_j3_vis" not in st.session_state:
+    st.session_state["nom_j3_vis"] = def_j3_vis
+
 # Joueur 1 Receveur
 col_j1_r1, col_j1_r2 = st.sidebar.columns([3, 2])
-j1_rec = col_j1_r1.text_input("Receveur 1", value="Jean-François", key="nom_j1_rec")
+j1_rec = col_j1_r1.text_input("Receveur 1", key="nom_j1_rec")
 j1_rec_pres = col_j1_r2.toggle("Présent", value=True, key="pres_j1_rec")
 j1_rec_pts = pts_forfait_defaut
 if not j1_rec_pres:
@@ -229,7 +308,7 @@ if not j1_rec_pres:
 
 # Joueur 2 Receveur
 col_j2_r1, col_j2_r2 = st.sidebar.columns([3, 2])
-j2_rec = col_j2_r1.text_input("Receveur 2", value="Christian", key="nom_j2_rec")
+j2_rec = col_j2_r1.text_input("Receveur 2", key="nom_j2_rec")
 j2_rec_pres = col_j2_r2.toggle("Présent", value=True, key="pres_j2_rec")
 j2_rec_pts = pts_forfait_defaut
 if not j2_rec_pres:
@@ -237,7 +316,7 @@ if not j2_rec_pres:
 
 # Joueur 3 Receveur
 col_j3_r1, col_j3_r2 = st.sidebar.columns([3, 2])
-j3_rec = col_j3_r1.text_input("Receveur 3", value="Antoine", key="nom_j3_rec")
+j3_rec = col_j3_r1.text_input("Receveur 3", key="nom_j3_rec")
 j3_rec_pres = col_j3_r2.toggle("Présent", value=True, key="pres_j3_rec")
 j3_rec_pts = pts_forfait_defaut
 if not j3_rec_pres:
@@ -247,7 +326,7 @@ st.sidebar.markdown(f"### 👥 Joueurs — {equipe_visiteur}")
 
 # Joueur 1 Visiteur
 col_j1_v1, col_j1_v2 = st.sidebar.columns([3, 2])
-j1_vis = col_j1_v1.text_input("Visiteur 1", value="Michel", key="nom_j1_vis")
+j1_vis = col_j1_v1.text_input("Visiteur 1", key="nom_j1_vis")
 j1_vis_pres = col_j1_v2.toggle("Présent", value=True, key="pres_j1_vis")
 j1_vis_pts = pts_forfait_defaut
 if not j1_vis_pres:
@@ -255,7 +334,7 @@ if not j1_vis_pres:
 
 # Joueur 2 Visiteur
 col_j2_v1, col_j2_v2 = st.sidebar.columns([3, 2])
-j2_vis = col_j2_v1.text_input("Visiteur 2", value="Nicolas", key="nom_j2_vis")
+j2_vis = col_j2_v1.text_input("Visiteur 2", key="nom_j2_vis")
 j2_vis_pres = col_j2_v2.toggle("Présent", value=True, key="pres_j2_vis")
 j2_vis_pts = pts_forfait_defaut
 if not j2_vis_pres:
@@ -263,7 +342,7 @@ if not j2_vis_pres:
 
 # Joueur 3 Visiteur
 col_j3_v1, col_j3_v2 = st.sidebar.columns([3, 2])
-j3_vis = col_j3_v1.text_input("Visiteur 3", value="Guy", key="nom_j3_vis")
+j3_vis = col_j3_v1.text_input("Visiteur 3", key="nom_j3_vis")
 j3_vis_pres = col_j3_v2.toggle("Présent", value=True, key="pres_j3_vis")
 j3_vis_pts = pts_forfait_defaut
 if not j3_vis_pres:
