@@ -959,21 +959,51 @@ with st.expander("⚙️ Modifier et mémoriser la configuration SMTP"):
     smtp_mdp = col_c2.text_input("Mot de passe / Clé d'application", type="password", value=config_email.get("smtp_mdp", ""))
     smtp_ssl = st.checkbox("Utiliser SSL (Port 465)", value=config_email.get("smtp_ssl", False))
 
-    if st.button("💾 Enregistrer la configuration dans le fichier"):
-        nouvelle_cfg = {
-            "destinataires": smtp_dest,
-            "smtp_serveur": smtp_serveur,
-            "smtp_port": smtp_port,
-            "smtp_expediteur": smtp_expediteur,
-            "smtp_mdp": smtp_mdp,
-            "smtp_ssl": smtp_ssl
-        }
-        if sauvegarder_config_email(nouvelle_cfg):
-            config_email = nouvelle_cfg
-            st.success("Configuration SMTP enregistrée avec succès dans le fichier !")
-            st.rerun()
-        else:
-            st.error("Erreur lors de la sauvegarde du fichier.")
+    col_btn_cfg1, col_btn_cfg2 = st.columns(2)
+    with col_btn_cfg1:
+        if st.button("💾 Enregistrer la configuration", use_container_width=True):
+            nouvelle_cfg = {
+                "destinataires": smtp_dest,
+                "smtp_serveur": smtp_serveur,
+                "smtp_port": smtp_port,
+                "smtp_expediteur": smtp_expediteur,
+                "smtp_mdp": smtp_mdp,
+                "smtp_ssl": smtp_ssl
+            }
+            if sauvegarder_config_email(nouvelle_cfg):
+                config_email = nouvelle_cfg
+                st.success("Configuration SMTP enregistrée avec succès dans le fichier !")
+                st.rerun()
+            else:
+                st.error("Erreur lors de la sauvegarde du fichier.")
+
+    with col_btn_cfg2:
+        if st.button("🧪 Tester la configuration (courriel test)", use_container_width=True):
+            if not smtp_dest:
+                st.error("⚠️ Veuillez renseigner au moins une adresse de destinataire.")
+            elif not smtp_expediteur:
+                st.error("⚠️ Veuillez renseigner l'adresse courriel de l'expéditeur.")
+            else:
+                cfg_test = {
+                    "destinataires": smtp_dest,
+                    "smtp_serveur": smtp_serveur,
+                    "smtp_port": int(smtp_port),
+                    "smtp_expediteur": smtp_expediteur,
+                    "smtp_mdp": smtp_mdp,
+                    "smtp_ssl": smtp_ssl
+                }
+                with st.spinner("Test de connexion SMTP en cours..."):
+                    succes_test, msg_test = envoyer_courriel(
+                        smtp_dest,
+                        "🎱 Test de configuration SMTP - Ligue du Saphir",
+                        "Ce message confirme que votre configuration SMTP fonctionne correctement !",
+                        "<p>Ce message confirme que votre configuration <strong>SMTP</strong> fonctionne correctement !</p>",
+                        cfg_test
+                    )
+                if succes_test:
+                    st.success(f"✅ {msg_test} (Envoyé à : `{smtp_dest}`)")
+                else:
+                    st.error(f"❌ {msg_test}")
 
 st.divider()
 
@@ -1059,6 +1089,29 @@ with col_valid1:
             liberer_verrou(my_session_id)
 
 with col_valid2:
+    st.markdown("**Options d'envoi du courriel :**")
+
+    # Option A: Envoi direct via SMTP
+    if st.button("📤 Envoyer par SMTP direct", use_container_width=True, disabled=not est_editeur):
+        destinataires_envoi = config_email.get("destinataires", "").strip()
+        if not destinataires_envoi:
+            st.error("⚠️ Aucun destinataire configuré dans les paramètres SMTP ci-dessus.")
+        else:
+            sujet = f"🎱 Ligue du Saphir : {equipe_receveur} ({total_pts_receveur}) vs {equipe_visiteur} ({total_pts_visiteur}) - {date_du_match}"
+            with st.spinner("Envoi par SMTP direct en cours..."):
+                succes_mail, msg_mail = envoyer_courriel(
+                    destinataires_envoi,
+                    sujet,
+                    texte_resume,
+                    html_resume,
+                    config_email
+                )
+            if succes_mail:
+                st.success(f"✉️ {msg_mail} (Envoyé à : `{destinataires_envoi}`)")
+            else:
+                st.error(f"❌ {msg_mail}")
+
+    # Option B: Brouillon client mailto
     dest_mailto = config_email.get("destinataires", "")
     sujet_encoded = urllib.parse.quote(f"Ligue du Saphir : {equipe_receveur} vs {equipe_visiteur}")
     corps_encoded = urllib.parse.quote(texte_resume)
@@ -1066,9 +1119,12 @@ with col_valid2:
     st.markdown(f"""
         <a href="{mailto_url}" target="_blank" style="text-decoration: none;">
             <button style="width: 100%; padding: 10px; background-color: #f0f2f6; border: 1px solid #d1d5db; border-radius: 8px; cursor: pointer;">
-                📨 Ouvrir dans mon application de courriel (Outlook/Mail)
+                📨 Ouvrir le brouillon dans Outlook / Courrier
             </button>
         </a>
+        <p style="font-size: 11px; color: #666; margin-top: 4px; text-align: center;">
+            ℹ️ <em>Le bouton Outlook prépare le courriel dans votre application locale. Pour qu'il parte, vous devez ensuite cliquer sur « Envoyer » dans votre logiciel.</em>
+        </p>
     """, unsafe_allow_html=True)
 
 # Sauvegarde automatique en arrière-plan (uniquement par l'éditeur actif et si le match n'est pas validé)
