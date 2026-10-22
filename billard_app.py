@@ -86,6 +86,22 @@ def sauvegarder_config_email(cfg):
     except Exception:
         return False
 
+def calculer_score_absent(moyenne_val):
+    """
+    Calcule le score de manche d'un joueur absent :
+    moyenne * 24 / 3, arrondi à l'entier le plus proche, plafonné à 7 maximum.
+    Prend en compte la saisie sous forme ratio (ex: 0.650) ou pourcentage (ex: 65).
+    """
+    if moyenne_val is None:
+        return 0
+    try:
+        val = float(moyenne_val)
+    except (ValueError, TypeError):
+        return 0
+    ratio = val / 100.0 if val > 1.0 else val
+    pts = int(round((ratio * 24.0) / 3.0))
+    return min(7, max(0, pts))
+
 def restaurer_session(data):
     """Restaure l'intégralité de la session (équipes, sélections, présences, scores défaut et points) dans st.session_state."""
     if not data or not isinstance(data, dict):
@@ -119,10 +135,12 @@ def restaurer_session(data):
             p_data = joueurs[p_id]
             pres = p_data.get("present", True)
             pts = int(p_data.get("pts_absent", 0))
+            moy = float(p_data.get("moyenne", 0.625))
             nom = p_data.get("nom", "")
 
             st.session_state[f"pres_{p_id}"] = pres
             st.session_state[f"pts_{p_id}"] = pts
+            st.session_state[f"moy_{p_id}"] = moy
             st.session_state[f"prev_state_{p_id}"] = pres
             st.session_state[f"prev_pts_{p_id}"] = pts
             st.session_state[f"cust_{p_id}"] = nom
@@ -344,7 +362,7 @@ with col_h3:
             except Exception:
                 pass
         for k in list(st.session_state.keys()):
-            if k.startswith("s_a_") or k.startswith("s_b_") or k.startswith("pres_") or k.startswith("pts_") or k.startswith("prev_"):
+            if k.startswith("s_a_") or k.startswith("s_b_") or k.startswith("pres_") or k.startswith("pts_") or k.startswith("moy_") or k.startswith("prev_"):
                 del st.session_state[k]
         st.rerun()
 
@@ -414,13 +432,22 @@ else:
     j1_rec = sel_j1_rec
 j1_rec_pres = col_j1_r2.toggle("Présent", value=st.session_state.get("pres_j1_rec", True), key="pres_j1_rec")
 if not j1_rec_pres:
-    j1_rec_pts = st.sidebar.number_input(
-        f"Score par défaut de {j1_rec} (absent) :",
-        min_value=0, max_value=7,
-        value=int(st.session_state.get("pts_j1_rec", 0)),
-        key="pts_j1_rec",
-        help=f"Points attribués à {j1_rec} pour chaque manche où il est absent (0 à 7)."
+    def_moy_j1 = float(st.session_state.get("moy_j1_rec", 0.625))
+    col_m1, col_m2 = st.sidebar.columns([3, 2])
+    moy_j1 = col_m1.number_input(
+        f"Moyenne de {j1_rec} :",
+        min_value=0.0,
+        max_value=100.0,
+        value=def_moy_j1,
+        step=0.025,
+        format="%.3f",
+        key="moy_j1_rec",
+        help="Saisissez la moyenne (ex. 0.650 ou 65%). Formule : arrondi(moyenne × 24 ÷ 3), max 7."
     )
+    j1_rec_pts = calculer_score_absent(moy_j1)
+    st.session_state["pts_j1_rec"] = j1_rec_pts
+    col_m2.metric("Score", f"{j1_rec_pts} pts")
+    st.sidebar.caption(f"📊 *Score calculé : {j1_rec_pts} pts/manche (max 7)*")
 else:
     j1_rec_pts = int(st.session_state.get("pts_j1_rec", 0))
 
@@ -441,13 +468,22 @@ else:
     j2_rec = sel_j2_rec
 j2_rec_pres = col_j2_r2.toggle("Présent", value=st.session_state.get("pres_j2_rec", True), key="pres_j2_rec")
 if not j2_rec_pres:
-    j2_rec_pts = st.sidebar.number_input(
-        f"Score par défaut de {j2_rec} (absent) :",
-        min_value=0, max_value=7,
-        value=int(st.session_state.get("pts_j2_rec", 0)),
-        key="pts_j2_rec",
-        help=f"Points attribués à {j2_rec} pour chaque manche où il est absent (0 à 7)."
+    def_moy_j2 = float(st.session_state.get("moy_j2_rec", 0.625))
+    col_m1, col_m2 = st.sidebar.columns([3, 2])
+    moy_j2 = col_m1.number_input(
+        f"Moyenne de {j2_rec} :",
+        min_value=0.0,
+        max_value=100.0,
+        value=def_moy_j2,
+        step=0.025,
+        format="%.3f",
+        key="moy_j2_rec",
+        help="Saisissez la moyenne (ex. 0.650 ou 65%). Formule : arrondi(moyenne × 24 ÷ 3), max 7."
     )
+    j2_rec_pts = calculer_score_absent(moy_j2)
+    st.session_state["pts_j2_rec"] = j2_rec_pts
+    col_m2.metric("Score", f"{j2_rec_pts} pts")
+    st.sidebar.caption(f"📊 *Score calculé : {j2_rec_pts} pts/manche (max 7)*")
 else:
     j2_rec_pts = int(st.session_state.get("pts_j2_rec", 0))
 
@@ -458,13 +494,22 @@ j3_rec = restants_rec[0] if restants_rec else "Joueur 3"
 col_j3_r1.markdown(f"**Joueur 3 (défini) :**<br>`{j3_rec}`", unsafe_allow_html=True)
 j3_rec_pres = col_j3_r2.toggle("Présent", value=st.session_state.get("pres_j3_rec", True), key="pres_j3_rec")
 if not j3_rec_pres:
-    j3_rec_pts = st.sidebar.number_input(
-        f"Score par défaut de {j3_rec} (absent) :",
-        min_value=0, max_value=7,
-        value=int(st.session_state.get("pts_j3_rec", 0)),
-        key="pts_j3_rec",
-        help=f"Points attribués à {j3_rec} pour chaque manche où il est absent (0 à 7)."
+    def_moy_j3 = float(st.session_state.get("moy_j3_rec", 0.625))
+    col_m1, col_m2 = st.sidebar.columns([3, 2])
+    moy_j3 = col_m1.number_input(
+        f"Moyenne de {j3_rec} :",
+        min_value=0.0,
+        max_value=100.0,
+        value=def_moy_j3,
+        step=0.025,
+        format="%.3f",
+        key="moy_j3_rec",
+        help="Saisissez la moyenne (ex. 0.650 ou 65%). Formule : arrondi(moyenne × 24 ÷ 3), max 7."
     )
+    j3_rec_pts = calculer_score_absent(moy_j3)
+    st.session_state["pts_j3_rec"] = j3_rec_pts
+    col_m2.metric("Score", f"{j3_rec_pts} pts")
+    st.sidebar.caption(f"📊 *Score calculé : {j3_rec_pts} pts/manche (max 7)*")
 else:
     j3_rec_pts = int(st.session_state.get("pts_j3_rec", 0))
 
@@ -488,13 +533,22 @@ else:
     j1_vis = sel_j1_vis
 j1_vis_pres = col_j1_v2.toggle("Présent", value=st.session_state.get("pres_j1_vis", True), key="pres_j1_vis")
 if not j1_vis_pres:
-    j1_vis_pts = st.sidebar.number_input(
-        f"Score par défaut de {j1_vis} (absent) :",
-        min_value=0, max_value=7,
-        value=int(st.session_state.get("pts_j1_vis", 0)),
-        key="pts_j1_vis",
-        help=f"Points attribués à {j1_vis} pour chaque manche où il est absent (0 à 7)."
+    def_moy_v1 = float(st.session_state.get("moy_j1_vis", 0.625))
+    col_m1, col_m2 = st.sidebar.columns([3, 2])
+    moy_v1 = col_m1.number_input(
+        f"Moyenne de {j1_vis} :",
+        min_value=0.0,
+        max_value=100.0,
+        value=def_moy_v1,
+        step=0.025,
+        format="%.3f",
+        key="moy_j1_vis",
+        help="Saisissez la moyenne (ex. 0.650 ou 65%). Formule : arrondi(moyenne × 24 ÷ 3), max 7."
     )
+    j1_vis_pts = calculer_score_absent(moy_v1)
+    st.session_state["pts_j1_vis"] = j1_vis_pts
+    col_m2.metric("Score", f"{j1_vis_pts} pts")
+    st.sidebar.caption(f"📊 *Score calculé : {j1_vis_pts} pts/manche (max 7)*")
 else:
     j1_vis_pts = int(st.session_state.get("pts_j1_vis", 0))
 
@@ -515,13 +569,22 @@ else:
     j2_vis = sel_j2_vis
 j2_vis_pres = col_j2_v2.toggle("Présent", value=st.session_state.get("pres_j2_vis", True), key="pres_j2_vis")
 if not j2_vis_pres:
-    j2_vis_pts = st.sidebar.number_input(
-        f"Score par défaut de {j2_vis} (absent) :",
-        min_value=0, max_value=7,
-        value=int(st.session_state.get("pts_j2_vis", 0)),
-        key="pts_j2_vis",
-        help=f"Points attribués à {j2_vis} pour chaque manche où il est absent (0 à 7)."
+    def_moy_v2 = float(st.session_state.get("moy_j2_vis", 0.625))
+    col_m1, col_m2 = st.sidebar.columns([3, 2])
+    moy_v2 = col_m1.number_input(
+        f"Moyenne de {j2_vis} :",
+        min_value=0.0,
+        max_value=100.0,
+        value=def_moy_v2,
+        step=0.025,
+        format="%.3f",
+        key="moy_j2_vis",
+        help="Saisissez la moyenne (ex. 0.650 ou 65%). Formule : arrondi(moyenne × 24 ÷ 3), max 7."
     )
+    j2_vis_pts = calculer_score_absent(moy_v2)
+    st.session_state["pts_j2_vis"] = j2_vis_pts
+    col_m2.metric("Score", f"{j2_vis_pts} pts")
+    st.sidebar.caption(f"📊 *Score calculé : {j2_vis_pts} pts/manche (max 7)*")
 else:
     j2_vis_pts = int(st.session_state.get("pts_j2_vis", 0))
 
@@ -532,24 +595,33 @@ j3_vis = restants_vis[0] if restants_vis else "Joueur 3"
 col_j3_v1.markdown(f"**Joueur 3 (défini) :**<br>`{j3_vis}`", unsafe_allow_html=True)
 j3_vis_pres = col_j3_v2.toggle("Présent", value=st.session_state.get("pres_j3_vis", True), key="pres_j3_vis")
 if not j3_vis_pres:
-    j3_vis_pts = st.sidebar.number_input(
-        f"Score par défaut de {j3_vis} (absent) :",
-        min_value=0, max_value=7,
-        value=int(st.session_state.get("pts_j3_vis", 0)),
-        key="pts_j3_vis",
-        help=f"Points attribués à {j3_vis} pour chaque manche où il est absent (0 à 7)."
+    def_moy_v3 = float(st.session_state.get("moy_j3_vis", 0.625))
+    col_m1, col_m2 = st.sidebar.columns([3, 2])
+    moy_v3 = col_m1.number_input(
+        f"Moyenne de {j3_vis} :",
+        min_value=0.0,
+        max_value=100.0,
+        value=def_moy_v3,
+        step=0.025,
+        format="%.3f",
+        key="moy_j3_vis",
+        help="Saisissez la moyenne (ex. 0.650 ou 65%). Formule : arrondi(moyenne × 24 ÷ 3), max 7."
     )
+    j3_vis_pts = calculer_score_absent(moy_v3)
+    st.session_state["pts_j3_vis"] = j3_vis_pts
+    col_m2.metric("Score", f"{j3_vis_pts} pts")
+    st.sidebar.caption(f"📊 *Score calculé : {j3_vis_pts} pts/manche (max 7)*")
 else:
     j3_vis_pts = int(st.session_state.get("pts_j3_vis", 0))
 
 # Dictionnaire complet des joueurs
 dict_joueurs = {
-    "j1_rec": {"nom": j1_rec, "present": j1_rec_pres, "pts_absent": j1_rec_pts, "equipe": equipe_receveur},
-    "j2_rec": {"nom": j2_rec, "present": j2_rec_pres, "pts_absent": j2_rec_pts, "equipe": equipe_receveur},
-    "j3_rec": {"nom": j3_rec, "present": j3_rec_pres, "pts_absent": j3_rec_pts, "equipe": equipe_receveur},
-    "j1_vis": {"nom": j1_vis, "present": j1_vis_pres, "pts_absent": j1_vis_pts, "equipe": equipe_visiteur},
-    "j2_vis": {"nom": j2_vis, "present": j2_vis_pres, "pts_absent": j2_vis_pts, "equipe": equipe_visiteur},
-    "j3_vis": {"nom": j3_vis, "present": j3_vis_pres, "pts_absent": j3_vis_pts, "equipe": equipe_visiteur},
+    "j1_rec": {"nom": j1_rec, "present": j1_rec_pres, "moyenne": float(st.session_state.get("moy_j1_rec", 0.0)), "pts_absent": j1_rec_pts, "equipe": equipe_receveur},
+    "j2_rec": {"nom": j2_rec, "present": j2_rec_pres, "moyenne": float(st.session_state.get("moy_j2_rec", 0.0)), "pts_absent": j2_rec_pts, "equipe": equipe_receveur},
+    "j3_rec": {"nom": j3_rec, "present": j3_rec_pres, "moyenne": float(st.session_state.get("moy_j3_rec", 0.0)), "pts_absent": j3_rec_pts, "equipe": equipe_receveur},
+    "j1_vis": {"nom": j1_vis, "present": j1_vis_pres, "moyenne": float(st.session_state.get("moy_j1_vis", 0.0)), "pts_absent": j1_vis_pts, "equipe": equipe_visiteur},
+    "j2_vis": {"nom": j2_vis, "present": j2_vis_pres, "moyenne": float(st.session_state.get("moy_j2_vis", 0.0)), "pts_absent": j2_vis_pts, "equipe": equipe_visiteur},
+    "j3_vis": {"nom": j3_vis, "present": j3_vis_pres, "moyenne": float(st.session_state.get("moy_j3_vis", 0.0)), "pts_absent": j3_vis_pts, "equipe": equipe_visiteur},
 }
 
 # ==============================================================================
@@ -598,7 +670,7 @@ for p_id in dict_joueurs:
     st.session_state[pts_key] = info_j["pts_absent"]
 
 # Liste des absents pour information
-absents_detectes = [f"{j['nom']} ({j['equipe']}) — défaut: {j['pts_absent']} pts" for j in dict_joueurs.values() if not j["present"]]
+absents_detectes = [f"{j['nom']} ({j['equipe']}) — moy: {j['moyenne']:.3f} → {j['pts_absent']} pts" for j in dict_joueurs.values() if not j["present"]]
 if absents_detectes:
     st.warning(f"⚠️ **Joueur(s) absent(s) :** {', '.join(absents_detectes)}. Leurs scores de défaut sont automatiquement appliqués dans leurs manches respectives.")
 
@@ -620,7 +692,7 @@ donnees_a_sauvegarder = {
     "sel_j2_rec": sel_j2_rec,
     "sel_j1_vis": sel_j1_vis,
     "sel_j2_vis": sel_j2_vis,
-    "joueurs": {p_id: {"nom": j["nom"], "present": j["present"], "pts_absent": j["pts_absent"]} for p_id, j in dict_joueurs.items()},
+    "joueurs": {p_id: {"nom": j["nom"], "present": j["present"], "moyenne": j.get("moyenne", 0.0), "pts_absent": j["pts_absent"]} for p_id, j in dict_joueurs.items()},
     "matchs": {}
 }
 
