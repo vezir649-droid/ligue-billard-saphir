@@ -453,9 +453,32 @@ with col_h3:
                 os.remove(BACKUP_FILE)
             except Exception:
                 pass
-        for k in list(st.session_state.keys()):
-            if k.startswith("s_a_") or k.startswith("s_b_") or k.startswith("pres_") or k.startswith("pts_") or k.startswith("moy_") or k.startswith("prev_"):
-                del st.session_state[k]
+
+        # Conserver uniquement l'identifiant de session pour maintenir le verrou
+        user_sess = st.session_state.get("user_session_id")
+        st.session_state.clear()
+        if user_sess:
+            st.session_state["user_session_id"] = user_sess
+        st.session_state["app_initialisee"] = True
+
+        # Remise à zéro explicite de toutes les manches (0 - 0)
+        for num in range(1, 10):
+            st.session_state[f"s_a_{num}"] = 0
+            st.session_state[f"s_b_{num}"] = 0
+
+        # Réinitialisation des présences (tous présents), moyennes et scores par défaut
+        for p_id in ["j1_rec", "j2_rec", "j3_rec", "j1_vis", "j2_vis", "j3_vis"]:
+            st.session_state[f"pres_{p_id}"] = True
+            st.session_state[f"pts_{p_id}"] = 0
+            st.session_state[f"moy_{p_id}"] = 0.625
+            st.session_state[f"prev_state_{p_id}"] = True
+            st.session_state[f"prev_pts_{p_id}"] = 0
+            st.session_state[f"cust_{p_id}"] = ""
+
+        # Réinitialisation des noms personnalisés
+        st.session_state["input_custom_rec"] = "Équipe 1"
+        st.session_state["input_custom_vis"] = "Équipe 2"
+
         st.rerun()
 
 st.divider()
@@ -761,7 +784,7 @@ for p_id in dict_joueurs:
                     st.session_state[f"s_a_{num_m}"] = info_a["pts_absent"]
                     st.session_state[f"s_b_{num_m}"] = info_b["pts_absent"]
                 else:
-                    st.session_state[f"s_a_{num_m}"] = 8
+                    st.session_state[f"s_a_{num_m}"] = 0
                     st.session_state[f"s_b_{num_m}"] = 0
 
     st.session_state[state_key] = info_j["present"]
@@ -826,7 +849,7 @@ for num_manche, id_a, id_b in matchs_pairs:
             init_val_a = info_a["pts_absent"]
             init_val_b = info_b["pts_absent"]
         else:
-            init_val_a = 8
+            init_val_a = 0
             init_val_b = 0
 
         val_score_a = int(st.session_state.get(f"s_a_{num_manche}", init_val_a))
