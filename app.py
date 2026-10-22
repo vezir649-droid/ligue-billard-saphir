@@ -82,8 +82,8 @@ def sauvegarder_config_email(cfg):
     except Exception:
         return False
 
-def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, date_str, absents_info=None):
-    """Génère le résumé en texte brut et en HTML."""
+def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_joueurs, dict_joueurs, date_str, absents_info=None):
+    """Génère le résumé en texte brut et en HTML avec les totaux par équipe et par joueur."""
     lignes_texte = [
         f"Ligue de billard du Saphir - Résultats officiels",
         f"Date : {date_str}",
@@ -95,6 +95,15 @@ def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, date_
         lignes_texte.append(f"Joueurs absents : {', '.join(absents_info)}")
 
     lignes_texte.extend([
+        "-" * 50,
+        f"Points par joueur — {receveur} (sur 24 pts max) :",
+        f"  * {dict_joueurs['j1_rec']['nom']} : {pts_joueurs['j1_rec']} pts",
+        f"  * {dict_joueurs['j2_rec']['nom']} : {pts_joueurs['j2_rec']} pts",
+        f"  * {dict_joueurs['j3_rec']['nom']} : {pts_joueurs['j3_rec']} pts",
+        f"Points par joueur — {visiteur} (sur 24 pts max) :",
+        f"  * {dict_joueurs['j1_vis']['nom']} : {pts_joueurs['j1_vis']} pts",
+        f"  * {dict_joueurs['j2_vis']['nom']} : {pts_joueurs['j2_vis']} pts",
+        f"  * {dict_joueurs['j3_vis']['nom']} : {pts_joueurs['j3_vis']} pts",
         "-" * 50,
         "Détail des 9 manches :"
     ])
@@ -137,15 +146,34 @@ def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, date_
         <h2 style="color: #0b3c5d;">🎱 Ligue de billard du Saphir - Feuille de match officielle</h2>
         <p><strong>Date :</strong> {date_str}</p>
         <div style="background-color: #f4f6f9; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-            <h3 style="margin: 0; color: #1e3d59;">Résultat final :</h3>
+            <h3 style="margin: 0; color: #1e3d59;">Résultat final du match :</h3>
             <p style="font-size: 18px; margin: 8px 0;">
                 <strong>{receveur}</strong> : <span style="font-size: 22px; color: #0d47a1;">{total_rec}</span> pts / 72<br>
                 <strong>{visiteur}</strong> : <span style="font-size: 22px; color: #0d47a1;">{total_vis}</span> pts / 72
             </p>
             <p style="font-weight: bold; color: #2e7d32; font-size: 16px;">
-                Vainqueur du match : {receveur if total_rec > total_vis else (visiteur if total_vis > total_rec else "Égalité")}
+                Vainqueur : {receveur if total_rec > total_vis else (visiteur if total_vis > total_rec else "Égalité")}
             </p>
             {absents_html_bloc}
+            
+            <div style="margin-top: 15px; display: flex; gap: 20px;">
+                <div style="flex: 1; background: white; padding: 10px; border-radius: 6px; border: 1px solid #ddd;">
+                    <h4 style="margin: 0 0 8px 0; color: #0b3c5d;">Points individuels — {receveur} :</h4>
+                    <ul style="margin: 0; padding-left: 20px; font-size: 14px;">
+                        <li><strong>{dict_joueurs['j1_rec']['nom']}</strong> : {pts_joueurs['j1_rec']} / 24 pts</li>
+                        <li><strong>{dict_joueurs['j2_rec']['nom']}</strong> : {pts_joueurs['j2_rec']} / 24 pts</li>
+                        <li><strong>{dict_joueurs['j3_rec']['nom']}</strong> : {pts_joueurs['j3_rec']} / 24 pts</li>
+                    </ul>
+                </div>
+                <div style="flex: 1; background: white; padding: 10px; border-radius: 6px; border: 1px solid #ddd;">
+                    <h4 style="margin: 0 0 8px 0; color: #0b3c5d;">Points individuels — {visiteur} :</h4>
+                    <ul style="margin: 0; padding-left: 20px; font-size: 14px;">
+                        <li><strong>{dict_joueurs['j1_vis']['nom']}</strong> : {pts_joueurs['j1_vis']} / 24 pts</li>
+                        <li><strong>{dict_joueurs['j2_vis']['nom']}</strong> : {pts_joueurs['j2_vis']} / 24 pts</li>
+                        <li><strong>{dict_joueurs['j3_vis']['nom']}</strong> : {pts_joueurs['j3_vis']} / 24 pts</li>
+                    </ul>
+                </div>
+            </div>
         </div>
         <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
             <thead>
@@ -570,24 +598,58 @@ sauvegarder_donnees(donnees_a_sauvegarder)
 
 st.divider()
 
-# --- CALCULS FINAUX ET TOTAUX ---
+# --- CALCULS FINAUX ET TOTAUX (PAR ÉQUIPE ET PAR JOUEUR) ---
 total_pts_receveur = sum(m["score_a"] for m in donnees_a_sauvegarder["matchs"].values())
 total_pts_visiteur = sum(m["score_b"] for m in donnees_a_sauvegarder["matchs"].values())
 
+# Calcul des points individuels par joueur (3 manches par joueur = max 24 pts)
+pts_joueurs = {p_id: 0 for p_id in dict_joueurs}
+for num_m, id_a, id_b in matchs_pairs:
+    m = donnees_a_sauvegarder["matchs"].get(str(num_m), {})
+    pts_joueurs[id_a] += m.get("score_a", 0)
+    pts_joueurs[id_b] += m.get("score_b", 0)
+
+st.markdown("### 📊 Résultats et Totaux")
+
+# 1. Totaux par équipe
 col_res1, col_res2, col_res3 = st.columns(3)
-col_res1.metric(label=f"Total {equipe_receveur}", value=f"{total_pts_receveur} / 72 pts")
-col_res2.metric(label=f"Total {equipe_visiteur}", value=f"{total_pts_visiteur} / 72 pts")
+col_res1.metric(label=f"🏆 Total {equipe_receveur}", value=f"{total_pts_receveur} / 72 pts")
+col_res2.metric(label=f"🏆 Total {equipe_visiteur}", value=f"{total_pts_visiteur} / 72 pts")
 
 with col_res3:
     st.markdown("### 💾 Sécurité anti-panne")
     st.success("✅ Sauvegarde automatique active.\nEn cas de coupure, cliquez sur **'Restaurer'** en haut.")
+
+# 2. Totaux individuels par joueur
+st.markdown("#### 👤 Points individuels par joueur (sur 24 pts max)")
+
+col_rec_pts, col_vis_pts = st.columns(2)
+
+with col_rec_pts:
+    st.markdown(f"**🏠 {equipe_receveur}**")
+    cr1, cr2, cr3 = st.columns(3)
+    p1 = dict_joueurs["j1_rec"]
+    p2 = dict_joueurs["j2_rec"]
+    p3 = dict_joueurs["j3_rec"]
+    cr1.metric(label=f"{p1['nom']}" + (" (Abs.)" if not p1['present'] else ""), value=f"{pts_joueurs['j1_rec']} / 24 pts")
+    cr2.metric(label=f"{p2['nom']}" + (" (Abs.)" if not p2['present'] else ""), value=f"{pts_joueurs['j2_rec']} / 24 pts")
+    cr3.metric(label=f"{p3['nom']}" + (" (Abs.)" if not p3['present'] else ""), value=f"{pts_joueurs['j3_rec']} / 24 pts")
+
+with col_vis_pts:
+    st.markdown(f"**🚗 {equipe_visiteur}**")
+    cv1, cv2, cv3 = st.columns(3)
+    pv1 = dict_joueurs["j1_vis"]
+    pv2 = dict_joueurs["j2_vis"]
+    pv3 = dict_joueurs["j3_vis"]
+    cv1.metric(label=f"{pv1['nom']}" + (" (Abs.)" if not pv1['present'] else ""), value=f"{pts_joueurs['j1_vis']} / 24 pts")
+    cv2.metric(label=f"{pv2['nom']}" + (" (Abs.)" if not pv2['present'] else ""), value=f"{pts_joueurs['j2_vis']} / 24 pts")
+    cv3.metric(label=f"{pv3['nom']}" + (" (Abs.)" if not pv3['present'] else ""), value=f"{pts_joueurs['j3_vis']} / 24 pts")
 
 st.divider()
 
 # --- CONFIGURATION ET ENVOI AUTOMATIQUE PAR COURRIEL ---
 st.markdown("### 📧 Envoi automatique des résultats par courriel")
 
-# Affichage des destinataires configurés
 dest_actuels = config_email.get("destinataires", "").strip()
 if dest_actuels:
     st.info(f"✉️ **Envoi automatique configuré vers :** `{dest_actuels}` (chargé depuis `{CONFIG_EMAIL_FILE}`)")
@@ -629,6 +691,8 @@ texte_resume, html_resume = generer_resume_match(
     donnees_a_sauvegarder["matchs"],
     total_pts_receveur,
     total_pts_visiteur,
+    pts_joueurs,
+    dict_joueurs,
     date_du_match,
     absents_detectes
 )
@@ -652,6 +716,15 @@ with col_valid1:
             donnees_finales = dict(donnees_a_sauvegarder)
             donnees_finales["total_receveur"] = total_pts_receveur
             donnees_finales["total_visiteur"] = total_pts_visiteur
+            donnees_finales["points_par_joueur"] = {
+                p_id: {
+                    "nom": dict_joueurs[p_id]["nom"],
+                    "equipe": dict_joueurs[p_id]["equipe"],
+                    "points": pts_joueurs[p_id],
+                    "present": dict_joueurs[p_id]["present"]
+                }
+                for p_id in dict_joueurs
+            }
             donnees_finales["date_enregistrement"] = date_du_match
             historique.append(donnees_finales)
 
