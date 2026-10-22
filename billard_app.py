@@ -39,15 +39,19 @@ def charger_equipes_csv():
     return equipes
 
 def charger_sauvegarde():
+    """Lit le fichier de sauvegarde de secours sans jamais lever d'erreur."""
     if os.path.exists(BACKUP_FILE):
         try:
             with open(BACKUP_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
+                if isinstance(data, dict):
+                    return data
         except Exception:
             return {}
     return {}
 
 def sauvegarder_donnees(data):
+    """Écrit atomiquement la sauvegarde pour éviter les corruptions."""
     try:
         with open(BACKUP_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
@@ -81,6 +85,58 @@ def sauvegarder_config_email(cfg):
         return True
     except Exception:
         return False
+
+def restaurer_session(data):
+    """Restaure l'intégralité de la session (équipes, sélections, présences, scores défaut et points) dans st.session_state."""
+    if not data or not isinstance(data, dict):
+        return False
+
+    # 1. Équipes
+    if "choix_rec" in data:
+        st.session_state["sel_equipe_rec"] = data["choix_rec"]
+    elif "receveur" in data:
+        st.session_state["sel_equipe_rec"] = data["receveur"]
+
+    if "choix_vis" in data:
+        st.session_state["sel_equipe_vis"] = data["choix_vis"]
+    elif "visiteur" in data:
+        st.session_state["sel_equipe_vis"] = data["visiteur"]
+
+    if "input_custom_rec" in data:
+        st.session_state["input_custom_rec"] = data["input_custom_rec"]
+    if "input_custom_vis" in data:
+        st.session_state["input_custom_vis"] = data["input_custom_vis"]
+
+    # 2. Sélections Joueurs
+    for k in ["sel_j1_rec", "sel_j2_rec", "sel_j1_vis", "sel_j2_vis"]:
+        if k in data:
+            st.session_state[k] = data[k]
+
+    # 3. Données des joueurs (présence, score absent, nom remplaçant)
+    joueurs = data.get("joueurs", {})
+    for p_id in ["j1_rec", "j2_rec", "j3_rec", "j1_vis", "j2_vis", "j3_vis"]:
+        if p_id in joueurs:
+            p_data = joueurs[p_id]
+            pres = p_data.get("present", True)
+            pts = int(p_data.get("pts_absent", 0))
+            nom = p_data.get("nom", "")
+
+            st.session_state[f"pres_{p_id}"] = pres
+            st.session_state[f"pts_{p_id}"] = pts
+            st.session_state[f"prev_state_{p_id}"] = pres
+            st.session_state[f"prev_pts_{p_id}"] = pts
+            st.session_state[f"cust_{p_id}"] = nom
+
+    # 4. Scores des 9 manches
+    matchs = data.get("matchs", {})
+    for num in range(1, 10):
+        m = matchs.get(str(num), {})
+        if "score_a" in m:
+            st.session_state[f"s_a_{num}"] = int(m["score_a"])
+        if "score_b" in m:
+            st.session_state[f"s_b_{num}"] = int(m["score_b"])
+
+    return True
 
 def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_joueurs, dict_joueurs, date_str, absents_info=None):
     """Génère le résumé en texte brut et en HTML avec les totaux par équipe et par joueur."""
@@ -242,9 +298,14 @@ def envoyer_courriel(destinataires_str, sujet, texte_brut, html_contenu, config)
     except Exception as e:
         return False, f"Échec de l'envoi du courriel : {str(e)}"
 
-# Initialisation des données de secours en session
-if "saisie_en_cours" not in st.session_state:
-    st.session_state.saisie_en_cours = charger_sauvegarde()
+# ==============================================================================
+# RESTAURATION INITIALE AU CHARGEMENT (ÉVITE LA PERTE DE DONNÉES SUR RAFRAÎCHISSEMENT)
+# ==============================================================================
+sauvegarde_existante = charger_sauvegarde()
+if "app_initialisee" not in st.session_state:
+    st.session_state.app_initialisee = True
+    if sauvegarde_existante and "matchs" in sauvegarde_existante:
+        restaurer_session(sauvegarde_existante)
 
 # Chargement de la configuration email au démarrage
 config_email = charger_config_email()
@@ -257,6 +318,36 @@ noms_equipes = list(equipes_disponibles.keys())
 st.title("🎱 Ligue de billard du Saphir")
 st.subheader("Application de saisie des résultats - Format 3 contre 3")
 st.markdown("*Plateforme officielle de gestion des matchs, de la cédule et des présences.*")
+
+# --- BOUTONS D'ACTION HAUT DE PAGE (RESTAURER / NOUVEAU MATCH) ---
+col_h1, col_h2, col_h3 = st.columns([2, 1, 1])
+
+date_sauv_str = sauvegarde_existante.get("date", "")
+if date_sauv_str:
+    col_h1.caption(f"💾 *Dernière sauvegarde automatique : {date_sauv_str}*")
+
+with col_h2:
+    if st.button("🔄 Restaurer dernière saisie", use_container_width=True):
+        data_a_restaurer = charger_sauvegarde()
+        if data_a_restaurer and "matchs" in data_a_restaurer:
+            restaurer_session(data_a_restaurer)
+            st.success("✅ Données récupérées avec succès !")
+            st.rerun()
+        else:
+            st.warning("⚠️ Aucune sauvegarde valide trouvée.")
+
+with col_h3:
+    if st.button("🗑️ Nouveau match", use_container_width=True, help="Efface la saisie en cours et réinitialise"):
+        if os.path.exists(BACKUP_FILE):
+            try:
+                os.remove(BACKUP_FILE)
+            except Exception:
+                pass
+        for k in list(st.session_state.keys()):
+            if k.startswith("s_a_") or k.startswith("s_b_") or k.startswith("pres_") or k.startswith("pts_") or k.startswith("prev_"):
+                del st.session_state[k]
+        st.rerun()
+
 st.divider()
 
 # --- BARRE LATÉRALE : SÉLECTION DU MATCH ET JOUEURS ---
@@ -266,161 +357,190 @@ if noms_equipes:
     options_rec = noms_equipes + ["Autre / Personnalisée"]
     options_vis = noms_equipes + ["Autre / Personnalisée"]
     
-    choix_rec = st.sidebar.selectbox("Équipe Receveuse :", options_rec, index=0, key="sel_equipe_rec")
+    # Équipe Receveuse
+    if "sel_equipe_rec" in st.session_state and st.session_state["sel_equipe_rec"] not in options_rec:
+        st.session_state["sel_equipe_rec"] = options_rec[0]
+    def_idx_rec = 0
+    if "sel_equipe_rec" in st.session_state and st.session_state["sel_equipe_rec"] in options_rec:
+        def_idx_rec = options_rec.index(st.session_state["sel_equipe_rec"])
+    choix_rec = st.sidebar.selectbox("Équipe Receveuse :", options_rec, index=def_idx_rec, key="sel_equipe_rec")
+    
     if choix_rec == "Autre / Personnalisée":
-        equipe_receveur = st.sidebar.text_input("Nom équipe receveuse", value="Équipe 1", key="input_custom_rec")
+        equipe_receveur = st.sidebar.text_input("Nom équipe receveuse", value=st.session_state.get("input_custom_rec", "Équipe 1"), key="input_custom_rec")
         roster_rec = ["Joueur 1", "Joueur 2", "Joueur 3"]
     else:
         equipe_receveur = choix_rec
         roster_rec = equipes_disponibles[choix_rec]
 
-    default_vis_idx = 1 if len(noms_equipes) > 1 else 0
-    choix_vis = st.sidebar.selectbox("Équipe Visiteuse :", options_vis, index=default_vis_idx, key="sel_equipe_vis")
+    # Équipe Visiteuse
+    def_idx_vis = 1 if len(noms_equipes) > 1 else 0
+    if "sel_equipe_vis" in st.session_state and st.session_state["sel_equipe_vis"] not in options_vis:
+        st.session_state["sel_equipe_vis"] = options_vis[def_idx_vis]
+    if "sel_equipe_vis" in st.session_state and st.session_state["sel_equipe_vis"] in options_vis:
+        def_idx_vis = options_vis.index(st.session_state["sel_equipe_vis"])
+    choix_vis = st.sidebar.selectbox("Équipe Visiteuse :", options_vis, index=def_idx_vis, key="sel_equipe_vis")
+    
     if choix_vis == "Autre / Personnalisée":
-        equipe_visiteur = st.sidebar.text_input("Nom équipe visiteuse", value="Équipe 2", key="input_custom_vis")
+        equipe_visiteur = st.sidebar.text_input("Nom équipe visiteuse", value=st.session_state.get("input_custom_vis", "Équipe 2"), key="input_custom_vis")
         roster_vis = ["Joueur 1", "Joueur 2", "Joueur 3"]
     else:
         equipe_visiteur = choix_vis
         roster_vis = equipes_disponibles[choix_vis]
 else:
-    equipe_receveur = st.sidebar.text_input("Équipe Receveuse", value="Équipe 1")
-    equipe_visiteur = st.sidebar.text_input("Équipe Visiteuse", value="Équipe 2")
+    equipe_receveur = st.sidebar.text_input("Équipe Receveuse", value="Équipe 1", key="input_custom_rec")
+    equipe_visiteur = st.sidebar.text_input("Équipe Visiteuse", value="Équipe 2", key="input_custom_vis")
     roster_rec = ["Jean-François", "Christian", "Antoine"]
     roster_vis = ["Michel", "Nicolas", "Guy"]
-
-saved_joueurs = st.session_state.saisie_en_cours.get("joueurs", {})
+    choix_rec = equipe_receveur
+    choix_vis = equipe_visiteur
 
 # --- SÉLECTION DES JOUEURS : ÉQUIPE RECEVEUSE ---
 st.sidebar.markdown(f"### 👥 Joueurs — {equipe_receveur}")
 
-# Joueur 1 (Sélection)
-col_j1_r1, col_j1_r2 = st.sidebar.columns([3, 2])
+# Options sécurisées pour Joueur 1
 options_j1_rec = list(roster_rec) + ["Remplaçant..."]
-sel_j1_rec = col_j1_r1.selectbox("Sélection Joueur 1 :", options_j1_rec, index=0, key="sel_j1_rec")
+if "sel_j1_rec" in st.session_state and st.session_state["sel_j1_rec"] not in options_j1_rec:
+    st.session_state["sel_j1_rec"] = options_j1_rec[0]
+
+def_idx_j1_rec = 0
+if "sel_j1_rec" in st.session_state and st.session_state["sel_j1_rec"] in options_j1_rec:
+    def_idx_j1_rec = options_j1_rec.index(st.session_state["sel_j1_rec"])
+
+col_j1_r1, col_j1_r2 = st.sidebar.columns([3, 2])
+sel_j1_rec = col_j1_r1.selectbox("Sélection Joueur 1 :", options_j1_rec, index=def_idx_j1_rec, key="sel_j1_rec")
 if sel_j1_rec == "Remplaçant...":
-    j1_rec = st.sidebar.text_input("Nom Joueur 1 (Remplaçant)", value="Remplaçant 1", key="cust_j1_rec")
+    j1_rec = st.sidebar.text_input("Nom Joueur 1 (Remplaçant)", value=st.session_state.get("cust_j1_rec", "Remplaçant 1"), key="cust_j1_rec")
 else:
     j1_rec = sel_j1_rec
-j1_rec_pres_def = saved_joueurs.get("j1_rec", {}).get("present", True)
-j1_rec_pres = col_j1_r2.toggle("Présent", value=j1_rec_pres_def, key="pres_j1_rec")
-j1_rec_pts_def = saved_joueurs.get("j1_rec", {}).get("pts_absent", 0)
+j1_rec_pres = col_j1_r2.toggle("Présent", value=st.session_state.get("pres_j1_rec", True), key="pres_j1_rec")
 if not j1_rec_pres:
     j1_rec_pts = st.sidebar.number_input(
         f"Score par défaut de {j1_rec} (absent) :",
         min_value=0, max_value=7,
-        value=j1_rec_pts_def,
+        value=int(st.session_state.get("pts_j1_rec", 0)),
         key="pts_j1_rec",
         help=f"Points attribués à {j1_rec} pour chaque manche où il est absent (0 à 7)."
     )
 else:
-    j1_rec_pts = st.session_state.get("pts_j1_rec", j1_rec_pts_def)
+    j1_rec_pts = int(st.session_state.get("pts_j1_rec", 0))
 
-# Joueur 2 (Sélection parmi les joueurs restants)
-col_j2_r1, col_j2_r2 = st.sidebar.columns([3, 2])
+# Options sécurisées pour Joueur 2
 options_j2_rec = [p for p in roster_rec if p != sel_j1_rec] + ["Remplaçant..."]
-sel_j2_rec = col_j2_r1.selectbox("Sélection Joueur 2 :", options_j2_rec, index=0, key="sel_j2_rec")
+if "sel_j2_rec" in st.session_state and st.session_state["sel_j2_rec"] not in options_j2_rec:
+    st.session_state["sel_j2_rec"] = options_j2_rec[0]
+
+def_idx_j2_rec = 0
+if "sel_j2_rec" in st.session_state and st.session_state["sel_j2_rec"] in options_j2_rec:
+    def_idx_j2_rec = options_j2_rec.index(st.session_state["sel_j2_rec"])
+
+col_j2_r1, col_j2_r2 = st.sidebar.columns([3, 2])
+sel_j2_rec = col_j2_r1.selectbox("Sélection Joueur 2 :", options_j2_rec, index=def_idx_j2_rec, key="sel_j2_rec")
 if sel_j2_rec == "Remplaçant...":
-    j2_rec = st.sidebar.text_input("Nom Joueur 2 (Remplaçant)", value="Remplaçant 2", key="cust_j2_rec")
+    j2_rec = st.sidebar.text_input("Nom Joueur 2 (Remplaçant)", value=st.session_state.get("cust_j2_rec", "Remplaçant 2"), key="cust_j2_rec")
 else:
     j2_rec = sel_j2_rec
-j2_rec_pres_def = saved_joueurs.get("j2_rec", {}).get("present", True)
-j2_rec_pres = col_j2_r2.toggle("Présent", value=j2_rec_pres_def, key="pres_j2_rec")
-j2_rec_pts_def = saved_joueurs.get("j2_rec", {}).get("pts_absent", 0)
+j2_rec_pres = col_j2_r2.toggle("Présent", value=st.session_state.get("pres_j2_rec", True), key="pres_j2_rec")
 if not j2_rec_pres:
     j2_rec_pts = st.sidebar.number_input(
         f"Score par défaut de {j2_rec} (absent) :",
         min_value=0, max_value=7,
-        value=j2_rec_pts_def,
+        value=int(st.session_state.get("pts_j2_rec", 0)),
         key="pts_j2_rec",
         help=f"Points attribués à {j2_rec} pour chaque manche où il est absent (0 à 7)."
     )
 else:
-    j2_rec_pts = st.session_state.get("pts_j2_rec", j2_rec_pts_def)
+    j2_rec_pts = int(st.session_state.get("pts_j2_rec", 0))
 
 # Joueur 3 (Évident / Déduit automatiquement)
 col_j3_r1, col_j3_r2 = st.sidebar.columns([3, 2])
 restants_rec = [p for p in roster_rec if p != sel_j1_rec and p != sel_j2_rec]
 j3_rec = restants_rec[0] if restants_rec else "Joueur 3"
 col_j3_r1.markdown(f"**Joueur 3 (défini) :**<br>`{j3_rec}`", unsafe_allow_html=True)
-j3_rec_pres_def = saved_joueurs.get("j3_rec", {}).get("present", True)
-j3_rec_pres = col_j3_r2.toggle("Présent", value=j3_rec_pres_def, key="pres_j3_rec")
-j3_rec_pts_def = saved_joueurs.get("j3_rec", {}).get("pts_absent", 0)
+j3_rec_pres = col_j3_r2.toggle("Présent", value=st.session_state.get("pres_j3_rec", True), key="pres_j3_rec")
 if not j3_rec_pres:
     j3_rec_pts = st.sidebar.number_input(
         f"Score par défaut de {j3_rec} (absent) :",
         min_value=0, max_value=7,
-        value=j3_rec_pts_def,
+        value=int(st.session_state.get("pts_j3_rec", 0)),
         key="pts_j3_rec",
         help=f"Points attribués à {j3_rec} pour chaque manche où il est absent (0 à 7)."
     )
 else:
-    j3_rec_pts = st.session_state.get("pts_j3_rec", j3_rec_pts_def)
+    j3_rec_pts = int(st.session_state.get("pts_j3_rec", 0))
 
 # --- SÉLECTION DES JOUEURS : ÉQUIPE VISITEUSE ---
 st.sidebar.markdown(f"### 👥 Joueurs — {equipe_visiteur}")
 
-# Joueur 1 (Sélection)
-col_j1_v1, col_j1_v2 = st.sidebar.columns([3, 2])
+# Options sécurisées pour Joueur 1
 options_j1_vis = list(roster_vis) + ["Remplaçant..."]
-sel_j1_vis = col_j1_v1.selectbox("Sélection Joueur 1 :", options_j1_vis, index=0, key="sel_j1_vis")
+if "sel_j1_vis" in st.session_state and st.session_state["sel_j1_vis"] not in options_j1_vis:
+    st.session_state["sel_j1_vis"] = options_j1_vis[0]
+
+def_idx_j1_vis = 0
+if "sel_j1_vis" in st.session_state and st.session_state["sel_j1_vis"] in options_j1_vis:
+    def_idx_j1_vis = options_j1_vis.index(st.session_state["sel_j1_vis"])
+
+col_j1_v1, col_j1_v2 = st.sidebar.columns([3, 2])
+sel_j1_vis = col_j1_v1.selectbox("Sélection Joueur 1 :", options_j1_vis, index=def_idx_j1_vis, key="sel_j1_vis")
 if sel_j1_vis == "Remplaçant...":
-    j1_vis = st.sidebar.text_input("Nom Visiteur 1 (Remplaçant)", value="Remplaçant 1", key="cust_j1_vis")
+    j1_vis = st.sidebar.text_input("Nom Visiteur 1 (Remplaçant)", value=st.session_state.get("cust_j1_vis", "Remplaçant 1"), key="cust_j1_vis")
 else:
     j1_vis = sel_j1_vis
-j1_vis_pres_def = saved_joueurs.get("j1_vis", {}).get("present", True)
-j1_vis_pres = col_j1_v2.toggle("Présent", value=j1_vis_pres_def, key="pres_j1_vis")
-j1_vis_pts_def = saved_joueurs.get("j1_vis", {}).get("pts_absent", 0)
+j1_vis_pres = col_j1_v2.toggle("Présent", value=st.session_state.get("pres_j1_vis", True), key="pres_j1_vis")
 if not j1_vis_pres:
     j1_vis_pts = st.sidebar.number_input(
         f"Score par défaut de {j1_vis} (absent) :",
         min_value=0, max_value=7,
-        value=j1_vis_pts_def,
+        value=int(st.session_state.get("pts_j1_vis", 0)),
         key="pts_j1_vis",
         help=f"Points attribués à {j1_vis} pour chaque manche où il est absent (0 à 7)."
     )
 else:
-    j1_vis_pts = st.session_state.get("pts_j1_vis", j1_vis_pts_def)
+    j1_vis_pts = int(st.session_state.get("pts_j1_vis", 0))
 
-# Joueur 2 (Sélection parmi les joueurs restants)
-col_j2_v1, col_j2_v2 = st.sidebar.columns([3, 2])
+# Options sécurisées pour Joueur 2
 options_j2_vis = [p for p in roster_vis if p != sel_j1_vis] + ["Remplaçant..."]
-sel_j2_vis = col_j2_v1.selectbox("Sélection Joueur 2 :", options_j2_vis, index=0, key="sel_j2_vis")
+if "sel_j2_vis" in st.session_state and st.session_state["sel_j2_vis"] not in options_j2_vis:
+    st.session_state["sel_j2_vis"] = options_j2_vis[0]
+
+def_idx_j2_vis = 0
+if "sel_j2_vis" in st.session_state and st.session_state["sel_j2_vis"] in options_j2_vis:
+    def_idx_j2_vis = options_j2_vis.index(st.session_state["sel_j2_vis"])
+
+col_j2_v1, col_j2_v2 = st.sidebar.columns([3, 2])
+sel_j2_vis = col_j2_v1.selectbox("Sélection Joueur 2 :", options_j2_vis, index=def_idx_j2_vis, key="sel_j2_vis")
 if sel_j2_vis == "Remplaçant...":
-    j2_vis = st.sidebar.text_input("Nom Visiteur 2 (Remplaçant)", value="Remplaçant 2", key="cust_j2_vis")
+    j2_vis = st.sidebar.text_input("Nom Visiteur 2 (Remplaçant)", value=st.session_state.get("cust_j2_vis", "Remplaçant 2"), key="cust_j2_vis")
 else:
     j2_vis = sel_j2_vis
-j2_vis_pres_def = saved_joueurs.get("j2_vis", {}).get("present", True)
-j2_vis_pres = col_j2_v2.toggle("Présent", value=j2_vis_pres_def, key="pres_j2_vis")
-j2_vis_pts_def = saved_joueurs.get("j2_vis", {}).get("pts_absent", 0)
+j2_vis_pres = col_j2_v2.toggle("Présent", value=st.session_state.get("pres_j2_vis", True), key="pres_j2_vis")
 if not j2_vis_pres:
     j2_vis_pts = st.sidebar.number_input(
         f"Score par défaut de {j2_vis} (absent) :",
         min_value=0, max_value=7,
-        value=j2_vis_pts_def,
+        value=int(st.session_state.get("pts_j2_vis", 0)),
         key="pts_j2_vis",
         help=f"Points attribués à {j2_vis} pour chaque manche où il est absent (0 à 7)."
     )
 else:
-    j2_vis_pts = st.session_state.get("pts_j2_vis", j2_vis_pts_def)
+    j2_vis_pts = int(st.session_state.get("pts_j2_vis", 0))
 
 # Joueur 3 (Évident / Déduit automatiquement)
 col_j3_v1, col_j3_v2 = st.sidebar.columns([3, 2])
 restants_vis = [p for p in roster_vis if p != sel_j1_vis and p != sel_j2_vis]
 j3_vis = restants_vis[0] if restants_vis else "Joueur 3"
 col_j3_v1.markdown(f"**Joueur 3 (défini) :**<br>`{j3_vis}`", unsafe_allow_html=True)
-j3_vis_pres_def = saved_joueurs.get("j3_vis", {}).get("present", True)
-j3_vis_pres = col_j3_v2.toggle("Présent", value=j3_vis_pres_def, key="pres_j3_vis")
-j3_vis_pts_def = saved_joueurs.get("j3_vis", {}).get("pts_absent", 0)
+j3_vis_pres = col_j3_v2.toggle("Présent", value=st.session_state.get("pres_j3_vis", True), key="pres_j3_vis")
 if not j3_vis_pres:
     j3_vis_pts = st.sidebar.number_input(
         f"Score par défaut de {j3_vis} (absent) :",
         min_value=0, max_value=7,
-        value=j3_vis_pts_def,
+        value=int(st.session_state.get("pts_j3_vis", 0)),
         key="pts_j3_vis",
         help=f"Points attribués à {j3_vis} pour chaque manche où il est absent (0 à 7)."
     )
 else:
-    j3_vis_pts = st.session_state.get("pts_j3_vis", j3_vis_pts_def)
+    j3_vis_pts = int(st.session_state.get("pts_j3_vis", 0))
 
 # Dictionnaire complet des joueurs
 dict_joueurs = {
@@ -447,11 +567,12 @@ matchs_pairs = [
     (9, "j3_rec", "j2_vis")
 ]
 
-# Synchronisation automatique des scores lors d'un changement d'état Présent/Absent ou de score par défaut
+# Synchronisation automatique des scores UNIQUEMENT lors d'un vrai changement d'état Présent/Absent ou score défaut
 for p_id in dict_joueurs:
     info_j = dict_joueurs[p_id]
     state_key = f"prev_state_{p_id}"
     pts_key = f"prev_pts_{p_id}"
+    
     presence_changed = (state_key in st.session_state and st.session_state[state_key] != info_j["present"])
     pts_changed = (not info_j["present"] and pts_key in st.session_state and st.session_state[pts_key] != info_j["pts_absent"])
 
@@ -476,24 +597,6 @@ for p_id in dict_joueurs:
     st.session_state[state_key] = info_j["present"]
     st.session_state[pts_key] = info_j["pts_absent"]
 
-# --- BOUTON DE RÉCUPÉRATION DE SECOURS ---
-col_recup1, col_recup2 = st.columns([3, 1])
-with col_recup2:
-    if st.button("🔄 Restaurer dernière saisie"):
-        data_recup = charger_sauvegarde()
-        if data_recup:
-            st.session_state.saisie_en_cours = data_recup
-            for num_m, _, _ in matchs_pairs:
-                match_saved = data_recup.get("matchs", {}).get(str(num_m), {})
-                if "score_a" in match_saved:
-                    st.session_state[f"s_a_{num_m}"] = match_saved["score_a"]
-                if "score_b" in match_saved:
-                    st.session_state[f"s_b_{num_m}"] = match_saved["score_b"]
-            st.success("Données récupérées avec succès !")
-            st.rerun()
-        else:
-            st.warning("Aucune sauvegarde trouvée.")
-
 # Liste des absents pour information
 absents_detectes = [f"{j['nom']} ({j['equipe']}) — défaut: {j['pts_absent']} pts" for j in dict_joueurs.values() if not j["present"]]
 if absents_detectes:
@@ -505,11 +608,18 @@ st.info(
     "🎱 **Règle du jeu au 8 :** Le vainqueur obtient **8 points**, le perdant obtient de **0 à 7 points**."
 )
 
-# Sauvegarde automatique dynamique au fil de la saisie
 donnees_a_sauvegarder = {
     "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
     "receveur": equipe_receveur,
     "visiteur": equipe_visiteur,
+    "choix_rec": choix_rec,
+    "choix_vis": choix_vis,
+    "input_custom_rec": st.session_state.get("input_custom_rec", ""),
+    "input_custom_vis": st.session_state.get("input_custom_vis", ""),
+    "sel_j1_rec": sel_j1_rec,
+    "sel_j2_rec": sel_j2_rec,
+    "sel_j1_vis": sel_j1_vis,
+    "sel_j2_vis": sel_j2_vis,
     "joueurs": {p_id: {"nom": j["nom"], "present": j["present"], "pts_absent": j["pts_absent"]} for p_id, j in dict_joueurs.items()},
     "matchs": {}
 }
@@ -524,7 +634,6 @@ for num_manche, id_a, id_b in matchs_pairs:
     a_pres = info_a["present"]
     b_pres = info_b["present"]
 
-    # Titre avec étiquette d'absence
     status_label = ""
     if not a_pres and not b_pres:
         status_label = " ❌ (Forfait double : 2 absents)"
@@ -536,32 +645,29 @@ for num_manche, id_a, id_b in matchs_pairs:
     with st.expander(f"Manche {num_manche} : {joueur_a} ({equipe_receveur}) vs {joueur_b} ({equipe_visiteur}){status_label}", expanded=True):
         c1, c2 = st.columns(2)
         
-        # Calcul du score par défaut selon absence ou sauvegarde
-        saved_scores = st.session_state.saisie_en_cours.get("matchs", {}).get(str(num_manche), {})
-        
-        if "score_a" in saved_scores and "score_b" in saved_scores:
-            def_score_a = saved_scores["score_a"]
-            def_score_b = saved_scores["score_b"]
+        # Valeur par défaut si non encore définie dans session_state
+        if not a_pres and b_pres:
+            init_val_a = info_a["pts_absent"]
+            init_val_b = 8
+        elif not b_pres and a_pres:
+            init_val_a = 8
+            init_val_b = info_b["pts_absent"]
+        elif not a_pres and not b_pres:
+            init_val_a = info_a["pts_absent"]
+            init_val_b = info_b["pts_absent"]
         else:
-            if not a_pres and b_pres:
-                def_score_a = info_a["pts_absent"]
-                def_score_b = 8
-            elif not b_pres and a_pres:
-                def_score_a = 8
-                def_score_b = info_b["pts_absent"]
-            elif not a_pres and not b_pres:
-                def_score_a = info_a["pts_absent"]
-                def_score_b = info_b["pts_absent"]
-            else:
-                def_score_a = 8
-                def_score_b = 0
+            init_val_a = 8
+            init_val_b = 0
+
+        val_score_a = int(st.session_state.get(f"s_a_{num_manche}", init_val_a))
+        val_score_b = int(st.session_state.get(f"s_b_{num_manche}", init_val_b))
 
         with c1:
             label_champ_a = f"Points de {joueur_a}" + (f" (Absent : {info_a['pts_absent']} pts)" if not a_pres else "")
             score_a = st.number_input(
                 label_champ_a, 
                 0, 8, 
-                value=def_score_a,
+                value=val_score_a,
                 key=f"s_a_{num_manche}"
             )
         with c2:
@@ -569,7 +675,7 @@ for num_manche, id_a, id_b in matchs_pairs:
             score_b = st.number_input(
                 label_champ_b, 
                 0, 8, 
-                value=def_score_b,
+                value=val_score_b,
                 key=f"s_b_{num_manche}"
             )
         
@@ -593,11 +699,6 @@ for num_manche, id_a, id_b in matchs_pairs:
             "joueur_b_absent": not b_pres
         }
 
-# Sauvegarde automatique en arrière-plan à chaque modification
-sauvegarder_donnees(donnees_a_sauvegarder)
-
-st.divider()
-
 # --- CALCULS FINAUX ET TOTAUX (PAR ÉQUIPE ET PAR JOUEUR) ---
 total_pts_receveur = sum(m["score_a"] for m in donnees_a_sauvegarder["matchs"].values())
 total_pts_visiteur = sum(m["score_b"] for m in donnees_a_sauvegarder["matchs"].values())
@@ -609,6 +710,7 @@ for num_m, id_a, id_b in matchs_pairs:
     pts_joueurs[id_a] += m.get("score_a", 0)
     pts_joueurs[id_b] += m.get("score_b", 0)
 
+st.divider()
 st.markdown("### 📊 Résultats et Totaux")
 
 # 1. Totaux par équipe
@@ -697,6 +799,7 @@ texte_resume, html_resume = generer_resume_match(
     absents_detectes
 )
 
+match_valide = False
 col_valid1, col_valid2 = st.columns([2, 1])
 
 with col_valid1:
@@ -704,6 +807,7 @@ with col_valid1:
         if manches_invalides:
             st.error(f"❌ Impossible d'enregistrer : veuillez corriger les manches suivantes : {', '.join(map(str, sorted(set(manches_invalides))))}.")
         else:
+            match_valide = True
             st.balloons()
             historique = []
             if os.path.exists(HISTORIQUE_FILE):
@@ -755,7 +859,10 @@ with col_valid1:
 
             # Nettoyage du fichier de secours après validation réussie
             if os.path.exists(BACKUP_FILE):
-                os.remove(BACKUP_FILE)
+                try:
+                    os.remove(BACKUP_FILE)
+                except Exception:
+                    pass
 
 with col_valid2:
     dest_mailto = config_email.get("destinataires", "")
@@ -769,3 +876,7 @@ with col_valid2:
             </button>
         </a>
     """, unsafe_allow_html=True)
+
+# Sauvegarde automatique en arrière-plan à chaque frappe/changement (sauf si le match vient d'être validé)
+if not match_valide:
+    sauvegarder_donnees(donnees_a_sauvegarder)
