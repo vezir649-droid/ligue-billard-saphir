@@ -4,6 +4,7 @@ import smtplib
 import time
 import uuid
 from datetime import datetime
+from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import streamlit as st
@@ -331,8 +332,8 @@ def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_j
     """
     return texte, html
 
-def envoyer_courriel(destinataires_str, sujet, texte_brut, html_contenu, config):
-    """Envoie un courriel automatique via SMTP selon la configuration chargée."""
+def envoyer_courriel(destinataires_str, sujet, texte_brut, html_contenu, config, pieces_jointes=None):
+    """Envoie un courriel automatique via SMTP selon la configuration chargée, avec pièces jointes optionnelles."""
     destinataires = [d.strip() for d in destinataires_str.split(",") if d.strip()]
     if not destinataires:
         return False, "Aucune adresse de destinataire valide spécifiée."
@@ -346,15 +347,32 @@ def envoyer_courriel(destinataires_str, sujet, texte_brut, html_contenu, config)
     if not serveur_smtp or not expediteur:
         return False, "Configuration SMTP incomplète (serveur ou expéditeur manquant)."
 
-    msg = MIMEMultipart("alternative")
+    msg = MIMEMultipart("mixed")
     msg["Subject"] = sujet
     msg["From"] = expediteur
     msg["To"] = ", ".join(destinataires)
 
+    # Corps du message en alternative texte brut et HTML
+    corps = MIMEMultipart("alternative")
     part1 = MIMEText(texte_brut, "plain", "utf-8")
     part2 = MIMEText(html_contenu, "html", "utf-8")
-    msg.attach(part1)
-    msg.attach(part2)
+    corps.attach(part1)
+    corps.attach(part2)
+    msg.attach(corps)
+
+    # Ajout des pièces jointes demandées
+    if pieces_jointes:
+        for pj_path in pieces_jointes:
+            if os.path.exists(pj_path):
+                try:
+                    nom_fichier = os.path.basename(pj_path)
+                    with open(pj_path, "rb") as f:
+                        pj_data = f.read()
+                    part_pj = MIMEApplication(pj_data, Name=nom_fichier)
+                    part_pj.add_header("Content-Disposition", "attachment", filename=nom_fichier)
+                    msg.attach(part_pj)
+                except Exception as e_pj:
+                    st.warning(f"⚠️ Impossible de joindre la pièce {pj_path} : {e_pj}")
 
     try:
         if mode_ssl or port == 465:
@@ -1111,16 +1129,19 @@ with col_valid1:
                 st.warning("⚠️ L'envoi automatique par courriel a été ignoré car aucun destinataire n'est configuré dans `config_email.json`.")
             else:
                 sujet = f"🎱 Ligue du Saphir : {equipe_receveur} ({total_pts_receveur}) vs {equipe_visiteur} ({total_pts_visiteur}) - {date_du_match}"
-                with st.spinner("Envoi automatique du courriel en cours..."):
+                pj_historique = [HISTORIQUE_FILE] if os.path.exists(HISTORIQUE_FILE) else None
+                with st.spinner("Envoi automatique du courriel en cours (avec historique en pièce jointe)..."):
                     succes_mail, msg_mail = envoyer_courriel(
                         destinataires_envoi,
                         sujet,
                         texte_resume,
                         html_resume,
-                        config_email
+                        config_email,
+                        pieces_jointes=pj_historique
                     )
                 if succes_mail:
-                    st.success(f"✉️ {msg_mail} (Envoyé automatiquement à : `{destinataires_envoi}`)")
+                    mention_pj = f" avec le fichier `{HISTORIQUE_FILE}` en pièce jointe" if pj_historique else ""
+                    st.success(f"✉️ {msg_mail} (Envoyé automatiquement{mention_pj} à : `{destinataires_envoi}`)")
                 else:
                     st.warning(f"⚠️ {msg_mail}")
                     st.info("💡 Les résultats ont bien été sauvegardés sur l'ordinateur.")
@@ -1145,16 +1166,19 @@ with col_valid2:
             st.error("⚠️ Aucun destinataire configuré dans les paramètres SMTP ci-dessus.")
         else:
             sujet = f"🎱 Ligue du Saphir : {equipe_receveur} ({total_pts_receveur}) vs {equipe_visiteur} ({total_pts_visiteur}) - {date_du_match}"
-            with st.spinner("Envoi par SMTP direct en cours..."):
+            pj_historique = [HISTORIQUE_FILE] if os.path.exists(HISTORIQUE_FILE) else None
+            with st.spinner("Envoi par SMTP direct en cours (avec historique en pièce jointe)..."):
                 succes_mail, msg_mail = envoyer_courriel(
                     destinataires_envoi,
                     sujet,
                     texte_resume,
                     html_resume,
-                    config_email
+                    config_email,
+                    pieces_jointes=pj_historique
                 )
             if succes_mail:
-                st.success(f"✉️ {msg_mail} (Envoyé à : `{destinataires_envoi}`)")
+                mention_pj = f" avec `{HISTORIQUE_FILE}` en pièce jointe" if pj_historique else ""
+                st.success(f"✉️ {msg_mail} (Envoyé{mention_pj} à : `{destinataires_envoi}`)")
             else:
                 st.error(f"❌ {msg_mail}")
 
