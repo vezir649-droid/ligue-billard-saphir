@@ -938,12 +938,6 @@ for num_manche, id_a, id_b in matchs_pairs:
         if score_a == 8 and score_b == 8:
             st.warning("⚠️ Les deux joueurs ne peuvent pas avoir 8 points.")
             manches_invalides.append(num_manche)
-        elif score_a < 8 and score_b < 8:
-            if not a_pres and not b_pres:
-                st.info("ℹ️ Double forfait : aucun joueur n'a atteint 8 points.")
-            else:
-                st.warning("⚠️ L'un des deux joueurs doit obligatoirement avoir atteint 8 points (le gagnant).")
-                manches_invalides.append(num_manche)
 
         donnees_a_sauvegarder["matchs"][str(num_manche)] = {
             "score_a": score_a,
