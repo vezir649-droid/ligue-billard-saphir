@@ -2,7 +2,6 @@ import json
 import os
 import smtplib
 import time
-import urllib.parse
 import uuid
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
@@ -1089,10 +1088,7 @@ with col_valid1:
             liberer_verrou(my_session_id)
 
 with col_valid2:
-    st.markdown("**Options d'envoi du courriel :**")
-
-    # Option A: Envoi direct via SMTP
-    if st.button("📤 Envoyer par SMTP direct", use_container_width=True, disabled=not est_editeur):
+    if st.button("📤 Envoyer le courriel (SMTP direct)", use_container_width=True, disabled=not est_editeur):
         destinataires_envoi = config_email.get("destinataires", "").strip()
         if not destinataires_envoi:
             st.error("⚠️ Aucun destinataire configuré dans les paramètres SMTP ci-dessus.")
@@ -1110,22 +1106,6 @@ with col_valid2:
                 st.success(f"✉️ {msg_mail} (Envoyé à : `{destinataires_envoi}`)")
             else:
                 st.error(f"❌ {msg_mail}")
-
-    # Option B: Brouillon client mailto
-    dest_mailto = config_email.get("destinataires", "")
-    sujet_encoded = urllib.parse.quote(f"Ligue du Saphir : {equipe_receveur} vs {equipe_visiteur}")
-    corps_encoded = urllib.parse.quote(texte_resume)
-    mailto_url = f"mailto:{dest_mailto}?subject={sujet_encoded}&body={corps_encoded}"
-    st.markdown(f"""
-        <a href="{mailto_url}" target="_blank" style="text-decoration: none;">
-            <button style="width: 100%; padding: 10px; background-color: #f0f2f6; border: 1px solid #d1d5db; border-radius: 8px; cursor: pointer;">
-                📨 Ouvrir le brouillon dans Outlook / Courrier
-            </button>
-        </a>
-        <p style="font-size: 11px; color: #666; margin-top: 4px; text-align: center;">
-            ℹ️ <em>Le bouton Outlook prépare le courriel dans votre application locale. Pour qu'il parte, vous devez ensuite cliquer sur « Envoyer » dans votre logiciel.</em>
-        </p>
-    """, unsafe_allow_html=True)
 
 # Sauvegarde automatique en arrière-plan (uniquement par l'éditeur actif et si le match n'est pas validé)
 if est_editeur and not match_valide:
