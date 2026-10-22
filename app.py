@@ -1045,89 +1045,50 @@ texte_resume, html_resume = generer_resume_match(
 )
 
 match_valide = False
-col_valid1, col_valid2 = st.columns([2, 1])
 
-with col_valid1:
-    if st.button("🚀 Valider et enregistrer la feuille de match officielle", type="primary", use_container_width=True, disabled=not est_editeur):
-        if manches_invalides:
-            st.error(f"❌ Impossible d'enregistrer : veuillez corriger les manches suivantes : {', '.join(map(str, sorted(set(manches_invalides))))}.")
-        else:
-            match_valide = True
-            st.balloons()
-            historique = []
-            if os.path.exists(HISTORIQUE_FILE):
-                try:
-                    with open(HISTORIQUE_FILE, "r", encoding="utf-8") as f:
-                        historique = json.load(f)
-                except Exception:
-                    historique = []
-            
-            donnees_finales = dict(donnees_a_sauvegarder)
-            donnees_finales["total_receveur"] = total_pts_receveur
-            donnees_finales["total_visiteur"] = total_pts_visiteur
-            donnees_finales["points_par_joueur"] = {
-                p_id: {
-                    "nom": dict_joueurs[p_id]["nom"],
-                    "equipe": dict_joueurs[p_id]["equipe"],
-                    "points": pts_joueurs[p_id],
-                    "present": dict_joueurs[p_id]["present"],
-                    "moyenne": dict_joueurs[p_id].get("moyenne", 0.0)
-                }
-                for p_id in dict_joueurs
+if st.button("🚀 Valider et enregistrer la feuille de match officielle", type="primary", use_container_width=True, disabled=not est_editeur):
+    if manches_invalides:
+        st.error(f"❌ Impossible d'enregistrer : veuillez corriger les manches suivantes : {', '.join(map(str, sorted(set(manches_invalides))))}.")
+    else:
+        match_valide = True
+        st.balloons()
+        historique = []
+        if os.path.exists(HISTORIQUE_FILE):
+            try:
+                with open(HISTORIQUE_FILE, "r", encoding="utf-8") as f:
+                    historique = json.load(f)
+            except Exception:
+                historique = []
+        
+        donnees_finales = dict(donnees_a_sauvegarder)
+        donnees_finales["total_receveur"] = total_pts_receveur
+        donnees_finales["total_visiteur"] = total_pts_visiteur
+        donnees_finales["points_par_joueur"] = {
+            p_id: {
+                "nom": dict_joueurs[p_id]["nom"],
+                "equipe": dict_joueurs[p_id]["equipe"],
+                "points": pts_joueurs[p_id],
+                "present": dict_joueurs[p_id]["present"],
+                "moyenne": dict_joueurs[p_id].get("moyenne", 0.0)
             }
-            donnees_finales["date_enregistrement"] = date_du_match
-            historique.append(donnees_finales)
+            for p_id in dict_joueurs
+        }
+        donnees_finales["date_enregistrement"] = date_du_match
+        historique.append(donnees_finales)
 
-            with open(HISTORIQUE_FILE, "w", encoding="utf-8") as f:
-                json.dump(historique, f, ensure_ascii=False, indent=4)
+        with open(HISTORIQUE_FILE, "w", encoding="utf-8") as f:
+            json.dump(historique, f, ensure_ascii=False, indent=4)
 
-            st.success(f"✅ Le match entre **{equipe_receveur}** ({total_pts_receveur} pts) et **{equipe_visiteur}** ({total_pts_visiteur} pts) a été archivé avec succès !")
+        st.success(f"✅ Le match entre **{equipe_receveur}** ({total_pts_receveur} pts) et **{equipe_visiteur}** ({total_pts_visiteur} pts) a été archivé avec succès !")
 
-            # Envoi automatique par courriel au moment de la validation finale
-            destinataires_envoi = config_email.get("destinataires", "").strip()
-            if not destinataires_envoi:
-                st.warning("⚠️ L'envoi automatique par courriel a été ignoré car aucun destinataire n'est configuré dans `config_email.json`.")
-            else:
-                sujet = f"🎱 Ligue du Saphir : {equipe_receveur} ({total_pts_receveur}) vs {equipe_visiteur} ({total_pts_visiteur}) - {date_du_match}"
-                pj_historique = [HISTORIQUE_FILE] if os.path.exists(HISTORIQUE_FILE) else None
-                with st.spinner("Envoi automatique du courriel en cours (avec historique en pièce jointe)..."):
-                    succes_mail, msg_mail = envoyer_courriel(
-                        destinataires_envoi,
-                        sujet,
-                        texte_resume,
-                        html_resume,
-                        config_email,
-                        pieces_jointes=pj_historique
-                    )
-                if succes_mail:
-                    mention_pj = f" avec le fichier `{HISTORIQUE_FILE}` en pièce jointe" if pj_historique else ""
-                    st.success(f"✉️ {msg_mail} (Envoyé automatiquement{mention_pj} à : `{destinataires_envoi}`)")
-                else:
-                    st.warning(f"⚠️ {msg_mail}")
-                    st.info("💡 Les résultats ont bien été sauvegardés sur l'ordinateur.")
-
-            # Nettoyage du fichier de secours et libération du verrou après validation réussie
-            if os.path.exists(BACKUP_FILE):
-                try:
-                    os.remove(BACKUP_FILE)
-                except Exception:
-                    pass
-            if os.path.exists(CORBEILLE_FILE):
-                try:
-                    os.remove(CORBEILLE_FILE)
-                except Exception:
-                    pass
-            liberer_verrou(my_session_id)
-
-with col_valid2:
-    if st.button("📤 Envoyer le courriel (SMTP direct)", use_container_width=True, disabled=not est_editeur):
+        # Envoi automatique par courriel au moment de la validation finale
         destinataires_envoi = config_email.get("destinataires", "").strip()
         if not destinataires_envoi:
-            st.error("⚠️ Aucun destinataire configuré dans les paramètres SMTP ci-dessus.")
+            st.warning("⚠️ L'envoi automatique par courriel a été ignoré car aucun destinataire n'est configuré dans `config_email.json`.")
         else:
             sujet = f"🎱 Ligue du Saphir : {equipe_receveur} ({total_pts_receveur}) vs {equipe_visiteur} ({total_pts_visiteur}) - {date_du_match}"
             pj_historique = [HISTORIQUE_FILE] if os.path.exists(HISTORIQUE_FILE) else None
-            with st.spinner("Envoi par SMTP direct en cours (avec historique en pièce jointe)..."):
+            with st.spinner("Envoi automatique du courriel en cours (avec historique en pièce jointe)..."):
                 succes_mail, msg_mail = envoyer_courriel(
                     destinataires_envoi,
                     sujet,
@@ -1137,10 +1098,24 @@ with col_valid2:
                     pieces_jointes=pj_historique
                 )
             if succes_mail:
-                mention_pj = f" avec `{HISTORIQUE_FILE}` en pièce jointe" if pj_historique else ""
-                st.success(f"✉️ {msg_mail} (Envoyé{mention_pj} à : `{destinataires_envoi}`)")
+                mention_pj = f" avec le fichier `{HISTORIQUE_FILE}` en pièce jointe" if pj_historique else ""
+                st.success(f"✉️ {msg_mail} (Envoyé automatiquement{mention_pj} à : `{destinataires_envoi}`)")
             else:
-                st.error(f"❌ {msg_mail}")
+                st.warning(f"⚠️ {msg_mail}")
+                st.info("💡 Les résultats ont bien été sauvegardés sur l'ordinateur.")
+
+        # Nettoyage du fichier de secours et libération du verrou après validation réussie
+        if os.path.exists(BACKUP_FILE):
+            try:
+                os.remove(BACKUP_FILE)
+            except Exception:
+                pass
+        if os.path.exists(CORBEILLE_FILE):
+            try:
+                os.remove(CORBEILLE_FILE)
+            except Exception:
+                pass
+        liberer_verrou(my_session_id)
 
 # Sauvegarde automatique en arrière-plan (uniquement par l'éditeur actif et si le match n'est pas validé)
 if est_editeur and not match_valide:
