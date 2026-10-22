@@ -848,8 +848,6 @@ for num_manche, id_a, id_b in matchs_pairs:
             init_val_a = 0
             init_val_b = 0
 
-        options_scores = list(range(9))
-
         if f"s_a_{num_manche}" not in st.session_state:
             st.session_state[f"s_a_{num_manche}"] = max(0, min(8, int(init_val_a)))
         if f"s_b_{num_manche}" not in st.session_state:
@@ -857,17 +855,17 @@ for num_manche, id_a, id_b in matchs_pairs:
 
         with c1:
             label_champ_a = f"Points de {joueur_a}" + (f" (Absent : {info_a['pts_absent']} pts)" if not a_pres else "")
-            score_a = st.selectbox(
+            score_a = st.number_input(
                 label_champ_a, 
-                options=options_scores,
+                0, 8, 
                 key=f"s_a_{num_manche}",
                 disabled=not est_editeur
             )
         with c2:
             label_champ_b = f"Points de {joueur_b}" + (f" (Absent : {info_b['pts_absent']} pts)" if not b_pres else "")
-            score_b = st.selectbox(
+            score_b = st.number_input(
                 label_champ_b, 
-                options=options_scores,
+                0, 8, 
                 key=f"s_b_{num_manche}",
                 disabled=not est_editeur
             )
