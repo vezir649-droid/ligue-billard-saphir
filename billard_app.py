@@ -1,10 +1,12 @@
 import json
 import os
 import smtplib
+import time
+import urllib.parse
+import uuid
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-import urllib.parse
 import streamlit as st
 
 # Configuration de la page
@@ -19,6 +21,8 @@ BACKUP_FILE = "sauvegarde_saisie_secours.json"
 HISTORIQUE_FILE = "historique_matchs.json"
 CONFIG_EMAIL_FILE = "config_email.json"
 EQUIPES_CSV_FILE = "equipes-saphir.csv"
+LOCK_FILE = "session_lock.json"
+LOCK_TIMEOUT = 900  # 15 minutes d'inactivité avant libération automatique
 
 def charger_equipes_csv():
     """Charge la liste des équipes et joueurs depuis le fichier CSV."""
@@ -85,6 +89,64 @@ def sauvegarder_config_email(cfg):
         return True
     except Exception:
         return False
+
+# ==============================================================================
+# GESTION DU VERROU DE SESSION EXCLUSIF (UN SEUL MARQUEUR À LA FOIS)
+# ==============================================================================
+def gerer_verrou_session(my_session_id):
+    """Vérifie si la session actuelle détient le verrou d'édition ou l'acquiert."""
+    maintenant = time.time()
+    lock_existant = {}
+    if os.path.exists(LOCK_FILE):
+        try:
+            with open(LOCK_FILE, "r", encoding="utf-8") as f:
+                lock_existant = json.load(f)
+        except Exception:
+            lock_existant = {}
+
+    detenteur = lock_existant.get("session_id")
+    dernier_acces = lock_existant.get("dernier_acces", 0)
+    expire = (maintenant - dernier_acces) > LOCK_TIMEOUT
+
+    if not detenteur or expire or detenteur == my_session_id:
+        nouveau_lock = {
+            "session_id": my_session_id,
+            "dernier_acces": maintenant,
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        try:
+            with open(LOCK_FILE, "w", encoding="utf-8") as f:
+                json.dump(nouveau_lock, f, indent=4)
+        except Exception:
+            pass
+        return True, 0
+    else:
+        temps_restant = int(LOCK_TIMEOUT - (maintenant - dernier_acces))
+        return False, max(0, temps_restant)
+
+def liberer_verrou(my_session_id):
+    """Libère le verrou de session si détenu par cette session."""
+    if os.path.exists(LOCK_FILE):
+        try:
+            with open(LOCK_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if data.get("session_id") == my_session_id:
+                os.remove(LOCK_FILE)
+        except Exception:
+            pass
+
+def forcer_prise_de_main(my_session_id):
+    """Force l'acquisition du verrou (si l'utilisateur précédent a quitté sans libérer)."""
+    nouveau_lock = {
+        "session_id": my_session_id,
+        "dernier_acces": time.time(),
+        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
+    try:
+        with open(LOCK_FILE, "w", encoding="utf-8") as f:
+            json.dump(nouveau_lock, f, indent=4)
+    except Exception:
+        pass
 
 def calculer_score_absent(moyenne_val):
     """
@@ -317,11 +379,24 @@ def envoyer_courriel(destinataires_str, sujet, texte_brut, html_contenu, config)
         return False, f"Échec de l'envoi du courriel : {str(e)}"
 
 # ==============================================================================
+# IDENTIFICATION DE SESSION & GESTION DU VERROU
+# ==============================================================================
+if "user_session_id" not in st.session_state:
+    st.session_state["user_session_id"] = str(uuid.uuid4())
+my_session_id = st.session_state["user_session_id"]
+
+est_editeur, temps_restant_verrou = gerer_verrou_session(my_session_id)
+
+# ==============================================================================
 # RESTAURATION INITIALE AU CHARGEMENT (ÉVITE LA PERTE DE DONNÉES SUR RAFRAÎCHISSEMENT)
 # ==============================================================================
 sauvegarde_existante = charger_sauvegarde()
 if "app_initialisee" not in st.session_state:
     st.session_state.app_initialisee = True
+    if sauvegarde_existante and "matchs" in sauvegarde_existante:
+        restaurer_session(sauvegarde_existante)
+elif not est_editeur:
+    # Pour les spectateurs, on recharge toujours l'état actuel de la sauvegarde
     if sauvegarde_existante and "matchs" in sauvegarde_existante:
         restaurer_session(sauvegarde_existante)
 
@@ -337,6 +412,23 @@ st.title("🎱 Ligue de billard du Saphir")
 st.subheader("Application de saisie des résultats - Format 3 contre 3")
 st.markdown("*Plateforme officielle de gestion des matchs, de la cédule et des présences.*")
 
+# --- BANDEAU D'ÉTAT DU VERROU EXCLUSIF (UN SEUL MARQUEUR À LA FOIS) ---
+col_lock1, col_lock2 = st.columns([3, 1])
+if est_editeur:
+    col_lock1.success("🟢 **Vous avez la main exclusive pour la saisie et la validation du match.**")
+    with col_lock2:
+        if st.button("🔓 Céder la main", use_container_width=True, help="Libère la feuille pour permettre à un autre utilisateur de saisir"):
+            liberer_verrou(my_session_id)
+            st.rerun()
+else:
+    mins = temps_restant_verrou // 60
+    secs = temps_restant_verrou % 60
+    col_lock1.warning(f"🔒 **Mode consultation (Lecture seule) :** Un autre utilisateur effectue actuellement la saisie. Vos champs sont verrouillés pour éviter les conflits. *(Inactivité restante : {mins}m {secs:02d}s)*")
+    with col_lock2:
+        if st.button("⚡ Prendre la main", use_container_width=True, help="Prend le contrôle de la saisie si le marqueur précédent a quitté sans libérer"):
+            forcer_prise_de_main(my_session_id)
+            st.rerun()
+
 # --- BOUTONS D'ACTION HAUT DE PAGE (RESTAURER / NOUVEAU MATCH) ---
 col_h1, col_h2, col_h3 = st.columns([2, 1, 1])
 
@@ -345,7 +437,7 @@ if date_sauv_str:
     col_h1.caption(f"💾 *Dernière sauvegarde automatique : {date_sauv_str}*")
 
 with col_h2:
-    if st.button("🔄 Restaurer dernière saisie", use_container_width=True):
+    if st.button("🔄 Restaurer dernière saisie", use_container_width=True, disabled=not est_editeur):
         data_a_restaurer = charger_sauvegarde()
         if data_a_restaurer and "matchs" in data_a_restaurer:
             restaurer_session(data_a_restaurer)
@@ -355,7 +447,7 @@ with col_h2:
             st.warning("⚠️ Aucune sauvegarde valide trouvée.")
 
 with col_h3:
-    if st.button("🗑️ Nouveau match", use_container_width=True, help="Efface la saisie en cours et réinitialise"):
+    if st.button("🗑️ Nouveau match", use_container_width=True, disabled=not est_editeur, help="Efface la saisie en cours et réinitialise"):
         if os.path.exists(BACKUP_FILE):
             try:
                 os.remove(BACKUP_FILE)
@@ -381,10 +473,10 @@ if noms_equipes:
     def_idx_rec = 0
     if "sel_equipe_rec" in st.session_state and st.session_state["sel_equipe_rec"] in options_rec:
         def_idx_rec = options_rec.index(st.session_state["sel_equipe_rec"])
-    choix_rec = st.sidebar.selectbox("Équipe Receveuse :", options_rec, index=def_idx_rec, key="sel_equipe_rec")
+    choix_rec = st.sidebar.selectbox("Équipe Receveuse :", options_rec, index=def_idx_rec, key="sel_equipe_rec", disabled=not est_editeur)
     
     if choix_rec == "Autre / Personnalisée":
-        equipe_receveur = st.sidebar.text_input("Nom équipe receveuse", value=st.session_state.get("input_custom_rec", "Équipe 1"), key="input_custom_rec")
+        equipe_receveur = st.sidebar.text_input("Nom équipe receveuse", value=st.session_state.get("input_custom_rec", "Équipe 1"), key="input_custom_rec", disabled=not est_editeur)
         roster_rec = ["Joueur 1", "Joueur 2", "Joueur 3"]
     else:
         equipe_receveur = choix_rec
@@ -396,17 +488,17 @@ if noms_equipes:
         st.session_state["sel_equipe_vis"] = options_vis[def_idx_vis]
     if "sel_equipe_vis" in st.session_state and st.session_state["sel_equipe_vis"] in options_vis:
         def_idx_vis = options_vis.index(st.session_state["sel_equipe_vis"])
-    choix_vis = st.sidebar.selectbox("Équipe Visiteuse :", options_vis, index=def_idx_vis, key="sel_equipe_vis")
+    choix_vis = st.sidebar.selectbox("Équipe Visiteuse :", options_vis, index=def_idx_vis, key="sel_equipe_vis", disabled=not est_editeur)
     
     if choix_vis == "Autre / Personnalisée":
-        equipe_visiteur = st.sidebar.text_input("Nom équipe visiteuse", value=st.session_state.get("input_custom_vis", "Équipe 2"), key="input_custom_vis")
+        equipe_visiteur = st.sidebar.text_input("Nom équipe visiteuse", value=st.session_state.get("input_custom_vis", "Équipe 2"), key="input_custom_vis", disabled=not est_editeur)
         roster_vis = ["Joueur 1", "Joueur 2", "Joueur 3"]
     else:
         equipe_visiteur = choix_vis
         roster_vis = equipes_disponibles[choix_vis]
 else:
-    equipe_receveur = st.sidebar.text_input("Équipe Receveuse", value="Équipe 1", key="input_custom_rec")
-    equipe_visiteur = st.sidebar.text_input("Équipe Visiteuse", value="Équipe 2", key="input_custom_vis")
+    equipe_receveur = st.sidebar.text_input("Équipe Receveuse", value="Équipe 1", key="input_custom_rec", disabled=not est_editeur)
+    equipe_visiteur = st.sidebar.text_input("Équipe Visiteuse", value="Équipe 2", key="input_custom_vis", disabled=not est_editeur)
     roster_rec = ["Jean-François", "Christian", "Antoine"]
     roster_vis = ["Michel", "Nicolas", "Guy"]
     choix_rec = equipe_receveur
@@ -425,12 +517,12 @@ if "sel_j1_rec" in st.session_state and st.session_state["sel_j1_rec"] in option
     def_idx_j1_rec = options_j1_rec.index(st.session_state["sel_j1_rec"])
 
 col_j1_r1, col_j1_r2 = st.sidebar.columns([3, 2])
-sel_j1_rec = col_j1_r1.selectbox("Sélection Joueur 1 :", options_j1_rec, index=def_idx_j1_rec, key="sel_j1_rec")
+sel_j1_rec = col_j1_r1.selectbox("Sélection Joueur 1 :", options_j1_rec, index=def_idx_j1_rec, key="sel_j1_rec", disabled=not est_editeur)
 if sel_j1_rec == "Remplaçant...":
-    j1_rec = st.sidebar.text_input("Nom Joueur 1 (Remplaçant)", value=st.session_state.get("cust_j1_rec", "Remplaçant 1"), key="cust_j1_rec")
+    j1_rec = st.sidebar.text_input("Nom Joueur 1 (Remplaçant)", value=st.session_state.get("cust_j1_rec", "Remplaçant 1"), key="cust_j1_rec", disabled=not est_editeur)
 else:
     j1_rec = sel_j1_rec
-j1_rec_pres = col_j1_r2.toggle("Présent", value=st.session_state.get("pres_j1_rec", True), key="pres_j1_rec")
+j1_rec_pres = col_j1_r2.toggle("Présent", value=st.session_state.get("pres_j1_rec", True), key="pres_j1_rec", disabled=not est_editeur)
 if not j1_rec_pres:
     def_moy_j1 = float(st.session_state.get("moy_j1_rec", 0.625))
     col_m1, col_m2 = st.sidebar.columns([3, 2])
@@ -442,6 +534,7 @@ if not j1_rec_pres:
         step=0.025,
         format="%.3f",
         key="moy_j1_rec",
+        disabled=not est_editeur,
         help="Saisissez la moyenne (ex. 0.650 ou 65%). Formule : arrondi(moyenne × 24 ÷ 3), max 7."
     )
     j1_rec_pts = calculer_score_absent(moy_j1)
@@ -461,12 +554,12 @@ if "sel_j2_rec" in st.session_state and st.session_state["sel_j2_rec"] in option
     def_idx_j2_rec = options_j2_rec.index(st.session_state["sel_j2_rec"])
 
 col_j2_r1, col_j2_r2 = st.sidebar.columns([3, 2])
-sel_j2_rec = col_j2_r1.selectbox("Sélection Joueur 2 :", options_j2_rec, index=def_idx_j2_rec, key="sel_j2_rec")
+sel_j2_rec = col_j2_r1.selectbox("Sélection Joueur 2 :", options_j2_rec, index=def_idx_j2_rec, key="sel_j2_rec", disabled=not est_editeur)
 if sel_j2_rec == "Remplaçant...":
-    j2_rec = st.sidebar.text_input("Nom Joueur 2 (Remplaçant)", value=st.session_state.get("cust_j2_rec", "Remplaçant 2"), key="cust_j2_rec")
+    j2_rec = st.sidebar.text_input("Nom Joueur 2 (Remplaçant)", value=st.session_state.get("cust_j2_rec", "Remplaçant 2"), key="cust_j2_rec", disabled=not est_editeur)
 else:
     j2_rec = sel_j2_rec
-j2_rec_pres = col_j2_r2.toggle("Présent", value=st.session_state.get("pres_j2_rec", True), key="pres_j2_rec")
+j2_rec_pres = col_j2_r2.toggle("Présent", value=st.session_state.get("pres_j2_rec", True), key="pres_j2_rec", disabled=not est_editeur)
 if not j2_rec_pres:
     def_moy_j2 = float(st.session_state.get("moy_j2_rec", 0.625))
     col_m1, col_m2 = st.sidebar.columns([3, 2])
@@ -478,6 +571,7 @@ if not j2_rec_pres:
         step=0.025,
         format="%.3f",
         key="moy_j2_rec",
+        disabled=not est_editeur,
         help="Saisissez la moyenne (ex. 0.650 ou 65%). Formule : arrondi(moyenne × 24 ÷ 3), max 7."
     )
     j2_rec_pts = calculer_score_absent(moy_j2)
@@ -492,7 +586,7 @@ col_j3_r1, col_j3_r2 = st.sidebar.columns([3, 2])
 restants_rec = [p for p in roster_rec if p != sel_j1_rec and p != sel_j2_rec]
 j3_rec = restants_rec[0] if restants_rec else "Joueur 3"
 col_j3_r1.markdown(f"**Joueur 3 (défini) :**<br>`{j3_rec}`", unsafe_allow_html=True)
-j3_rec_pres = col_j3_r2.toggle("Présent", value=st.session_state.get("pres_j3_rec", True), key="pres_j3_rec")
+j3_rec_pres = col_j3_r2.toggle("Présent", value=st.session_state.get("pres_j3_rec", True), key="pres_j3_rec", disabled=not est_editeur)
 if not j3_rec_pres:
     def_moy_j3 = float(st.session_state.get("moy_j3_rec", 0.625))
     col_m1, col_m2 = st.sidebar.columns([3, 2])
@@ -504,6 +598,7 @@ if not j3_rec_pres:
         step=0.025,
         format="%.3f",
         key="moy_j3_rec",
+        disabled=not est_editeur,
         help="Saisissez la moyenne (ex. 0.650 ou 65%). Formule : arrondi(moyenne × 24 ÷ 3), max 7."
     )
     j3_rec_pts = calculer_score_absent(moy_j3)
@@ -526,12 +621,12 @@ if "sel_j1_vis" in st.session_state and st.session_state["sel_j1_vis"] in option
     def_idx_j1_vis = options_j1_vis.index(st.session_state["sel_j1_vis"])
 
 col_j1_v1, col_j1_v2 = st.sidebar.columns([3, 2])
-sel_j1_vis = col_j1_v1.selectbox("Sélection Joueur 1 :", options_j1_vis, index=def_idx_j1_vis, key="sel_j1_vis")
+sel_j1_vis = col_j1_v1.selectbox("Sélection Joueur 1 :", options_j1_vis, index=def_idx_j1_vis, key="sel_j1_vis", disabled=not est_editeur)
 if sel_j1_vis == "Remplaçant...":
-    j1_vis = st.sidebar.text_input("Nom Visiteur 1 (Remplaçant)", value=st.session_state.get("cust_j1_vis", "Remplaçant 1"), key="cust_j1_vis")
+    j1_vis = st.sidebar.text_input("Nom Visiteur 1 (Remplaçant)", value=st.session_state.get("cust_j1_vis", "Remplaçant 1"), key="cust_j1_vis", disabled=not est_editeur)
 else:
     j1_vis = sel_j1_vis
-j1_vis_pres = col_j1_v2.toggle("Présent", value=st.session_state.get("pres_j1_vis", True), key="pres_j1_vis")
+j1_vis_pres = col_j1_v2.toggle("Présent", value=st.session_state.get("pres_j1_vis", True), key="pres_j1_vis", disabled=not est_editeur)
 if not j1_vis_pres:
     def_moy_v1 = float(st.session_state.get("moy_j1_vis", 0.625))
     col_m1, col_m2 = st.sidebar.columns([3, 2])
@@ -543,6 +638,7 @@ if not j1_vis_pres:
         step=0.025,
         format="%.3f",
         key="moy_j1_vis",
+        disabled=not est_editeur,
         help="Saisissez la moyenne (ex. 0.650 ou 65%). Formule : arrondi(moyenne × 24 ÷ 3), max 7."
     )
     j1_vis_pts = calculer_score_absent(moy_v1)
@@ -562,12 +658,12 @@ if "sel_j2_vis" in st.session_state and st.session_state["sel_j2_vis"] in option
     def_idx_j2_vis = options_j2_vis.index(st.session_state["sel_j2_vis"])
 
 col_j2_v1, col_j2_v2 = st.sidebar.columns([3, 2])
-sel_j2_vis = col_j2_v1.selectbox("Sélection Joueur 2 :", options_j2_vis, index=def_idx_j2_vis, key="sel_j2_vis")
+sel_j2_vis = col_j2_v1.selectbox("Sélection Joueur 2 :", options_j2_vis, index=def_idx_j2_vis, key="sel_j2_vis", disabled=not est_editeur)
 if sel_j2_vis == "Remplaçant...":
-    j2_vis = st.sidebar.text_input("Nom Visiteur 2 (Remplaçant)", value=st.session_state.get("cust_j2_vis", "Remplaçant 2"), key="cust_j2_vis")
+    j2_vis = st.sidebar.text_input("Nom Visiteur 2 (Remplaçant)", value=st.session_state.get("cust_j2_vis", "Remplaçant 2"), key="cust_j2_vis", disabled=not est_editeur)
 else:
     j2_vis = sel_j2_vis
-j2_vis_pres = col_j2_v2.toggle("Présent", value=st.session_state.get("pres_j2_vis", True), key="pres_j2_vis")
+j2_vis_pres = col_j2_v2.toggle("Présent", value=st.session_state.get("pres_j2_vis", True), key="pres_j2_vis", disabled=not est_editeur)
 if not j2_vis_pres:
     def_moy_v2 = float(st.session_state.get("moy_j2_vis", 0.625))
     col_m1, col_m2 = st.sidebar.columns([3, 2])
@@ -579,6 +675,7 @@ if not j2_vis_pres:
         step=0.025,
         format="%.3f",
         key="moy_j2_vis",
+        disabled=not est_editeur,
         help="Saisissez la moyenne (ex. 0.650 ou 65%). Formule : arrondi(moyenne × 24 ÷ 3), max 7."
     )
     j2_vis_pts = calculer_score_absent(moy_v2)
@@ -593,7 +690,7 @@ col_j3_v1, col_j3_v2 = st.sidebar.columns([3, 2])
 restants_vis = [p for p in roster_vis if p != sel_j1_vis and p != sel_j2_vis]
 j3_vis = restants_vis[0] if restants_vis else "Joueur 3"
 col_j3_v1.markdown(f"**Joueur 3 (défini) :**<br>`{j3_vis}`", unsafe_allow_html=True)
-j3_vis_pres = col_j3_v2.toggle("Présent", value=st.session_state.get("pres_j3_vis", True), key="pres_j3_vis")
+j3_vis_pres = col_j3_v2.toggle("Présent", value=st.session_state.get("pres_j3_vis", True), key="pres_j3_vis", disabled=not est_editeur)
 if not j3_vis_pres:
     def_moy_v3 = float(st.session_state.get("moy_j3_vis", 0.625))
     col_m1, col_m2 = st.sidebar.columns([3, 2])
@@ -605,6 +702,7 @@ if not j3_vis_pres:
         step=0.025,
         format="%.3f",
         key="moy_j3_vis",
+        disabled=not est_editeur,
         help="Saisissez la moyenne (ex. 0.650 ou 65%). Formule : arrondi(moyenne × 24 ÷ 3), max 7."
     )
     j3_vis_pts = calculer_score_absent(moy_v3)
@@ -740,7 +838,8 @@ for num_manche, id_a, id_b in matchs_pairs:
                 label_champ_a, 
                 0, 8, 
                 value=val_score_a,
-                key=f"s_a_{num_manche}"
+                key=f"s_a_{num_manche}",
+                disabled=not est_editeur
             )
         with c2:
             label_champ_b = f"Points de {joueur_b}" + (f" (Absent : {info_b['pts_absent']} pts)" if not b_pres else "")
@@ -748,7 +847,8 @@ for num_manche, id_a, id_b in matchs_pairs:
                 label_champ_b, 
                 0, 8, 
                 value=val_score_b,
-                key=f"s_b_{num_manche}"
+                key=f"s_b_{num_manche}",
+                disabled=not est_editeur
             )
         
         # Validation logique du billard au 8
@@ -875,7 +975,7 @@ match_valide = False
 col_valid1, col_valid2 = st.columns([2, 1])
 
 with col_valid1:
-    if st.button("🚀 Valider et enregistrer la feuille de match officielle", type="primary", use_container_width=True):
+    if st.button("🚀 Valider et enregistrer la feuille de match officielle", type="primary", use_container_width=True, disabled=not est_editeur):
         if manches_invalides:
             st.error(f"❌ Impossible d'enregistrer : veuillez corriger les manches suivantes : {', '.join(map(str, sorted(set(manches_invalides))))}.")
         else:
@@ -897,7 +997,8 @@ with col_valid1:
                     "nom": dict_joueurs[p_id]["nom"],
                     "equipe": dict_joueurs[p_id]["equipe"],
                     "points": pts_joueurs[p_id],
-                    "present": dict_joueurs[p_id]["present"]
+                    "present": dict_joueurs[p_id]["present"],
+                    "moyenne": dict_joueurs[p_id].get("moyenne", 0.0)
                 }
                 for p_id in dict_joueurs
             }
@@ -929,12 +1030,13 @@ with col_valid1:
                     st.warning(f"⚠️ {msg_mail}")
                     st.info("💡 Les résultats ont bien été sauvegardés sur l'ordinateur.")
 
-            # Nettoyage du fichier de secours après validation réussie
+            # Nettoyage du fichier de secours et libération du verrou après validation réussie
             if os.path.exists(BACKUP_FILE):
                 try:
                     os.remove(BACKUP_FILE)
                 except Exception:
                     pass
+            liberer_verrou(my_session_id)
 
 with col_valid2:
     dest_mailto = config_email.get("destinataires", "")
@@ -949,6 +1051,6 @@ with col_valid2:
         </a>
     """, unsafe_allow_html=True)
 
-# Sauvegarde automatique en arrière-plan à chaque frappe/changement (sauf si le match vient d'être validé)
-if not match_valide:
+# Sauvegarde automatique en arrière-plan (uniquement par l'éditeur actif et si le match n'est pas validé)
+if est_editeur and not match_valide:
     sauvegarder_donnees(donnees_a_sauvegarder)

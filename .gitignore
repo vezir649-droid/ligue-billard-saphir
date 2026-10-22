@@ -1,6 +1,7 @@
 # Fichiers de configuration sensibles et sauvegardes temporaires
 config_email.json
 sauvegarde_saisie_secours.json
+session_lock.json
 *.log
 
 # Fichiers de données locales
