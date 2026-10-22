@@ -478,19 +478,25 @@ if date_sauv_str:
     col_h1.caption(f"💾 *Dernière sauvegarde automatique : {date_sauv_str}*")
 
 with col_h2:
-    if st.button(
+    with st.popover(
         "🔄 Restaurer saisie", 
         use_container_width=True, 
         disabled=not est_editeur, 
         help="✅ Sauvegarde automatique active.\nEn cas de coupure, cliquez sur 'Restaurer' pour récupérer votre saisie."
     ):
-        data_a_restaurer = charger_sauvegarde()
-        if data_a_restaurer and "matchs" in data_a_restaurer:
-            restaurer_session(data_a_restaurer)
-            st.success("✅ Données récupérées avec succès !")
-            st.rerun()
-        else:
-            st.warning("⚠️ Aucune sauvegarde valide trouvée.")
+        st.markdown("### 🔄 Restauration")
+        st.write("Voulez-vous restaurer les données de la dernière sauvegarde automatique ?")
+        if date_sauv_str:
+            st.caption(f"💾 *Dernière sauvegarde : {date_sauv_str}*")
+        st.caption("⚠️ *Les champs actuels seront remplacés par l'état enregistré.*")
+        if st.button("🔵 Confirmer la restauration", type="primary", use_container_width=True):
+            data_a_restaurer = charger_sauvegarde()
+            if data_a_restaurer and "matchs" in data_a_restaurer:
+                restaurer_session(data_a_restaurer)
+                st.success("✅ Données récupérées avec succès !")
+                st.rerun()
+            else:
+                st.warning("⚠️ Aucune sauvegarde valide trouvée.")
 
 if a_corbeille:
     with col_h3:
