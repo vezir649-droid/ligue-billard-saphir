@@ -17,6 +17,7 @@ st.set_page_config(
 
 # Fichiers de données
 BACKUP_FILE = "sauvegarde_saisie_secours.json"
+CORBEILLE_FILE = "sauvegarde_annulee_secours.json"
 HISTORIQUE_FILE = "historique_matchs.json"
 CONFIG_EMAIL_FILE = "config_email.json"
 EQUIPES_CSV_FILE = "equipes-saphir.csv"
@@ -425,15 +426,20 @@ else:
             forcer_prise_de_main(my_session_id)
             st.rerun()
 
-# --- BOUTONS D'ACTION HAUT DE PAGE (RESTAURER / NOUVEAU MATCH) ---
-col_h1, col_h2, col_h3 = st.columns([2, 1, 1])
+# --- BOUTONS D'ACTION HAUT DE PAGE (RESTAURER / ANNULER EFFACEMENT / NOUVEAU MATCH) ---
+a_corbeille = os.path.exists(CORBEILLE_FILE)
+
+if a_corbeille:
+    col_h1, col_h2, col_h3, col_h4 = st.columns([2, 1.2, 1.5, 1.2])
+else:
+    col_h1, col_h2, col_h4 = st.columns([2, 1.2, 1.2])
 
 date_sauv_str = sauvegarde_existante.get("date", "")
 if date_sauv_str:
     col_h1.caption(f"💾 *Dernière sauvegarde automatique : {date_sauv_str}*")
 
 with col_h2:
-    if st.button("🔄 Restaurer dernière saisie", use_container_width=True, disabled=not est_editeur):
+    if st.button("🔄 Restaurer saisie", use_container_width=True, disabled=not est_editeur, help="Restaure la dernière sauvegarde automatique"):
         data_a_restaurer = charger_sauvegarde()
         if data_a_restaurer and "matchs" in data_a_restaurer:
             restaurer_session(data_a_restaurer)
@@ -442,40 +448,80 @@ with col_h2:
         else:
             st.warning("⚠️ Aucune sauvegarde valide trouvée.")
 
-with col_h3:
-    if st.button("🗑️ Nouveau match", use_container_width=True, disabled=not est_editeur, help="Efface la saisie en cours et réinitialise"):
-        if os.path.exists(BACKUP_FILE):
+if a_corbeille:
+    with col_h3:
+        if st.button("↩️ Annuler effacement", use_container_width=True, disabled=not est_editeur, help="Restaure le match qui vient d'être effacé par 'Nouveau match'"):
             try:
-                os.remove(BACKUP_FILE)
-            except Exception:
-                pass
+                with open(CORBEILLE_FILE, "r", encoding="utf-8") as f:
+                    data_annulee = json.load(f)
+                if data_annulee and "matchs" in data_annulee:
+                    restaurer_session(data_annulee)
+                    sauvegarder_donnees(data_annulee)
+                    try:
+                        os.remove(CORBEILLE_FILE)
+                    except Exception:
+                        pass
+                    st.success("✅ Match précédent restauré avec succès !")
+                    st.rerun()
+            except Exception as e:
+                st.error(f"Erreur lors de la récupération : {e}")
 
-        # Conserver uniquement l'identifiant de session pour maintenir le verrou
-        user_sess = st.session_state.get("user_session_id")
-        st.session_state.clear()
-        if user_sess:
-            st.session_state["user_session_id"] = user_sess
-        st.session_state["app_initialisee"] = True
+with col_h4:
+    with st.popover("🗑️ Nouveau match", use_container_width=True, disabled=not est_editeur):
+        st.markdown("### ⚠️ Réinitialisation")
+        st.write("Voulez-vous vraiment effacer la saisie du match en cours ?")
+        st.caption("💡 *Une copie de secours est automatiquement conservée. Vous pourrez annuler en cas d'erreur.*")
+        if st.button("🔴 Confirmer et tout effacer", type="primary", use_container_width=True):
+            # 1. Sauvegarder dans la corbeille avant d'effacer
+            if os.path.exists(BACKUP_FILE):
+                try:
+                    import shutil
+                    shutil.copyfile(BACKUP_FILE, CORBEILLE_FILE)
+                except Exception:
+                    pass
+            elif "sauvegarde_existante" in locals() and sauvegarde_existante:
+                try:
+                    with open(CORBEILLE_FILE, "w", encoding="utf-8") as f:
+                        json.dump(sauvegarde_existante, f, ensure_ascii=False, indent=4)
+                except Exception:
+                    pass
 
-        # Remise à zéro explicite de toutes les manches (0 - 0)
-        for num in range(1, 10):
-            st.session_state[f"s_a_{num}"] = 0
-            st.session_state[f"s_b_{num}"] = 0
+            # 2. Supprimer la sauvegarde active
+            if os.path.exists(BACKUP_FILE):
+                try:
+                    os.remove(BACKUP_FILE)
+                except Exception:
+                    pass
 
-        # Réinitialisation des présences (tous présents), moyennes et scores par défaut
-        for p_id in ["j1_rec", "j2_rec", "j3_rec", "j1_vis", "j2_vis", "j3_vis"]:
-            st.session_state[f"pres_{p_id}"] = True
-            st.session_state[f"pts_{p_id}"] = 0
-            st.session_state[f"moy_{p_id}"] = 0.625
-            st.session_state[f"prev_state_{p_id}"] = True
-            st.session_state[f"prev_pts_{p_id}"] = 0
-            st.session_state[f"cust_{p_id}"] = ""
+            # 3. Conserver uniquement l'identifiant de session pour maintenir le verrou
+            user_sess = st.session_state.get("user_session_id")
+            st.session_state.clear()
+            if user_sess:
+                st.session_state["user_session_id"] = user_sess
+            st.session_state["app_initialisee"] = True
 
-        # Réinitialisation des noms personnalisés
-        st.session_state["input_custom_rec"] = "Équipe 1"
-        st.session_state["input_custom_vis"] = "Équipe 2"
+            # 4. Remise à zéro explicite de toutes les manches (0 - 0)
+            for num in range(1, 10):
+                st.session_state[f"s_a_{num}"] = 0
+                st.session_state[f"s_b_{num}"] = 0
 
-        st.rerun()
+            # 5. Réinitialisation des présences (tous présents), moyennes et scores par défaut
+            for p_id in ["j1_rec", "j2_rec", "j3_rec", "j1_vis", "j2_vis", "j3_vis"]:
+                st.session_state[f"pres_{p_id}"] = True
+                st.session_state[f"pts_{p_id}"] = 0
+                st.session_state[f"moy_{p_id}"] = 0.625
+                st.session_state[f"prev_state_{p_id}"] = True
+                st.session_state[f"prev_pts_{p_id}"] = 0
+                st.session_state[f"cust_{p_id}"] = ""
+
+            # 6. Réinitialisation des noms personnalisés
+            st.session_state["input_custom_rec"] = "Équipe 1"
+            st.session_state["input_custom_vis"] = "Équipe 2"
+
+            st.rerun()
+
+if a_corbeille:
+    st.info("ℹ️ Un match en cours a été effacé récemment. Si c'était une erreur, cliquez sur **« ↩️ Annuler effacement »** ci-dessus pour le récupérer.")
 
 st.divider()
 
@@ -1083,6 +1129,11 @@ with col_valid1:
             if os.path.exists(BACKUP_FILE):
                 try:
                     os.remove(BACKUP_FILE)
+                except Exception:
+                    pass
+            if os.path.exists(CORBEILLE_FILE):
+                try:
+                    os.remove(CORBEILLE_FILE)
                 except Exception:
                     pass
             liberer_verrou(my_session_id)
