@@ -232,11 +232,11 @@ def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_j
 
     lignes_texte.extend([
         "-" * 50,
-        f"Points par joueur — {receveur} (sur 24 pts max) :",
+        f"Points par joueur — {receveur} :",
         f"  * {dict_joueurs['j1_rec']['nom']} : {pts_joueurs['j1_rec']} pts",
         f"  * {dict_joueurs['j2_rec']['nom']} : {pts_joueurs['j2_rec']} pts",
         f"  * {dict_joueurs['j3_rec']['nom']} : {pts_joueurs['j3_rec']} pts",
-        f"Points par joueur — {visiteur} (sur 24 pts max) :",
+        f"Points par joueur — {visiteur} :",
         f"  * {dict_joueurs['j1_vis']['nom']} : {pts_joueurs['j1_vis']} pts",
         f"  * {dict_joueurs['j2_vis']['nom']} : {pts_joueurs['j2_vis']} pts",
         f"  * {dict_joueurs['j3_vis']['nom']} : {pts_joueurs['j3_vis']} pts",
@@ -257,8 +257,7 @@ def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_j
         label_a = f"{ja} (Absent : {sa} pts)" if ja_abs else ja
         label_b = f"{jb} (Absent : {sb} pts)" if jb_abs else jb
 
-        gagnant = ja if sa > sb else (jb if sb > sa else "Égalité")
-        lignes_texte.append(f"Manche {num} : {label_a} ({sa}) vs {label_b} ({sb}) -> Gagnant : {gagnant}")
+        lignes_texte.append(f"Manche {num} : {label_a} ({sa}) vs {label_b} ({sb})")
         lignes_html.append(f"""
             <tr style="border-bottom: 1px solid #ddd; text-align: center;">
                 <td style="padding: 8px;"><strong>Manche {num}</strong></td>
@@ -266,7 +265,6 @@ def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_j
                 <td style="padding: 8px; font-weight: bold; color: {'#1b5e20' if sa == 8 else '#333'};">{sa}</td>
                 <td style="padding: 8px; font-weight: bold; color: {'#1b5e20' if sb == 8 else '#333'};">{sb}</td>
                 <td style="padding: 8px;">{label_b}</td>
-                <td style="padding: 8px; font-weight: bold; color: #0d47a1;">{gagnant}</td>
             </tr>
         """)
 
@@ -284,8 +282,8 @@ def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_j
         <div style="background-color: #f4f6f9; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
             <h3 style="margin: 0; color: #1e3d59;">Résultat final du match :</h3>
             <p style="font-size: 18px; margin: 8px 0;">
-                <strong>{receveur}</strong> : <span style="font-size: 22px; color: #0d47a1;">{total_rec}</span> pts / 72<br>
-                <strong>{visiteur}</strong> : <span style="font-size: 22px; color: #0d47a1;">{total_vis}</span> pts / 72
+                <strong>{receveur}</strong> : <span style="font-size: 22px; color: #0d47a1;">{total_rec}</span> pts<br>
+                <strong>{visiteur}</strong> : <span style="font-size: 22px; color: #0d47a1;">{total_vis}</span> pts
             </p>
             <p style="font-weight: bold; color: #2e7d32; font-size: 16px;">
                 Vainqueur : {receveur if total_rec > total_vis else (visiteur if total_vis > total_rec else "Égalité")}
@@ -296,17 +294,17 @@ def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_j
                 <div style="flex: 1; background: white; padding: 10px; border-radius: 6px; border: 1px solid #ddd;">
                     <h4 style="margin: 0 0 8px 0; color: #0b3c5d;">Points individuels — {receveur} :</h4>
                     <ul style="margin: 0; padding-left: 20px; font-size: 14px;">
-                        <li><strong>{dict_joueurs['j1_rec']['nom']}</strong> : {pts_joueurs['j1_rec']} / 24 pts</li>
-                        <li><strong>{dict_joueurs['j2_rec']['nom']}</strong> : {pts_joueurs['j2_rec']} / 24 pts</li>
-                        <li><strong>{dict_joueurs['j3_rec']['nom']}</strong> : {pts_joueurs['j3_rec']} / 24 pts</li>
+                        <li><strong>{dict_joueurs['j1_rec']['nom']}</strong> : {pts_joueurs['j1_rec']} pts</li>
+                        <li><strong>{dict_joueurs['j2_rec']['nom']}</strong> : {pts_joueurs['j2_rec']} pts</li>
+                        <li><strong>{dict_joueurs['j3_rec']['nom']}</strong> : {pts_joueurs['j3_rec']} pts</li>
                     </ul>
                 </div>
                 <div style="flex: 1; background: white; padding: 10px; border-radius: 6px; border: 1px solid #ddd;">
                     <h4 style="margin: 0 0 8px 0; color: #0b3c5d;">Points individuels — {visiteur} :</h4>
                     <ul style="margin: 0; padding-left: 20px; font-size: 14px;">
-                        <li><strong>{dict_joueurs['j1_vis']['nom']}</strong> : {pts_joueurs['j1_vis']} / 24 pts</li>
-                        <li><strong>{dict_joueurs['j2_vis']['nom']}</strong> : {pts_joueurs['j2_vis']} / 24 pts</li>
-                        <li><strong>{dict_joueurs['j3_vis']['nom']}</strong> : {pts_joueurs['j3_vis']} / 24 pts</li>
+                        <li><strong>{dict_joueurs['j1_vis']['nom']}</strong> : {pts_joueurs['j1_vis']} pts</li>
+                        <li><strong>{dict_joueurs['j2_vis']['nom']}</strong> : {pts_joueurs['j2_vis']} pts</li>
+                        <li><strong>{dict_joueurs['j3_vis']['nom']}</strong> : {pts_joueurs['j3_vis']} pts</li>
                     </ul>
                 </div>
             </div>
@@ -319,7 +317,6 @@ def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_j
                     <th style="padding: 10px;">Pts</th>
                     <th style="padding: 10px;">Pts</th>
                     <th style="padding: 10px;">Joueur ({visiteur})</th>
-                    <th style="padding: 10px;">Gagnant</th>
                 </tr>
             </thead>
             <tbody>
@@ -910,15 +907,15 @@ st.markdown("### 📊 Résultats et Totaux")
 
 # 1. Totaux par équipe
 col_res1, col_res2, col_res3 = st.columns(3)
-col_res1.metric(label=f"🏆 Total {equipe_receveur}", value=f"{total_pts_receveur} / 72 pts")
-col_res2.metric(label=f"🏆 Total {equipe_visiteur}", value=f"{total_pts_visiteur} / 72 pts")
+col_res1.metric(label=f"🏆 Total {equipe_receveur}", value=f"{total_pts_receveur} pts")
+col_res2.metric(label=f"🏆 Total {equipe_visiteur}", value=f"{total_pts_visiteur} pts")
 
 with col_res3:
     st.markdown("### 💾 Sécurité anti-panne")
     st.success("✅ Sauvegarde automatique active.\nEn cas de coupure, cliquez sur **'Restaurer'** en haut.")
 
 # 2. Totaux individuels par joueur
-st.markdown("#### 👤 Points individuels par joueur (sur 24 pts max)")
+st.markdown("#### 👤 Points individuels par joueur")
 
 col_rec_pts, col_vis_pts = st.columns(2)
 
@@ -928,9 +925,9 @@ with col_rec_pts:
     p1 = dict_joueurs["j1_rec"]
     p2 = dict_joueurs["j2_rec"]
     p3 = dict_joueurs["j3_rec"]
-    cr1.metric(label=f"{p1['nom']}" + (" (Abs.)" if not p1['present'] else ""), value=f"{pts_joueurs['j1_rec']} / 24 pts")
-    cr2.metric(label=f"{p2['nom']}" + (" (Abs.)" if not p2['present'] else ""), value=f"{pts_joueurs['j2_rec']} / 24 pts")
-    cr3.metric(label=f"{p3['nom']}" + (" (Abs.)" if not p3['present'] else ""), value=f"{pts_joueurs['j3_rec']} / 24 pts")
+    cr1.metric(label=f"{p1['nom']}" + (" (Abs.)" if not p1['present'] else ""), value=f"{pts_joueurs['j1_rec']} pts")
+    cr2.metric(label=f"{p2['nom']}" + (" (Abs.)" if not p2['present'] else ""), value=f"{pts_joueurs['j2_rec']} pts")
+    cr3.metric(label=f"{p3['nom']}" + (" (Abs.)" if not p3['present'] else ""), value=f"{pts_joueurs['j3_rec']} pts")
 
 with col_vis_pts:
     st.markdown(f"**🚗 {equipe_visiteur}**")
@@ -938,9 +935,9 @@ with col_vis_pts:
     pv1 = dict_joueurs["j1_vis"]
     pv2 = dict_joueurs["j2_vis"]
     pv3 = dict_joueurs["j3_vis"]
-    cv1.metric(label=f"{pv1['nom']}" + (" (Abs.)" if not pv1['present'] else ""), value=f"{pts_joueurs['j1_vis']} / 24 pts")
-    cv2.metric(label=f"{pv2['nom']}" + (" (Abs.)" if not pv2['present'] else ""), value=f"{pts_joueurs['j2_vis']} / 24 pts")
-    cv3.metric(label=f"{pv3['nom']}" + (" (Abs.)" if not pv3['present'] else ""), value=f"{pts_joueurs['j3_vis']} / 24 pts")
+    cv1.metric(label=f"{pv1['nom']}" + (" (Abs.)" if not pv1['present'] else ""), value=f"{pts_joueurs['j1_vis']} pts")
+    cv2.metric(label=f"{pv2['nom']}" + (" (Abs.)" if not pv2['present'] else ""), value=f"{pts_joueurs['j2_vis']} pts")
+    cv3.metric(label=f"{pv3['nom']}" + (" (Abs.)" if not pv3['present'] else ""), value=f"{pts_joueurs['j3_vis']} pts")
 
 st.divider()
 
