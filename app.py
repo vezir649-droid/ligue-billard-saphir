@@ -478,7 +478,12 @@ if date_sauv_str:
     col_h1.caption(f"💾 *Dernière sauvegarde automatique : {date_sauv_str}*")
 
 with col_h2:
-    if st.button("🔄 Restaurer saisie", use_container_width=True, disabled=not est_editeur, help="Restaure la dernière sauvegarde automatique"):
+    if st.button(
+        "🔄 Restaurer saisie", 
+        use_container_width=True, 
+        disabled=not est_editeur, 
+        help="✅ Sauvegarde automatique active.\nEn cas de coupure, cliquez sur 'Restaurer' pour récupérer votre saisie."
+    ):
         data_a_restaurer = charger_sauvegarde()
         if data_a_restaurer and "matchs" in data_a_restaurer:
             restaurer_session(data_a_restaurer)
@@ -984,13 +989,9 @@ st.divider()
 st.markdown("### 📊 Résultats et Totaux")
 
 # 1. Totaux par équipe
-col_res1, col_res2, col_res3 = st.columns(3)
+col_res1, col_res2 = st.columns(2)
 col_res1.metric(label=f"🏆 Total {equipe_receveur}", value=f"{total_pts_receveur} pts")
 col_res2.metric(label=f"🏆 Total {equipe_visiteur}", value=f"{total_pts_visiteur} pts")
-
-with col_res3:
-    st.markdown("### 💾 Sécurité anti-panne")
-    st.success("✅ Sauvegarde automatique active.\nEn cas de coupure, cliquez sur **'Restaurer'** en haut.")
 
 # 2. Totaux individuels par joueur
 st.markdown("#### 👤 Points individuels par joueur")
