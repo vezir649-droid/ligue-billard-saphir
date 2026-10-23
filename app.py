@@ -326,7 +326,7 @@ def restaurer_session(data):
 
     return True
 
-def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_joueurs, dict_joueurs, date_str, absents_info=None):
+def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_joueurs, dict_joueurs, date_str, absents_info=None, rectif_bandeau=""):
     """Génère le résumé en texte brut et en HTML avec les totaux par équipe et par joueur."""
     lignes_texte = [
         f"Ligue de billard du Saphir - Résultats officiels",
