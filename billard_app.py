@@ -1424,11 +1424,14 @@ def obtenir_tous_les_joueurs_tournoi(equipes_dict=None):
             pass
     return sorted(list(joueurs))
 
-def generer_arbre_elimination(participants, race_to=2, titre="Tournoi"):
+def generer_arbre_elimination(participants, race_prelim=2, race_finale=3, titre="Tournoi"):
     """
     Génère un arbre à élimination directe strict SANS AUCUN PASSE-DROIT (aucun Bye).
     Tous les participants (simples ou duos) s'affrontent dès le premier tour.
     Le nombre de participants doit être une puissance exacte de 2 (2, 4, 8, 16, 32).
+    Format officiel des rondes :
+    - Préliminaires : 2 de 3 (premier à 2 victoires, race_to = 2)
+    - Finale : 3 de 5 (premier à 3 victoires, race_to = 3)
     """
     p_liste = list(participants)
     random.shuffle(p_liste)
@@ -1449,6 +1452,9 @@ def generer_arbre_elimination(participants, race_to=2, titre="Tournoi"):
     tours = []
     nb_matchs_tour = n // 2
     matchs_tour_1 = []
+    race_t1 = race_finale if total_tours == 1 else race_prelim
+    fmt_t1 = "3 de 5" if race_t1 == 3 else ("2 de 3" if race_t1 == 2 else f"Course à {race_t1}")
+
     for m_i in range(nb_matchs_tour):
         eq_a = p_liste[2 * m_i]
         eq_b = p_liste[2 * m_i + 1]
@@ -1458,6 +1464,8 @@ def generer_arbre_elimination(participants, race_to=2, titre="Tournoi"):
             "equipe_b": eq_b,
             "score_a": 0,
             "score_b": 0,
+            "race_to": race_t1,
+            "format_label": fmt_t1,
             "termine": False,
             "vainqueur": None
         })
@@ -1465,11 +1473,15 @@ def generer_arbre_elimination(participants, race_to=2, titre="Tournoi"):
     tours.append({
         "numero": 1,
         "nom": tours_labels[0],
+        "race_to": race_t1,
+        "format_label": fmt_t1,
         "matchs": matchs_tour_1
     })
 
     for t_i in range(2, total_tours + 1):
         nb_matchs = n // (2 ** t_i)
+        race_ti = race_finale if t_i == total_tours else race_prelim
+        fmt_ti = "3 de 5" if race_ti == 3 else ("2 de 3" if race_ti == 2 else f"Course à {race_ti}")
         matchs_t = []
         for m_i in range(nb_matchs):
             matchs_t.append({
@@ -1478,12 +1490,16 @@ def generer_arbre_elimination(participants, race_to=2, titre="Tournoi"):
                 "equipe_b": "À déterminer",
                 "score_a": 0,
                 "score_b": 0,
+                "race_to": race_ti,
+                "format_label": fmt_ti,
                 "termine": False,
                 "vainqueur": None
             })
         tours.append({
             "numero": t_i,
             "nom": tours_labels[t_i - 1],
+            "race_to": race_ti,
+            "format_label": fmt_ti,
             "matchs": matchs_t
         })
 
@@ -1491,7 +1507,8 @@ def generer_arbre_elimination(participants, race_to=2, titre="Tournoi"):
         "titre": titre,
         "date_creation": datetime.now().strftime("%d/%m/%Y à %H:%M"),
         "format": "elimination",
-        "race_to": race_to,
+        "race_prelim": race_prelim,
+        "race_finale": race_finale,
         "participants": p_liste,
         "total_tours": total_tours,
         "tours": tours,
@@ -1518,10 +1535,15 @@ def actualiser_score_elimination(tournoi, tour_num, match_id, score_a, score_b):
     if not m_trouve:
         return False
 
-    m_trouve["score_a"] = score_a
-    m_trouve["score_b"] = score_b
+    race_to = m_trouve.get("race_to", tour_courant.get("race_to", 3 if tour_num == tournoi.get("total_tours") else 2))
+
     if score_a == score_b:
         return False
+    if score_a < race_to and score_b < race_to:
+        return False
+
+    m_trouve["score_a"] = score_a
+    m_trouve["score_b"] = score_b
 
     vainqueur = m_trouve["equipe_a"] if score_a > score_b else m_trouve["equipe_b"]
     perdant = m_trouve["equipe_b"] if score_a > score_b else m_trouve["equipe_a"]
@@ -1543,11 +1565,12 @@ def actualiser_score_elimination(tournoi, tour_num, match_id, score_a, score_b):
     return True
 
 def generer_round_robin(participants, race_to=2, titre="Tournoi"):
-    """Génère un championnat toutes rondes (Round-Robin)."""
+    """Génère un championnat toutes rondes (Round-Robin). Format officiel : 2 de 3."""
     p_liste = list(participants)
     random.shuffle(p_liste)
     matchs = []
     m_idx = 1
+    fmt_label = "2 de 3" if race_to == 2 else f"Course à {race_to}"
     for i in range(len(p_liste)):
         for j in range(i + 1, len(p_liste)):
             matchs.append({
@@ -1556,6 +1579,8 @@ def generer_round_robin(participants, race_to=2, titre="Tournoi"):
                 "equipe_b": p_liste[j],
                 "score_a": 0,
                 "score_b": 0,
+                "race_to": race_to,
+                "format_label": fmt_label,
                 "termine": False,
                 "vainqueur": None
             })
@@ -1565,6 +1590,7 @@ def generer_round_robin(participants, race_to=2, titre="Tournoi"):
         "date_creation": datetime.now().strftime("%d/%m/%Y à %H:%M"),
         "format": "round_robin",
         "race_to": race_to,
+        "format_label": fmt_label,
         "participants": p_liste,
         "matchs": matchs,
         "statut": "en_cours",
@@ -1611,8 +1637,11 @@ def generer_html_tournoi(tournoi, mode="simple"):
     titre_t = tournoi.get("titre", "Tournoi officiel")
     date_t = tournoi.get("date_creation", "")
     mode_str = "Simple (1 contre 1)" if mode == "simple" else "Double (2 contre 2)"
-    race_to = tournoi.get("race_to", 2)
-    format_str = f"Élimination directe (Course à {race_to})" if tournoi.get("format") == "elimination" else f"Championnat toutes rondes (Course à {race_to})"
+    if tournoi.get("format") == "elimination":
+        format_str = "Élimination directe (Préliminaires 2 de 3 • Finale 3 de 5)"
+    else:
+        race_to = tournoi.get("race_to", 2)
+        format_str = f"Championnat toutes rondes ({tournoi.get('format_label', '2 de 3')})"
 
     podium_html = ""
     if tournoi.get("statut") == "termine" and tournoi.get("vainqueur_final"):
@@ -1633,6 +1662,7 @@ def generer_html_tournoi(tournoi, mode="simple"):
     if tournoi.get("format") == "elimination":
         for t in tournoi.get("tours", []):
             nom_tour = t["nom"]
+            fmt_lbl = t.get("format_label", "3 de 5" if t.get("numero") == tournoi.get("total_tours") else "2 de 3")
             for m in t["matchs"]:
                 ea = m["equipe_a"]
                 eb = m["equipe_b"]
@@ -1643,7 +1673,7 @@ def generer_html_tournoi(tournoi, mode="simple"):
                 score_txt = f"{sa} - {sb}" if m.get("termine") else "-"
                 lignes_matchs.append(f"""
                 <tr style="border-bottom: 1px solid #e0e0e0; text-align: center;">
-                    <td style="padding: 4px; font-weight: bold; color: #0b3c5d;">{nom_tour}</td>
+                    <td style="padding: 4px; font-weight: bold; color: #0b3c5d;">{nom_tour} <span style="font-size: 10px; color: #666; font-weight: normal;">({fmt_lbl})</span></td>
                     <td style="padding: 4px; text-align: left;">{ea}</td>
                     <td style="padding: 4px; font-weight: bold; font-size: 12px;">{score_txt}</td>
                     <td style="padding: 4px; text-align: left;">{eb}</td>
@@ -1754,14 +1784,11 @@ def afficher_section_tournoi(mode="simple"):
                     key=f"tournoi_format_{mode}"
                 )
             with col_cfg2:
-                race_to = st.number_input(
-                    "Nombre de manches gagnantes (Course à) :",
-                    min_value=1,
-                    max_value=10,
-                    value=2,
-                    step=1,
-                    key=f"tournoi_race_{mode}",
-                    help="Le premier joueur ou duo à atteindre ce nombre de manches remporte la rencontre."
+                st.markdown("**Formule officielle des matchs :**")
+                st.info(
+                    "🔹 **Préliminaires :** 2 de 3 *(premier à 2)*\n\n"
+                    "🏆 **Grande Finale :** 3 de 5 *(premier à 3)*\n\n"
+                    "🔄 **Round-Robin :** 2 de 3"
                 )
 
             st.divider()
@@ -1903,9 +1930,9 @@ def afficher_section_tournoi(mode="simple"):
             if btn_lancer:
                 format_slug = "elimination" if is_elim else "round_robin"
                 if format_slug == "elimination":
-                    t_cree = generer_arbre_elimination(participants_finaux, race_to=race_to, titre=titre_saisi)
+                    t_cree = generer_arbre_elimination(participants_finaux, race_prelim=2, race_finale=3, titre=titre_saisi)
                 else:
-                    t_cree = generer_round_robin(participants_finaux, race_to=race_to, titre=titre_saisi)
+                    t_cree = generer_round_robin(participants_finaux, race_to=2, titre=titre_saisi)
 
                 if t_cree:
                     tournois_data[mode] = t_cree
@@ -1924,8 +1951,11 @@ def afficher_section_tournoi(mode="simple"):
         with col_top1:
             st.markdown(f"#### 🏆 **{titre_t}**")
             badge_statut = "🟢 **En cours**" if statut == "en_cours" else "🏆 **Tournoi Terminé**"
-            format_nom = f"Élimination directe (Course à {race_to})" if format_type == "elimination" else f"Championnat Round-Robin (Course à {race_to})"
-            st.caption(f"Statut : {badge_statut} &nbsp;|&nbsp; Format : `{format_nom}` &nbsp;|&nbsp; Créé le : {tournoi.get('date_creation', 'N/D')}")
+            if format_type == "elimination":
+                format_nom = "Élimination directe (Préliminaires 2 de 3 • Finale 3 de 5)"
+            else:
+                format_nom = "Championnat Round-Robin (2 de 3)"
+            st.caption(f"Statut : {badge_statut} &nbsp;|&nbsp; Formule : `{format_nom}` &nbsp;|&nbsp; Créé le : {tournoi.get('date_creation', 'N/D')}")
 
         with col_top2:
             html_tournoi = generer_html_tournoi(tournoi, mode=mode)
@@ -1990,8 +2020,10 @@ def afficher_section_tournoi(mode="simple"):
                 for t_idx, tab_tour in enumerate(tabs_t):
                     tour_courant = tours[t_idx]
                     tour_num = tour_courant["numero"]
+                    tour_race = tour_courant.get("race_to", 3 if tour_num == tournoi.get("total_tours") else 2)
+                    tour_fmt = tour_courant.get("format_label", "3 de 5" if tour_race == 3 else "2 de 3")
                     with tab_tour:
-                        st.markdown(f"###### **{tour_courant['nom']}** (Course à {race_to})")
+                        st.markdown(f"###### **{tour_courant['nom']}** — Format `{tour_fmt}` (premier à {tour_race} manches gagnantes)")
                         matchs = tour_courant.get("matchs", [])
 
                         for m in matchs:
@@ -2002,35 +2034,37 @@ def afficher_section_tournoi(mode="simple"):
                             vainq = m.get("vainqueur")
                             sa = m.get("score_a", 0)
                             sb = m.get("score_b", 0)
+                            m_race = m.get("race_to", tour_race)
+                            m_fmt = m.get("format_label", tour_fmt)
 
                             with st.container(border=True):
                                 col_m1, col_m2 = st.columns([3, 2])
                                 with col_m1:
                                     if termine:
                                         st.markdown(f"**{m_id}** : **{ea}** ({sa}) vs ({sb}) **{eb}**")
-                                        st.success(f"🏆 **Qualifié :** {vainq}")
+                                        st.success(f"🏆 **Qualifié :** {vainq} *(score final {sa}-{sb})*")
                                     else:
                                         if ea == "À déterminer" or eb == "À déterminer":
                                             st.markdown(f"**{m_id}** : `{ea}` vs `{eb}`")
                                             st.caption("⏳ En attente des vainqueurs du tour précédent...")
                                         else:
                                             st.markdown(f"**{m_id}** : 🎯 **{ea}** vs **{eb}**")
-                                            st.caption(f"Course à {race_to} victoires")
+                                            st.caption(f"Format officiel : **{m_fmt}** (premier à {m_race} victoires)")
 
                                 with col_m2:
                                     if not termine and ea != "À déterminer" and eb != "À déterminer":
                                         col_s1, col_s2, col_s3 = st.columns([1, 1, 1.5])
                                         with col_s1:
-                                            sc_a_in = st.number_input(f"{ea[:10]}", min_value=0, max_value=race_to, value=0, key=f"sc_a_{mode}_{m_id}")
+                                            sc_a_in = st.number_input(f"{ea[:10]}", min_value=0, max_value=m_race, value=0, key=f"sc_a_{mode}_{m_id}")
                                         with col_s2:
-                                            sc_b_in = st.number_input(f"{eb[:10]}", min_value=0, max_value=race_to, value=0, key=f"sc_b_{mode}_{m_id}")
+                                            sc_b_in = st.number_input(f"{eb[:10]}", min_value=0, max_value=m_race, value=0, key=f"sc_b_{mode}_{m_id}")
                                         with col_s3:
                                             st.write("")
                                             if st.button("✅ Valider", key=f"btn_v_{mode}_{m_id}", use_container_width=True, disabled=not est_editeur):
                                                 if sc_a_in == sc_b_in:
                                                     st.error("Match nul impossible.")
-                                                elif sc_a_in < race_to and sc_b_in < race_to:
-                                                    st.warning(f"Un joueur doit atteindre {race_to} victoires.")
+                                                elif sc_a_in < m_race and sc_b_in < m_race:
+                                                    st.warning(f"Un joueur doit remporter {m_race} manches ({m_fmt}).")
                                                 else:
                                                     actualiser_score_elimination(tournoi, tour_num, m_id, sc_a_in, sc_b_in)
                                                     sauvegarder_tournois_data(tournois_data)
@@ -2076,28 +2110,30 @@ def afficher_section_tournoi(mode="simple"):
 
                 with st.container(border=True):
                     col_rm1, col_rm2 = st.columns([3, 2])
+                    rr_race = tournoi.get("race_to", 2)
+                    rr_fmt = tournoi.get("format_label", "2 de 3")
                     with col_rm1:
                         if termine:
                             st.markdown(f"**{m_id}** : **{ea}** ({sa}) vs ({sb}) **{eb}**")
-                            st.success(f"🏆 Vainqueur : {m['vainqueur']}")
+                            st.success(f"🏆 Vainqueur : {m['vainqueur']} *(score final {sa}-{sb})*")
                         else:
                             st.markdown(f"**{m_id}** : 🎯 **{ea}** vs **{eb}**")
-                            st.caption(f"Course à {race_to} victoires")
+                            st.caption(f"Format officiel : **{rr_fmt}** (premier à {rr_race} victoires)")
 
                     with col_rm2:
                         if not termine:
                             col_s1, col_s2, col_s3 = st.columns([1, 1, 1.5])
                             with col_s1:
-                                sc_a_in = st.number_input(f"{ea[:10]}", min_value=0, max_value=race_to, value=0, key=f"rr_a_{mode}_{m_id}")
+                                sc_a_in = st.number_input(f"{ea[:10]}", min_value=0, max_value=rr_race, value=0, key=f"rr_a_{mode}_{m_id}")
                             with col_s2:
-                                sc_b_in = st.number_input(f"{eb[:10]}", min_value=0, max_value=race_to, value=0, key=f"rr_b_{mode}_{m_id}")
+                                sc_b_in = st.number_input(f"{eb[:10]}", min_value=0, max_value=rr_race, value=0, key=f"rr_b_{mode}_{m_id}")
                             with col_s3:
                                 st.write("")
                                 if st.button("✅ Valider", key=f"btn_rr_{mode}_{m_id}", use_container_width=True, disabled=not est_editeur):
                                     if sc_a_in == sc_b_in:
                                         st.error("Match nul impossible.")
-                                    elif sc_a_in < race_to and sc_b_in < race_to:
-                                        st.warning(f"Un joueur doit atteindre {race_to} victoires.")
+                                    elif sc_a_in < rr_race and sc_b_in < rr_race:
+                                        st.warning(f"Un joueur doit remporter {rr_race} manches ({rr_fmt}).")
                                     else:
                                         m["score_a"] = sc_a_in
                                         m["score_b"] = sc_b_in
