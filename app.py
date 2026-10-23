@@ -1,4 +1,6 @@
 import json
+import math
+import random
 import os
 import re
 import smtplib
@@ -52,6 +54,7 @@ def find_armoiries_path():
 BACKUP_FILE = get_data_path("sauvegarde_saisie_secours.json")
 CORBEILLE_FILE = get_data_path("sauvegarde_annulee_secours.json")
 HISTORIQUE_FILE = get_data_path("historique_matchs.json")
+TOURNOIS_FILE = get_data_path("tournois_data.json")
 CONFIG_EMAIL_FILE = get_data_path("config_email.json")
 ADMIN_CONFIG_FILE = get_data_path("config_admin.json")
 EQUIPES_CSV_FILE = get_data_path("equipes-saphir.csv")
@@ -1322,6 +1325,768 @@ def envoyer_courriel(destinataires_str, sujet, texte_brut, html_contenu, config,
     except Exception as e:
         return False, f"Échec de l'envoi du courriel : {str(e)}"
 
+
+# ==============================================================================
+# MODULE DE GESTION DES TOURNOIS (SIMPLE & DOUBLE)
+# ==============================================================================
+def charger_tournois_data():
+    """Charge les données des tournois depuis le fichier JSON."""
+    if os.path.exists(TOURNOIS_FILE):
+        try:
+            with open(TOURNOIS_FILE, "r", encoding="utf-8") as f:
+                d = json.load(f)
+                if isinstance(d, dict):
+                    return d
+        except Exception:
+            return {}
+    return {}
+
+def sauvegarder_tournois_data(data):
+    """Enregistre les données des tournois dans le fichier JSON."""
+    try:
+        with open(TOURNOIS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
+        return True
+    except Exception as e:
+        st.error(f"Erreur lors de l'enregistrement du tournoi : {e}")
+        return False
+
+def obtenir_tous_les_joueurs_tournoi(equipes_dict=None):
+    """Récupère l'ensemble des joueurs disponibles (équipes et historique)."""
+    joueurs = set()
+    if equipes_dict:
+        for eq, liste_j in equipes_dict.items():
+            for j in liste_j:
+                if j and not j.startswith("Joueur "):
+                    joueurs.add(j.strip())
+    if os.path.exists(EQUIPES_CSV_FILE):
+        try:
+            with open(EQUIPES_CSV_FILE, "r", encoding="utf-8") as f:
+                for line in f:
+                    parts = [p.strip() for p in line.strip().split(",") if p.strip()]
+                    if len(parts) >= 2:
+                        for p in parts[1:]:
+                            if p and not p.startswith("Joueur "):
+                                joueurs.add(p)
+        except Exception:
+            pass
+    if os.path.exists(HISTORIQUE_FILE):
+        try:
+            with open(HISTORIQUE_FILE, "r", encoding="utf-8") as f:
+                h = json.load(f)
+                for m in h:
+                    for num, manche in m.get("matchs", {}).items():
+                        ja = (manche.get("joueur_a") or "").strip()
+                        jb = (manche.get("joueur_b") or "").strip()
+                        if ja and not ja.startswith("Joueur "): joueurs.add(ja)
+                        if jb and not jb.startswith("Joueur "): joueurs.add(jb)
+        except Exception:
+            pass
+    return sorted(list(joueurs))
+
+def generer_arbre_elimination(participants, race_to=2, titre="Tournoi"):
+    """Génère un arbre à élimination directe complet avec Byes automatiques."""
+    p_liste = list(participants)
+    random.shuffle(p_liste)
+    n = len(p_liste)
+    if n < 2:
+        return None
+
+    k = 1
+    while k < n:
+        k *= 2
+
+    noms_tours = {
+        2: ["Finale"],
+        4: ["Demi-finales", "Finale"],
+        8: ["Quarts de finale", "Demi-finales", "Finale"],
+        16: ["Huitièmes de finale", "Quarts de finale", "Demi-finales", "Finale"],
+        32: ["1/16 de finale", "Huitièmes de finale", "Quarts de finale", "Demi-finales", "Finale"]
+    }
+    total_tours = int(math.log2(k))
+    tours_labels = noms_tours.get(k, [f"Tour {i+1}" for i in range(total_tours)])
+
+    nb_byes = k - n
+    liste_depart = []
+    part_idx = 0
+    bye_count = 0
+    for i in range(k):
+        if bye_count < nb_byes and i % 2 == 1:
+            liste_depart.append("BYE (Exempt)")
+            bye_count += 1
+        else:
+            if part_idx < len(p_liste):
+                liste_depart.append(p_liste[part_idx])
+                part_idx += 1
+            else:
+                liste_depart.append("BYE (Exempt)")
+
+    tours = []
+    nb_matchs_tour = k // 2
+    matchs_tour_1 = []
+    for m_i in range(nb_matchs_tour):
+        eq_a = liste_depart[2 * m_i]
+        eq_b = liste_depart[2 * m_i + 1]
+        termine = False
+        vainqueur = None
+        sc_a, sc_b = 0, 0
+        if eq_b == "BYE (Exempt)" and eq_a != "BYE (Exempt)":
+            termine = True
+            vainqueur = eq_a
+            sc_a = race_to
+        elif eq_a == "BYE (Exempt)" and eq_b != "BYE (Exempt)":
+            termine = True
+            vainqueur = eq_b
+            sc_b = race_to
+
+        matchs_tour_1.append({
+            "id": f"T1_M{m_i+1}",
+            "equipe_a": eq_a,
+            "equipe_b": eq_b,
+            "score_a": sc_a,
+            "score_b": sc_b,
+            "termine": termine,
+            "vainqueur": vainqueur
+        })
+
+    tours.append({
+        "numero": 1,
+        "nom": tours_labels[0],
+        "matchs": matchs_tour_1
+    })
+
+    for t_i in range(2, total_tours + 1):
+        nb_matchs = k // (2 ** t_i)
+        matchs_t = []
+        for m_i in range(nb_matchs):
+            match_source_1 = tours[t_i - 2]["matchs"][2 * m_i]
+            match_source_2 = tours[t_i - 2]["matchs"][2 * m_i + 1]
+            eq_a = match_source_1["vainqueur"] or "À déterminer"
+            eq_b = match_source_2["vainqueur"] or "À déterminer"
+            matchs_t.append({
+                "id": f"T{t_i}_M{m_i+1}",
+                "equipe_a": eq_a,
+                "equipe_b": eq_b,
+                "score_a": 0,
+                "score_b": 0,
+                "termine": False,
+                "vainqueur": None
+            })
+        tours.append({
+            "numero": t_i,
+            "nom": tours_labels[t_i - 1],
+            "matchs": matchs_t
+        })
+
+    return {
+        "titre": titre,
+        "date_creation": datetime.now().strftime("%d/%m/%Y à %H:%M"),
+        "format": "elimination",
+        "race_to": race_to,
+        "participants": p_liste,
+        "total_tours": total_tours,
+        "tours": tours,
+        "statut": "en_cours",
+        "vainqueur_final": None,
+        "finaliste": None
+    }
+
+def actualiser_score_elimination(tournoi, tour_num, match_id, score_a, score_b):
+    """Enregistre le score et qualifie automatiquement le vainqueur pour le tour suivant."""
+    t_idx = tour_num - 1
+    if t_idx < 0 or t_idx >= len(tournoi["tours"]):
+        return False
+    tour_courant = tournoi["tours"][t_idx]
+
+    m_trouve = None
+    m_idx_in_tour = 0
+    for idx, m in enumerate(tour_courant["matchs"]):
+        if m["id"] == match_id:
+            m_trouve = m
+            m_idx_in_tour = idx
+            break
+
+    if not m_trouve:
+        return False
+
+    m_trouve["score_a"] = score_a
+    m_trouve["score_b"] = score_b
+    if score_a == score_b:
+        return False
+
+    vainqueur = m_trouve["equipe_a"] if score_a > score_b else m_trouve["equipe_b"]
+    perdant = m_trouve["equipe_b"] if score_a > score_b else m_trouve["equipe_a"]
+    m_trouve["vainqueur"] = vainqueur
+    m_trouve["termine"] = True
+
+    if tour_num < tournoi["total_tours"]:
+        prochain_tour = tournoi["tours"][tour_num]
+        prochain_match_idx = m_idx_in_tour // 2
+        prochain_match = prochain_tour["matchs"][prochain_match_idx]
+        if m_idx_in_tour % 2 == 0:
+            prochain_match["equipe_a"] = vainqueur
+        else:
+            prochain_match["equipe_b"] = vainqueur
+    else:
+        tournoi["vainqueur_final"] = vainqueur
+        tournoi["finaliste"] = perdant
+        tournoi["statut"] = "termine"
+    return True
+
+def generer_round_robin(participants, race_to=2, titre="Tournoi"):
+    """Génère un championnat toutes rondes (Round-Robin)."""
+    p_liste = list(participants)
+    random.shuffle(p_liste)
+    matchs = []
+    m_idx = 1
+    for i in range(len(p_liste)):
+        for j in range(i + 1, len(p_liste)):
+            matchs.append({
+                "id": f"RR_M{m_idx}",
+                "equipe_a": p_liste[i],
+                "equipe_b": p_liste[j],
+                "score_a": 0,
+                "score_b": 0,
+                "termine": False,
+                "vainqueur": None
+            })
+            m_idx += 1
+    return {
+        "titre": titre,
+        "date_creation": datetime.now().strftime("%d/%m/%Y à %H:%M"),
+        "format": "round_robin",
+        "race_to": race_to,
+        "participants": p_liste,
+        "matchs": matchs,
+        "statut": "en_cours",
+        "vainqueur_final": None,
+        "finaliste": None
+    }
+
+def calculer_classement_round_robin(tournoi_rr):
+    """Calcule le classement en direct pour un tournoi round-robin."""
+    stats = {p: {"pj": 0, "v": 0, "d": 0, "pour": 0, "contre": 0, "diff": 0, "pts": 0} for p in tournoi_rr.get("participants", [])}
+    for m in tournoi_rr.get("matchs", []):
+        if m.get("termine"):
+            ea, eb = m["equipe_a"], m["equipe_b"]
+            sa, sb = m["score_a"], m["score_b"]
+            if ea in stats and eb in stats:
+                stats[ea]["pj"] += 1
+                stats[eb]["pj"] += 1
+                stats[ea]["pour"] += sa
+                stats[ea]["contre"] += sb
+                stats[eb]["pour"] += sb
+                stats[eb]["contre"] += sa
+                if sa > sb:
+                    stats[ea]["v"] += 1
+                    stats[ea]["pts"] += 2
+                    stats[eb]["d"] += 1
+                elif sb > sa:
+                    stats[eb]["v"] += 1
+                    stats[eb]["pts"] += 2
+                    stats[ea]["d"] += 1
+
+    for p, s in stats.items():
+        s["diff"] = s["pour"] - s["contre"]
+
+    classement = sorted(stats.items(), key=lambda x: (x[1]["pts"], x[1]["diff"], x[1]["pour"]), reverse=True)
+    return classement
+
+def generer_html_tournoi(tournoi, mode="simple"):
+    """Génère la feuille officielle imprimable du tournoi calibrée pour une page A4."""
+    logo_b64 = charger_armoiries_base64()
+    src_val = logo_b64 if logo_b64 else "cid:armoiries_logo"
+    arm_existe = bool(logo_b64 or os.path.isfile(find_armoiries_path()))
+    logo_td = f'<td class="header-logo-td" style="width: 50px; vertical-align: middle; padding-right: 10px;"><img class="header-logo-img" src="{src_val}" alt="Armoiries" style="height: 46px; width: 46px; object-fit: contain; border-radius: 4px;"></td>' if arm_existe else ''
+
+    titre_t = tournoi.get("titre", "Tournoi officiel")
+    date_t = tournoi.get("date_creation", "")
+    mode_str = "Simple (1 contre 1)" if mode == "simple" else "Double (2 contre 2)"
+    race_to = tournoi.get("race_to", 2)
+    format_str = f"Élimination directe (Course à {race_to})" if tournoi.get("format") == "elimination" else f"Championnat toutes rondes (Course à {race_to})"
+
+    podium_html = ""
+    if tournoi.get("statut") == "termine" and tournoi.get("vainqueur_final"):
+        v_final = tournoi["vainqueur_final"]
+        fin_final = tournoi.get("finaliste", "Non spécifié")
+        podium_html = f"""
+        <div style="background: linear-gradient(135deg, #fff9c4, #fffde7); border: 2px solid #fbc02d; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; text-align: center;">
+            <div style="font-size: 14px; font-weight: bold; color: #f57f17; margin-bottom: 2px;">🏆 PALMARÈS DU TOURNOI</div>
+            <div style="font-size: 13px; color: #222;">
+                🥇 <strong>Champion :</strong> <span style="font-size: 15px; color: #0b3c5d; font-weight: bold;">{v_final}</span>
+                &nbsp;&nbsp;|&nbsp;&nbsp;
+                🥈 <strong>Finaliste :</strong> <span style="font-size: 13px; color: #555;">{fin_final}</span>
+            </div>
+        </div>
+        """
+
+    lignes_matchs = []
+    if tournoi.get("format") == "elimination":
+        for t in tournoi.get("tours", []):
+            nom_tour = t["nom"]
+            for m in t["matchs"]:
+                ea = m["equipe_a"]
+                eb = m["equipe_b"]
+                sa = m.get("score_a", 0)
+                sb = m.get("score_b", 0)
+                vainq = m.get("vainqueur")
+                statut_txt = f"🏆 <strong>{vainq}</strong>" if m.get("termine") else "En attente"
+                score_txt = f"{sa} - {sb}" if m.get("termine") else "-"
+                lignes_matchs.append(f"""
+                <tr style="border-bottom: 1px solid #e0e0e0; text-align: center;">
+                    <td style="padding: 4px; font-weight: bold; color: #0b3c5d;">{nom_tour}</td>
+                    <td style="padding: 4px; text-align: left;">{ea}</td>
+                    <td style="padding: 4px; font-weight: bold; font-size: 12px;">{score_txt}</td>
+                    <td style="padding: 4px; text-align: left;">{eb}</td>
+                    <td style="padding: 4px;">{statut_txt}</td>
+                </tr>
+                """)
+    else:
+        for idx, m in enumerate(tournoi.get("matchs", []), 1):
+            ea = m["equipe_a"]
+            eb = m["equipe_b"]
+            sa = m.get("score_a", 0)
+            sb = m.get("score_b", 0)
+            vainq = m.get("vainqueur")
+            statut_txt = f"🏆 <strong>{vainq}</strong>" if m.get("termine") else "En attente"
+            score_txt = f"{sa} - {sb}" if m.get("termine") else "-"
+            lignes_matchs.append(f"""
+            <tr style="border-bottom: 1px solid #e0e0e0; text-align: center;">
+                <td style="padding: 4px; font-weight: bold; color: #0b3c5d;">Match #{idx}</td>
+                <td style="padding: 4px; text-align: left;">{ea}</td>
+                <td style="padding: 4px; font-weight: bold; font-size: 12px;">{score_txt}</td>
+                <td style="padding: 4px; text-align: left;">{eb}</td>
+                <td style="padding: 4px;">{statut_txt}</td>
+            </tr>
+            """)
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Feuille officielle de tournoi - {titre_t}</title>
+    <style>
+        {STYLE_PRINT_A4}
+        body {{
+            font-family: Arial, sans-serif;
+            line-height: 1.4;
+            color: #222;
+            margin: 0;
+            padding: 10px;
+        }}
+        .fiche-a4 {{
+            max-width: 850px;
+            margin: 0 auto;
+        }}
+    </style>
+</head>
+<body>
+    <div class="fiche-a4">
+        <table class="header-table" style="width: 100%; border-bottom: 2px solid #0b3c5d; padding-bottom: 5px; margin-bottom: 8px; border-collapse: collapse;">
+            <tr>
+                {logo_td}
+                <td class="header-title" style="vertical-align: middle;">
+                    <h2 class="header-title-h2" style="color: #0b3c5d; margin: 0; font-size: 18px;">🎱 Ligue de billard Boule en main</h2>
+                    <div class="header-title-sub" style="color: #555; font-size: 12px; font-weight: bold; margin-top: 2px;">{titre_t} — {mode_str}</div>
+                </td>
+            </tr>
+        </table>
+        <p class="date-para" style="margin: 3px 0 6px 0; font-size: 11px;">
+            <strong>Date :</strong> {date_t} &nbsp;|&nbsp; 
+            <strong>Format :</strong> {format_str} &nbsp;|&nbsp; 
+            <strong>Participants :</strong> {len(tournoi.get('participants', []))}
+        </p>
+        {podium_html}
+        <table class="manches-table" style="width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 4px;">
+            <thead>
+                <tr style="background-color: #0b3c5d; color: white;">
+                    <th style="padding: 5px 4px;">Tour / Rencontre</th>
+                    <th style="padding: 5px 4px; text-align: left;">Participant A</th>
+                    <th style="padding: 5px 4px;">Score</th>
+                    <th style="padding: 5px 4px; text-align: left;">Participant B</th>
+                    <th style="padding: 5px 4px;">Vainqueur</th>
+                </tr>
+            </thead>
+            <tbody>
+                {''.join(lignes_matchs)}
+            </tbody>
+        </table>
+        <p class="footer-note" style="font-size: 9px; color: #777; margin-top: 8px; text-align: center;">
+            Tableau officiel généré via l'application de la Ligue de billard Boule en main.
+        </p>
+    </div>
+</body>
+</html>
+"""
+    return html
+
+def afficher_section_tournoi(mode="simple"):
+    """Affiche l'interface complète de configuration ou de déroulement d'un tournoi (Simple ou Double)."""
+    est_spectateur = st.session_state.get("est_spectateur", False)
+    est_editeur = not est_spectateur
+
+    tournois_data = charger_tournois_data()
+    tournoi = tournois_data.get(mode)
+
+    libelle_mode = "Tournoi en Simple (1 contre 1)" if mode == "simple" else "Tournoi en Double (2 contre 2)"
+    st.markdown(f"### {'👤' if mode == 'simple' else '👥'} {libelle_mode}")
+
+    # 1. CAS OÙ AUCUN TOURNOI N'EST EN COURS : FORMULAIRE DE CRÉATION
+    if not tournoi:
+        st.caption(f"Configurez les paramètres et inscrivez les participants pour lancer un nouveau {libelle_mode.lower()}.")
+        with st.container(border=True):
+            col_cfg1, col_cfg2 = st.columns([2, 1])
+            with col_cfg1:
+                titre_defaut = f"Tournoi {'Simple' if mode == 'simple' else 'Double'} — {datetime.now().strftime('%d/%m/%Y')}"
+                titre_saisi = st.text_input("Nom du tournoi :", value=titre_defaut, key=f"tournoi_titre_{mode}")
+                type_format = st.radio(
+                    "Format de compétition :",
+                    ["🏆 Élimination directe (Arbre de tournoi)", "🔄 Championnat toutes rondes (Round-Robin)"],
+                    key=f"tournoi_format_{mode}"
+                )
+            with col_cfg2:
+                race_to = st.number_input(
+                    "Nombre de manches gagnantes (Course à) :",
+                    min_value=1,
+                    max_value=10,
+                    value=2,
+                    step=1,
+                    key=f"tournoi_race_{mode}",
+                    help="Le premier joueur ou duo à atteindre ce nombre de manches remporte la rencontre."
+                )
+
+            st.divider()
+
+            # Sélection des participants
+            joueurs_disponibles = obtenir_tous_les_joueurs_tournoi()
+
+            # Gestion des invités personnalisés
+            key_invites = f"invites_tournoi_{mode}"
+            if key_invites not in st.session_state:
+                st.session_state[key_invites] = []
+
+            col_inv1, col_inv2 = st.columns([3, 1])
+            with col_inv1:
+                nouveau_joueur = st.text_input("Ajouter un joueur invité / remplaçant :", key=f"input_invite_{mode}", placeholder="Ex: Jean Tremblay")
+            with col_inv2:
+                st.write("")
+                if st.button("➕ Ajouter l'invité", key=f"btn_add_invite_{mode}", use_container_width=True):
+                    if nouveau_joueur.strip():
+                        nom_prop = nouveau_joueur.strip()
+                        if nom_prop not in joueurs_disponibles and nom_prop not in st.session_state[key_invites]:
+                            st.session_state[key_invites].append(nom_prop)
+                            st.rerun()
+
+            tous_candidats = sorted(list(set(joueurs_disponibles + st.session_state[key_invites])))
+
+            participants_finaux = []
+
+            if mode == "simple":
+                st.markdown("##### 👤 Liste des joueurs participants")
+                selection_j = st.multiselect(
+                    "Sélectionnez les joueurs inscrits :",
+                    options=tous_candidats,
+                    default=tous_candidats[:8] if len(tous_candidats) >= 8 else tous_candidats,
+                    key=f"sel_participants_{mode}",
+                    help="Cochez tous les joueurs qui participent au tournoi."
+                )
+                participants_finaux = selection_j
+                st.caption(f"ℹ️ **{len(participants_finaux)} joueur(s) inscrit(s)** au tournoi.")
+
+            else:
+                # Mode DOUBLE
+                st.markdown("##### 👥 Constitution des équipes de double")
+                methode_duos = st.radio(
+                    "Méthode de constitution des duos :",
+                    ["🎲 Tirage au sort aléatoire (Pige des équipes)", "✍️ Formation manuelle des duos"],
+                    key=f"methode_duos_{mode}"
+                )
+
+                if methode_duos == "🎲 Tirage au sort aléatoire (Pige des équipes)":
+                    selection_pool = st.multiselect(
+                        "Sélectionnez tous les joueurs qui participeront au tirage au sort :",
+                        options=tous_candidats,
+                        default=tous_candidats[:8] if len(tous_candidats) >= 8 else tous_candidats,
+                        key=f"pool_double_{mode}"
+                    )
+                    st.caption(f"Pool de joueurs sélectionnés : **{len(selection_pool)} joueurs**")
+
+                    if len(selection_pool) % 2 != 0:
+                        st.warning("⚠️ Le nombre de joueurs sélectionnés est impair. Veuillez ajouter ou retirer un joueur pour former des paires complètes.")
+
+                    if f"paires_tirees_{mode}" in st.session_state and st.session_state[f"paires_tirees_{mode}"]:
+                        st.markdown("###### 🎲 Paires tirées au sort :")
+                        for idx_p, p_nom in enumerate(st.session_state[f"paires_tirees_{mode}"], 1):
+                            st.markdown(f"• **Duo #{idx_p}** : `{p_nom}`")
+                        participants_finaux = st.session_state[f"paires_tirees_{mode}"]
+
+                    if st.button("🎲 Tirer les équipes au sort", key=f"btn_pige_{mode}", disabled=len(selection_pool) < 4 or len(selection_pool) % 2 != 0):
+                        pool_shuffled = list(selection_pool)
+                        random.shuffle(pool_shuffled)
+                        paires = []
+                        for i in range(0, len(pool_shuffled), 2):
+                            paires.append(f"{pool_shuffled[i]} & {pool_shuffled[i+1]}")
+                        st.session_state[f"paires_tirees_{mode}"] = paires
+                        participants_finaux = paires
+                        st.rerun()
+
+                else:
+                    # Formation manuelle des duos
+                    st.caption("Entrez les noms des équipes ou paires (ex: Guy V. & André St-P.) :")
+                    nb_duos = st.number_input("Nombre de duos :", min_value=2, max_value=16, value=4, step=1, key=f"nb_duos_man_{mode}")
+                    duos_manuels = []
+                    for i in range(int(nb_duos)):
+                        col_d1, col_d2 = st.columns(2)
+                        with col_d1:
+                            j_a = st.selectbox(f"Duo #{i+1} — Joueur 1 :", options=tous_candidats, index=i % len(tous_candidats) if tous_candidats else 0, key=f"duo_{i}_ja_{mode}")
+                        with col_d2:
+                            j_b = st.selectbox(f"Duo #{i+1} — Joueur 2 :", options=tous_candidats, index=(i+1) % len(tous_candidats) if tous_candidats else 0, key=f"duo_{i}_jb_{mode}")
+                        duos_manuels.append(f"{j_a} & {j_b}")
+                    participants_finaux = duos_manuels
+
+            st.divider()
+
+            btn_lancer = st.button(
+                "🚀 Lancer le tournoi et générer le tableau officiel",
+                type="primary",
+                use_container_width=True,
+                disabled=len(participants_finaux) < 2,
+                key=f"btn_lancer_{mode}"
+            )
+
+            if btn_lancer:
+                if len(participants_finaux) < 2:
+                    st.error("⚠️ Il faut au moins 2 participants pour démarrer un tournoi.")
+                else:
+                    format_slug = "elimination" if "Élimination" in type_format else "round_robin"
+                    if format_slug == "elimination":
+                        t_cree = generer_arbre_elimination(participants_finaux, race_to=race_to, titre=titre_saisi)
+                    else:
+                        t_cree = generer_round_robin(participants_finaux, race_to=race_to, titre=titre_saisi)
+
+                    tournois_data[mode] = t_cree
+                    sauvegarder_tournois_data(tournois_data)
+                    st.success("✅ Tournoi généré avec succès !")
+                    st.rerun()
+
+    # 2. CAS OÙ UN TOURNOI EST EN COURS OU TERMINÉ
+    else:
+        titre_t = tournoi.get("titre", "Tournoi officiel")
+        format_type = tournoi.get("format", "elimination")
+        race_to = tournoi.get("race_to", 2)
+        statut = tournoi.get("statut", "en_cours")
+
+        col_top1, col_top2, col_top3 = st.columns([2.5, 1, 1])
+        with col_top1:
+            st.markdown(f"#### 🏆 **{titre_t}**")
+            badge_statut = "🟢 **En cours**" if statut == "en_cours" else "🏆 **Tournoi Terminé**"
+            format_nom = f"Élimination directe (Course à {race_to})" if format_type == "elimination" else f"Championnat Round-Robin (Course à {race_to})"
+            st.caption(f"Statut : {badge_statut} &nbsp;|&nbsp; Format : `{format_nom}` &nbsp;|&nbsp; Créé le : {tournoi.get('date_creation', 'N/D')}")
+
+        with col_top2:
+            html_tournoi = generer_html_tournoi(tournoi, mode=mode)
+            html_t_json = json.dumps(html_tournoi)
+            st.components.v1.html(
+                f"""
+                <button onclick="imprimerTournoi()" style="width:100%; height:38px; background-color:#0b3c5d; color:white; border:none; border-radius:6px; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif; font-size:13px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;">
+                    🖨️ Imprimer (A4)
+                </button>
+                <script>
+                function imprimerTournoi() {{
+                    var win = window.open('', '_blank');
+                    win.document.open();
+                    win.document.write({html_t_json});
+                    win.document.close();
+                    win.focus();
+                    win.document.title = "Feuille de Tournoi - A4";
+                    setTimeout(function() {{
+                        win.print();
+                    }}, 350);
+                }}
+                </script>
+                """,
+                height=42
+            )
+
+        with col_top3:
+            with st.popover("🔄 Réinitialiser", use_container_width=True, disabled=not est_editeur):
+                st.markdown("### ⚠️ Réinitialisation")
+                st.write("Voulez-vous clôturer ce tournoi et en configurer un nouveau ?")
+                st.caption("Les données actuelles seront effacées pour démarrer une nouvelle compétition.")
+                if st.button("🔴 Confirmer la réinitialisation", type="primary", use_container_width=True, key=f"btn_confirm_reset_{mode}"):
+                    tournois_data[mode] = None
+                    sauvegarder_tournois_data(tournois_data)
+                    st.rerun()
+
+        # Podium si terminé
+        if statut == "termine" and tournoi.get("vainqueur_final"):
+            st.balloons()
+            with st.container(border=True):
+                st.markdown(
+                    f"""
+                    <div style="background: linear-gradient(135deg, #fff9c4, #fffde7); border: 2px solid #fbc02d; border-radius: 8px; padding: 14px; text-align: center;">
+                        <div style="font-size: 18px; font-weight: bold; color: #f57f17; margin-bottom: 6px;">🎉 FÉLICITATIONS AU CHAMPION 🎉</div>
+                        <div style="font-size: 20px; color: #0b3c5d; font-weight: bold; margin-bottom: 4px;">🥇 {tournoi['vainqueur_final']}</div>
+                        <div style="font-size: 15px; color: #555;">🥈 Finaliste : <strong>{tournoi.get('finaliste', 'N/D')}</strong></div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+        st.divider()
+
+        # DÉROULEMENT SELON LE FORMAT
+        if format_type == "elimination":
+            st.markdown("##### 🌳 Tableau des rencontres (Arbre de tournoi)")
+            tours = tournoi.get("tours", [])
+            tours_onglets = [t["nom"] for t in tours]
+
+            if tours_onglets:
+                tabs_t = st.tabs(tours_onglets)
+                for t_idx, tab_tour in enumerate(tabs_t):
+                    tour_courant = tours[t_idx]
+                    tour_num = tour_courant["numero"]
+                    with tab_tour:
+                        st.markdown(f"###### **{tour_courant['nom']}** (Course à {race_to})")
+                        matchs = tour_courant.get("matchs", [])
+
+                        for m in matchs:
+                            m_id = m["id"]
+                            ea = m["equipe_a"]
+                            eb = m["equipe_b"]
+                            termine = m.get("termine", False)
+                            vainq = m.get("vainqueur")
+                            sa = m.get("score_a", 0)
+                            sb = m.get("score_b", 0)
+
+                            with st.container(border=True):
+                                col_m1, col_m2 = st.columns([3, 2])
+                                with col_m1:
+                                    if termine:
+                                        st.markdown(f"**{m_id}** : **{ea}** ({sa}) vs ({sb}) **{eb}**")
+                                        st.success(f"🏆 **Qualifié :** {vainq}")
+                                    else:
+                                        if ea == "À déterminer" or eb == "À déterminer":
+                                            st.markdown(f"**{m_id}** : `{ea}` vs `{eb}`")
+                                            st.caption("⏳ En attente des vainqueurs du tour précédent...")
+                                        elif ea == "BYE (Exempt)" or eb == "BYE (Exempt)":
+                                            st.markdown(f"**{m_id}** : `{ea}` vs `{eb}`")
+                                            st.info(f"✨ Qualifié d'office par Bye : **{vainq or ea or eb}**")
+                                        else:
+                                            st.markdown(f"**{m_id}** : 🎯 **{ea}** vs **{eb}**")
+                                            st.caption(f"Course à {race_to} victoires")
+
+                                with col_m2:
+                                    if not termine and ea != "À déterminer" and eb != "À déterminer" and "BYE" not in ea and "BYE" not in eb:
+                                        col_s1, col_s2, col_s3 = st.columns([1, 1, 1.5])
+                                        with col_s1:
+                                            sc_a_in = st.number_input(f"{ea[:10]}", min_value=0, max_value=race_to, value=0, key=f"sc_a_{mode}_{m_id}")
+                                        with col_s2:
+                                            sc_b_in = st.number_input(f"{eb[:10]}", min_value=0, max_value=race_to, value=0, key=f"sc_b_{mode}_{m_id}")
+                                        with col_s3:
+                                            st.write("")
+                                            if st.button("✅ Valider", key=f"btn_v_{mode}_{m_id}", use_container_width=True, disabled=not est_editeur):
+                                                if sc_a_in == sc_b_in:
+                                                    st.error("Match nul impossible.")
+                                                elif sc_a_in < race_to and sc_b_in < race_to:
+                                                    st.warning(f"Un joueur doit atteindre {race_to} victoires.")
+                                                else:
+                                                    actualiser_score_elimination(tournoi, tour_num, m_id, sc_a_in, sc_b_in)
+                                                    sauvegarder_tournois_data(tournois_data)
+                                                    st.rerun()
+
+        else:
+            # FORMAT ROUND-ROBIN
+            st.markdown("##### 📊 Classement en direct (Round-Robin)")
+            classement_rr = calculer_classement_round_robin(tournoi)
+
+            lignes_rr = []
+            medailles_rr = {1: "🥇", 2: "🥈", 3: "🥉"}
+            for rang, (part, s_data) in enumerate(classement_rr, start=1):
+                badge_r = medailles_rr.get(rang, f"#{rang}")
+                diff_str = f"+{s_data['diff']}" if s_data['diff'] > 0 else str(s_data['diff'])
+                lignes_rr.append({
+                    "Rang": badge_r,
+                    "Participant": part,
+                    "PJ": s_data["pj"],
+                    "V": s_data["v"],
+                    "D": s_data["d"],
+                    "Manches Pour": s_data["pour"],
+                    "Manches Contre": s_data["contre"],
+                    "Différence": diff_str,
+                    "Points": s_data["pts"]
+                })
+
+            df_rr = pd.DataFrame(lignes_rr)
+            st.dataframe(df_rr, use_container_width=True, hide_index=True)
+
+            st.divider()
+            st.markdown("##### 📋 Calendrier des rencontres")
+
+            matchs_rr = tournoi.get("matchs", [])
+            tous_termines = True
+            for m in matchs_rr:
+                m_id = m["id"]
+                ea, eb = m["equipe_a"], m["equipe_b"]
+                termine = m.get("termine", False)
+                if not termine:
+                    tous_termines = False
+                sa, sb = m.get("score_a", 0), m.get("score_b", 0)
+
+                with st.container(border=True):
+                    col_rm1, col_rm2 = st.columns([3, 2])
+                    with col_rm1:
+                        if termine:
+                            st.markdown(f"**{m_id}** : **{ea}** ({sa}) vs ({sb}) **{eb}**")
+                            st.success(f"🏆 Vainqueur : {m['vainqueur']}")
+                        else:
+                            st.markdown(f"**{m_id}** : 🎯 **{ea}** vs **{eb}**")
+                            st.caption(f"Course à {race_to} victoires")
+
+                    with col_rm2:
+                        if not termine:
+                            col_s1, col_s2, col_s3 = st.columns([1, 1, 1.5])
+                            with col_s1:
+                                sc_a_in = st.number_input(f"{ea[:10]}", min_value=0, max_value=race_to, value=0, key=f"rr_a_{mode}_{m_id}")
+                            with col_s2:
+                                sc_b_in = st.number_input(f"{eb[:10]}", min_value=0, max_value=race_to, value=0, key=f"rr_b_{mode}_{m_id}")
+                            with col_s3:
+                                st.write("")
+                                if st.button("✅ Valider", key=f"btn_rr_{mode}_{m_id}", use_container_width=True, disabled=not est_editeur):
+                                    if sc_a_in == sc_b_in:
+                                        st.error("Match nul impossible.")
+                                    elif sc_a_in < race_to and sc_b_in < race_to:
+                                        st.warning(f"Un joueur doit atteindre {race_to} victoires.")
+                                    else:
+                                        m["score_a"] = sc_a_in
+                                        m["score_b"] = sc_b_in
+                                        m["vainqueur"] = ea if sc_a_in > sc_b_in else eb
+                                        m["termine"] = True
+                                        sauvegarder_tournois_data(tournois_data)
+                                        st.rerun()
+
+            if tous_termines and statut != "termine" and classement_rr:
+                tournoi["statut"] = "termine"
+                tournoi["vainqueur_final"] = classement_rr[0][0]
+                if len(classement_rr) > 1:
+                    tournoi["finaliste"] = classement_rr[1][0]
+                sauvegarder_tournois_data(tournois_data)
+                st.rerun()
+
+def afficher_onglet_tournois():
+    """Onglet principal Tournois avec sous-onglets Simple et Double."""
+    subtab_simple, subtab_double = st.tabs([
+        "👤 Tournoi en Simple",
+        "👥 Tournoi en Double"
+    ])
+
+    with subtab_simple:
+        afficher_section_tournoi(mode="simple")
+
+    with subtab_double:
+        afficher_section_tournoi(mode="double")
+
+
 # ==============================================================================
 # CONTRÔLE D'ACCÈS À L'ENTRÉE (AUTHENTIFICATION MARQUEUR OU SPECTATEUR)
 
@@ -1892,9 +2657,10 @@ if "message_validation_reussie" in st.session_state:
 # ==============================================================================
 historique_matchs = charger_historique_matchs()
 
-tab_feuille, tab_stats = st.tabs([
+tab_feuille, tab_stats, tab_tournoi = st.tabs([
     "🎱 Feuille de match & Consultation",
-    "📈 Statistiques & Progression"
+    "📈 Statistiques & Progression",
+    "🏆 Tournois"
 ])
 
 with tab_feuille:
@@ -3591,3 +4357,6 @@ with tab_feuille:
 
 with tab_stats:
     afficher_tableau_de_bord_progression(historique_matchs)
+
+with tab_tournoi:
+    afficher_onglet_tournois()
