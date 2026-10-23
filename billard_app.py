@@ -492,7 +492,46 @@ def charger_historique_matchs():
                     return data
         except Exception:
             return []
-    return []
+
+def verifier_match_deja_valide(equipe_rec, equipe_vis, matchs_actuels, historique):
+    """Vérifie si le match actuellement affiché a déjà été validé et archivé."""
+    if st.session_state.get("match_en_cours_deja_valide", False):
+        return True, "session_actuelle"
+
+    if not historique or not matchs_actuels:
+        return False, None
+
+    tot_rec = sum(m.get("score_a", 0) for m in matchs_actuels.values())
+    tot_vis = sum(m.get("score_b", 0) for m in matchs_actuels.values())
+
+    # Si aucun score n'est encore saisi (0 - 0), le match n'est pas déjà validé
+    if tot_rec == 0 and tot_vis == 0:
+        return False, None
+
+    for m_hist in historique:
+        h_rec = m_hist.get("receveur", m_hist.get("equipe_receveur"))
+        h_vis = m_hist.get("visiteur", m_hist.get("equipe_visiteur"))
+        if h_rec == equipe_rec and h_vis == equipe_vis:
+            m_h = m_hist.get("matchs", {})
+            correspondance = True
+            for num in range(1, 10):
+                s_num = str(num)
+                try:
+                    sc_a_h = int(m_h.get(s_num, {}).get("score_a", -1))
+                    sc_b_h = int(m_h.get(s_num, {}).get("score_b", -1))
+                    sc_a_act = int(matchs_actuels.get(s_num, {}).get("score_a", -2))
+                    sc_b_act = int(matchs_actuels.get(s_num, {}).get("score_b", -2))
+                except (ValueError, TypeError):
+                    correspondance = False
+                    break
+                if sc_a_h != sc_a_act or sc_b_h != sc_b_act:
+                    correspondance = False
+                    break
+            if correspondance:
+                d_m = m_hist.get("date_enregistrement", m_hist.get("date", "Date inconnue"))
+                return True, d_m
+
+    return False, None
 
 def obtenir_html_match(m):
     """Renvoie le HTML officiel du match ou le reconstitue fidèlement à partir des données archivées."""
@@ -1019,6 +1058,7 @@ if not est_spectateur:
                     st.session_state["user_session_id"] = user_sess
                 st.session_state["mode_consultation"] = mode_c
                 st.session_state["app_initialisee"] = True
+                st.session_state["match_en_cours_deja_valide"] = False
     
                 # 4. Remise à zéro explicite de toutes les manches (0 - 0)
                 for num in range(1, 10):
@@ -1897,8 +1937,19 @@ elif not est_spectateur:
         sess_id,
         donnees_sauv,
         roster_rec=None,
-        roster_vis=None
+        roster_vis=None,
+        est_deja_valide=False
     ):
+        if est_deja_valide:
+            st.warning(
+                "⚠️ **Ce match a déjà été validé et archivé officiellement.**\n\n"
+                "Il ne peut pas être validé de nouveau afin d'éviter les doublons.\n\n"
+                "👉 Si vous souhaitez modifier les résultats de ce match, veuillez utiliser l'option de modification **« ✏️ Rectifier un match archivé »** située dans la section **Espace Administration** en bas de page."
+            )
+            if st.button("Fermer", use_container_width=True):
+                st.rerun()
+            return
+
         st.markdown("### 🎱 Sommaire officiel de la rencontre")
         st.caption(f"📅 **Date :** {d_match}")
 
@@ -2071,6 +2122,8 @@ elif not est_spectateur:
                 with open(HISTORIQUE_FILE, "w", encoding="utf-8") as f:
                     json.dump(historique, f, ensure_ascii=False, indent=4)
 
+                st.session_state["match_en_cours_deja_valide"] = True
+
                 msg_flash = f"✅ Le match entre **{equipe_rec}** ({tot_rec} pts) et **{equipe_vis}** ({tot_vis} pts) a été approuvé par **{sel_app_rec}** ({equipe_rec}) et **{sel_app_vis}** ({equipe_vis}), et archivé avec succès !"
 
                 if destinataires_envoi:
@@ -2131,8 +2184,38 @@ elif not est_spectateur:
 
     match_valide = False
 
-    if st.button("🚀 Valider et enregistrer la feuille de match officielle", type="primary", use_container_width=True, disabled=not est_editeur):
-        if manches_invalides:
+    est_deja_valide, date_valid_info = verifier_match_deja_valide(
+        equipe_receveur,
+        equipe_visiteur,
+        donnees_a_sauvegarder["matchs"],
+        historique_matchs
+    )
+
+    if est_deja_valide:
+        mention_date = f" (archivé le {date_valid_info})" if date_valid_info and date_valid_info != "session_actuelle" else ""
+        st.warning(
+            f"⚠️ **Ce match a déjà été validé et archivé officiellement{mention_date}.**\n\n"
+            "Il ne peut pas être validé de nouveau afin d'éviter les doublons dans le classement et les statistiques.\n\n"
+            "👉 **Pour modifier les scores ou les joueurs de ce match :** "
+            "veuillez utiliser l'option de modification **« ✏️ Rectifier un match archivé »** située dans la section **Espace Administration** en bas de page.\n\n"
+            "👉 **Pour enregistrer une nouvelle rencontre :** "
+            "cliquez sur le bouton **« 🗑️ Nouveau match »** en haut de page pour réinitialiser la feuille."
+        )
+
+    btn_label = "🔒 Match déjà validé (Utiliser la section Administration pour modifier)" if est_deja_valide else "🚀 Valider et enregistrer la feuille de match officielle"
+    btn_disabled = (not est_editeur) or est_deja_valide
+
+    if st.button(
+        btn_label,
+        type="primary" if not est_deja_valide else "secondary",
+        use_container_width=True,
+        disabled=btn_disabled,
+        key="btn_valider_match_principal",
+        help="Ce match est déjà validé. Utilisez l'administration pour le rectifier." if est_deja_valide else None
+    ):
+        if est_deja_valide:
+            st.warning("⚠️ Ce match a déjà été validé. Veuillez utiliser l'option de modification dans la section administration ci-dessous.")
+        elif manches_invalides:
             st.error(f"❌ Impossible d'enregistrer : veuillez d'abord corriger les manches suivantes : {', '.join(map(str, sorted(set(manches_invalides))))}.")
         else:
             modal_sommaire_approbation(
@@ -2151,7 +2234,8 @@ elif not est_spectateur:
                 my_session_id,
                 donnees_a_sauvegarder,
                 roster_rec,
-                roster_vis
+                roster_vis,
+                est_deja_valide=est_deja_valide
             )
 
     # Sauvegarde automatique en arrière-plan (uniquement par l'éditeur actif et si le match n'est pas validé)
