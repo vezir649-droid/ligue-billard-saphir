@@ -27,6 +27,29 @@ ARMOIRIES_FILE = "armoiries.png"
 LOCK_FILE = "session_lock.json"
 LOCK_TIMEOUT = 900  # 15 minutes d'inactivité avant libération automatique
 
+def charger_armoiries_base64(max_taille=(160, 160)):
+    """Charge l'image des armoiries, la redimensionne proprement et la renvoie en data URI base64."""
+    if not os.path.exists(ARMOIRIES_FILE):
+        return ""
+    try:
+        from PIL import Image
+        import io
+        import base64
+        im = Image.open(ARMOIRIES_FILE)
+        im.thumbnail(max_taille, Image.Resampling.LANCZOS)
+        buf = io.BytesIO()
+        im.save(buf, format="PNG", optimize=True)
+        b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+        return f"data:image/png;base64,{b64}"
+    except Exception:
+        try:
+            import base64
+            with open(ARMOIRIES_FILE, "rb") as f:
+                b64 = base64.b64encode(f.read()).decode("utf-8")
+            return f"data:image/png;base64,{b64}"
+        except Exception:
+            return ""
+
 def charger_mot_de_passe_admin():
     """Charge le mot de passe d'administration (défaut: saphir2026)."""
     if os.path.exists(ADMIN_CONFIG_FILE):
@@ -310,6 +333,9 @@ def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_j
     if absents_info:
         absents_html_bloc = f"<p style='color: #d32f2f;'><strong>Joueur(s) absent(s) :</strong> {', '.join(absents_info)}</p>"
 
+    logo_b64 = charger_armoiries_base64()
+    logo_td = f'<td style="width: 70px; vertical-align: middle; padding-right: 12px;"><img src="{logo_b64}" alt="Armoiries" style="height: 65px; width: 65px; object-fit: contain; border-radius: 4px;"></td>' if logo_b64 else ''
+
     html = f"""
     <html>
     <head>
@@ -323,7 +349,15 @@ def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_j
         </style>
     </head>
     <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #222;">
-        <h2 style="color: #0b3c5d;">🎱 Ligue de billard du Saphir - Feuille de match officielle</h2>
+        <table style="width: 100%; border-bottom: 2px solid #0b3c5d; padding-bottom: 8px; margin-bottom: 12px; border-collapse: collapse;">
+            <tr>
+                {logo_td}
+                <td style="vertical-align: middle;">
+                    <h2 style="color: #0b3c5d; margin: 0; font-size: 20px;">🎱 Ligue de billard du Saphir</h2>
+                    <div style="color: #555; font-size: 14px; font-weight: bold; margin-top: 2px;">Feuille de match officielle</div>
+                </td>
+            </tr>
+        </table>
         <p><strong>Date :</strong> {date_str}</p>
         <div style="background-color: #f4f6f9; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
             <h3 style="margin: 0; color: #1e3d59;">Résultat final du match :</h3>
@@ -437,6 +471,9 @@ def obtenir_html_match(m):
     li_vis = "".join([f"<li><strong>{nom}</strong> : {pts} pts</li>" for nom, pts in pts_vis_j.items()])
     vainqueur = rec if tot_rec > tot_vis else (vis if tot_vis > tot_rec else "Égalité")
 
+    logo_b64 = charger_armoiries_base64()
+    logo_td = f'<td style="width: 70px; vertical-align: middle; padding-right: 12px;"><img src="{logo_b64}" alt="Armoiries" style="height: 65px; width: 65px; object-fit: contain; border-radius: 4px;"></td>' if logo_b64 else ''
+
     html = f"""
     <html>
     <head>
@@ -455,7 +492,15 @@ def obtenir_html_match(m):
                 🖨️ Imprimer cette feuille
             </button>
         </div>
-        <h2 style="color: #0b3c5d;">🎱 Ligue de billard du Saphir - Feuille de match officielle</h2>
+        <table style="width: 100%; border-bottom: 2px solid #0b3c5d; padding-bottom: 8px; margin-bottom: 12px; border-collapse: collapse;">
+            <tr>
+                {logo_td}
+                <td style="vertical-align: middle;">
+                    <h2 style="color: #0b3c5d; margin: 0; font-size: 20px;">🎱 Ligue de billard du Saphir</h2>
+                    <div style="color: #555; font-size: 14px; font-weight: bold; margin-top: 2px;">Feuille de match officielle</div>
+                </td>
+            </tr>
+        </table>
         <p><strong>Date :</strong> {date_str}</p>
         <div style="background-color: #f4f6f9; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
             <h3 style="margin: 0; color: #1e3d59;">Résultat final du match :</h3>
