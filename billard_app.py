@@ -422,26 +422,45 @@ def envoyer_courriel(destinataires_str, sujet, texte_brut, html_contenu, config,
         return False, f"Échec de l'envoi du courriel : {str(e)}"
 
 # ==============================================================================
-# CONTRÔLE D'ACCÈS À L'ENTRÉE (AUTHENTIFICATION OBLIGATOIRE)
+# CONTRÔLE D'ACCÈS À L'ENTRÉE (AUTHENTIFICATION MARQUEUR OU SPECTATEUR)
 # ==============================================================================
-if not st.session_state.get("authentifie", False):
-    st.markdown("<div style='text-align: center; margin-top: 40px;'>", unsafe_allow_html=True)
+est_connecte = st.session_state.get("authentifie", False)
+est_spectateur = st.session_state.get("est_spectateur", False)
+
+if not est_connecte and not est_spectateur:
+    st.markdown("<div style='text-align: center; margin-top: 30px;'>", unsafe_allow_html=True)
     st.title("🎱 Ligue de billard du Saphir")
-    st.subheader("Accès sécurisé à l'application")
-    st.markdown("Veuillez saisir le mot de passe pour accéder à la feuille de match et aux résultats.")
+    st.subheader("Accès à la feuille de match et aux résultats")
+    st.markdown("Veuillez choisir votre mode d'accès ci-dessous.")
     st.markdown("</div>", unsafe_allow_html=True)
 
-    col_l1, col_l2, col_l3 = st.columns([1, 1.2, 1])
+    col_l1, col_l2, col_l3 = st.columns([1, 1.3, 1])
     with col_l2:
-        mdp_saisi = st.text_input("Mot de passe d'accès", type="password", key="login_pass_input", placeholder="Entrez le mot de passe...")
-        if st.button("🔓 Entrer", type="primary", use_container_width=True):
-            mdp_attendu = charger_mot_de_passe_admin()
-            if mdp_saisi == mdp_attendu:
-                st.session_state["authentifie"] = True
+        with st.container(border=True):
+            st.markdown("### 🔒 Accès Marqueur / Éditeur")
+            st.caption("Permet la saisie des manches, la validation officielle et l'administration.")
+            mdp_saisi = st.text_input("Mot de passe", type="password", key="login_pass_input", placeholder="Entrez le mot de passe...")
+            if st.button("🔓 Se connecter pour saisir", type="primary", use_container_width=True):
+                mdp_attendu = charger_mot_de_passe_admin()
+                if mdp_saisi == mdp_attendu:
+                    st.session_state["authentifie"] = True
+                    st.session_state["est_spectateur"] = False
+                    st.session_state["mode_consultation"] = False
+                    st.rerun()
+                else:
+                    st.error("❌ Mot de passe incorrect.")
+            st.caption("💡 *Mot de passe par défaut : `saphir2026`*")
+
+        st.markdown("<div style='text-align:center; font-weight:bold; margin: 16px 0;'>OU</div>", unsafe_allow_html=True)
+
+        with st.container(border=True):
+            st.markdown("### 👁️ Accès Spectateur")
+            st.caption("Consultez en direct les résultats du match en cours en mode lecture seule (aucun mot de passe requis).")
+            if st.button("👁️ Entrer en tant que spectateur", use_container_width=True):
+                st.session_state["est_spectateur"] = True
+                st.session_state["authentifie"] = False
+                st.session_state["mode_consultation"] = True
                 st.rerun()
-            else:
-                st.error("❌ Mot de passe incorrect.")
-        st.caption("💡 *Mot de passe par défaut : `saphir2026`*")
     st.stop()
 
 # ==============================================================================
@@ -451,13 +470,21 @@ if "user_session_id" not in st.session_state:
     st.session_state["user_session_id"] = str(uuid.uuid4())
 my_session_id = st.session_state["user_session_id"]
 
-if "mode_consultation" not in st.session_state:
-    st.session_state["mode_consultation"] = False
+est_spectateur = st.session_state.get("est_spectateur", False)
 
-est_editeur, temps_restant_verrou, autre_editeur_actif = gerer_verrou_session(
-    my_session_id,
-    veut_etre_editeur=not st.session_state["mode_consultation"]
-)
+if est_spectateur:
+    st.session_state["mode_consultation"] = True
+    est_editeur = False
+    temps_restant_verrou = 0
+    autre_editeur_actif = False
+else:
+    if "mode_consultation" not in st.session_state:
+        st.session_state["mode_consultation"] = False
+
+    est_editeur, temps_restant_verrou, autre_editeur_actif = gerer_verrou_session(
+        my_session_id,
+        veut_etre_editeur=not st.session_state["mode_consultation"]
+    )
 
 # ==============================================================================
 # RESTAURATION INITIALE AU CHARGEMENT (ÉVITE LA PERTE DE DONNÉES SUR RAFRAÎCHISSEMENT)
@@ -492,6 +519,14 @@ if est_editeur:
         if st.button("🔓 Céder la main", use_container_width=True, help="Bascule en mode lecture et libère la feuille de match"):
             liberer_verrou(my_session_id)
             st.session_state["mode_consultation"] = True
+            st.rerun()
+elif est_spectateur:
+    col_lock1.info("👁️ **Mode spectateur (Lecture seule) :** Vous consultez le match en direct. La saisie et l'administration sont désactivées.")
+    with col_lock2:
+        st.button("⚡ Prendre la main", use_container_width=True, disabled=True, help="Le bouton Prendre la main est désactivé en mode spectateur (mot de passe requis)")
+        if st.button("🔑 Connexion éditeur", use_container_width=True, help="Se connecter avec mot de passe pour éditer ou administrer"):
+            st.session_state["est_spectateur"] = False
+            st.session_state["authentifie"] = False
             st.rerun()
 else:
     if autre_editeur_actif:
@@ -591,10 +626,12 @@ with col_h4:
 
             # 3. Conserver l'authentification, l'identifiant de session et l'état de consultation
             auth_ok = st.session_state.get("authentifie", False)
+            spec_ok = st.session_state.get("est_spectateur", False)
             user_sess = st.session_state.get("user_session_id")
             mode_c = st.session_state.get("mode_consultation", False)
             st.session_state.clear()
             st.session_state["authentifie"] = auth_ok
+            st.session_state["est_spectateur"] = spec_ok
             if user_sess:
                 st.session_state["user_session_id"] = user_sess
             st.session_state["mode_consultation"] = mode_c
@@ -627,9 +664,11 @@ st.divider()
 
 # --- BARRE LATÉRALE : SÉLECTION DU MATCH ET JOUEURS ---
 st.sidebar.header("📋 Paramètres du Match")
-if st.sidebar.button("🚪 Déconnexion", use_container_width=True, help="Ferme la session et retourne à l'écran de mot de passe"):
+if st.sidebar.button("🚪 Déconnexion / Accueil", use_container_width=True, help="Ferme la session et retourne à l'écran d'accueil"):
     liberer_verrou(my_session_id)
     st.session_state["authentifie"] = False
+    st.session_state["est_spectateur"] = False
+    st.session_state["mode_consultation"] = False
     st.rerun()
 
 if noms_equipes:
@@ -1029,45 +1068,46 @@ if not est_editeur:
 
             # Tableau récapitulatif des 9 manches
             st.markdown("##### 📋 État des 9 manches")
-            html_tab = f"""<table style='width:100%; border-collapse: collapse; text-align:center; font-size:14px; margin-top:8px;'>
+            html_tab = f"""<div style='overflow-x:auto; margin-top:8px; border-radius:8px; border:1px solid #cbd5e1; box-shadow:0 1px 3px rgba(0,0,0,0.08);'>
+            <table style='width:100%; border-collapse: collapse; text-align:center; font-size:14px; background-color:#ffffff;'>
             <thead>
-                <tr style='background-color:#0b3c5d; color:white;'>
-                    <th style='padding:8px;'>Manche</th>
-                    <th style='padding:8px;'>Joueur ({equipe_receveur})</th>
-                    <th style='padding:8px;'>Score</th>
-                    <th style='padding:8px;'>Score</th>
-                    <th style='padding:8px;'>Joueur ({equipe_visiteur})</th>
-                    <th style='padding:8px;'>Statut</th>
+                <tr style='background-color:#0b3c5d;'>
+                    <th style='padding:10px 8px; color:#ffffff !important; border-bottom:2px solid #072a42;'># Manche</th>
+                    <th style='padding:10px 8px; color:#ffffff !important; border-bottom:2px solid #072a42; text-align:left;'>Joueur ({equipe_receveur})</th>
+                    <th style='padding:10px 8px; color:#ffffff !important; border-bottom:2px solid #072a42;'>Score</th>
+                    <th style='padding:10px 8px; color:#ffffff !important; border-bottom:2px solid #072a42;'>Score</th>
+                    <th style='padding:10px 8px; color:#ffffff !important; border-bottom:2px solid #072a42; text-align:left;'>Joueur ({equipe_visiteur})</th>
+                    <th style='padding:10px 8px; color:#ffffff !important; border-bottom:2px solid #072a42;'>Statut</th>
                 </tr>
             </thead>
             <tbody>"""
             for row in details_c:
-                bg = "#f9f9f9" if row["manche"] % 2 == 0 else "#ffffff"
+                bg = "#f8fafc" if row["manche"] % 2 == 0 else "#ffffff"
                 label_a = f"{row['ja']} (Absent)" if row["abs_a"] else row["ja"]
                 label_b = f"{row['jb']} (Absent)" if row["abs_b"] else row["jb"]
                 sa_val = row["sa"]
                 sb_val = row["sb"]
                 
                 if sa_val == 0 and sb_val == 0:
-                    statut_manche = "<span style='color:#777;'>À jouer</span>"
+                    statut_manche = "<span style='color:#64748b; font-weight:500;'>À jouer</span>"
                 elif sa_val == 8 or sb_val == 8:
                     gagnant_m = row['ja'] if sa_val == 8 else row['jb']
-                    statut_manche = f"<strong style='color:#1b5e20;'>Terminé ({gagnant_m})</strong>"
+                    statut_manche = f"<strong style='color:#15803d;'>Terminé ({gagnant_m})</strong>"
                 else:
-                    statut_manche = "<span style='color:#e65100;'>En cours</span>"
+                    statut_manche = "<span style='color:#d97706; font-weight:bold;'>En cours</span>"
 
-                sa_style = "font-weight:bold; color:#1b5e20;" if sa_val == 8 else "color:#333;"
-                sb_style = "font-weight:bold; color:#1b5e20;" if sb_val == 8 else "color:#333;"
+                sa_style = "font-weight:bold; color:#15803d;" if sa_val == 8 else "color:#1e293b;"
+                sb_style = "font-weight:bold; color:#15803d;" if sb_val == 8 else "color:#1e293b;"
                 
-                html_tab += f"""<tr style='background-color:{bg}; border-bottom:1px solid #ddd;'>
-                    <td style='padding:8px;'><strong>Manche {row['manche']}</strong></td>
-                    <td style='padding:8px;'>{label_a}</td>
-                    <td style='padding:8px; {sa_style} font-size:16px;'>{sa_val}</td>
-                    <td style='padding:8px; {sb_style} font-size:16px;'>{sb_val}</td>
-                    <td style='padding:8px;'>{label_b}</td>
-                    <td style='padding:8px;'>{statut_manche}</td>
+                html_tab += f"""<tr style='background-color:{bg}; border-bottom:1px solid #e2e8f0;'>
+                    <td style='padding:10px 8px; font-weight:bold; color:#0b3c5d !important; white-space:nowrap;'>Manche {row['manche']}</td>
+                    <td style='padding:10px 8px; font-weight:600; color:#0f172a !important; text-align:left;'>{label_a}</td>
+                    <td style='padding:10px 8px; {sa_style} font-size:16px;'>{sa_val}</td>
+                    <td style='padding:10px 8px; {sb_style} font-size:16px;'>{sb_val}</td>
+                    <td style='padding:10px 8px; font-weight:600; color:#0f172a !important; text-align:left;'>{label_b}</td>
+                    <td style='padding:10px 8px;'>{statut_manche}</td>
                 </tr>"""
-            html_tab += "</tbody></table>"
+            html_tab += "</tbody></table></div>"
             st.markdown(html_tab, unsafe_allow_html=True)
 
     st.markdown("---")
@@ -1318,80 +1358,59 @@ st.divider()
 # ==============================================================================
 # ESPACE ADMINISTRATION (SAISON, SMTP ET SÉCURITÉ)
 # ==============================================================================
-st.markdown("### ⚙️ Espace Administration")
+if not est_spectateur:
+    st.markdown("### ⚙️ Espace Administration")
 
-with st.expander("🛠️ Ouvrir le panneau d'administration (Saison, SMTP et Sécurité)", expanded=False):
-    tab_saison, tab_smtp, tab_secu = st.tabs([
-        "🗓️ Démarrer une nouvelle saison",
-        "📧 Configuration SMTP",
-        "🔑 Mot de passe d'accès"
-    ])
+    with st.expander("🛠️ Ouvrir le panneau d'administration (Saison, SMTP et Sécurité)", expanded=False):
+        tab_saison, tab_smtp, tab_secu = st.tabs([
+            "🗓️ Démarrer une nouvelle saison",
+            "📧 Configuration SMTP",
+            "🔑 Mot de passe d'accès"
+        ])
 
-    with tab_saison:
-        st.markdown("#### 🗓️ Démarrer une nouvelle saison")
-        
-        nb_matchs = 0
-        if os.path.exists(HISTORIQUE_FILE):
-            try:
-                with open(HISTORIQUE_FILE, "r", encoding="utf-8") as f:
-                    data_hist = json.load(f)
-                    if isinstance(data_hist, list):
-                        nb_matchs = len(data_hist)
-            except Exception:
-                nb_matchs = 0
-
-        st.write(f"📊 **Statut de l'historique :** `{nb_matchs} match(s)` actuellement enregistré(s) dans `{HISTORIQUE_FILE}`.")
-        st.warning("⚠️ **Attention :** Démarrer une nouvelle saison réinitialise complètement l'historique de tous les matchs précédents. Aucun archivage n'est effectué.")
-
-        with st.popover("🚨 Réinitialiser et démarrer la nouvelle saison", use_container_width=True):
-            st.markdown("### ⚠️ Confirmation obligatoire")
-            st.write(f"Voulez-vous vraiment effacer les **{nb_matchs} match(s)** enregistrés dans l'historique ?")
-            st.write("Cette action est irréversible et supprimera le fichier d'historique.")
-            if st.button("🔴 Confirmer la réinitialisation de la saison", type="primary", use_container_width=True):
+        with tab_saison:
+            st.markdown("#### 🗓️ Démarrer une nouvelle saison")
+            
+            nb_matchs = 0
+            if os.path.exists(HISTORIQUE_FILE):
                 try:
-                    if os.path.exists(HISTORIQUE_FILE):
-                        os.remove(HISTORIQUE_FILE)
-                    st.success("✅ Historique réinitialisé avec succès ! La nouvelle saison est ouverte.")
-                    st.rerun()
-                except Exception as e_hist:
-                    st.error(f"Erreur lors de la suppression de l'historique : {e_hist}")
+                    with open(HISTORIQUE_FILE, "r", encoding="utf-8") as f:
+                        data_hist = json.load(f)
+                        if isinstance(data_hist, list):
+                            nb_matchs = len(data_hist)
+                except Exception:
+                    nb_matchs = 0
 
-    with tab_smtp:
-        st.markdown("#### ⚙️ Configuration du serveur de messagerie (SMTP)")
-        smtp_dest = st.text_input("Destinataire(s) (séparés par virgule)", value=config_email.get("destinataires", ""), key="admin_smtp_dest")
-        col_c1, col_c2 = st.columns(2)
-        smtp_serveur = col_c1.text_input("Serveur SMTP", value=config_email.get("smtp_serveur", "smtp.gmail.com"), key="admin_smtp_serveur")
-        smtp_port = col_c2.number_input("Port SMTP", value=int(config_email.get("smtp_port", 587)), key="admin_smtp_port")
-        smtp_expediteur = col_c1.text_input("Courriel expéditeur", value=config_email.get("smtp_expediteur", ""), key="admin_smtp_exp")
-        smtp_mdp = col_c2.text_input("Mot de passe / Clé d'application", type="password", value=config_email.get("smtp_mdp", ""), key="admin_smtp_pwd")
-        smtp_ssl = st.checkbox("Utiliser SSL (Port 465)", value=config_email.get("smtp_ssl", False), key="admin_smtp_ssl")
+            st.write(f"📊 **Statut de l'historique :** `{nb_matchs} match(s)` actuellement enregistré(s) dans `{HISTORIQUE_FILE}`.")
+            st.warning("⚠️ **Attention :** Démarrer une nouvelle saison réinitialise complètement l'historique de tous les matchs précédents. Aucun archivage n'est effectué.")
 
-        col_btn_cfg1, col_btn_cfg2 = st.columns(2)
-        with col_btn_cfg1:
-            if st.button("💾 Enregistrer la configuration SMTP", use_container_width=True):
-                nouvelle_cfg = {
-                    "destinataires": smtp_dest,
-                    "smtp_serveur": smtp_serveur,
-                    "smtp_port": int(smtp_port),
-                    "smtp_expediteur": smtp_expediteur,
-                    "smtp_mdp": smtp_mdp,
-                    "smtp_ssl": smtp_ssl
-                }
-                if sauvegarder_config_email(nouvelle_cfg):
-                    config_email = nouvelle_cfg
-                    st.success("✅ Configuration SMTP enregistrée avec succès dans le fichier !")
-                    st.rerun()
-                else:
-                    st.error("Erreur lors de la sauvegarde du fichier.")
+            with st.popover("🚨 Réinitialiser et démarrer la nouvelle saison", use_container_width=True):
+                st.markdown("### ⚠️ Confirmation obligatoire")
+                st.write(f"Voulez-vous vraiment effacer les **{nb_matchs} match(s)** enregistrés dans l'historique ?")
+                st.write("Cette action est irréversible et supprimera le fichier d'historique.")
+                if st.button("🔴 Confirmer la réinitialisation de la saison", type="primary", use_container_width=True):
+                    try:
+                        if os.path.exists(HISTORIQUE_FILE):
+                            os.remove(HISTORIQUE_FILE)
+                        st.success("✅ Historique réinitialisé avec succès ! La nouvelle saison est ouverte.")
+                        st.rerun()
+                    except Exception as e_hist:
+                        st.error(f"Erreur lors de la suppression de l'historique : {e_hist}")
 
-        with col_btn_cfg2:
-            if st.button("🧪 Tester la configuration (courriel test)", use_container_width=True):
-                if not smtp_dest:
-                    st.error("⚠️ Veuillez renseigner au moins une adresse de destinataire.")
-                elif not smtp_expediteur:
-                    st.error("⚠️ Veuillez renseigner l'adresse courriel de l'expéditeur.")
-                else:
-                    cfg_test = {
+        with tab_smtp:
+            st.markdown("#### ⚙️ Configuration du serveur de messagerie (SMTP)")
+            smtp_dest = st.text_input("Destinataire(s) (séparés par virgule)", value=config_email.get("destinataires", ""), key="admin_smtp_dest")
+            col_c1, col_c2 = st.columns(2)
+            smtp_serveur = col_c1.text_input("Serveur SMTP", value=config_email.get("smtp_serveur", "smtp.gmail.com"), key="admin_smtp_serveur")
+            smtp_port = col_c2.number_input("Port SMTP", value=int(config_email.get("smtp_port", 587)), key="admin_smtp_port")
+            smtp_expediteur = col_c1.text_input("Courriel expéditeur", value=config_email.get("smtp_expediteur", ""), key="admin_smtp_exp")
+            smtp_mdp = col_c2.text_input("Mot de passe / Clé d'application", type="password", value=config_email.get("smtp_mdp", ""), key="admin_smtp_pwd")
+            smtp_ssl = st.checkbox("Utiliser SSL (Port 465)", value=config_email.get("smtp_ssl", False), key="admin_smtp_ssl")
+
+            col_btn_cfg1, col_btn_cfg2 = st.columns(2)
+            with col_btn_cfg1:
+                if st.button("💾 Enregistrer la configuration SMTP", use_container_width=True):
+                    nouvelle_cfg = {
                         "destinataires": smtp_dest,
                         "smtp_serveur": smtp_serveur,
                         "smtp_port": int(smtp_port),
@@ -1399,30 +1418,52 @@ with st.expander("🛠️ Ouvrir le panneau d'administration (Saison, SMTP et S�
                         "smtp_mdp": smtp_mdp,
                         "smtp_ssl": smtp_ssl
                     }
-                    with st.spinner("Test de connexion SMTP en cours..."):
-                        succes_test, msg_test = envoyer_courriel(
-                            smtp_dest,
-                            "🎱 Test de configuration SMTP - Ligue du Saphir",
-                            "Ce message confirme que votre configuration SMTP fonctionne correctement !",
-                            "<p>Ce message confirme que votre configuration <strong>SMTP</strong> fonctionne correctement !</p>",
-                            cfg_test
-                        )
-                    if succes_test:
-                        st.success(f"✅ {msg_test} (Envoyé à : `{smtp_dest}`)")
+                    if sauvegarder_config_email(nouvelle_cfg):
+                        config_email = nouvelle_cfg
+                        st.success("✅ Configuration SMTP enregistrée avec succès dans le fichier !")
+                        st.rerun()
                     else:
-                        st.error(f"❌ {msg_test}")
+                        st.error("Erreur lors de la sauvegarde du fichier.")
 
-    with tab_secu:
-        st.markdown("#### 🔑 Modifier le mot de passe d'accès à l'application")
-        nouveau_mdp = st.text_input("Nouveau mot de passe d'accès", type="password", key="new_admin_pwd")
-        confirm_mdp = st.text_input("Confirmer le nouveau mot de passe", type="password", key="confirm_admin_pwd")
-        if st.button("💾 Mettre à jour le mot de passe", use_container_width=True):
-            if not nouveau_mdp:
-                st.error("Le mot de passe ne peut pas être vide.")
-            elif nouveau_mdp != confirm_mdp:
-                st.error("Les deux mots de passe ne correspondent pas.")
-            else:
-                if sauvegarder_mot_de_passe_admin(nouveau_mdp):
-                    st.success("✅ Mot de passe d'accès mis à jour avec succès !")
+            with col_btn_cfg2:
+                if st.button("🧪 Tester la configuration (courriel test)", use_container_width=True):
+                    if not smtp_dest:
+                        st.error("⚠️ Veuillez renseigner au moins une adresse de destinataire.")
+                    elif not smtp_expediteur:
+                        st.error("⚠️ Veuillez renseigner l'adresse courriel de l'expéditeur.")
+                    else:
+                        cfg_test = {
+                            "destinataires": smtp_dest,
+                            "smtp_serveur": smtp_serveur,
+                            "smtp_port": int(smtp_port),
+                            "smtp_expediteur": smtp_expediteur,
+                            "smtp_mdp": smtp_mdp,
+                            "smtp_ssl": smtp_ssl
+                        }
+                        with st.spinner("Test de connexion SMTP en cours..."):
+                            succes_test, msg_test = envoyer_courriel(
+                                smtp_dest,
+                                "🎱 Test de configuration SMTP - Ligue du Saphir",
+                                "Ce message confirme que votre configuration SMTP fonctionne correctement !",
+                                "<p>Ce message confirme que votre configuration <strong>SMTP</strong> fonctionne correctement !</p>",
+                                cfg_test
+                            )
+                        if succes_test:
+                            st.success(f"✅ {msg_test} (Envoyé à : `{smtp_dest}`)")
+                        else:
+                            st.error(f"❌ {msg_test}")
+
+        with tab_secu:
+            st.markdown("#### 🔑 Modifier le mot de passe d'accès à l'application")
+            nouveau_mdp = st.text_input("Nouveau mot de passe d'accès", type="password", key="new_admin_pwd")
+            confirm_mdp = st.text_input("Confirmer le nouveau mot de passe", type="password", key="confirm_admin_pwd")
+            if st.button("💾 Mettre à jour le mot de passe", use_container_width=True):
+                if not nouveau_mdp:
+                    st.error("Le mot de passe ne peut pas être vide.")
+                elif nouveau_mdp != confirm_mdp:
+                    st.error("Les deux mots de passe ne correspondent pas.")
                 else:
-                    st.error("Erreur lors de la sauvegarde.")
+                    if sauvegarder_mot_de_passe_admin(nouveau_mdp):
+                        st.success("✅ Mot de passe d'accès mis à jour avec succès !")
+                    else:
+                        st.error("Erreur lors de la sauvegarde.")
