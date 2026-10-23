@@ -849,6 +849,9 @@ else:
     st.subheader("Application de saisie des résultats - Format 3 contre 3")
     st.markdown("*Plateforme officielle de gestion des matchs, de la cédule et des présences.*")
 
+if "message_validation_reussie" in st.session_state:
+    st.success(st.session_state.pop("message_validation_reussie"))
+
 # --- BANDEAU D'ÉTAT DU VERROU EXCLUSIF (UN SEUL MARQUEUR À LA FOIS) ---
 col_lock1, col_lock2 = st.columns([3, 1])
 if est_editeur:
@@ -1832,79 +1835,230 @@ elif not est_spectateur:
         absents_detectes
     )
 
+    @st.dialog("📋 Sommaire & Approbation de la feuille de match", width="large")
+    def modal_sommaire_approbation(
+        equipe_rec,
+        equipe_vis,
+        matchs_dict,
+        tot_rec,
+        tot_vis,
+        pts_j,
+        dict_j,
+        d_match,
+        absents_det,
+        txt_res,
+        html_res,
+        cfg_email,
+        sess_id,
+        donnees_sauv
+    ):
+        st.markdown("### 🎱 Sommaire officiel de la rencontre")
+        st.caption(f"📅 **Date :** {d_match}")
+
+        # Totaux par équipe
+        col_t1, col_t2 = st.columns(2)
+        vainq_rec = tot_rec > tot_vis
+        vainq_vis = tot_vis > tot_rec
+        col_t1.metric(
+            label=f"Équipe Receveur : {equipe_rec}",
+            value=f"{tot_rec} pts",
+            delta="Vainqueur 🏆" if vainq_rec else None
+        )
+        col_t2.metric(
+            label=f"Équipe Visiteur : {equipe_vis}",
+            value=f"{tot_vis} pts",
+            delta="Vainqueur 🏆" if vainq_vis else None
+        )
+        if tot_rec == tot_vis:
+            st.info("⚖️ **Résultat du match :** Égalité parfaite (Match nul)")
+
+        st.markdown("#### 🎯 Détail des 9 manches")
+        lignes_manches_html = []
+        for num in range(1, 10):
+            m = matchs_dict.get(str(num), {})
+            sa = m.get("score_a", 0)
+            sb = m.get("score_b", 0)
+            ja = m.get("joueur_a", "")
+            jb = m.get("joueur_b", "")
+            ja_abs = m.get("joueur_a_absent", False)
+            jb_abs = m.get("joueur_b_absent", False)
+
+            lbl_a = f"{ja} <span style='color: #c62828; font-size: 11px;'>[ABSENT]</span>" if ja_abs else ja
+            lbl_b = f"{jb} <span style='color: #c62828; font-size: 11px;'>[ABSENT]</span>" if jb_abs else jb
+
+            color_a = "#2e7d32" if sa == 8 else "#1e3d59"
+            color_b = "#2e7d32" if sb == 8 else "#1e3d59"
+
+            lignes_manches_html.append(f"""
+            <tr style="border-bottom: 1px solid #e0e0e0; text-align: center;">
+                <td style="padding: 6px 8px; font-weight: bold; background-color: #f7f9fa;">Manche {num}</td>
+                <td style="padding: 6px 8px; text-align: right;">{lbl_a}</td>
+                <td style="padding: 6px 8px; font-weight: bold; font-size: 15px; color: {color_a};">{sa}</td>
+                <td style="padding: 6px 4px; color: #999;">-</td>
+                <td style="padding: 6px 8px; font-weight: bold; font-size: 15px; color: {color_b};">{sb}</td>
+                <td style="padding: 6px 8px; text-align: left;">{lbl_b}</td>
+            </tr>
+            """)
+
+        tableau_html = f"""
+        <div style="max-height: 280px; overflow-y: auto; border: 1px solid #d0d7de; border-radius: 6px; margin-bottom: 12px;">
+        <table style="width: 100%; border-collapse: collapse; font-family: sans-serif; font-size: 13px;">
+            <thead>
+                <tr style="background-color: #0b3c5d; color: white; text-align: center;">
+                    <th style="padding: 8px;">Manche</th>
+                    <th style="padding: 8px; text-align: right;">{equipe_rec}</th>
+                    <th style="padding: 8px;" colspan="3">Points</th>
+                    <th style="padding: 8px; text-align: left;">{equipe_vis}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {''.join(lignes_manches_html)}
+                <tr style="background-color: #e8f0fe; font-weight: bold; border-top: 2px solid #0b3c5d; text-align: center;">
+                    <td style="padding: 8px;">TOTAL</td>
+                    <td style="padding: 8px; text-align: right;">{equipe_rec}</td>
+                    <td style="padding: 8px; font-size: 16px; color: #0d47a1;">{tot_rec}</td>
+                    <td style="padding: 8px;">-</td>
+                    <td style="padding: 8px; font-size: 16px; color: #0d47a1;">{tot_vis}</td>
+                    <td style="padding: 8px; text-align: left;">{equipe_vis}</td>
+                </tr>
+            </tbody>
+        </table>
+        </div>
+        """
+        st.markdown(tableau_html, unsafe_allow_html=True)
+
+        # Points individuels
+        st.markdown("#### 👤 Points individuels par joueur")
+        col_p1, col_p2 = st.columns(2)
+        with col_p1:
+            st.markdown(f"**{equipe_rec} :**")
+            for k in ["j1_rec", "j2_rec", "j3_rec"]:
+                nom = dict_j[k]["nom"]
+                pts = pts_j[k]
+                abs_str = " *(Absent)*" if not dict_j[k]["present"] else ""
+                st.write(f"- {nom} : **{pts} pts**{abs_str}")
+        with col_p2:
+            st.markdown(f"**{equipe_vis} :**")
+            for k in ["j1_vis", "j2_vis", "j3_vis"]:
+                nom = dict_j[k]["nom"]
+                pts = pts_j[k]
+                abs_str = " *(Absent)*" if not dict_j[k]["present"] else ""
+                st.write(f"- {nom} : **{pts} pts**{abs_str}")
+
+        if absents_det:
+            st.warning(f"⚠️ **Joueur(s) absent(s) :** {', '.join(absents_det)}")
+
+        # Notification par courriel
+        destinataires_envoi = cfg_email.get("destinataires", "").strip()
+        if destinataires_envoi:
+            st.info(f"✉️ **Courriel officiel :** Sera automatiquement envoyé à `{destinataires_envoi}` dès votre approbation.")
+        else:
+            st.caption("ℹ️ Aucun courriel configuré dans les paramètres.")
+
+        st.markdown("---")
+        st.markdown("##### ⚖️ Souhaitez-vous approuver ou annuler l'enregistrement de ce match ?")
+
+        col_btn_ann, col_btn_app = st.columns([1, 1])
+
+        with col_btn_ann:
+            if st.button("❌ Annuler / Modifier", use_container_width=True, key="dlg_btn_annuler"):
+                st.rerun()
+
+        with col_btn_app:
+            if st.button("✅ Approuver et enregistrer", type="primary", use_container_width=True, key="dlg_btn_approuver"):
+                historique = []
+                if os.path.exists(HISTORIQUE_FILE):
+                    try:
+                        with open(HISTORIQUE_FILE, "r", encoding="utf-8") as f:
+                            historique = json.load(f)
+                    except Exception:
+                        historique = []
+
+                donnees_finales = dict(donnees_sauv)
+                donnees_finales["total_receveur"] = tot_rec
+                donnees_finales["total_visiteur"] = tot_vis
+                donnees_finales["points_par_joueur"] = {
+                    p_id: {
+                        "nom": dict_j[p_id]["nom"],
+                        "equipe": dict_j[p_id]["equipe"],
+                        "points": pts_j[p_id],
+                        "present": dict_j[p_id]["present"],
+                        "moyenne": dict_j[p_id].get("moyenne", 0.0)
+                    }
+                    for p_id in dict_j
+                }
+                donnees_finales["date_enregistrement"] = d_match
+                donnees_finales["html_officiel"] = html_res
+                historique.append(donnees_finales)
+
+                with open(HISTORIQUE_FILE, "w", encoding="utf-8") as f:
+                    json.dump(historique, f, ensure_ascii=False, indent=4)
+
+                msg_flash = f"✅ Le match entre **{equipe_rec}** ({tot_rec} pts) et **{equipe_vis}** ({tot_vis} pts) a été approuvé et archivé avec succès !"
+
+                if destinataires_envoi:
+                    sujet = f"🎱 Ligue du Saphir : {equipe_rec} ({tot_rec}) vs {equipe_vis} ({tot_vis}) - {d_match}"
+                    pj_historique = [HISTORIQUE_FILE] if os.path.exists(HISTORIQUE_FILE) else None
+                    with st.spinner("Envoi automatique du courriel en cours (avec historique en pièce jointe)..."):
+                        succes_mail, msg_mail = envoyer_courriel(
+                            destinataires_envoi,
+                            sujet,
+                            txt_res,
+                            html_res,
+                            cfg_email,
+                            pieces_jointes=pj_historique
+                        )
+                    if succes_mail:
+                        mention_pj = f" avec le fichier `{HISTORIQUE_FILE}` en pièce jointe" if pj_historique else ""
+                        msg_flash += f"\n\n✉️ {msg_mail} (Envoyé automatiquement{mention_pj} à : `{destinataires_envoi}`)"
+                    else:
+                        msg_flash += f"\n\n⚠️ {msg_mail}"
+
+                # Nettoyage et libération
+                if os.path.exists(BACKUP_FILE):
+                    try:
+                        os.remove(BACKUP_FILE)
+                    except Exception:
+                        pass
+                if os.path.exists(CORBEILLE_FILE):
+                    try:
+                        os.remove(CORBEILLE_FILE)
+                    except Exception:
+                        pass
+                liberer_verrou(sess_id)
+                st.session_state["mode_consultation"] = True
+                st.session_state["message_validation_reussie"] = msg_flash
+                st.rerun()
+
+    # Aperçu rapide disponible avant de déclencher la validation
+    with st.expander("👁️ Aperçu rapide du sommaire du match", expanded=False):
+        col_ap1, col_ap2 = st.columns(2)
+        col_ap1.metric(f"{equipe_receveur}", f"{total_pts_receveur} pts")
+        col_ap2.metric(f"{equipe_visiteur}", f"{total_pts_visiteur} pts")
+        st.caption(f"Score actuel : {total_pts_receveur} vs {total_pts_visiteur}. Les 9 manches sont récapitulées lors de la validation officielle.")
+
     match_valide = False
 
     if st.button("🚀 Valider et enregistrer la feuille de match officielle", type="primary", use_container_width=True, disabled=not est_editeur):
         if manches_invalides:
-            st.error(f"❌ Impossible d'enregistrer : veuillez corriger les manches suivantes : {', '.join(map(str, sorted(set(manches_invalides))))}.")
+            st.error(f"❌ Impossible d'enregistrer : veuillez d'abord corriger les manches suivantes : {', '.join(map(str, sorted(set(manches_invalides))))}.")
         else:
-            match_valide = True
-            historique = []
-            if os.path.exists(HISTORIQUE_FILE):
-                try:
-                    with open(HISTORIQUE_FILE, "r", encoding="utf-8") as f:
-                        historique = json.load(f)
-                except Exception:
-                    historique = []
-            
-            donnees_finales = dict(donnees_a_sauvegarder)
-            donnees_finales["total_receveur"] = total_pts_receveur
-            donnees_finales["total_visiteur"] = total_pts_visiteur
-            donnees_finales["points_par_joueur"] = {
-                p_id: {
-                    "nom": dict_joueurs[p_id]["nom"],
-                    "equipe": dict_joueurs[p_id]["equipe"],
-                    "points": pts_joueurs[p_id],
-                    "present": dict_joueurs[p_id]["present"],
-                    "moyenne": dict_joueurs[p_id].get("moyenne", 0.0)
-                }
-                for p_id in dict_joueurs
-            }
-            donnees_finales["date_enregistrement"] = date_du_match
-            donnees_finales["html_officiel"] = html_resume
-            historique.append(donnees_finales)
-
-            with open(HISTORIQUE_FILE, "w", encoding="utf-8") as f:
-                json.dump(historique, f, ensure_ascii=False, indent=4)
-
-            st.success(f"✅ Le match entre **{equipe_receveur}** ({total_pts_receveur} pts) et **{equipe_visiteur}** ({total_pts_visiteur} pts) a été archivé avec succès !")
-
-            # Envoi automatique par courriel au moment de la validation finale
-            destinataires_envoi = config_email.get("destinataires", "").strip()
-            if not destinataires_envoi:
-                st.warning("⚠️ L'envoi automatique par courriel a été ignoré car aucun destinataire n'est configuré dans `config_email.json`.")
-            else:
-                sujet = f"🎱 Ligue du Saphir : {equipe_receveur} ({total_pts_receveur}) vs {equipe_visiteur} ({total_pts_visiteur}) - {date_du_match}"
-                pj_historique = [HISTORIQUE_FILE] if os.path.exists(HISTORIQUE_FILE) else None
-                with st.spinner("Envoi automatique du courriel en cours (avec historique en pièce jointe)..."):
-                    succes_mail, msg_mail = envoyer_courriel(
-                        destinataires_envoi,
-                        sujet,
-                        texte_resume,
-                        html_resume,
-                        config_email,
-                        pieces_jointes=pj_historique
-                    )
-                if succes_mail:
-                    mention_pj = f" avec le fichier `{HISTORIQUE_FILE}` en pièce jointe" if pj_historique else ""
-                    st.success(f"✉️ {msg_mail} (Envoyé automatiquement{mention_pj} à : `{destinataires_envoi}`)")
-                else:
-                    st.warning(f"⚠️ {msg_mail}")
-                    st.info("💡 Les résultats ont bien été sauvegardés sur l'ordinateur.")
-
-            # Nettoyage du fichier de secours et libération du verrou après validation réussie
-            if os.path.exists(BACKUP_FILE):
-                try:
-                    os.remove(BACKUP_FILE)
-                except Exception:
-                    pass
-            if os.path.exists(CORBEILLE_FILE):
-                try:
-                    os.remove(CORBEILLE_FILE)
-                except Exception:
-                    pass
-            liberer_verrou(my_session_id)
-            st.session_state["mode_consultation"] = True
+            modal_sommaire_approbation(
+                equipe_receveur,
+                equipe_visiteur,
+                donnees_a_sauvegarder["matchs"],
+                total_pts_receveur,
+                total_pts_visiteur,
+                pts_joueurs,
+                dict_joueurs,
+                date_du_match,
+                absents_detectes,
+                texte_resume,
+                html_resume,
+                config_email,
+                my_session_id,
+                donnees_a_sauvegarder
+            )
 
     # Sauvegarde automatique en arrière-plan (uniquement par l'éditeur actif et si le match n'est pas validé)
     if est_editeur and not match_valide:
