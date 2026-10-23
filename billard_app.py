@@ -115,7 +115,7 @@ def sauvegarder_config_email(cfg):
 # ==============================================================================
 # GESTION DU VERROU DE SESSION EXCLUSIF (UN SEUL MARQUEUR À LA FOIS)
 # ==============================================================================
-def gerer_verrou_session(my_session_id):
+def gerer_verrou_session(my_session_id, veut_etre_editeur=True):
     """Vérifie si la session actuelle détient le verrou d'édition ou l'acquiert."""
     maintenant = time.time()
     lock_existant = {}
@@ -130,6 +130,13 @@ def gerer_verrou_session(my_session_id):
     dernier_acces = lock_existant.get("dernier_acces", 0)
     expire = (maintenant - dernier_acces) > LOCK_TIMEOUT
 
+    # Si l'utilisateur est volontairement en mode lecture / consultation
+    if not veut_etre_editeur:
+        if detenteur and not expire and detenteur != my_session_id:
+            temps_restant = int(LOCK_TIMEOUT - (maintenant - dernier_acces))
+            return False, max(0, temps_restant), True
+        return False, 0, False
+
     if not detenteur or expire or detenteur == my_session_id:
         nouveau_lock = {
             "session_id": my_session_id,
@@ -141,10 +148,10 @@ def gerer_verrou_session(my_session_id):
                 json.dump(nouveau_lock, f, indent=4)
         except Exception:
             pass
-        return True, 0
+        return True, 0, False
     else:
         temps_restant = int(LOCK_TIMEOUT - (maintenant - dernier_acces))
-        return False, max(0, temps_restant)
+        return False, max(0, temps_restant), True
 
 def liberer_verrou(my_session_id):
     """Libère le verrou de session si détenu par cette session."""
@@ -421,7 +428,13 @@ if "user_session_id" not in st.session_state:
     st.session_state["user_session_id"] = str(uuid.uuid4())
 my_session_id = st.session_state["user_session_id"]
 
-est_editeur, temps_restant_verrou = gerer_verrou_session(my_session_id)
+if "mode_consultation" not in st.session_state:
+    st.session_state["mode_consultation"] = False
+
+est_editeur, temps_restant_verrou, autre_editeur_actif = gerer_verrou_session(
+    my_session_id,
+    veut_etre_editeur=not st.session_state["mode_consultation"]
+)
 
 # ==============================================================================
 # RESTAURATION INITIALE AU CHARGEMENT (ÉVITE LA PERTE DE DONNÉES SUR RAFRAÎCHISSEMENT)
@@ -432,7 +445,7 @@ if "app_initialisee" not in st.session_state:
     if sauvegarde_existante and "matchs" in sauvegarde_existante:
         restaurer_session(sauvegarde_existante)
 elif not est_editeur:
-    # Pour les spectateurs, on recharge toujours l'état actuel de la sauvegarde
+    # Pour les spectateurs et le mode lecture, on recharge toujours l'état actuel de la sauvegarde
     if sauvegarde_existante and "matchs" in sauvegarde_existante:
         restaurer_session(sauvegarde_existante)
 
@@ -453,16 +466,26 @@ col_lock1, col_lock2 = st.columns([3, 1])
 if est_editeur:
     col_lock1.success("🟢 **Vous avez la main exclusive pour la saisie et la validation du match.**")
     with col_lock2:
-        if st.button("🔓 Céder la main", use_container_width=True, help="Libère la feuille pour permettre à un autre utilisateur de saisir"):
+        if st.button("🔓 Céder la main", use_container_width=True, help="Bascule en mode lecture et libère la feuille de match"):
             liberer_verrou(my_session_id)
+            st.session_state["mode_consultation"] = True
             st.rerun()
 else:
-    mins = temps_restant_verrou // 60
-    secs = temps_restant_verrou % 60
-    col_lock1.warning(f"🔒 **Mode consultation (Lecture seule) :** Un autre utilisateur effectue actuellement la saisie. Vos champs sont verrouillés pour éviter les conflits. *(Inactivité restante : {mins}m {secs:02d}s)*")
+    if autre_editeur_actif:
+        mins = temps_restant_verrou // 60
+        secs = temps_restant_verrou % 60
+        col_lock1.warning(f"🔒 **Mode consultation (Lecture seule) :** Un autre utilisateur effectue actuellement la saisie. Vos champs sont verrouillés pour éviter les conflits. *(Inactivité restante : {mins}m {secs:02d}s)*")
+    else:
+        col_lock1.info("🔒 **Mode consultation (Lecture seule) :** Vous êtes en mode lecture. La feuille est disponible pour être saisie.")
+
     with col_lock2:
-        if st.button("⚡ Prendre la main", use_container_width=True, help="Prend le contrôle de la saisie si le marqueur précédent a quitté sans libérer"):
+        if st.button("⚡ Prendre la main", use_container_width=True, help="Prend le contrôle de la saisie, rafraîchit la page et active l'édition"):
             forcer_prise_de_main(my_session_id)
+            st.session_state["mode_consultation"] = False
+            # Rafraîchir immédiatement les scores depuis la dernière sauvegarde sur le disque
+            sauv_fraiche = charger_sauvegarde()
+            if sauv_fraiche and "matchs" in sauv_fraiche:
+                restaurer_session(sauv_fraiche)
             st.rerun()
 
 # --- BOUTONS D'ACTION HAUT DE PAGE (RESTAURER / ANNULER EFFACEMENT / NOUVEAU MATCH) ---
@@ -543,11 +566,13 @@ with col_h4:
                 except Exception:
                     pass
 
-            # 3. Conserver uniquement l'identifiant de session pour maintenir le verrou
+            # 3. Conserver l'identifiant de session et l'état de consultation
             user_sess = st.session_state.get("user_session_id")
+            mode_c = st.session_state.get("mode_consultation", False)
             st.session_state.clear()
             if user_sess:
                 st.session_state["user_session_id"] = user_sess
+            st.session_state["mode_consultation"] = mode_c
             st.session_state["app_initialisee"] = True
 
             # 4. Remise à zéro explicite de toutes les manches (0 - 0)
@@ -1058,7 +1083,6 @@ if st.button("🚀 Valider et enregistrer la feuille de match officielle", type=
         st.error(f"❌ Impossible d'enregistrer : veuillez corriger les manches suivantes : {', '.join(map(str, sorted(set(manches_invalides))))}.")
     else:
         match_valide = True
-        st.balloons()
         historique = []
         if os.path.exists(HISTORIQUE_FILE):
             try:
@@ -1123,6 +1147,7 @@ if st.button("🚀 Valider et enregistrer la feuille de match officielle", type=
             except Exception:
                 pass
         liberer_verrou(my_session_id)
+        st.session_state["mode_consultation"] = True
 
 # Sauvegarde automatique en arrière-plan (uniquement par l'éditeur actif et si le match n'est pas validé)
 if est_editeur and not match_valide:
