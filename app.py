@@ -23,6 +23,7 @@ HISTORIQUE_FILE = "historique_matchs.json"
 CONFIG_EMAIL_FILE = "config_email.json"
 ADMIN_CONFIG_FILE = "config_admin.json"
 EQUIPES_CSV_FILE = "equipes-saphir.csv"
+ARMOIRIES_FILE = "armoiries.png"
 LOCK_FILE = "session_lock.json"
 LOCK_TIMEOUT = 900  # 15 minutes d'inactivité avant libération automatique
 
@@ -434,14 +435,18 @@ est_connecte = st.session_state.get("authentifie", False)
 est_spectateur = st.session_state.get("est_spectateur", False)
 
 if not est_connecte and not est_spectateur:
-    st.markdown("<div style='text-align: center; margin-top: 30px;'>", unsafe_allow_html=True)
-    st.title("🎱 Ligue de billard du Saphir")
-    st.subheader("Accès à la feuille de match et aux résultats")
-    st.markdown("Veuillez choisir votre mode d'accès ci-dessous.")
-    st.markdown("</div>", unsafe_allow_html=True)
-
     col_l1, col_l2, col_l3 = st.columns([1, 1.3, 1])
     with col_l2:
+        if os.path.exists(ARMOIRIES_FILE):
+            c_arm1, c_arm2, c_arm3 = st.columns([1, 1.2, 1])
+            with c_arm2:
+                st.image(ARMOIRIES_FILE, use_container_width=True)
+
+        st.markdown("<div style='text-align: center; margin-top: 5px;'>", unsafe_allow_html=True)
+        st.title("🎱 Ligue de billard du Saphir")
+        st.subheader("Accès à la feuille de match et aux résultats")
+        st.markdown("Veuillez choisir votre mode d'accès ci-dessous.")
+        st.markdown("</div>", unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown("### 🔒 Accès Marqueur / Éditeur")
             st.caption("Permet la saisie des manches, la validation officielle et l'administration.")
