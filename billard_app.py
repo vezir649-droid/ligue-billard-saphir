@@ -326,7 +326,7 @@ def restaurer_session(data):
 
     return True
 
-def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_joueurs, dict_joueurs, date_str, absents_info=None, rectif_bandeau=""):
+def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_joueurs, dict_joueurs, date_str, absents_info=None, rectif_bandeau="", approbateur_rec="", approbateur_vis=""):
     """Génère le résumé en texte brut et en HTML avec les totaux par équipe et par joueur."""
     lignes_texte = [
         f"Ligue de billard du Saphir - Résultats officiels",
@@ -337,6 +337,12 @@ def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_j
 
     if absents_info:
         lignes_texte.append(f"Joueurs absents : {', '.join(absents_info)}")
+
+    if approbateur_rec or approbateur_vis:
+        lignes_texte.extend([
+            f"Approbation {receveur} : {approbateur_rec or 'Non renseigné'}",
+            f"Approbation {visiteur} : {approbateur_vis or 'Non renseigné'}"
+        ])
 
     lignes_texte.extend([
         "-" * 50,
@@ -381,6 +387,18 @@ def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_j
     absents_html_bloc = ""
     if absents_info:
         absents_html_bloc = f"<p style='color: #d32f2f;'><strong>Joueur(s) absent(s) :</strong> {', '.join(absents_info)}</p>"
+
+    approbateurs_html_bloc = ""
+    if approbateur_rec or approbateur_vis:
+        approbateurs_html_bloc = f"""
+            <div style="margin-top: 15px; padding: 12px; background-color: #f1f8e9; border: 1px solid #c8e6c9; border-left: 5px solid #2e7d32; border-radius: 6px;">
+                <h4 style="margin: 0 0 6px 0; color: #1b5e20; font-size: 14px;">✍️ Approbations officielles de la feuille de match :</h4>
+                <div style="font-size: 13px; color: #333;">
+                    • Représentant <strong>{receveur}</strong> : <u>{approbateur_rec or 'Non renseigné'}</u><br>
+                    • Représentant <strong>{visiteur}</strong> : <u>{approbateur_vis or 'Non renseigné'}</u>
+                </div>
+            </div>
+        """
 
     logo_b64 = charger_armoiries_base64()
     src_val = logo_b64 if logo_b64 else "cid:armoiries_logo"
@@ -440,6 +458,7 @@ def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_j
                     </ul>
                 </div>
             </div>
+            {approbateurs_html_bloc}
         </div>
         <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
             <thead>
@@ -488,6 +507,22 @@ def obtenir_html_match(m):
         </div>
         """
 
+    app_r = m.get("approbateur_receveur", "")
+    app_v = m.get("approbateur_visiteur", "")
+    nom_rec_disp = m.get("receveur", m.get("equipe_receveur", "Receveur"))
+    nom_vis_disp = m.get("visiteur", m.get("equipe_visiteur", "Visiteur"))
+    approbateurs_bloc = ""
+    if app_r or app_v:
+        approbateurs_bloc = f"""
+        <div style="margin-top: 15px; padding: 12px; background-color: #f1f8e9; border: 1px solid #c8e6c9; border-left: 5px solid #2e7d32; border-radius: 6px;">
+            <h4 style="margin: 0 0 6px 0; color: #1b5e20; font-size: 14px;">✍️ Approbations officielles de la feuille de match :</h4>
+            <div style="font-size: 13px; color: #333;">
+                • Représentant <strong>{nom_rec_disp}</strong> : <u>{app_r or 'Non renseigné'}</u><br>
+                • Représentant <strong>{nom_vis_disp}</strong> : <u>{app_v or 'Non renseigné'}</u>
+            </div>
+        </div>
+        """
+
     if m.get("html_officiel"):
         html_existant = m["html_officiel"]
         if "Armoiries" not in html_existant and "armoiries" not in html_existant:
@@ -500,6 +535,11 @@ def obtenir_html_match(m):
                 )
         if m.get("date_rectification") and "FEUILLE OFFICIELLE RECTIFIÉE" not in html_existant:
             html_existant = html_existant.replace('<div style="background-color: #f4f6f9;', f'{rectif_bandeau}\n        <div style="background-color: #f4f6f9;')
+        if (app_r or app_v) and "Approbations officielles" not in html_existant:
+            html_existant = html_existant.replace(
+                '<table style="width: 100%; border-collapse: collapse; font-size: 14px;">',
+                f'{approbateurs_bloc}\n        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">'
+            )
         return html_existant
     
     rec = m.get("receveur", "Receveur")
@@ -598,6 +638,7 @@ def obtenir_html_match(m):
                     <ul style="margin: 0; padding-left: 20px; font-size: 14px;">{li_vis}</ul>
                 </div>
             </div>
+            {approbateurs_bloc}
         </div>
         <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
             <thead>
@@ -1408,6 +1449,10 @@ if choix_vue != label_direct:
     
     with st.container(border=True):
         st.markdown(f"#### 📜 Feuille officielle archivée — {m_arch.get('date_enregistrement', m_arch.get('date', ''))}")
+        if m_arch.get("approbateur_receveur") or m_arch.get("approbateur_visiteur"):
+            app_r_txt = m_arch.get("approbateur_receveur", "Non spécifié")
+            app_v_txt = m_arch.get("approbateur_visiteur", "Non spécifié")
+            st.caption(f"✍️ **Feuille officielle approuvée par :** `{app_r_txt}` ({m_arch.get('receveur', 'Receveur')}) et `{app_v_txt}` ({m_arch.get('visiteur', 'Visiteur')})")
         date_slug = str(m_arch.get('date_enregistrement', 'match')).replace('/', '-').replace(' ', '_').replace(':', 'h').replace('à', '')
         rec_slug = str(m_arch.get('receveur', 'rec')).replace(' ', '_')
         vis_slug = str(m_arch.get('visiteur', 'vis')).replace(' ', '_')
@@ -1850,7 +1895,9 @@ elif not est_spectateur:
         html_res,
         cfg_email,
         sess_id,
-        donnees_sauv
+        donnees_sauv,
+        roster_rec=None,
+        roster_vis=None
     ):
         st.markdown("### 🎱 Sommaire officiel de la rencontre")
         st.caption(f"📅 **Date :** {d_match}")
@@ -1948,10 +1995,54 @@ elif not est_spectateur:
         if absents_det:
             st.warning(f"⚠️ **Joueur(s) absent(s) :** {', '.join(absents_det)}")
 
+        # Sélection des approbateurs de chaque équipe via dropdown boxes
+        st.markdown("#### ✍️ Sélection des approbateurs officiels")
+        st.caption("Sélectionnez le joueur ou capitaine qui approuve les résultats officiels pour chaque équipe :")
+
+        liste_app_rec = []
+        for p in [dict_j["j1_rec"]["nom"], dict_j["j2_rec"]["nom"], dict_j["j3_rec"]["nom"]]:
+            if p and p not in liste_app_rec:
+                liste_app_rec.append(p)
+        if roster_rec:
+            for p in roster_rec:
+                if p and p not in liste_app_rec:
+                    liste_app_rec.append(p)
+        if not liste_app_rec:
+            liste_app_rec = [equipe_rec]
+
+        liste_app_vis = []
+        for p in [dict_j["j1_vis"]["nom"], dict_j["j2_vis"]["nom"], dict_j["j3_vis"]["nom"]]:
+            if p and p not in liste_app_vis:
+                liste_app_vis.append(p)
+        if roster_vis:
+            for p in roster_vis:
+                if p and p not in liste_app_vis:
+                    liste_app_vis.append(p)
+        if not liste_app_vis:
+            liste_app_vis = [equipe_vis]
+
+        col_app_r, col_app_v = st.columns(2)
+        with col_app_r:
+            sel_app_rec = st.selectbox(
+                f"Approbateur — {equipe_rec} :",
+                options=liste_app_rec,
+                key="sel_app_rec_choix",
+                help=f"Joueur ou représentant validant la feuille pour {equipe_rec}"
+            )
+        with col_app_v:
+            sel_app_vis = st.selectbox(
+                f"Approbateur — {equipe_vis} :",
+                options=liste_app_vis,
+                key="sel_app_vis_choix",
+                help=f"Joueur ou représentant validant la feuille pour {equipe_vis}"
+            )
+
+        st.info(f"📋 **Feuille officielle approuvée par :** `{sel_app_rec}` ({equipe_rec}) et `{sel_app_vis}` ({equipe_vis})")
+
         # Notification par courriel
         destinataires_envoi = cfg_email.get("destinataires", "").strip()
         if destinataires_envoi:
-            st.info(f"✉️ **Courriel officiel :** Sera automatiquement envoyé à `{destinataires_envoi}` dès votre approbation.")
+            st.info(f"✉️ **Courriel officiel :** Sera automatiquement envoyé à `{destinataires_envoi}` avec mention des approbateurs dès votre confirmation.")
         else:
             st.caption("ℹ️ Aucun courriel configuré dans les paramètres.")
 
@@ -1974,9 +2065,26 @@ elif not est_spectateur:
                     except Exception:
                         historique = []
 
+                # Régénération des résumés texte et HTML avec les approbateurs sélectionnés
+                txt_res_final, html_res_final = generer_resume_match(
+                    equipe_rec,
+                    equipe_vis,
+                    matchs_dict,
+                    tot_rec,
+                    tot_vis,
+                    pts_j,
+                    dict_j,
+                    d_match,
+                    absents_det,
+                    approbateur_rec=sel_app_rec,
+                    approbateur_vis=sel_app_vis
+                )
+
                 donnees_finales = dict(donnees_sauv)
                 donnees_finales["total_receveur"] = tot_rec
                 donnees_finales["total_visiteur"] = tot_vis
+                donnees_finales["approbateur_receveur"] = sel_app_rec
+                donnees_finales["approbateur_visiteur"] = sel_app_vis
                 donnees_finales["points_par_joueur"] = {
                     p_id: {
                         "nom": dict_j[p_id]["nom"],
@@ -1988,13 +2096,13 @@ elif not est_spectateur:
                     for p_id in dict_j
                 }
                 donnees_finales["date_enregistrement"] = d_match
-                donnees_finales["html_officiel"] = html_res
+                donnees_finales["html_officiel"] = html_res_final
                 historique.append(donnees_finales)
 
                 with open(HISTORIQUE_FILE, "w", encoding="utf-8") as f:
                     json.dump(historique, f, ensure_ascii=False, indent=4)
 
-                msg_flash = f"✅ Le match entre **{equipe_rec}** ({tot_rec} pts) et **{equipe_vis}** ({tot_vis} pts) a été approuvé et archivé avec succès !"
+                msg_flash = f"✅ Le match entre **{equipe_rec}** ({tot_rec} pts) et **{equipe_vis}** ({tot_vis} pts) a été approuvé par **{sel_app_rec}** ({equipe_rec}) et **{sel_app_vis}** ({equipe_vis}), et archivé avec succès !"
 
                 if destinataires_envoi:
                     sujet = f"🎱 Ligue du Saphir : {equipe_rec} ({tot_rec}) vs {equipe_vis} ({tot_vis}) - {d_match}"
@@ -2003,8 +2111,8 @@ elif not est_spectateur:
                         succes_mail, msg_mail = envoyer_courriel(
                             destinataires_envoi,
                             sujet,
-                            txt_res,
-                            html_res,
+                            txt_res_final,
+                            html_res_final,
                             cfg_email,
                             pieces_jointes=pj_historique
                         )
@@ -2035,7 +2143,7 @@ elif not est_spectateur:
         col_ap1, col_ap2 = st.columns(2)
         col_ap1.metric(f"{equipe_receveur}", f"{total_pts_receveur} pts")
         col_ap2.metric(f"{equipe_visiteur}", f"{total_pts_visiteur} pts")
-        st.caption(f"Score actuel : {total_pts_receveur} vs {total_pts_visiteur}. Les 9 manches sont récapitulées lors de la validation officielle.")
+        st.caption(f"Score actuel : {total_pts_receveur} vs {total_pts_visiteur}. Les 9 manches et le choix des approbateurs sont finalisés lors de la validation officielle.")
 
     match_valide = False
 
@@ -2057,7 +2165,9 @@ elif not est_spectateur:
                 html_resume,
                 config_email,
                 my_session_id,
-                donnees_a_sauvegarder
+                donnees_a_sauvegarder,
+                roster_rec,
+                roster_vis
             )
 
     # Sauvegarde automatique en arrière-plan (uniquement par l'éditeur actif et si le match n'est pas validé)
