@@ -701,6 +701,298 @@ def obtenir_html_match(m):
     """
     return html
 
+def generer_rapport_historique_convivial(historique):
+    """Génère un bilan officiel complet et convivial de tous les matchs archivés (texte et HTML)."""
+    date_gen = datetime.now().strftime("%d/%m/%Y à %H:%M")
+    nb_total = len(historique)
+
+    stats_equipes = {}
+    total_pts_ligue = 0
+    matchs_traites = []
+
+    for idx, m in enumerate(historique):
+        rec = m.get("receveur", m.get("equipe_receveur", "Receveur"))
+        vis = m.get("visiteur", m.get("equipe_visiteur", "Visiteur"))
+        d_m = m.get("date_enregistrement", m.get("date", "Date inconnue"))
+        m_dict = m.get("matchs", {})
+
+        tr = m.get("total_receveur")
+        if tr is None:
+            tr = sum(m_dict.get(str(i), {}).get("score_a", 0) for i in range(1, 10))
+        tv = m.get("total_visiteur")
+        if tv is None:
+            tv = sum(m_dict.get(str(i), {}).get("score_b", 0) for i in range(1, 10))
+
+        try:
+            tr = int(tr)
+        except (ValueError, TypeError):
+            tr = 0
+        try:
+            tv = int(tv)
+        except (ValueError, TypeError):
+            tv = 0
+
+        total_pts_ligue += (tr + tv)
+
+        app_r = m.get("approbateur_receveur", "")
+        app_v = m.get("approbateur_visiteur", "")
+        est_rect = bool(m.get("date_rectification"))
+        d_rect = m.get("date_rectification", "")
+
+        for eq in [rec, vis]:
+            if eq not in stats_equipes:
+                stats_equipes[eq] = {"pj": 0, "v": 0, "d": 0, "n": 0, "pour": 0, "contre": 0}
+
+        stats_equipes[rec]["pj"] += 1
+        stats_equipes[vis]["pj"] += 1
+        stats_equipes[rec]["pour"] += tr
+        stats_equipes[rec]["contre"] += tv
+        stats_equipes[vis]["pour"] += tv
+        stats_equipes[vis]["contre"] += tr
+
+        if tr > tv:
+            stats_equipes[rec]["v"] += 1
+            stats_equipes[vis]["d"] += 1
+            vainqueur = rec
+        elif tv > tr:
+            stats_equipes[vis]["v"] += 1
+            stats_equipes[rec]["d"] += 1
+            vainqueur = vis
+        else:
+            stats_equipes[rec]["n"] += 1
+            stats_equipes[vis]["n"] += 1
+            vainqueur = "Égalité"
+
+        matchs_traites.append({
+            "idx": idx + 1,
+            "date": d_m,
+            "receveur": rec,
+            "visiteur": vis,
+            "tr": tr,
+            "tv": tv,
+            "vainqueur": vainqueur,
+            "app_r": app_r,
+            "app_v": app_v,
+            "rectifie": est_rect,
+            "d_rect": d_rect,
+            "matchs": m_dict
+        })
+
+    # Classement général trié
+    classement = sorted(
+        stats_equipes.items(),
+        key=lambda item: (item[1]["v"], item[1]["pour"] - item[1]["contre"], item[1]["pour"]),
+        reverse=True
+    )
+
+    # 1. Version TEXTE BRUT
+    lignes_texte = [
+        "============================================================",
+        "🎱 LIGUE DE BILLARD BOULE EN MAIN",
+        "BILAN OFFICIEL ET HISTORIQUE COMPLET DES MATCHS",
+        f"Généré le : {date_gen}",
+        f"Total de rencontres jouées : {nb_total}",
+        f"Total de points cumulés : {total_pts_ligue} pts",
+        "============================================================\n",
+        "🏆 CLASSEMENT GÉNÉRAL DES ÉQUIPES :",
+        "-" * 60,
+        f"{'Rang':<5} {'Équipe':<20} {'PJ':<4} {'V':<4} {'D':<4} {'N':<4} {'BP':<6} {'BC':<6} {'Diff':<6}",
+        "-" * 60
+    ]
+
+    for rang, (eq, st_e) in enumerate(classement, start=1):
+        diff = st_e["pour"] - st_e["contre"]
+        diff_str = f"+{diff}" if diff > 0 else str(diff)
+        lignes_texte.append(
+            f"{rang:<5} {eq:<20} {st_e['pj']:<4} {st_e['v']:<4} {st_e['d']:<4} {st_e['n']:<4} {st_e['pour']:<6} {st_e['contre']:<6} {diff_str:<6}"
+        )
+
+    lignes_texte.extend([
+        "-" * 60,
+        "\n📋 HISTORIQUE CHRONOLOGIQUE DES RENCONTRES :",
+        "-" * 60
+    ])
+
+    for m_item in matchs_traites:
+        app_txt = ""
+        if m_item["app_r"] or m_item["app_v"]:
+            app_txt = f" | Approuvé par : {m_item['app_r'] or 'N/D'} & {m_item['app_v'] or 'N/D'}"
+        rect_txt = " [Rectifié]" if m_item["rectifie"] else ""
+        lignes_texte.append(
+            f"Match #{m_item['idx']} ({m_item['date']}){rect_txt} : {m_item['receveur']} ({m_item['tr']} pts) vs {m_item['visiteur']} ({m_item['tv']} pts) -> Vainqueur : {m_item['vainqueur']}{app_txt}"
+        )
+
+    lignes_texte.append("\n" + "=" * 60)
+    texte_brut = "\n".join(lignes_texte)
+
+    # 2. Version HTML (Mise en page conviviale, responsive et moderne)
+    logo_b64 = charger_armoiries_base64()
+    src_val = logo_b64 if logo_b64 else "cid:armoiries_logo"
+    arm_existe = bool(logo_b64 or os.path.isfile(find_armoiries_path()))
+    logo_td = f'<td style="width: 75px; vertical-align: middle; padding-right: 14px;"><img src="{src_val}" alt="Armoiries" style="height: 70px; width: 70px; object-fit: contain; border-radius: 6px;"></td>' if arm_existe else ''
+
+    # Lignes du tableau de classement
+    lignes_classement_html = []
+    medailles = {1: "🥇", 2: "🥈", 3: "🥉"}
+    for rang, (eq, st_e) in enumerate(classement, start=1):
+        diff = st_e["pour"] - st_e["contre"]
+        diff_str = f"+{diff}" if diff > 0 else str(diff)
+        diff_color = "#2e7d32" if diff > 0 else ("#c62828" if diff < 0 else "#555")
+        badge_rang = medailles.get(rang, f"<strong>#{rang}</strong>")
+        bg_row = "#f9fbfd" if rang % 2 == 1 else "#ffffff"
+
+        lignes_classement_html.append(f"""
+        <tr style="background-color: {bg_row}; border-bottom: 1px solid #e0e0e0; text-align: center;">
+            <td style="padding: 9px; font-size: 15px;">{badge_rang}</td>
+            <td style="padding: 9px; text-align: left; font-weight: bold; color: #0b3c5d;">{eq}</td>
+            <td style="padding: 9px;">{st_e['pj']}</td>
+            <td style="padding: 9px; font-weight: bold; color: #2e7d32;">{st_e['v']}</td>
+            <td style="padding: 9px; color: #c62828;">{st_e['d']}</td>
+            <td style="padding: 9px; color: #666;">{st_e['n']}</td>
+            <td style="padding: 9px; font-weight: bold; color: #0d47a1;">{st_e['pour']}</td>
+            <td style="padding: 9px; color: #555;">{st_e['contre']}</td>
+            <td style="padding: 9px; font-weight: bold; color: {diff_color};">{diff_str}</td>
+        </tr>
+        """)
+
+    # Lignes de l'historique des matchs
+    lignes_matchs_html = []
+    for m_item in matchs_traites:
+        vainq_badge = f"<span style='background-color: #e8f5e9; color: #2e7d32; font-weight: bold; padding: 3px 8px; border-radius: 12px; font-size: 12px;'>🏆 {m_item['vainqueur']}</span>" if m_item['vainqueur'] != "Égalité" else "<span style='background-color: #fff3e0; color: #e65100; font-weight: bold; padding: 3px 8px; border-radius: 12px; font-size: 12px;'>⚖️ Match nul</span>"
+        rect_badge = f"<span style='background-color: #fff3cd; color: #856404; font-size: 11px; padding: 2px 6px; border-radius: 4px; margin-left: 6px;'>⚠️ Rectifié</span>" if m_item['rectifie'] else ""
+
+        app_html = ""
+        if m_item['app_r'] or m_item['app_v']:
+            app_html = f"<div style='font-size: 11px; color: #555; margin-top: 3px;'>✍️ Approuvé par : <strong>{m_item['app_r'] or 'N/D'}</strong> & <strong>{m_item['app_v'] or 'N/D'}</strong></div>"
+
+        # Mini résumé des 9 manches
+        mini_manches_tds = []
+        for i_m in range(1, 10):
+            m_sc = m_item["matchs"].get(str(i_m), {})
+            s_a = m_sc.get("score_a", 0)
+            s_b = m_sc.get("score_b", 0)
+            mini_manches_tds.append(f"<span style='font-size: 10px; background: #eef2f5; padding: 2px 4px; border-radius: 3px; margin: 1px; display: inline-block;'>M{i_m}: <strong>{s_a}-{s_b}</strong></span>")
+
+        mini_bloc = f"<div style='margin-top: 4px;'>{' '.join(mini_manches_tds)}</div>" if m_item["matchs"] else ""
+
+        lignes_matchs_html.append(f"""
+        <tr style="border-bottom: 1px solid #e0e0e0; vertical-align: middle;">
+            <td style="padding: 10px; font-weight: bold; text-align: center; color: #0b3c5d;">#{m_item['idx']}</td>
+            <td style="padding: 10px; font-size: 12px; color: #555; text-align: center;">{m_item['date']}{rect_badge}</td>
+            <td style="padding: 10px; text-align: right; font-weight: bold;">
+                {m_item['receveur']} <span style="font-size: 16px; color: #0d47a1; margin-left: 6px;">{m_item['tr']}</span>
+            </td>
+            <td style="padding: 10px; text-align: center; font-weight: bold; color: #999;">vs</td>
+            <td style="padding: 10px; text-align: left; font-weight: bold;">
+                <span style="font-size: 16px; color: #0d47a1; margin-right: 6px;">{m_item['tv']}</span> {m_item['visiteur']}
+            </td>
+            <td style="padding: 10px; text-align: center;">{vainq_badge}</td>
+            <td style="padding: 10px; font-size: 12px;">{app_html}{mini_bloc}</td>
+        </tr>
+        """)
+
+    html_complet = f"""
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <title>Bilan officiel de la saison - Ligue de billard Boule en main</title>
+        <style>
+            @media print {{
+                .no-print {{ display: none !important; }}
+                body {{ margin: 8mm; font-size: 11pt; }}
+            }}
+        </style>
+    </head>
+    <body style="font-family: Arial, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif; line-height: 1.6; color: #222; margin: 0; padding: 15px; background-color: #fdfdfd;">
+        <div style="max-width: 950px; margin: 0 auto; background: white; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+            <!-- EN-TETE OFFICIEL -->
+            <table style="width: 100%; border-bottom: 3px solid #0b3c5d; padding-bottom: 12px; margin-bottom: 18px; border-collapse: collapse;">
+                <tr>
+                    {logo_td}
+                    <td style="vertical-align: middle;">
+                        <h2 style="color: #0b3c5d; margin: 0; font-size: 22px;">🎱 Ligue de billard Boule en main</h2>
+                        <div style="color: #444; font-size: 15px; font-weight: bold; margin-top: 3px;">
+                            Bilan officiel & Historique complet des rencontres
+                        </div>
+                        <div style="color: #777; font-size: 12px; margin-top: 2px;">
+                            Document officiel généré le {date_gen}
+                        </div>
+                    </td>
+                </tr>
+            </table>
+
+            <!-- CARTES STATISTIQUES EN TETE -->
+            <div style="display: flex; gap: 12px; margin-bottom: 22px;">
+                <div style="flex: 1; background: #e8f0fe; border-left: 4px solid #1a73e8; border-radius: 6px; padding: 10px 14px; text-align: center;">
+                    <div style="font-size: 12px; color: #1a73e8; font-weight: bold; text-transform: uppercase;">Rencontres archivées</div>
+                    <div style="font-size: 24px; font-weight: bold; color: #0b3c5d;">{nb_total}</div>
+                </div>
+                <div style="flex: 1; background: #e8f5e9; border-left: 4px solid #2e7d32; border-radius: 6px; padding: 10px 14px; text-align: center;">
+                    <div style="font-size: 12px; color: #2e7d32; font-weight: bold; text-transform: uppercase;">Équipes actives</div>
+                    <div style="font-size: 24px; font-weight: bold; color: #1b5e20;">{len(stats_equipes)}</div>
+                </div>
+                <div style="flex: 1; background: #f3e5f5; border-left: 4px solid #7b1fa2; border-radius: 6px; padding: 10px 14px; text-align: center;">
+                    <div style="font-size: 12px; color: #7b1fa2; font-weight: bold; text-transform: uppercase;">Points disputés</div>
+                    <div style="font-size: 24px; font-weight: bold; color: #4a148c;">{total_pts_ligue}</div>
+                </div>
+            </div>
+
+            <!-- SECTION 1 : CLASSEMENT GENERAL -->
+            <h3 style="color: #0b3c5d; margin: 18px 0 10px 0; border-bottom: 2px solid #e0e0e0; padding-bottom: 6px; font-size: 17px;">
+                🏆 Classement général des équipes
+            </h3>
+            <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 25px;">
+                <thead>
+                    <tr style="background-color: #0b3c5d; color: white;">
+                        <th style="padding: 8px;">Rang</th>
+                        <th style="padding: 8px; text-align: left;">Équipe</th>
+                        <th style="padding: 8px;">PJ</th>
+                        <th style="padding: 8px;">V</th>
+                        <th style="padding: 8px;">D</th>
+                        <th style="padding: 8px;">N</th>
+                        <th style="padding: 8px;">Pts Pour</th>
+                        <th style="padding: 8px;">Pts Contre</th>
+                        <th style="padding: 8px;">Diff</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {''.join(lignes_classement_html)}
+                </tbody>
+            </table>
+
+            <!-- SECTION 2 : HISTORIQUE COMPLET DES MATCHS -->
+            <h3 style="color: #0b3c5d; margin: 25px 0 10px 0; border-bottom: 2px solid #e0e0e0; padding-bottom: 6px; font-size: 17px;">
+                📋 Détail chronologique de toutes les rencontres
+            </h3>
+            <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 20px;">
+                <thead>
+                    <tr style="background-color: #0b3c5d; color: white; text-align: center;">
+                        <th style="padding: 8px; width: 45px;">#</th>
+                        <th style="padding: 8px; width: 140px;">Date</th>
+                        <th style="padding: 8px; text-align: right;">Receveur</th>
+                        <th style="padding: 8px; width: 30px;"></th>
+                        <th style="padding: 8px; text-align: left;">Visiteur</th>
+                        <th style="padding: 8px; width: 130px;">Vainqueur</th>
+                        <th style="padding: 8px;">Détails & Approbations</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {''.join(lignes_matchs_html)}
+                </tbody>
+            </table>
+
+            <!-- PIED DE PAGE -->
+            <div style="margin-top: 30px; padding-top: 12px; border-top: 1px solid #ddd; text-align: center; font-size: 12px; color: #777;">
+                Feuille de synthèse officielle — Ligue de billard Boule en main.<br>
+                Ce document récapitule l'intégralité des résultats archivés et validés par les marqueurs et capitaines officiels.
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    return texte_brut, html_complet
+
 def envoyer_courriel(destinataires_str, sujet, texte_brut, html_contenu, config, pieces_jointes=None):
     """Envoie un courriel automatique via SMTP avec intégration universelle de l'image armoiries (CID inline) et pièces jointes."""
     destinataires = [d.strip() for d in destinataires_str.split(",") if d.strip()]
@@ -2257,9 +2549,10 @@ if not est_spectateur:
     st.markdown("### ⚙️ Espace Administration")
 
     with st.expander("🛠️ Ouvrir le panneau d'administration (Saison, SMTP et Sécurité)", expanded=False):
-        tab_saison, tab_rectif, tab_smtp, tab_secu = st.tabs([
+        tab_saison, tab_rectif, tab_export, tab_smtp, tab_secu = st.tabs([
             "🗓️ Démarrer une nouvelle saison",
             "✏️ Rectifier un match archivé",
+            "📤 Envoyer l'historique complet",
             "📧 Configuration SMTP",
             "🔑 Mot de passe d'accès"
         ])
@@ -2457,6 +2750,97 @@ if not est_spectateur:
 
                         time.sleep(1.5)
                         st.rerun()
+
+        with tab_export:
+            st.markdown("#### 📤 Envoyer l'historique complet des matchs par courriel")
+            st.caption("Génère un bilan officiel complet et convivial (classement général des équipes, chronologie et détails des rencontres) et l'expédie à l'adresse de votre choix.")
+
+            historique_export = charger_historique_matchs()
+            if not historique_export:
+                st.info("ℹ️ Aucun match n'est actuellement archivé dans l'historique. L'envoi sera disponible dès qu'une rencontre aura été validée.")
+            else:
+                col_nb1, col_nb2 = st.columns(2)
+                col_nb1.metric("📊 Total de matchs archivés", f"{len(historique_export)} match(s)")
+
+                pts_totaux_saison = 0
+                for m_tmp in historique_export:
+                    tr_tmp = m_tmp.get("total_receveur")
+                    tv_tmp = m_tmp.get("total_visiteur")
+                    if tr_tmp is None:
+                        tr_tmp = sum(m_tmp.get("matchs", {}).get(str(i), {}).get("score_a", 0) for i in range(1, 10))
+                    if tv_tmp is None:
+                        tv_tmp = sum(m_tmp.get("matchs", {}).get(str(i), {}).get("score_b", 0) for i in range(1, 10))
+                    try:
+                        pts_totaux_saison += int(tr_tmp) + int(tv_tmp)
+                    except (ValueError, TypeError):
+                        pass
+
+                col_nb2.metric("🎱 Points cumulés dans la ligue", f"{pts_totaux_saison} pts")
+
+                st.markdown("##### ✉️ Paramètres d'envoi du bilan officiel")
+                dest_def = config_email.get("destinataires", "").strip()
+
+                col_dest_in, col_dest_pj = st.columns([3, 2])
+                with col_dest_in:
+                    dest_rapport = st.text_input(
+                        "Adresse(s) courriel de destination :",
+                        value=dest_def,
+                        placeholder="Ex: president@ligue.com, secretaire@ligue.com",
+                        key="input_dest_rapport_historique",
+                        help="Saisissez une ou plusieurs adresses courriel séparées par des virgules."
+                    )
+                with col_dest_pj:
+                    st.write("")
+                    st.write("")
+                    inclure_pj_json = st.checkbox(
+                        "Joindre le fichier brut (`historique_matchs.json`)",
+                        value=True,
+                        key="chk_pj_json_hist",
+                        help="Ajoute le fichier JSON officiel en pièce jointe du courriel pour archivage informatique."
+                    )
+
+                texte_rapport, html_rapport = generer_rapport_historique_convivial(historique_export)
+
+                col_btn_send, col_btn_dl = st.columns([2, 1])
+                with col_btn_send:
+                    if st.button("📤 Envoyer le rapport officiel complet", type="primary", use_container_width=True, key="btn_send_rapport_complet"):
+                        dest_clean = dest_rapport.strip()
+                        if not dest_clean or "@" not in dest_clean:
+                            st.error("⚠️ Veuillez renseigner au moins une adresse courriel valide.")
+                        elif not config_email.get("smtp_serveur"):
+                            st.error("⚠️ Le serveur SMTP n'est pas encore configuré. Rendez-vous dans l'onglet 'Configuration SMTP' pour le configurer.")
+                        else:
+                            date_jour = datetime.now().strftime("%d/%m/%Y")
+                            sujet_rapport = f"🎱 Ligue de billard Boule en main : Bilan officiel et Historique ({len(historique_export)} matchs) - {date_jour}"
+                            pj_list = [HISTORIQUE_FILE] if (inclure_pj_json and os.path.exists(HISTORIQUE_FILE)) else None
+
+                            with st.spinner("Génération et envoi de l'historique complet en cours..."):
+                                ok_env, msg_env = envoyer_courriel(
+                                    dest_clean,
+                                    sujet_rapport,
+                                    texte_rapport,
+                                    html_rapport,
+                                    config_email,
+                                    pieces_jointes=pj_list
+                                )
+                            if ok_env:
+                                pj_str = " (avec `historique_matchs.json` en pièce jointe)" if pj_list else ""
+                                st.success(f"✅ {msg_env} — Bilan officiel envoyé à `{dest_clean}`{pj_str} !")
+                            else:
+                                st.error(f"❌ Échec de l'envoi : {msg_env}")
+
+                with col_btn_dl:
+                    st.download_button(
+                        label="📥 Télécharger le bilan (HTML)",
+                        data=html_rapport,
+                        file_name=f"bilan_historique_boule_en_main_{datetime.now().strftime('%Y%m%d_%H%M')}.html",
+                        mime="text/html",
+                        use_container_width=True,
+                        key="dl_rapport_historique_html"
+                    )
+
+                with st.expander("👁️ Prévisualiser le rapport convivial avant l'envoi", expanded=False):
+                    st.components.v1.html(html_rapport, height=650, scrolling=True)
 
         with tab_smtp:
             st.markdown("#### ⚙️ Configuration du serveur de messagerie (SMTP)")
