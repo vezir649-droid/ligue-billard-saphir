@@ -1353,10 +1353,11 @@ for m in reversed(historique_matchs):
     options_matchs.append(label)
     mapping_matchs[label] = m
 
-# Gestion sécurisée du retour au match en cours (évite l'erreur Streamlit de modification après instanciation de selectbox)
-if st.session_state.pop("demande_retour_match_en_cours", False):
+def callback_retour_match_en_cours():
+    """Callback officiel Streamlit exécuté avant l'instanciation des widgets lors du clic sur Retour."""
     st.session_state["choix_match_vue"] = label_direct
 
+# S'assurer que la sélection est valide avant l'affichage du selectbox
 if "choix_match_vue" in st.session_state and st.session_state["choix_match_vue"] not in options_matchs:
     st.session_state["choix_match_vue"] = label_direct
 
@@ -1377,9 +1378,7 @@ with col_sel2:
                 st.session_state["forcer_rechargement"] = True
                 st.rerun()
     else:
-        if st.button("🔙 Revenir au match en cours", use_container_width=True, help="Retourner à la saisie du match actuel"):
-            st.session_state["demande_retour_match_en_cours"] = True
-            st.rerun()
+        st.button("🔙 Revenir au match en cours", on_click=callback_retour_match_en_cours, use_container_width=True, help="Retourner à la saisie du match actuel")
 
 # 1. Si une archive officielle est sélectionnée
 if choix_vue != label_direct:
@@ -1526,9 +1525,7 @@ if not est_spectateur and choix_vue != label_direct:
     with col_av1:
         st.info("💡 **Feuille archivée affichée ci-dessus.** La grille de saisie du match en cours est temporairement masquée.")
     with col_av2:
-        if st.button("🔙 Reprendre la saisie", type="primary", use_container_width=True, key="btn_reprendre_saisie"):
-            st.session_state["demande_retour_match_en_cours"] = True
-            st.rerun()
+        st.button("🔙 Reprendre la saisie", on_click=callback_retour_match_en_cours, type="primary", use_container_width=True, key="btn_reprendre_saisie")
 elif not est_spectateur:
     st.markdown("---")
     st.markdown("### 🎯 Grille de saisie des 9 manches (Rotation alternée 3 contre 3)")
