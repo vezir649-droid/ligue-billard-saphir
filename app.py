@@ -198,26 +198,32 @@ def restaurer_session(data):
     if not data or not isinstance(data, dict):
         return False
 
+    def safe_set(key, val):
+        try:
+            st.session_state[key] = val
+        except Exception:
+            pass
+
     # 1. Équipes
     if "choix_rec" in data:
-        st.session_state["sel_equipe_rec"] = data["choix_rec"]
+        safe_set("sel_equipe_rec", data["choix_rec"])
     elif "receveur" in data:
-        st.session_state["sel_equipe_rec"] = data["receveur"]
+        safe_set("sel_equipe_rec", data["receveur"])
 
     if "choix_vis" in data:
-        st.session_state["sel_equipe_vis"] = data["choix_vis"]
+        safe_set("sel_equipe_vis", data["choix_vis"])
     elif "visiteur" in data:
-        st.session_state["sel_equipe_vis"] = data["visiteur"]
+        safe_set("sel_equipe_vis", data["visiteur"])
 
     if "input_custom_rec" in data:
-        st.session_state["input_custom_rec"] = data["input_custom_rec"]
+        safe_set("input_custom_rec", data["input_custom_rec"])
     if "input_custom_vis" in data:
-        st.session_state["input_custom_vis"] = data["input_custom_vis"]
+        safe_set("input_custom_vis", data["input_custom_vis"])
 
     # 2. Sélections Joueurs
     for k in ["sel_j1_rec", "sel_j2_rec", "sel_j1_vis", "sel_j2_vis"]:
         if k in data:
-            st.session_state[k] = data[k]
+            safe_set(k, data[k])
 
     # 3. Données des joueurs (présence, score absent, nom remplaçant)
     joueurs = data.get("joueurs", {})
@@ -229,21 +235,21 @@ def restaurer_session(data):
             moy = float(p_data.get("moyenne", 0.625))
             nom = p_data.get("nom", "")
 
-            st.session_state[f"pres_{p_id}"] = pres
-            st.session_state[f"pts_{p_id}"] = pts
-            st.session_state[f"moy_{p_id}"] = moy
-            st.session_state[f"prev_state_{p_id}"] = pres
-            st.session_state[f"prev_pts_{p_id}"] = pts
-            st.session_state[f"cust_{p_id}"] = nom
+            safe_set(f"pres_{p_id}", pres)
+            safe_set(f"pts_{p_id}", pts)
+            safe_set(f"moy_{p_id}", moy)
+            safe_set(f"prev_state_{p_id}", pres)
+            safe_set(f"prev_pts_{p_id}", pts)
+            safe_set(f"cust_{p_id}", nom)
 
     # 4. Scores des 9 manches
     matchs = data.get("matchs", {})
     for num in range(1, 10):
         m = matchs.get(str(num), {})
         if "score_a" in m:
-            st.session_state[f"s_a_{num}"] = int(m["score_a"])
+            safe_set(f"s_a_{num}", int(m["score_a"]))
         if "score_b" in m:
-            st.session_state[f"s_b_{num}"] = int(m["score_b"])
+            safe_set(f"s_b_{num}", int(m["score_b"]))
 
     return True
 
@@ -490,14 +496,15 @@ else:
 # RESTAURATION INITIALE AU CHARGEMENT (ÉVITE LA PERTE DE DONNÉES SUR RAFRAÎCHISSEMENT)
 # ==============================================================================
 sauvegarde_existante = charger_sauvegarde()
-if "app_initialisee" not in st.session_state:
+demande_rechargement = st.session_state.pop("forcer_rechargement", False)
+
+if demande_rechargement or ("app_initialisee" not in st.session_state) or (not est_editeur):
     st.session_state.app_initialisee = True
     if sauvegarde_existante and "matchs" in sauvegarde_existante:
-        restaurer_session(sauvegarde_existante)
-elif not est_editeur:
-    # Pour les spectateurs et le mode lecture, on recharge toujours l'état actuel de la sauvegarde
-    if sauvegarde_existante and "matchs" in sauvegarde_existante:
-        restaurer_session(sauvegarde_existante)
+        try:
+            restaurer_session(sauvegarde_existante)
+        except Exception:
+            pass
 
 # Chargement de la configuration email au démarrage
 config_email = charger_config_email()
@@ -1020,9 +1027,7 @@ if not est_editeur:
         )
     with col_opt2:
         if st.button("🔄 Actualiser les résultats", use_container_width=True, help="Recharge les derniers scores saisis par le marqueur"):
-            sauv = charger_sauvegarde()
-            if sauv and "matchs" in sauv:
-                restaurer_session(sauv)
+            st.session_state["forcer_rechargement"] = True
             st.rerun()
 
     if voir_resultats_courants:
@@ -1068,47 +1073,36 @@ if not est_editeur:
 
             # Tableau récapitulatif des 9 manches
             st.markdown("##### 📋 État des 9 manches")
-            html_tab = f"""<div style='overflow-x:auto; margin-top:8px; border-radius:8px; border:1px solid #cbd5e1; box-shadow:0 1px 3px rgba(0,0,0,0.08);'>
-            <table style='width:100%; border-collapse: collapse; text-align:center; font-size:14px; background-color:#ffffff;'>
-            <thead>
-                <tr style='background-color:#0b3c5d;'>
-                    <th style='padding:10px 8px; color:#ffffff !important; border-bottom:2px solid #072a42;'># Manche</th>
-                    <th style='padding:10px 8px; color:#ffffff !important; border-bottom:2px solid #072a42; text-align:left;'>Joueur ({equipe_receveur})</th>
-                    <th style='padding:10px 8px; color:#ffffff !important; border-bottom:2px solid #072a42;'>Score</th>
-                    <th style='padding:10px 8px; color:#ffffff !important; border-bottom:2px solid #072a42;'>Score</th>
-                    <th style='padding:10px 8px; color:#ffffff !important; border-bottom:2px solid #072a42; text-align:left;'>Joueur ({equipe_visiteur})</th>
-                    <th style='padding:10px 8px; color:#ffffff !important; border-bottom:2px solid #072a42;'>Statut</th>
-                </tr>
-            </thead>
-            <tbody>"""
+            lignes_md = [
+                f"| Manche | Joueur ({equipe_receveur}) | Pts {equipe_receveur} | Pts {equipe_visiteur} | Joueur ({equipe_visiteur}) | Statut |",
+                "| :---: | :--- | :---: | :---: | :--- | :--- |"
+            ]
             for row in details_c:
-                bg = "#f8fafc" if row["manche"] % 2 == 0 else "#ffffff"
-                label_a = f"{row['ja']} (Absent)" if row["abs_a"] else row["ja"]
-                label_b = f"{row['jb']} (Absent)" if row["abs_b"] else row["jb"]
+                nom_a = f"**{row['ja']}**" + (" *(Absent)*" if row["abs_a"] else "")
+                nom_b = f"**{row['jb']}**" + (" *(Absent)*" if row["abs_b"] else "")
                 sa_val = row["sa"]
                 sb_val = row["sb"]
                 
-                if sa_val == 0 and sb_val == 0:
-                    statut_manche = "<span style='color:#64748b; font-weight:500;'>À jouer</span>"
-                elif sa_val == 8 or sb_val == 8:
-                    gagnant_m = row['ja'] if sa_val == 8 else row['jb']
-                    statut_manche = f"<strong style='color:#15803d;'>Terminé ({gagnant_m})</strong>"
+                if sa_val == 8:
+                    sc_a = f"**{sa_val}**"
+                    sc_b = f"{sb_val}"
+                    statut = f"🏆 **Gagné ({row['ja']})**"
+                elif sb_val == 8:
+                    sc_a = f"{sa_val}"
+                    sc_b = f"**{sb_val}**"
+                    statut = f"🏆 **Gagné ({row['jb']})**"
+                elif sa_val > 0 or sb_val > 0:
+                    sc_a = f"{sa_val}"
+                    sc_b = f"{sb_val}"
+                    statut = "⏳ *En cours*"
                 else:
-                    statut_manche = "<span style='color:#d97706; font-weight:bold;'>En cours</span>"
+                    sc_a = "0"
+                    sc_b = "0"
+                    statut = "⚪ *À jouer*"
 
-                sa_style = "font-weight:bold; color:#15803d;" if sa_val == 8 else "color:#1e293b;"
-                sb_style = "font-weight:bold; color:#15803d;" if sb_val == 8 else "color:#1e293b;"
-                
-                html_tab += f"""<tr style='background-color:{bg}; border-bottom:1px solid #e2e8f0;'>
-                    <td style='padding:10px 8px; font-weight:bold; color:#0b3c5d !important; white-space:nowrap;'>Manche {row['manche']}</td>
-                    <td style='padding:10px 8px; font-weight:600; color:#0f172a !important; text-align:left;'>{label_a}</td>
-                    <td style='padding:10px 8px; {sa_style} font-size:16px;'>{sa_val}</td>
-                    <td style='padding:10px 8px; {sb_style} font-size:16px;'>{sb_val}</td>
-                    <td style='padding:10px 8px; font-weight:600; color:#0f172a !important; text-align:left;'>{label_b}</td>
-                    <td style='padding:10px 8px;'>{statut_manche}</td>
-                </tr>"""
-            html_tab += "</tbody></table></div>"
-            st.markdown(html_tab, unsafe_allow_html=True)
+                lignes_md.append(f"| **Manche {row['manche']}** | {nom_a} | {sc_a} | {sc_b} | {nom_b} | {statut} |")
+
+            st.markdown("\n".join(lignes_md))
 
     st.markdown("---")
 
