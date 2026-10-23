@@ -1353,6 +1353,13 @@ for m in reversed(historique_matchs):
     options_matchs.append(label)
     mapping_matchs[label] = m
 
+# Gestion sécurisée du retour au match en cours (évite l'erreur Streamlit de modification après instanciation de selectbox)
+if st.session_state.pop("demande_retour_match_en_cours", False):
+    st.session_state["choix_match_vue"] = label_direct
+
+if "choix_match_vue" in st.session_state and st.session_state["choix_match_vue"] not in options_matchs:
+    st.session_state["choix_match_vue"] = label_direct
+
 col_sel1, col_sel2 = st.columns([3, 1])
 with col_sel1:
     choix_vue = st.selectbox(
@@ -1371,7 +1378,7 @@ with col_sel2:
                 st.rerun()
     else:
         if st.button("🔙 Revenir au match en cours", use_container_width=True, help="Retourner à la saisie du match actuel"):
-            st.session_state["choix_match_vue"] = label_direct
+            st.session_state["demande_retour_match_en_cours"] = True
             st.rerun()
 
 # 1. Si une archive officielle est sélectionnée
@@ -1515,7 +1522,13 @@ else:
                 st.markdown("\n".join(lignes_md))
 
 if not est_spectateur and choix_vue != label_direct:
-    st.info("💡 **Feuille archivée affichée ci-dessus.** La grille de saisie du match en cours est temporairement masquée. Pour continuer la saisie du match actuel, sélectionnez « 🔴 Saisie du match en direct » dans la liste déroulante ci-dessus ou cliquez sur « 🔙 Revenir au match en cours ».")
+    col_av1, col_av2 = st.columns([3, 1])
+    with col_av1:
+        st.info("💡 **Feuille archivée affichée ci-dessus.** La grille de saisie du match en cours est temporairement masquée.")
+    with col_av2:
+        if st.button("🔙 Reprendre la saisie", type="primary", use_container_width=True, key="btn_reprendre_saisie"):
+            st.session_state["demande_retour_match_en_cours"] = True
+            st.rerun()
 elif not est_spectateur:
     st.markdown("---")
     st.markdown("### 🎯 Grille de saisie des 9 manches (Rotation alternée 3 contre 3)")
