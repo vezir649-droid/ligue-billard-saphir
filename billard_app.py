@@ -555,119 +555,124 @@ else:
 
 # --- BOUTONS D'ACTION HAUT DE PAGE (RESTAURER / ANNULER EFFACEMENT / NOUVEAU MATCH) ---
 a_corbeille = os.path.exists(CORBEILLE_FILE)
-
-if a_corbeille:
-    col_h1, col_h2, col_h3, col_h4 = st.columns([2, 1.2, 1.5, 1.2])
-else:
-    col_h1, col_h2, col_h4 = st.columns([2, 1.2, 1.2])
-
 date_sauv_str = sauvegarde_existante.get("date", "")
-if date_sauv_str:
-    col_h1.caption(f"💾 *Dernière sauvegarde automatique : {date_sauv_str}*")
 
-with col_h2:
-    with st.popover(
-        "🔄 Restaurer saisie", 
-        use_container_width=True, 
-        disabled=not est_editeur, 
-        help="✅ Sauvegarde automatique active.\nEn cas de coupure, cliquez sur 'Restaurer' pour récupérer votre saisie."
-    ):
-        st.markdown("### 🔄 Restauration")
-        st.write("Voulez-vous restaurer les données de la dernière sauvegarde automatique ?")
-        if date_sauv_str:
-            st.caption(f"💾 *Dernière sauvegarde : {date_sauv_str}*")
-        st.caption("⚠️ *Les champs actuels seront remplacés par l'état enregistré.*")
-        if st.button("🔵 Confirmer la restauration", type="primary", use_container_width=True):
-            data_a_restaurer = charger_sauvegarde()
-            if data_a_restaurer and "matchs" in data_a_restaurer:
-                restaurer_session(data_a_restaurer)
-                st.success("✅ Données récupérées avec succès !")
-                st.rerun()
-            else:
-                st.warning("⚠️ Aucune sauvegarde valide trouvée.")
+if not est_spectateur:
+    if a_corbeille:
+        col_h1, col_h2, col_h3, col_h4 = st.columns([2, 1.2, 1.5, 1.2])
+    else:
+        col_h1, col_h2, col_h4 = st.columns([2, 1.2, 1.2])
 
-if a_corbeille:
-    with col_h3:
-        if st.button("↩️ Annuler effacement", use_container_width=True, disabled=not est_editeur, help="Restaure le match qui vient d'être effacé par 'Nouveau match'"):
-            try:
-                with open(CORBEILLE_FILE, "r", encoding="utf-8") as f:
-                    data_annulee = json.load(f)
-                if data_annulee and "matchs" in data_annulee:
-                    restaurer_session(data_annulee)
-                    sauvegarder_donnees(data_annulee)
+    if date_sauv_str:
+        col_h1.caption(f"💾 *Dernière sauvegarde automatique : {date_sauv_str}*")
+
+    with col_h2:
+        with st.popover(
+            "🔄 Restaurer saisie", 
+            use_container_width=True, 
+            disabled=not est_editeur, 
+            help="✅ Sauvegarde automatique active.\nEn cas de coupure, cliquez sur 'Restaurer' pour récupérer votre saisie."
+        ):
+            st.markdown("### 🔄 Restauration")
+            st.write("Voulez-vous restaurer les données de la dernière sauvegarde automatique ?")
+            if date_sauv_str:
+                st.caption(f"💾 *Dernière sauvegarde : {date_sauv_str}*")
+            st.caption("⚠️ *Les champs actuels seront remplacés par l'état enregistré.*")
+            if st.button("🔵 Confirmer la restauration", type="primary", use_container_width=True):
+                data_a_restaurer = charger_sauvegarde()
+                if data_a_restaurer and "matchs" in data_a_restaurer:
+                    restaurer_session(data_a_restaurer)
+                    st.success("✅ Données récupérées avec succès !")
+                    st.rerun()
+                else:
+                    st.warning("⚠️ Aucune sauvegarde valide trouvée.")
+    
+    if a_corbeille:
+        with col_h3:
+            if st.button("↩️ Annuler effacement", use_container_width=True, disabled=not est_editeur, help="Restaure le match qui vient d'être effacé par 'Nouveau match'"):
+                try:
+                    with open(CORBEILLE_FILE, "r", encoding="utf-8") as f:
+                        data_annulee = json.load(f)
+                    if data_annulee and "matchs" in data_annulee:
+                        restaurer_session(data_annulee)
+                        sauvegarder_donnees(data_annulee)
+                        try:
+                            os.remove(CORBEILLE_FILE)
+                        except Exception:
+                            pass
+                        st.success("✅ Match précédent restauré avec succès !")
+                        st.rerun()
+                except Exception as e:
+                    st.error(f"Erreur lors de la récupération : {e}")
+    
+    with col_h4:
+        with st.popover("🗑️ Nouveau match", use_container_width=True, disabled=not est_editeur):
+            st.markdown("### ⚠️ Réinitialisation")
+            st.write("Voulez-vous vraiment effacer la saisie du match en cours ?")
+            st.caption("💡 *Une copie de secours est automatiquement conservée. Vous pourrez annuler en cas d'erreur.*")
+            if st.button("🔴 Confirmer et tout effacer", type="primary", use_container_width=True):
+                # 1. Sauvegarder dans la corbeille avant d'effacer
+                if os.path.exists(BACKUP_FILE):
                     try:
-                        os.remove(CORBEILLE_FILE)
+                        import shutil
+                        shutil.copyfile(BACKUP_FILE, CORBEILLE_FILE)
                     except Exception:
                         pass
-                    st.success("✅ Match précédent restauré avec succès !")
-                    st.rerun()
-            except Exception as e:
-                st.error(f"Erreur lors de la récupération : {e}")
+                elif "sauvegarde_existante" in locals() and sauvegarde_existante:
+                    try:
+                        with open(CORBEILLE_FILE, "w", encoding="utf-8") as f:
+                            json.dump(sauvegarde_existante, f, ensure_ascii=False, indent=4)
+                    except Exception:
+                        pass
+    
+                # 2. Supprimer la sauvegarde active
+                if os.path.exists(BACKUP_FILE):
+                    try:
+                        os.remove(BACKUP_FILE)
+                    except Exception:
+                        pass
+    
+                # 3. Conserver l'authentification, l'identifiant de session et l'état de consultation
+                auth_ok = st.session_state.get("authentifie", False)
+                spec_ok = st.session_state.get("est_spectateur", False)
+                user_sess = st.session_state.get("user_session_id")
+                mode_c = st.session_state.get("mode_consultation", False)
+                st.session_state.clear()
+                st.session_state["authentifie"] = auth_ok
+                st.session_state["est_spectateur"] = spec_ok
+                if user_sess:
+                    st.session_state["user_session_id"] = user_sess
+                st.session_state["mode_consultation"] = mode_c
+                st.session_state["app_initialisee"] = True
+    
+                # 4. Remise à zéro explicite de toutes les manches (0 - 0)
+                for num in range(1, 10):
+                    st.session_state[f"s_a_{num}"] = 0
+                    st.session_state[f"s_b_{num}"] = 0
+    
+                # 5. Réinitialisation des présences (tous présents), moyennes et scores par défaut
+                for p_id in ["j1_rec", "j2_rec", "j3_rec", "j1_vis", "j2_vis", "j3_vis"]:
+                    st.session_state[f"pres_{p_id}"] = True
+                    st.session_state[f"pts_{p_id}"] = 0
+                    st.session_state[f"moy_{p_id}"] = 0.625
+                    st.session_state[f"prev_state_{p_id}"] = True
+                    st.session_state[f"prev_pts_{p_id}"] = 0
+                    st.session_state[f"cust_{p_id}"] = ""
+    
+                # 6. Réinitialisation des noms personnalisés
+                st.session_state["input_custom_rec"] = "Équipe 1"
+                st.session_state["input_custom_vis"] = "Équipe 2"
+    
+                st.rerun()
+    
+    if a_corbeille:
+        st.info("ℹ️ Un match en cours a été effacé récemment. Si c'était une erreur, cliquez sur **« ↩️ Annuler effacement »** ci-dessus pour le récupérer.")
 
-with col_h4:
-    with st.popover("🗑️ Nouveau match", use_container_width=True, disabled=not est_editeur):
-        st.markdown("### ⚠️ Réinitialisation")
-        st.write("Voulez-vous vraiment effacer la saisie du match en cours ?")
-        st.caption("💡 *Une copie de secours est automatiquement conservée. Vous pourrez annuler en cas d'erreur.*")
-        if st.button("🔴 Confirmer et tout effacer", type="primary", use_container_width=True):
-            # 1. Sauvegarder dans la corbeille avant d'effacer
-            if os.path.exists(BACKUP_FILE):
-                try:
-                    import shutil
-                    shutil.copyfile(BACKUP_FILE, CORBEILLE_FILE)
-                except Exception:
-                    pass
-            elif "sauvegarde_existante" in locals() and sauvegarde_existante:
-                try:
-                    with open(CORBEILLE_FILE, "w", encoding="utf-8") as f:
-                        json.dump(sauvegarde_existante, f, ensure_ascii=False, indent=4)
-                except Exception:
-                    pass
-
-            # 2. Supprimer la sauvegarde active
-            if os.path.exists(BACKUP_FILE):
-                try:
-                    os.remove(BACKUP_FILE)
-                except Exception:
-                    pass
-
-            # 3. Conserver l'authentification, l'identifiant de session et l'état de consultation
-            auth_ok = st.session_state.get("authentifie", False)
-            spec_ok = st.session_state.get("est_spectateur", False)
-            user_sess = st.session_state.get("user_session_id")
-            mode_c = st.session_state.get("mode_consultation", False)
-            st.session_state.clear()
-            st.session_state["authentifie"] = auth_ok
-            st.session_state["est_spectateur"] = spec_ok
-            if user_sess:
-                st.session_state["user_session_id"] = user_sess
-            st.session_state["mode_consultation"] = mode_c
-            st.session_state["app_initialisee"] = True
-
-            # 4. Remise à zéro explicite de toutes les manches (0 - 0)
-            for num in range(1, 10):
-                st.session_state[f"s_a_{num}"] = 0
-                st.session_state[f"s_b_{num}"] = 0
-
-            # 5. Réinitialisation des présences (tous présents), moyennes et scores par défaut
-            for p_id in ["j1_rec", "j2_rec", "j3_rec", "j1_vis", "j2_vis", "j3_vis"]:
-                st.session_state[f"pres_{p_id}"] = True
-                st.session_state[f"pts_{p_id}"] = 0
-                st.session_state[f"moy_{p_id}"] = 0.625
-                st.session_state[f"prev_state_{p_id}"] = True
-                st.session_state[f"prev_pts_{p_id}"] = 0
-                st.session_state[f"cust_{p_id}"] = ""
-
-            # 6. Réinitialisation des noms personnalisés
-            st.session_state["input_custom_rec"] = "Équipe 1"
-            st.session_state["input_custom_vis"] = "Équipe 2"
-
-            st.rerun()
-
-if a_corbeille:
-    st.info("ℹ️ Un match en cours a été effacé récemment. Si c'était une erreur, cliquez sur **« ↩️ Annuler effacement »** ci-dessus pour le récupérer.")
-
-st.divider()
+    st.divider()
+else:
+    if date_sauv_str:
+        st.caption(f"💾 *Dernière mise à jour du marqueur : {date_sauv_str}*")
+    st.divider()
 
 # --- BARRE LATÉRALE : SÉLECTION DU MATCH ET JOUEURS ---
 st.sidebar.header("📋 Paramètres du Match")
@@ -1018,17 +1023,26 @@ def calculer_totaux_actuels(dict_joueurs_ref, matchs_pairs_ref):
 
 # --- OPTION RÉSULTATS COURANTS EN MODE LECTURE (SPECTATEUR) ---
 if not est_editeur:
-    col_opt1, col_opt2 = st.columns([3, 1])
-    with col_opt1:
-        voir_resultats_courants = st.toggle(
-            "📊 **Voir les résultats courants (Tableau de bord en direct)**",
-            value=st.session_state.get("toggle_voir_resultats", True),
-            key="toggle_voir_resultats"
-        )
-    with col_opt2:
-        if st.button("🔄 Actualiser les résultats", use_container_width=True, help="Recharge les derniers scores saisis par le marqueur"):
-            st.session_state["forcer_rechargement"] = True
-            st.rerun()
+    if est_spectateur:
+        voir_resultats_courants = True
+        col_opt1, col_opt2 = st.columns([3, 1])
+        col_opt1.markdown("### 📊 Résultats et Déroulement du Match en direct")
+        with col_opt2:
+            if st.button("🔄 Actualiser les résultats", use_container_width=True, help="Recharge les derniers scores saisis par le marqueur"):
+                st.session_state["forcer_rechargement"] = True
+                st.rerun()
+    else:
+        col_opt1, col_opt2 = st.columns([3, 1])
+        with col_opt1:
+            voir_resultats_courants = st.toggle(
+                "📊 **Voir les résultats courants (Tableau de bord en direct)**",
+                value=st.session_state.get("toggle_voir_resultats", True),
+                key="toggle_voir_resultats"
+            )
+        with col_opt2:
+            if st.button("🔄 Actualiser les résultats", use_container_width=True, help="Recharge les derniers scores saisis par le marqueur"):
+                st.session_state["forcer_rechargement"] = True
+                st.rerun()
 
     if voir_resultats_courants:
         tot_rec_c, tot_vis_c, pts_j_c, details_c = calculer_totaux_actuels(dict_joueurs, matchs_pairs)
@@ -1104,250 +1118,250 @@ if not est_editeur:
 
             st.markdown("\n".join(lignes_md))
 
+if not est_spectateur:
     st.markdown("---")
+    st.markdown("### 🎯 Grille de saisie des 9 manches (Rotation alternée 3 contre 3)")
+    st.info(
+        "📌 **Règle de rotation :** Aucun joueur ne joue deux manches consécutives.\n\n"
+        "🎱 **Règle du jeu au 8 :** Le vainqueur obtient **8 points**, le perdant obtient de **0 à 7 points**."
+    )
 
-st.markdown("### 🎯 Grille de saisie des 9 manches (Rotation alternée 3 contre 3)")
-st.info(
-    "📌 **Règle de rotation :** Aucun joueur ne joue deux manches consécutives.\n\n"
-    "🎱 **Règle du jeu au 8 :** Le vainqueur obtient **8 points**, le perdant obtient de **0 à 7 points**."
-)
+    donnees_a_sauvegarder = {
+        "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "receveur": equipe_receveur,
+        "visiteur": equipe_visiteur,
+        "choix_rec": choix_rec,
+        "choix_vis": choix_vis,
+        "input_custom_rec": st.session_state.get("input_custom_rec", ""),
+        "input_custom_vis": st.session_state.get("input_custom_vis", ""),
+        "sel_j1_rec": sel_j1_rec,
+        "sel_j2_rec": sel_j2_rec,
+        "sel_j1_vis": sel_j1_vis,
+        "sel_j2_vis": sel_j2_vis,
+        "joueurs": {p_id: {"nom": j["nom"], "present": j["present"], "moyenne": j.get("moyenne", 0.0), "pts_absent": j["pts_absent"]} for p_id, j in dict_joueurs.items()},
+        "matchs": {}
+    }
 
-donnees_a_sauvegarder = {
-    "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
-    "receveur": equipe_receveur,
-    "visiteur": equipe_visiteur,
-    "choix_rec": choix_rec,
-    "choix_vis": choix_vis,
-    "input_custom_rec": st.session_state.get("input_custom_rec", ""),
-    "input_custom_vis": st.session_state.get("input_custom_vis", ""),
-    "sel_j1_rec": sel_j1_rec,
-    "sel_j2_rec": sel_j2_rec,
-    "sel_j1_vis": sel_j1_vis,
-    "sel_j2_vis": sel_j2_vis,
-    "joueurs": {p_id: {"nom": j["nom"], "present": j["present"], "moyenne": j.get("moyenne", 0.0), "pts_absent": j["pts_absent"]} for p_id, j in dict_joueurs.items()},
-    "matchs": {}
-}
+    manches_invalides = []
 
-manches_invalides = []
+    for num_manche, id_a, id_b in matchs_pairs:
+        info_a = dict_joueurs[id_a]
+        info_b = dict_joueurs[id_b]
+        joueur_a = info_a["nom"]
+        joueur_b = info_b["nom"]
+        a_pres = info_a["present"]
+        b_pres = info_b["present"]
 
-for num_manche, id_a, id_b in matchs_pairs:
-    info_a = dict_joueurs[id_a]
-    info_b = dict_joueurs[id_b]
-    joueur_a = info_a["nom"]
-    joueur_b = info_b["nom"]
-    a_pres = info_a["present"]
-    b_pres = info_b["present"]
+        status_label = ""
+        if not a_pres and not b_pres:
+            status_label = " ❌ (Forfait double : 2 absents)"
+        elif not a_pres:
+            status_label = f" ❌ ({joueur_a} absent : {info_a['pts_absent']} pts)"
+        elif not b_pres:
+            status_label = f" ❌ ({joueur_b} absent : {info_b['pts_absent']} pts)"
 
-    status_label = ""
-    if not a_pres and not b_pres:
-        status_label = " ❌ (Forfait double : 2 absents)"
-    elif not a_pres:
-        status_label = f" ❌ ({joueur_a} absent : {info_a['pts_absent']} pts)"
-    elif not b_pres:
-        status_label = f" ❌ ({joueur_b} absent : {info_b['pts_absent']} pts)"
-
-    with st.expander(f"Manche {num_manche} : {joueur_a} ({equipe_receveur}) vs {joueur_b} ({equipe_visiteur}){status_label}", expanded=True):
-        c1, c2 = st.columns(2)
-        
-        # Valeur par défaut si non encore définie dans session_state
-        if not a_pres and b_pres:
-            init_val_a = info_a["pts_absent"]
-            init_val_b = 8
-        elif not b_pres and a_pres:
-            init_val_a = 8
-            init_val_b = info_b["pts_absent"]
-        elif not a_pres and not b_pres:
-            init_val_a = info_a["pts_absent"]
-            init_val_b = info_b["pts_absent"]
-        else:
-            init_val_a = 0
-            init_val_b = 0
-
-        if f"s_a_{num_manche}" not in st.session_state:
-            st.session_state[f"s_a_{num_manche}"] = max(0, min(8, int(init_val_a)))
-        if f"s_b_{num_manche}" not in st.session_state:
-            st.session_state[f"s_b_{num_manche}"] = max(0, min(8, int(init_val_b)))
-
-        with c1:
-            label_champ_a = f"Points de {joueur_a}" + (f" (Absent : {info_a['pts_absent']} pts)" if not a_pres else "")
-            score_a = st.number_input(
-                label_champ_a, 
-                0, 8, 
-                key=f"s_a_{num_manche}",
-                disabled=not est_editeur
-            )
-        with c2:
-            label_champ_b = f"Points de {joueur_b}" + (f" (Absent : {info_b['pts_absent']} pts)" if not b_pres else "")
-            score_b = st.number_input(
-                label_champ_b, 
-                0, 8, 
-                key=f"s_b_{num_manche}",
-                disabled=not est_editeur
-            )
-        
-        # Validation logique du billard au 8
-        if score_a == 8 and score_b == 8:
-            st.warning("⚠️ Les deux joueurs ne peuvent pas avoir 8 points.")
-            manches_invalides.append(num_manche)
-
-        donnees_a_sauvegarder["matchs"][str(num_manche)] = {
-            "score_a": score_a,
-            "score_b": score_b,
-            "joueur_a": joueur_a,
-            "joueur_b": joueur_b,
-            "joueur_a_absent": not a_pres,
-            "joueur_b_absent": not b_pres
-        }
-
-# --- CALCULS FINAUX ET TOTAUX (PAR ÉQUIPE ET PAR JOUEUR) ---
-total_pts_receveur = sum(m["score_a"] for m in donnees_a_sauvegarder["matchs"].values())
-total_pts_visiteur = sum(m["score_b"] for m in donnees_a_sauvegarder["matchs"].values())
-
-# Calcul des points individuels par joueur (3 manches par joueur = max 24 pts)
-pts_joueurs = {p_id: 0 for p_id in dict_joueurs}
-for num_m, id_a, id_b in matchs_pairs:
-    m = donnees_a_sauvegarder["matchs"].get(str(num_m), {})
-    pts_joueurs[id_a] += m.get("score_a", 0)
-    pts_joueurs[id_b] += m.get("score_b", 0)
-
-st.divider()
-st.markdown("### 📊 Résultats et Totaux")
-
-# 1. Totaux par équipe
-col_res1, col_res2 = st.columns(2)
-col_res1.metric(label=f"🏆 Total {equipe_receveur}", value=f"{total_pts_receveur} pts")
-col_res2.metric(label=f"🏆 Total {equipe_visiteur}", value=f"{total_pts_visiteur} pts")
-
-# 2. Totaux individuels par joueur
-st.markdown("#### 👤 Points individuels par joueur")
-
-col_rec_pts, col_vis_pts = st.columns(2)
-
-with col_rec_pts:
-    st.markdown(f"**🏠 {equipe_receveur}**")
-    cr1, cr2, cr3 = st.columns(3)
-    p1 = dict_joueurs["j1_rec"]
-    p2 = dict_joueurs["j2_rec"]
-    p3 = dict_joueurs["j3_rec"]
-    cr1.metric(label=f"{p1['nom']}" + (" (Abs.)" if not p1['present'] else ""), value=f"{pts_joueurs['j1_rec']} pts")
-    cr2.metric(label=f"{p2['nom']}" + (" (Abs.)" if not p2['present'] else ""), value=f"{pts_joueurs['j2_rec']} pts")
-    cr3.metric(label=f"{p3['nom']}" + (" (Abs.)" if not p3['present'] else ""), value=f"{pts_joueurs['j3_rec']} pts")
-
-with col_vis_pts:
-    st.markdown(f"**🚗 {equipe_visiteur}**")
-    cv1, cv2, cv3 = st.columns(3)
-    pv1 = dict_joueurs["j1_vis"]
-    pv2 = dict_joueurs["j2_vis"]
-    pv3 = dict_joueurs["j3_vis"]
-    cv1.metric(label=f"{pv1['nom']}" + (" (Abs.)" if not pv1['present'] else ""), value=f"{pts_joueurs['j1_vis']} pts")
-    cv2.metric(label=f"{pv2['nom']}" + (" (Abs.)" if not pv2['present'] else ""), value=f"{pts_joueurs['j2_vis']} pts")
-    cv3.metric(label=f"{pv3['nom']}" + (" (Abs.)" if not pv3['present'] else ""), value=f"{pts_joueurs['j3_vis']} pts")
-
-st.divider()
-
-# --- VALIDATION FINALE ET ENREGISTREMENT OFFICIEL ---
-st.markdown("### 🚀 Validation finale et Enregistrement officiel")
-
-dest_actuels = config_email.get("destinataires", "").strip()
-if dest_actuels:
-    st.info(f"✉️ **Envoi automatique configuré vers :** `{dest_actuels}` *(modifiable dans l'Espace Administration ci-dessous)*")
-else:
-    st.warning(f"⚠️ **Aucun destinataire configuré.** Ouvrez l'Espace Administration en bas de page pour configurer la messagerie.")
-
-st.divider()
-
-# --- VALIDATION FINALE DU MATCH ET ENVOI AUTOMATIQUE ---
-date_du_match = datetime.now().strftime("%d/%m/%Y à %H:%M")
-texte_resume, html_resume = generer_resume_match(
-    equipe_receveur,
-    equipe_visiteur,
-    donnees_a_sauvegarder["matchs"],
-    total_pts_receveur,
-    total_pts_visiteur,
-    pts_joueurs,
-    dict_joueurs,
-    date_du_match,
-    absents_detectes
-)
-
-match_valide = False
-
-if st.button("🚀 Valider et enregistrer la feuille de match officielle", type="primary", use_container_width=True, disabled=not est_editeur):
-    if manches_invalides:
-        st.error(f"❌ Impossible d'enregistrer : veuillez corriger les manches suivantes : {', '.join(map(str, sorted(set(manches_invalides))))}.")
-    else:
-        match_valide = True
-        historique = []
-        if os.path.exists(HISTORIQUE_FILE):
-            try:
-                with open(HISTORIQUE_FILE, "r", encoding="utf-8") as f:
-                    historique = json.load(f)
-            except Exception:
-                historique = []
-        
-        donnees_finales = dict(donnees_a_sauvegarder)
-        donnees_finales["total_receveur"] = total_pts_receveur
-        donnees_finales["total_visiteur"] = total_pts_visiteur
-        donnees_finales["points_par_joueur"] = {
-            p_id: {
-                "nom": dict_joueurs[p_id]["nom"],
-                "equipe": dict_joueurs[p_id]["equipe"],
-                "points": pts_joueurs[p_id],
-                "present": dict_joueurs[p_id]["present"],
-                "moyenne": dict_joueurs[p_id].get("moyenne", 0.0)
-            }
-            for p_id in dict_joueurs
-        }
-        donnees_finales["date_enregistrement"] = date_du_match
-        historique.append(donnees_finales)
-
-        with open(HISTORIQUE_FILE, "w", encoding="utf-8") as f:
-            json.dump(historique, f, ensure_ascii=False, indent=4)
-
-        st.success(f"✅ Le match entre **{equipe_receveur}** ({total_pts_receveur} pts) et **{equipe_visiteur}** ({total_pts_visiteur} pts) a été archivé avec succès !")
-
-        # Envoi automatique par courriel au moment de la validation finale
-        destinataires_envoi = config_email.get("destinataires", "").strip()
-        if not destinataires_envoi:
-            st.warning("⚠️ L'envoi automatique par courriel a été ignoré car aucun destinataire n'est configuré dans `config_email.json`.")
-        else:
-            sujet = f"🎱 Ligue du Saphir : {equipe_receveur} ({total_pts_receveur}) vs {equipe_visiteur} ({total_pts_visiteur}) - {date_du_match}"
-            pj_historique = [HISTORIQUE_FILE] if os.path.exists(HISTORIQUE_FILE) else None
-            with st.spinner("Envoi automatique du courriel en cours (avec historique en pièce jointe)..."):
-                succes_mail, msg_mail = envoyer_courriel(
-                    destinataires_envoi,
-                    sujet,
-                    texte_resume,
-                    html_resume,
-                    config_email,
-                    pieces_jointes=pj_historique
-                )
-            if succes_mail:
-                mention_pj = f" avec le fichier `{HISTORIQUE_FILE}` en pièce jointe" if pj_historique else ""
-                st.success(f"✉️ {msg_mail} (Envoyé automatiquement{mention_pj} à : `{destinataires_envoi}`)")
+        with st.expander(f"Manche {num_manche} : {joueur_a} ({equipe_receveur}) vs {joueur_b} ({equipe_visiteur}){status_label}", expanded=True):
+            c1, c2 = st.columns(2)
+            
+            # Valeur par défaut si non encore définie dans session_state
+            if not a_pres and b_pres:
+                init_val_a = info_a["pts_absent"]
+                init_val_b = 8
+            elif not b_pres and a_pres:
+                init_val_a = 8
+                init_val_b = info_b["pts_absent"]
+            elif not a_pres and not b_pres:
+                init_val_a = info_a["pts_absent"]
+                init_val_b = info_b["pts_absent"]
             else:
-                st.warning(f"⚠️ {msg_mail}")
-                st.info("💡 Les résultats ont bien été sauvegardés sur l'ordinateur.")
+                init_val_a = 0
+                init_val_b = 0
 
-        # Nettoyage du fichier de secours et libération du verrou après validation réussie
-        if os.path.exists(BACKUP_FILE):
-            try:
-                os.remove(BACKUP_FILE)
-            except Exception:
-                pass
-        if os.path.exists(CORBEILLE_FILE):
-            try:
-                os.remove(CORBEILLE_FILE)
-            except Exception:
-                pass
-        liberer_verrou(my_session_id)
-        st.session_state["mode_consultation"] = True
+            if f"s_a_{num_manche}" not in st.session_state:
+                st.session_state[f"s_a_{num_manche}"] = max(0, min(8, int(init_val_a)))
+            if f"s_b_{num_manche}" not in st.session_state:
+                st.session_state[f"s_b_{num_manche}"] = max(0, min(8, int(init_val_b)))
 
-# Sauvegarde automatique en arrière-plan (uniquement par l'éditeur actif et si le match n'est pas validé)
-if est_editeur and not match_valide:
-    sauvegarder_donnees(donnees_a_sauvegarder)
+            with c1:
+                label_champ_a = f"Points de {joueur_a}" + (f" (Absent : {info_a['pts_absent']} pts)" if not a_pres else "")
+                score_a = st.number_input(
+                    label_champ_a, 
+                    0, 8, 
+                    key=f"s_a_{num_manche}",
+                    disabled=not est_editeur
+                )
+            with c2:
+                label_champ_b = f"Points de {joueur_b}" + (f" (Absent : {info_b['pts_absent']} pts)" if not b_pres else "")
+                score_b = st.number_input(
+                    label_champ_b, 
+                    0, 8, 
+                    key=f"s_b_{num_manche}",
+                    disabled=not est_editeur
+                )
+            
+            # Validation logique du billard au 8
+            if score_a == 8 and score_b == 8:
+                st.warning("⚠️ Les deux joueurs ne peuvent pas avoir 8 points.")
+                manches_invalides.append(num_manche)
 
-st.divider()
+            donnees_a_sauvegarder["matchs"][str(num_manche)] = {
+                "score_a": score_a,
+                "score_b": score_b,
+                "joueur_a": joueur_a,
+                "joueur_b": joueur_b,
+                "joueur_a_absent": not a_pres,
+                "joueur_b_absent": not b_pres
+            }
+
+    # --- CALCULS FINAUX ET TOTAUX (PAR ÉQUIPE ET PAR JOUEUR) ---
+    total_pts_receveur = sum(m["score_a"] for m in donnees_a_sauvegarder["matchs"].values())
+    total_pts_visiteur = sum(m["score_b"] for m in donnees_a_sauvegarder["matchs"].values())
+
+    # Calcul des points individuels par joueur (3 manches par joueur = max 24 pts)
+    pts_joueurs = {p_id: 0 for p_id in dict_joueurs}
+    for num_m, id_a, id_b in matchs_pairs:
+        m = donnees_a_sauvegarder["matchs"].get(str(num_m), {})
+        pts_joueurs[id_a] += m.get("score_a", 0)
+        pts_joueurs[id_b] += m.get("score_b", 0)
+
+    st.divider()
+    st.markdown("### 📊 Résultats et Totaux")
+
+    # 1. Totaux par équipe
+    col_res1, col_res2 = st.columns(2)
+    col_res1.metric(label=f"🏆 Total {equipe_receveur}", value=f"{total_pts_receveur} pts")
+    col_res2.metric(label=f"🏆 Total {equipe_visiteur}", value=f"{total_pts_visiteur} pts")
+
+    # 2. Totaux individuels par joueur
+    st.markdown("#### 👤 Points individuels par joueur")
+
+    col_rec_pts, col_vis_pts = st.columns(2)
+
+    with col_rec_pts:
+        st.markdown(f"**🏠 {equipe_receveur}**")
+        cr1, cr2, cr3 = st.columns(3)
+        p1 = dict_joueurs["j1_rec"]
+        p2 = dict_joueurs["j2_rec"]
+        p3 = dict_joueurs["j3_rec"]
+        cr1.metric(label=f"{p1['nom']}" + (" (Abs.)" if not p1['present'] else ""), value=f"{pts_joueurs['j1_rec']} pts")
+        cr2.metric(label=f"{p2['nom']}" + (" (Abs.)" if not p2['present'] else ""), value=f"{pts_joueurs['j2_rec']} pts")
+        cr3.metric(label=f"{p3['nom']}" + (" (Abs.)" if not p3['present'] else ""), value=f"{pts_joueurs['j3_rec']} pts")
+
+    with col_vis_pts:
+        st.markdown(f"**🚗 {equipe_visiteur}**")
+        cv1, cv2, cv3 = st.columns(3)
+        pv1 = dict_joueurs["j1_vis"]
+        pv2 = dict_joueurs["j2_vis"]
+        pv3 = dict_joueurs["j3_vis"]
+        cv1.metric(label=f"{pv1['nom']}" + (" (Abs.)" if not pv1['present'] else ""), value=f"{pts_joueurs['j1_vis']} pts")
+        cv2.metric(label=f"{pv2['nom']}" + (" (Abs.)" if not pv2['present'] else ""), value=f"{pts_joueurs['j2_vis']} pts")
+        cv3.metric(label=f"{pv3['nom']}" + (" (Abs.)" if not pv3['present'] else ""), value=f"{pts_joueurs['j3_vis']} pts")
+
+    st.divider()
+
+    # --- VALIDATION FINALE ET ENREGISTREMENT OFFICIEL ---
+    st.markdown("### 🚀 Validation finale et Enregistrement officiel")
+
+    dest_actuels = config_email.get("destinataires", "").strip()
+    if dest_actuels:
+        st.info(f"✉️ **Envoi automatique configuré vers :** `{dest_actuels}` *(modifiable dans l'Espace Administration ci-dessous)*")
+    else:
+        st.warning(f"⚠️ **Aucun destinataire configuré.** Ouvrez l'Espace Administration en bas de page pour configurer la messagerie.")
+
+    st.divider()
+
+    # --- VALIDATION FINALE DU MATCH ET ENVOI AUTOMATIQUE ---
+    date_du_match = datetime.now().strftime("%d/%m/%Y à %H:%M")
+    texte_resume, html_resume = generer_resume_match(
+        equipe_receveur,
+        equipe_visiteur,
+        donnees_a_sauvegarder["matchs"],
+        total_pts_receveur,
+        total_pts_visiteur,
+        pts_joueurs,
+        dict_joueurs,
+        date_du_match,
+        absents_detectes
+    )
+
+    match_valide = False
+
+    if st.button("🚀 Valider et enregistrer la feuille de match officielle", type="primary", use_container_width=True, disabled=not est_editeur):
+        if manches_invalides:
+            st.error(f"❌ Impossible d'enregistrer : veuillez corriger les manches suivantes : {', '.join(map(str, sorted(set(manches_invalides))))}.")
+        else:
+            match_valide = True
+            historique = []
+            if os.path.exists(HISTORIQUE_FILE):
+                try:
+                    with open(HISTORIQUE_FILE, "r", encoding="utf-8") as f:
+                        historique = json.load(f)
+                except Exception:
+                    historique = []
+            
+            donnees_finales = dict(donnees_a_sauvegarder)
+            donnees_finales["total_receveur"] = total_pts_receveur
+            donnees_finales["total_visiteur"] = total_pts_visiteur
+            donnees_finales["points_par_joueur"] = {
+                p_id: {
+                    "nom": dict_joueurs[p_id]["nom"],
+                    "equipe": dict_joueurs[p_id]["equipe"],
+                    "points": pts_joueurs[p_id],
+                    "present": dict_joueurs[p_id]["present"],
+                    "moyenne": dict_joueurs[p_id].get("moyenne", 0.0)
+                }
+                for p_id in dict_joueurs
+            }
+            donnees_finales["date_enregistrement"] = date_du_match
+            historique.append(donnees_finales)
+
+            with open(HISTORIQUE_FILE, "w", encoding="utf-8") as f:
+                json.dump(historique, f, ensure_ascii=False, indent=4)
+
+            st.success(f"✅ Le match entre **{equipe_receveur}** ({total_pts_receveur} pts) et **{equipe_visiteur}** ({total_pts_visiteur} pts) a été archivé avec succès !")
+
+            # Envoi automatique par courriel au moment de la validation finale
+            destinataires_envoi = config_email.get("destinataires", "").strip()
+            if not destinataires_envoi:
+                st.warning("⚠️ L'envoi automatique par courriel a été ignoré car aucun destinataire n'est configuré dans `config_email.json`.")
+            else:
+                sujet = f"🎱 Ligue du Saphir : {equipe_receveur} ({total_pts_receveur}) vs {equipe_visiteur} ({total_pts_visiteur}) - {date_du_match}"
+                pj_historique = [HISTORIQUE_FILE] if os.path.exists(HISTORIQUE_FILE) else None
+                with st.spinner("Envoi automatique du courriel en cours (avec historique en pièce jointe)..."):
+                    succes_mail, msg_mail = envoyer_courriel(
+                        destinataires_envoi,
+                        sujet,
+                        texte_resume,
+                        html_resume,
+                        config_email,
+                        pieces_jointes=pj_historique
+                    )
+                if succes_mail:
+                    mention_pj = f" avec le fichier `{HISTORIQUE_FILE}` en pièce jointe" if pj_historique else ""
+                    st.success(f"✉️ {msg_mail} (Envoyé automatiquement{mention_pj} à : `{destinataires_envoi}`)")
+                else:
+                    st.warning(f"⚠️ {msg_mail}")
+                    st.info("💡 Les résultats ont bien été sauvegardés sur l'ordinateur.")
+
+            # Nettoyage du fichier de secours et libération du verrou après validation réussie
+            if os.path.exists(BACKUP_FILE):
+                try:
+                    os.remove(BACKUP_FILE)
+                except Exception:
+                    pass
+            if os.path.exists(CORBEILLE_FILE):
+                try:
+                    os.remove(CORBEILLE_FILE)
+                except Exception:
+                    pass
+            liberer_verrou(my_session_id)
+            st.session_state["mode_consultation"] = True
+
+    # Sauvegarde automatique en arrière-plan (uniquement par l'éditeur actif et si le match n'est pas validé)
+    if est_editeur and not match_valide:
+        sauvegarder_donnees(donnees_a_sauvegarder)
+
+    st.divider()
 
 # ==============================================================================
 # ESPACE ADMINISTRATION (SAISON, SMTP ET SÉCURITÉ)
