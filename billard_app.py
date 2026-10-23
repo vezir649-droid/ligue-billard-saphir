@@ -1425,16 +1425,16 @@ def obtenir_tous_les_joueurs_tournoi(equipes_dict=None):
     return sorted(list(joueurs))
 
 def generer_arbre_elimination(participants, race_to=2, titre="Tournoi"):
-    """Génère un arbre à élimination directe complet avec Byes automatiques."""
+    """
+    Génère un arbre à élimination directe strict SANS AUCUN PASSE-DROIT (aucun Bye).
+    Tous les participants (simples ou duos) s'affrontent dès le premier tour.
+    Le nombre de participants doit être une puissance exacte de 2 (2, 4, 8, 16, 32).
+    """
     p_liste = list(participants)
     random.shuffle(p_liste)
     n = len(p_liste)
-    if n < 2:
+    if n not in [2, 4, 8, 16, 32]:
         return None
-
-    k = 1
-    while k < n:
-        k *= 2
 
     noms_tours = {
         2: ["Finale"],
@@ -1443,50 +1443,23 @@ def generer_arbre_elimination(participants, race_to=2, titre="Tournoi"):
         16: ["Huitièmes de finale", "Quarts de finale", "Demi-finales", "Finale"],
         32: ["1/16 de finale", "Huitièmes de finale", "Quarts de finale", "Demi-finales", "Finale"]
     }
-    total_tours = int(math.log2(k))
-    tours_labels = noms_tours.get(k, [f"Tour {i+1}" for i in range(total_tours)])
-
-    nb_byes = k - n
-    liste_depart = []
-    part_idx = 0
-    bye_count = 0
-    for i in range(k):
-        if bye_count < nb_byes and i % 2 == 1:
-            liste_depart.append("BYE (Exempt)")
-            bye_count += 1
-        else:
-            if part_idx < len(p_liste):
-                liste_depart.append(p_liste[part_idx])
-                part_idx += 1
-            else:
-                liste_depart.append("BYE (Exempt)")
+    total_tours = int(math.log2(n))
+    tours_labels = noms_tours.get(n, [f"Tour {i+1}" for i in range(total_tours)])
 
     tours = []
-    nb_matchs_tour = k // 2
+    nb_matchs_tour = n // 2
     matchs_tour_1 = []
     for m_i in range(nb_matchs_tour):
-        eq_a = liste_depart[2 * m_i]
-        eq_b = liste_depart[2 * m_i + 1]
-        termine = False
-        vainqueur = None
-        sc_a, sc_b = 0, 0
-        if eq_b == "BYE (Exempt)" and eq_a != "BYE (Exempt)":
-            termine = True
-            vainqueur = eq_a
-            sc_a = race_to
-        elif eq_a == "BYE (Exempt)" and eq_b != "BYE (Exempt)":
-            termine = True
-            vainqueur = eq_b
-            sc_b = race_to
-
+        eq_a = p_liste[2 * m_i]
+        eq_b = p_liste[2 * m_i + 1]
         matchs_tour_1.append({
             "id": f"T1_M{m_i+1}",
             "equipe_a": eq_a,
             "equipe_b": eq_b,
-            "score_a": sc_a,
-            "score_b": sc_b,
-            "termine": termine,
-            "vainqueur": vainqueur
+            "score_a": 0,
+            "score_b": 0,
+            "termine": False,
+            "vainqueur": None
         })
 
     tours.append({
@@ -1496,17 +1469,13 @@ def generer_arbre_elimination(participants, race_to=2, titre="Tournoi"):
     })
 
     for t_i in range(2, total_tours + 1):
-        nb_matchs = k // (2 ** t_i)
+        nb_matchs = n // (2 ** t_i)
         matchs_t = []
         for m_i in range(nb_matchs):
-            match_source_1 = tours[t_i - 2]["matchs"][2 * m_i]
-            match_source_2 = tours[t_i - 2]["matchs"][2 * m_i + 1]
-            eq_a = match_source_1["vainqueur"] or "À déterminer"
-            eq_b = match_source_2["vainqueur"] or "À déterminer"
             matchs_t.append({
                 "id": f"T{t_i}_M{m_i+1}",
-                "equipe_a": eq_a,
-                "equipe_b": eq_b,
+                "equipe_a": "À déterminer",
+                "equipe_b": "À déterminer",
                 "score_a": 0,
                 "score_b": 0,
                 "termine": False,
@@ -1886,27 +1855,62 @@ def afficher_section_tournoi(mode="simple"):
 
             st.divider()
 
+            nb_p = len(participants_finaux)
+            is_elim = "Élimination" in type_format
+            puissances_ok = [2, 4, 8, 16, 32]
+            
+            # Règle stricte : AUCUN PASSE-DROIT AU PREMIER TOUR
+            bloquer_lancement = False
+            msg_aide = ""
+
+            if is_elim:
+                if nb_p < 2:
+                    bloquer_lancement = True
+                    st.info(f"ℹ️ Sélectionnez au moins 2 {'duos' if mode == 'double' else 'joueurs'} pour configurer le tournoi.")
+                elif nb_p not in puissances_ok:
+                    bloquer_lancement = True
+                    # Trouver la puissance la plus proche pour conseiller l'utilisateur
+                    puiss_sup = next(p for p in puissances_ok if p > nb_p)
+                    puiss_inf = max([p for p in puissances_ok if p < nb_p], default=2)
+                    diff_manque = puiss_sup - nb_p
+                    st.warning(
+                        f"🛡️ **Règle officielle : Aucun passe-droit (exempt) au premier tour !**\n\n"
+                        f"Pour garantir que chaque {'duo' if mode == 'double' else 'joueur'} dispute un vrai match dès le premier tour, "
+                        f"le tableau à élimination directe doit comporter exactement **2, 4, 8 ou 16 {'duos' if mode == 'double' else 'participants'}** "
+                        f"(actuellement : **{nb_p}**).\n\n"
+                        f"👉 **Option A :** Ajoutez **{diff_manque} {'duo(s)' if mode == 'double' else 'joueur(s)'}** pour atteindre **{puiss_sup} participants** (ou retirez-en pour atteindre {puiss_inf}).\n\n"
+                        f"👉 **Option B :** Sélectionnez le format **« 🔄 Championnat toutes rondes (Round-Robin) »** ci-dessus : tout le monde joue contre tout le monde, **sans aucun passe-droit**, quel que soit le nombre de participants !"
+                    )
+                else:
+                    st.success(f"🟢 **Tableau complet sans passe-droit :** Les **{nb_p} {'duos' if mode == 'double' else 'joueurs'}** s'affronteront tous dès le premier tour sans aucun exempt !")
+            else:
+                if nb_p < 2:
+                    bloquer_lancement = True
+                    st.info(f"ℹ️ Sélectionnez au moins 2 {'duos' if mode == 'double' else 'joueurs'} pour démarrer un championnat toutes rondes.")
+                else:
+                    nb_matchs_tot = (nb_p * (nb_p - 1)) // 2
+                    st.success(f"🟢 **Championnat Round-Robin sans passe-droit :** {nb_p} participants, {nb_matchs_tot} rencontres au total. Tout le monde affronte tout le monde !")
+
             btn_lancer = st.button(
                 "🚀 Lancer le tournoi et générer le tableau officiel",
                 type="primary",
                 use_container_width=True,
-                disabled=len(participants_finaux) < 2,
-                key=f"btn_lancer_{mode}"
+                disabled=bloquer_lancement,
+                key=f"btn_lancer_{mode}",
+                help="Pour un arbre à élimination sans passe-droit, le nombre de participants doit être 2, 4, 8 ou 16. En Round-Robin, tout nombre >= 2 est accepté."
             )
 
             if btn_lancer:
-                if len(participants_finaux) < 2:
-                    st.error("⚠️ Il faut au moins 2 participants pour démarrer un tournoi.")
+                format_slug = "elimination" if is_elim else "round_robin"
+                if format_slug == "elimination":
+                    t_cree = generer_arbre_elimination(participants_finaux, race_to=race_to, titre=titre_saisi)
                 else:
-                    format_slug = "elimination" if "Élimination" in type_format else "round_robin"
-                    if format_slug == "elimination":
-                        t_cree = generer_arbre_elimination(participants_finaux, race_to=race_to, titre=titre_saisi)
-                    else:
-                        t_cree = generer_round_robin(participants_finaux, race_to=race_to, titre=titre_saisi)
+                    t_cree = generer_round_robin(participants_finaux, race_to=race_to, titre=titre_saisi)
 
+                if t_cree:
                     tournois_data[mode] = t_cree
                     sauvegarder_tournois_data(tournois_data)
-                    st.success("✅ Tournoi généré avec succès !")
+                    st.success("✅ Tournoi généré sans aucun passe-droit avec succès !")
                     st.rerun()
 
     # 2. CAS OÙ UN TOURNOI EST EN COURS OU TERMINÉ
@@ -2009,15 +2013,12 @@ def afficher_section_tournoi(mode="simple"):
                                         if ea == "À déterminer" or eb == "À déterminer":
                                             st.markdown(f"**{m_id}** : `{ea}` vs `{eb}`")
                                             st.caption("⏳ En attente des vainqueurs du tour précédent...")
-                                        elif ea == "BYE (Exempt)" or eb == "BYE (Exempt)":
-                                            st.markdown(f"**{m_id}** : `{ea}` vs `{eb}`")
-                                            st.info(f"✨ Qualifié d'office par Bye : **{vainq or ea or eb}**")
                                         else:
                                             st.markdown(f"**{m_id}** : 🎯 **{ea}** vs **{eb}**")
                                             st.caption(f"Course à {race_to} victoires")
 
                                 with col_m2:
-                                    if not termine and ea != "À déterminer" and eb != "À déterminer" and "BYE" not in ea and "BYE" not in eb:
+                                    if not termine and ea != "À déterminer" and eb != "À déterminer":
                                         col_s1, col_s2, col_s3 = st.columns([1, 1, 1.5])
                                         with col_s1:
                                             sc_a_in = st.number_input(f"{ea[:10]}", min_value=0, max_value=race_to, value=0, key=f"sc_a_{mode}_{m_id}")
