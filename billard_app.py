@@ -13,7 +13,7 @@ import streamlit as st
 
 # Configuration de la page
 st.set_page_config(
-    page_title="Ligue de billard du Saphir - Saisie",
+    page_title="Ligue de billard Boule en main - Saisie",
     page_icon="🎱",
     layout="wide"
 )
@@ -329,7 +329,7 @@ def restaurer_session(data):
 def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_joueurs, dict_joueurs, date_str, absents_info=None, rectif_bandeau="", approbateur_rec="", approbateur_vis=""):
     """Génère le résumé en texte brut et en HTML avec les totaux par équipe et par joueur."""
     lignes_texte = [
-        f"Ligue de billard du Saphir - Résultats officiels",
+        f"Ligue de billard Boule en main - Résultats officiels",
         f"Date : {date_str}",
         f"Rencontre : {receveur} vs {visiteur}",
         f"Score final : {receveur} ({total_rec} pts) - {visiteur} ({total_vis} pts)"
@@ -409,7 +409,7 @@ def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_j
     <html>
     <head>
         <meta charset="utf-8">
-        <title>Feuille de match officielle - Ligue du Saphir</title>
+        <title>Feuille de match officielle - Ligue de billard Boule en main</title>
         <style>
             @media print {{
                 .no-print {{ display: none !important; }}
@@ -422,7 +422,7 @@ def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_j
             <tr>
                 {logo_td}
                 <td style="vertical-align: middle;">
-                    <h2 style="color: #0b3c5d; margin: 0; font-size: 20px;">🎱 Ligue de billard du Saphir</h2>
+                    <h2 style="color: #0b3c5d; margin: 0; font-size: 20px;">🎱 Ligue de billard Boule en main</h2>
                     <div style="color: #555; font-size: 14px; font-weight: bold; margin-top: 2px;">Feuille de match officielle</div>
                 </td>
             </tr>
@@ -475,7 +475,7 @@ def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_j
             </tbody>
         </table>
         <p style="font-size: 12px; color: #777; margin-top: 25px;">
-            Feuille générée automatiquement via l'application officielle de saisie - Ligue de billard du Saphir.
+            Feuille générée automatiquement via l'application officielle de saisie - Ligue de billard Boule en main.
         </p>
     </body>
     </html>
@@ -594,7 +594,7 @@ def obtenir_html_match(m):
     <html>
     <head>
         <meta charset="utf-8">
-        <title>Feuille de match officielle - Ligue du Saphir</title>
+        <title>Feuille de match officielle - Ligue de billard Boule en main</title>
         <style>
             @media print {{
                 .no-print {{ display: none !important; }}
@@ -612,7 +612,7 @@ def obtenir_html_match(m):
             <tr>
                 {logo_td}
                 <td style="vertical-align: middle;">
-                    <h2 style="color: #0b3c5d; margin: 0; font-size: 20px;">🎱 Ligue de billard du Saphir</h2>
+                    <h2 style="color: #0b3c5d; margin: 0; font-size: 20px;">🎱 Ligue de billard Boule en main</h2>
                     <div style="color: #555; font-size: 14px; font-weight: bold; margin-top: 2px;">Feuille de match officielle</div>
                 </td>
             </tr>
@@ -655,7 +655,7 @@ def obtenir_html_match(m):
             </tbody>
         </table>
         <p style="font-size: 12px; color: #777; margin-top: 25px;">
-            Feuille générée automatiquement via l'application officielle de saisie - Ligue de billard du Saphir.
+            Feuille générée automatiquement via l'application officielle de saisie - Ligue de billard Boule en main.
         </p>
     </body>
     </html>
@@ -781,7 +781,7 @@ if not est_connecte and not est_spectateur:
             st.markdown(
                 f"""
                 <div style="text-align: center; margin-bottom: 8px;">
-                    <img src="{b64_logo_login}" alt="Armoiries Ligue du Saphir" style="width: 130px; height: 130px; object-fit: contain; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.18));">
+                    <img src="{b64_logo_login}" alt="Armoiries Ligue de billard Boule en main" style="width: 130px; height: 130px; object-fit: contain; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.18));">
                 </div>
                 """,
                 unsafe_allow_html=True
@@ -792,7 +792,7 @@ if not est_connecte and not est_spectateur:
                 st.image(arm_p, width=130)
 
         st.markdown("<div style='text-align: center; margin-top: 5px;'>", unsafe_allow_html=True)
-        st.title("🎱 Ligue de billard du Saphir")
+        st.title("🎱 Ligue de billard Boule en main")
         st.subheader("Accès à la feuille de match et aux résultats")
         st.markdown("Veuillez choisir votre mode d'accès ci-dessous.")
         st.markdown("</div>", unsafe_allow_html=True)
@@ -882,11 +882,11 @@ if b64_logo_header:
             unsafe_allow_html=True
         )
     with col_hd_txt:
-        st.title("🎱 Ligue de billard du Saphir")
+        st.title("🎱 Ligue de billard Boule en main")
         st.subheader("Application de saisie des résultats - Format 3 contre 3")
         st.markdown("*Plateforme officielle de gestion des matchs, de la cédule et des présences.*")
 else:
-    st.title("🎱 Ligue de billard du Saphir")
+    st.title("🎱 Ligue de billard Boule en main")
     st.subheader("Application de saisie des résultats - Format 3 contre 3")
     st.markdown("*Plateforme officielle de gestion des matchs, de la cédule et des présences.*")
 
@@ -1523,7 +1523,7 @@ if choix_vue != label_direct:
                     
                     sujet_envoi = f"🎱 Feuille de match : {rec_m} ({tot_r}) vs {vis_m} ({tot_v}) - {date_m}"
                     texte_envoi = (
-                        f"Feuille de match officielle - Ligue de billard du Saphir\n"
+                        f"Feuille de match officielle - Ligue de billard Boule en main\n"
                         f"Date : {date_m}\n"
                         f"Rencontre : {rec_m} ({tot_r} pts) vs {vis_m} ({tot_v} pts)\n\n"
                         f"Veuillez consulter la version HTML de ce courriel pour visualiser la feuille officielle complète."
@@ -2074,7 +2074,7 @@ elif not est_spectateur:
                 msg_flash = f"✅ Le match entre **{equipe_rec}** ({tot_rec} pts) et **{equipe_vis}** ({tot_vis} pts) a été approuvé par **{sel_app_rec}** ({equipe_rec}) et **{sel_app_vis}** ({equipe_vis}), et archivé avec succès !"
 
                 if destinataires_envoi:
-                    sujet = f"🎱 Ligue du Saphir : {equipe_rec} ({tot_rec}) vs {equipe_vis} ({tot_vis}) - {d_match}"
+                    sujet = f"🎱 Ligue de billard Boule en main : {equipe_rec} ({tot_rec}) vs {equipe_vis} ({tot_vis}) - {d_match}"
                     pj_historique = [HISTORIQUE_FILE] if os.path.exists(HISTORIQUE_FILE) else None
                     with st.spinner("Envoi automatique du courriel en cours (avec historique en pièce jointe)..."):
                         succes_mail, msg_mail = envoyer_courriel(
@@ -2347,9 +2347,9 @@ if not est_spectateur:
 
                         # 4. Envoi éventuel du courriel de rectificatif
                         if envoyer_mail_rectif and dest_rectif_input.strip():
-                            sujet_rect = f"[RECTIFICATIF] 🎱 Ligue du Saphir : {rec_sel} ({tot_rec_nouveau}) vs {vis_sel} ({tot_vis_nouveau}) - {date_sel}"
+                            sujet_rect = f"[RECTIFICATIF] 🎱 Ligue de billard Boule en main : {rec_sel} ({tot_rec_nouveau}) vs {vis_sel} ({tot_vis_nouveau}) - {date_sel}"
                             texte_rect = (
-                                f"RECTIFICATIF DE MATCH OFFICIEL - Ligue de billard du Saphir\n"
+                                f"RECTIFICATIF DE MATCH OFFICIEL - Ligue de billard Boule en main\n"
                                 f"Date du match : {date_sel}\n"
                                 f"Date de rectification : {date_rectif_str}\n"
                                 f"Motif : {motif_saisi.strip()}\n\n"
@@ -2420,7 +2420,7 @@ if not est_spectateur:
                         with st.spinner("Test de connexion SMTP en cours..."):
                             succes_test, msg_test = envoyer_courriel(
                                 smtp_dest,
-                                "🎱 Test de configuration SMTP - Ligue du Saphir",
+                                "🎱 Test de configuration SMTP - Ligue de billard Boule en main",
                                 "Ce message confirme que votre configuration SMTP fonctionne correctement !",
                                 "<p>Ce message confirme que votre configuration <strong>SMTP</strong> fonctionne correctement !</p>",
                                 cfg_test
