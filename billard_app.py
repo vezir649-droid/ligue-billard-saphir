@@ -16,27 +16,59 @@ st.set_page_config(
     layout="wide"
 )
 
-# Fichiers de données
-BACKUP_FILE = "sauvegarde_saisie_secours.json"
-CORBEILLE_FILE = "sauvegarde_annulee_secours.json"
-HISTORIQUE_FILE = "historique_matchs.json"
-CONFIG_EMAIL_FILE = "config_email.json"
-ADMIN_CONFIG_FILE = "config_admin.json"
-EQUIPES_CSV_FILE = "equipes-saphir.csv"
-ARMOIRIES_FILE = "armoiries.png"
-LOCK_FILE = "session_lock.json"
+# Fichiers de données et chemins d'accès robustes
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+def get_data_path(filename):
+    """Retourne le chemin complet du fichier en privilégiant le répertoire du script."""
+    p_script = os.path.join(BASE_DIR, filename)
+    if os.path.exists(p_script):
+        return p_script
+    p_cwd = os.path.join(os.getcwd(), filename)
+    if os.path.exists(p_cwd):
+        return p_cwd
+    return p_script
+
+def find_armoiries_path():
+    """Localise le fichier d'armoiries de manière robuste quel que soit l'environnement."""
+    candidats = [
+        os.path.join(BASE_DIR, "armoiries.png"),
+        os.path.join(BASE_DIR, "Armoiries.png"),
+        os.path.join(os.getcwd(), "armoiries.png"),
+        os.path.join(os.getcwd(), "Armoiries.png"),
+        os.path.join(BASE_DIR, "assets", "armoiries.png"),
+        os.path.join(os.getcwd(), "assets", "armoiries.png"),
+        os.path.join(BASE_DIR, "armoiries.jpg"),
+        os.path.join(os.getcwd(), "armoiries.jpg"),
+    ]
+    for c in candidats:
+        if os.path.isfile(c):
+            return c
+    return os.path.join(BASE_DIR, "armoiries.png")
+
+BACKUP_FILE = get_data_path("sauvegarde_saisie_secours.json")
+CORBEILLE_FILE = get_data_path("sauvegarde_annulee_secours.json")
+HISTORIQUE_FILE = get_data_path("historique_matchs.json")
+CONFIG_EMAIL_FILE = get_data_path("config_email.json")
+ADMIN_CONFIG_FILE = get_data_path("config_admin.json")
+EQUIPES_CSV_FILE = get_data_path("equipes-saphir.csv")
+ARMOIRIES_FILE = find_armoiries_path()
+LOCK_FILE = get_data_path("session_lock.json")
 LOCK_TIMEOUT = 900  # 15 minutes d'inactivité avant libération automatique
 
+@st.cache_data
 def charger_armoiries_base64(max_taille=(160, 160)):
     """Charge l'image des armoiries, la redimensionne proprement et la renvoie en data URI base64."""
-    if not os.path.exists(ARMOIRIES_FILE):
+    img_path = find_armoiries_path()
+    if not os.path.isfile(img_path):
         return ""
     try:
         from PIL import Image
         import io
         import base64
-        im = Image.open(ARMOIRIES_FILE)
-        im.thumbnail(max_taille, Image.Resampling.LANCZOS)
+        im = Image.open(img_path)
+        resample_filter = getattr(getattr(Image, "Resampling", Image), "LANCZOS", getattr(Image, "ANTIALIAS", 1))
+        im.thumbnail(max_taille, resample_filter)
         buf = io.BytesIO()
         im.save(buf, format="PNG", optimize=True)
         b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
@@ -44,7 +76,7 @@ def charger_armoiries_base64(max_taille=(160, 160)):
     except Exception:
         try:
             import base64
-            with open(ARMOIRIES_FILE, "rb") as f:
+            with open(img_path, "rb") as f:
                 b64 = base64.b64encode(f.read()).decode("utf-8")
             return f"data:image/png;base64,{b64}"
         except Exception:
@@ -426,7 +458,16 @@ def charger_historique_matchs():
 def obtenir_html_match(m):
     """Renvoie le HTML officiel du match ou le reconstitue fidèlement à partir des données archivées."""
     if m.get("html_officiel"):
-        return m["html_officiel"]
+        html_existant = m["html_officiel"]
+        if "Armoiries" not in html_existant and "armoiries" not in html_existant:
+            logo_b64 = charger_armoiries_base64()
+            if logo_b64:
+                logo_td = f'<td style="width: 70px; vertical-align: middle; padding-right: 12px;"><img src="{logo_b64}" alt="Armoiries" style="height: 65px; width: 65px; object-fit: contain; border-radius: 4px;"></td>'
+                html_existant = html_existant.replace(
+                    '<td style="vertical-align: middle;">',
+                    f'{logo_td}\n                <td style="vertical-align: middle;">'
+                )
+        return html_existant
     
     rec = m.get("receveur", "Receveur")
     vis = m.get("visiteur", "Visiteur")
@@ -612,12 +653,23 @@ est_connecte = st.session_state.get("authentifie", False)
 est_spectateur = st.session_state.get("est_spectateur", False)
 
 if not est_connecte and not est_spectateur:
-    col_l1, col_l2, col_l3 = st.columns([1, 1.3, 1])
+    col_l1, col_l2, col_l3 = st.columns([1, 1.4, 1])
     with col_l2:
-        if os.path.exists(ARMOIRIES_FILE):
-            c_arm1, c_arm2, c_arm3 = st.columns([1, 1.2, 1])
-            with c_arm2:
-                st.image(ARMOIRIES_FILE, use_container_width=True)
+        b64_logo_login = charger_armoiries_base64((220, 220))
+        arm_p = find_armoiries_path()
+        if b64_logo_login:
+            st.markdown(
+                f"""
+                <div style="text-align: center; margin-bottom: 8px;">
+                    <img src="{b64_logo_login}" alt="Armoiries Ligue du Saphir" style="width: 130px; height: 130px; object-fit: contain; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.18));">
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+        elif os.path.isfile(arm_p):
+            col_img1, col_img2, col_img3 = st.columns([1, 1, 1])
+            with col_img2:
+                st.image(arm_p, width=130)
 
         st.markdown("<div style='text-align: center; margin-top: 5px;'>", unsafe_allow_html=True)
         st.title("🎱 Ligue de billard du Saphir")
@@ -696,9 +748,26 @@ equipes_disponibles = charger_equipes_csv()
 noms_equipes = list(equipes_disponibles.keys())
 
 # --- ENTÊTE DU SITE WEB DE RÉFÉRENCE ---
-st.title("🎱 Ligue de billard du Saphir")
-st.subheader("Application de saisie des résultats - Format 3 contre 3")
-st.markdown("*Plateforme officielle de gestion des matchs, de la cédule et des présences.*")
+b64_logo_header = charger_armoiries_base64((140, 140))
+if b64_logo_header:
+    col_hd_logo, col_hd_txt = st.columns([0.10, 0.90])
+    with col_hd_logo:
+        st.markdown(
+            f"""
+            <div style="display: flex; align-items: center; justify-content: center; padding-top: 10px;">
+                <img src="{b64_logo_header}" alt="Armoiries" style="width: 75px; height: 75px; object-fit: contain; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.12));">
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    with col_hd_txt:
+        st.title("🎱 Ligue de billard du Saphir")
+        st.subheader("Application de saisie des résultats - Format 3 contre 3")
+        st.markdown("*Plateforme officielle de gestion des matchs, de la cédule et des présences.*")
+else:
+    st.title("🎱 Ligue de billard du Saphir")
+    st.subheader("Application de saisie des résultats - Format 3 contre 3")
+    st.markdown("*Plateforme officielle de gestion des matchs, de la cédule et des présences.*")
 
 # --- BANDEAU D'ÉTAT DU VERROU EXCLUSIF (UN SEUL MARQUEUR À LA FOIS) ---
 col_lock1, col_lock2 = st.columns([3, 1])
