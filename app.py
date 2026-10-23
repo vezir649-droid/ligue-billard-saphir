@@ -1321,212 +1321,153 @@ def calculer_totaux_actuels(dict_joueurs_ref, matchs_pairs_ref):
         
     return tot_rec, tot_vis, pts_j, details_manches
 
-# --- OPTION RÉSULTATS COURANTS EN MODE LECTURE (SPECTATEUR) ---
-if not est_editeur:
-    if est_spectateur:
-        historique_matchs = charger_historique_matchs()
-        
-        options_matchs = ["🔴 Match en direct (En cours)"]
-        mapping_matchs = {}
-        for m in reversed(historique_matchs):
-            date_m = m.get("date_enregistrement", m.get("date", "Date inconnue"))
-            rec_m = m.get("receveur", "Receveur")
-            vis_m = m.get("visiteur", "Visiteur")
-            tot_r = m.get("total_receveur", 0)
-            tot_v = m.get("total_visiteur", 0)
-            label = f"📜 {date_m} — {rec_m} ({tot_r}) vs {vis_m} ({tot_v})"
-            options_matchs.append(label)
-            mapping_matchs[label] = m
+# ==============================================================================
+# CONSULTATION DE L'HISTORIQUE ET DES RÉSULTATS (SPECTATEUR ET ÉDITEUR MARQUEUR)
+# ==============================================================================
+historique_matchs = charger_historique_matchs()
 
-        col_sel1, col_sel2 = st.columns([3, 1])
-        with col_sel1:
-            choix_vue = st.selectbox(
-                "📜 **Consulter les résultats d'un match :**",
-                options_matchs,
-                index=0,
-                key="spectateur_choix_match",
-                help="Sélectionnez le match en direct ou une copie officielle archivée envoyée par courriel"
-            )
-        with col_sel2:
-            st.write("")
-            if choix_vue == "🔴 Match en direct (En cours)":
-                if st.button("🔄 Actualiser les résultats", use_container_width=True, help="Recharge les derniers scores saisis par le marqueur"):
-                    st.session_state["forcer_rechargement"] = True
-                    st.rerun()
+label_direct = "🔴 Saisie du match en direct (En cours)" if not est_spectateur else "🔴 Match en direct (En cours)"
+options_matchs = [label_direct]
+mapping_matchs = {}
+for m in reversed(historique_matchs):
+    date_m = m.get("date_enregistrement", m.get("date", "Date inconnue"))
+    rec_m = m.get("receveur", "Receveur")
+    vis_m = m.get("visiteur", "Visiteur")
+    tot_r = m.get("total_receveur", 0)
+    tot_v = m.get("total_visiteur", 0)
+    label = f"📜 {date_m} — {rec_m} ({tot_r}) vs {vis_m} ({tot_v})"
+    options_matchs.append(label)
+    mapping_matchs[label] = m
 
-        if choix_vue == "🔴 Match en direct (En cours)":
-            tot_rec_c, tot_vis_c, pts_j_c, details_c = calculer_totaux_actuels(dict_joueurs, matchs_pairs)
-            
-            with st.container(border=True):
-                st.markdown(f"#### 🎱 Résultats courants : **{equipe_receveur}** ({tot_rec_c} pts) vs **{equipe_visiteur}** ({tot_vis_c} pts)")
-                
-                if tot_rec_c > tot_vis_c:
-                    st.success(f"🏆 **{equipe_receveur}** mène par **{tot_rec_c - tot_vis_c} point(s)** ({tot_rec_c} à {tot_vis_c}).")
-                elif tot_vis_c > tot_rec_c:
-                    st.success(f"🏆 **{equipe_visiteur}** mène par **{tot_vis_c - tot_rec_c} point(s)** ({tot_vis_c} à {tot_rec_c}).")
-                else:
-                    st.info(f"🤝 **Égalité provisoire** : {tot_rec_c} à {tot_vis_c}.")
-
-                # Scores par équipe
-                c_sc1, c_sc2 = st.columns(2)
-                c_sc1.metric(f"Total {equipe_receveur}", f"{tot_rec_c} pts")
-                c_sc2.metric(f"Total {equipe_visiteur}", f"{tot_vis_c} pts")
-
-                # Points des joueurs
-                st.markdown("##### 👤 Points individuels cumulés")
-                col_pj1, col_pj2 = st.columns(2)
-                with col_pj1:
-                    st.markdown(f"**🏠 {equipe_receveur}**")
-                    cr1, cr2, cr3 = st.columns(3)
-                    p1 = dict_joueurs["j1_rec"]
-                    p2 = dict_joueurs["j2_rec"]
-                    p3 = dict_joueurs["j3_rec"]
-                    cr1.metric(p1["nom"] + (" (Abs.)" if not p1["present"] else ""), f"{pts_j_c['j1_rec']} pts")
-                    cr2.metric(p2["nom"] + (" (Abs.)" if not p2["present"] else ""), f"{pts_j_c['j2_rec']} pts")
-                    cr3.metric(p3["nom"] + (" (Abs.)" if not p3["present"] else ""), f"{pts_j_c['j3_rec']} pts")
-
-                with col_pj2:
-                    st.markdown(f"**🚗 {equipe_visiteur}**")
-                    cv1, cv2, cv3 = st.columns(3)
-                    pv1 = dict_joueurs["j1_vis"]
-                    pv2 = dict_joueurs["j2_vis"]
-                    pv3 = dict_joueurs["j3_vis"]
-                    cv1.metric(pv1["nom"] + (" (Abs.)" if not pv1["present"] else ""), f"{pts_j_c['j1_vis']} pts")
-                    cv2.metric(pv2["nom"] + (" (Abs.)" if not pv2["present"] else ""), f"{pts_j_c['j2_vis']} pts")
-                    cv3.metric(pv3["nom"] + (" (Abs.)" if not pv3["present"] else ""), f"{pts_j_c['j3_vis']} pts")
-
-                # Tableau récapitulatif des 9 manches
-                st.markdown("##### 📋 État des 9 manches")
-                lignes_md = [
-                    f"| Manche | Joueur ({equipe_receveur}) | Pts {equipe_receveur} | Pts {equipe_visiteur} | Joueur ({equipe_visiteur}) | Statut |",
-                    "| :---: | :--- | :---: | :---: | :--- | :--- |"
-                ]
-                for row in details_c:
-                    nom_a = f"**{row['ja']}**" + (" *(Absent)*" if row["abs_a"] else "")
-                    nom_b = f"**{row['jb']}**" + (" *(Absent)*" if row["abs_b"] else "")
-                    sa_val = row["sa"]
-                    sb_val = row["sb"]
-                    
-                    if sa_val == 8:
-                        sc_a = f"**{sa_val}**"
-                        sc_b = f"{sb_val}"
-                        statut = f"🏆 **Gagné ({row['ja']})**"
-                    elif sb_val == 8:
-                        sc_a = f"{sa_val}"
-                        sc_b = f"**{sb_val}**"
-                        statut = f"🏆 **Gagné ({row['jb']})**"
-                    elif sa_val > 0 or sb_val > 0:
-                        sc_a = f"{sa_val}"
-                        sc_b = f"{sb_val}"
-                        statut = "⏳ *En cours*"
-                    else:
-                        sc_a = "0"
-                        sc_b = "0"
-                        statut = "⚪ *À jouer*"
-
-                    lignes_md.append(f"| **Manche {row['manche']}** | {nom_a} | {sc_a} | {sc_b} | {nom_b} | {statut} |")
-
-                st.markdown("\n".join(lignes_md))
-        else:
-            # Affichage de la copie exacte de la feuille de match officielle archivée
-            m_arch = mapping_matchs[choix_vue]
-            html_arch = obtenir_html_match(m_arch)
-            
-            with st.container(border=True):
-                st.markdown(f"#### 📜 Feuille officielle archivée — {m_arch.get('date_enregistrement', m_arch.get('date', ''))}")
-                c_btn1, c_btn2, c_btn3 = st.columns([2, 1, 1])
-                c_btn1.info("✉️ **Copie certifiée conforme :** Ce résultat correspond exactement à la feuille de match officielle transmise par courriel lors de la validation.")
-                with c_btn2:
-                    date_slug = str(m_arch.get('date_enregistrement', 'match')).replace('/', '-').replace(' ', '_').replace(':', 'h').replace('à', '')
-                    rec_slug = str(m_arch.get('receveur', 'rec')).replace(' ', '_')
-                    vis_slug = str(m_arch.get('visiteur', 'vis')).replace(' ', '_')
-                    st.download_button(
-                        label="📥 Télécharger (HTML)",
-                        data=html_arch,
-                        file_name=f"feuille_{rec_slug}_vs_{vis_slug}_{date_slug}.html",
-                        mime="text/html",
-                        use_container_width=True
-                    )
-                with c_btn3:
-                    html_print_data = json.dumps(html_arch)
-                    st.components.v1.html(
-                        f"""
-                        <button onclick="lancerImpression()" style="width:100%; height:38px; background-color:#0b3c5d; color:white; border:none; border-radius:6px; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif; font-size:14px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;">
-                            🖨️ Imprimer
-                        </button>
-                        <script>
-                        function lancerImpression() {{
-                            var win = window.open('', '_blank');
-                            win.document.open();
-                            win.document.write({html_print_data});
-                            win.document.close();
-                            win.focus();
-                            setTimeout(function() {{
-                                win.print();
-                            }}, 300);
-                        }}
-                        </script>
-                        """,
-                        height=42
-                    )
-                
-                st.components.v1.html(html_arch, height=650, scrolling=True)
-
-    else:
-        col_opt1, col_opt2 = st.columns([3, 1])
-        with col_opt1:
-            voir_resultats_courants = st.toggle(
-                "📊 **Voir les résultats courants (Tableau de bord en direct)**",
-                value=st.session_state.get("toggle_voir_resultats", True),
-                key="toggle_voir_resultats"
-            )
-        with col_opt2:
+col_sel1, col_sel2 = st.columns([3, 1])
+with col_sel1:
+    choix_vue = st.selectbox(
+        "📜 **Consulter les résultats d'un match :**",
+        options_matchs,
+        index=0,
+        key="choix_match_vue",
+        help="Sélectionnez le match en direct ou une copie officielle archivée envoyée par courriel"
+    )
+with col_sel2:
+    st.write("")
+    if choix_vue == label_direct:
+        if not est_editeur:
             if st.button("🔄 Actualiser les résultats", use_container_width=True, help="Recharge les derniers scores saisis par le marqueur"):
                 st.session_state["forcer_rechargement"] = True
                 st.rerun()
+    else:
+        if st.button("🔙 Revenir au match en cours", use_container_width=True, help="Retourner à la saisie du match actuel"):
+            st.session_state["choix_match_vue"] = label_direct
+            st.rerun()
 
-        if voir_resultats_courants:
-            tot_rec_c, tot_vis_c, pts_j_c, details_c = calculer_totaux_actuels(dict_joueurs, matchs_pairs)
+# 1. Si une archive officielle est sélectionnée
+if choix_vue != label_direct:
+    st.session_state["venant_de_archive"] = True
+    m_arch = mapping_matchs[choix_vue]
+    html_arch = obtenir_html_match(m_arch)
+    
+    with st.container(border=True):
+        st.markdown(f"#### 📜 Feuille officielle archivée — {m_arch.get('date_enregistrement', m_arch.get('date', ''))}")
+        c_btn1, c_btn2, c_btn3 = st.columns([2, 1, 1])
+        c_btn1.info("✉️ **Copie certifiée conforme :** Ce résultat correspond exactement à la feuille de match officielle transmise par courriel lors de la validation.")
+        with c_btn2:
+            date_slug = str(m_arch.get('date_enregistrement', 'match')).replace('/', '-').replace(' ', '_').replace(':', 'h').replace('à', '')
+            rec_slug = str(m_arch.get('receveur', 'rec')).replace(' ', '_')
+            vis_slug = str(m_arch.get('visiteur', 'vis')).replace(' ', '_')
+            st.download_button(
+                label="📥 Télécharger (HTML)",
+                data=html_arch,
+                file_name=f"feuille_{rec_slug}_vs_{vis_slug}_{date_slug}.html",
+                mime="text/html",
+                use_container_width=True,
+                key=f"dl_arch_{date_slug}"
+            )
+        with c_btn3:
+            html_print_data = json.dumps(html_arch)
+            st.components.v1.html(
+                f"""
+                <button onclick="lancerImpression()" style="width:100%; height:38px; background-color:#0b3c5d; color:white; border:none; border-radius:6px; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif; font-size:14px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;">
+                    🖨️ Imprimer
+                </button>
+                <script>
+                function lancerImpression() {{
+                    var win = window.open('', '_blank');
+                    win.document.open();
+                    win.document.write({html_print_data});
+                    win.document.close();
+                    win.focus();
+                    setTimeout(function() {{
+                        win.print();
+                    }}, 300);
+                }}
+                </script>
+                """,
+                height=42
+            )
+        
+        st.components.v1.html(html_arch, height=650, scrolling=True)
+
+# 2. Si le match en cours est sélectionné
+else:
+    # Restauration automatique des scores en mémoire si l'on revient de la consultation d'une archive
+    if st.session_state.get("venant_de_archive", False) and "scores_en_cours_backup" in st.session_state:
+        for k_b, v_b in st.session_state["scores_en_cours_backup"].items():
+            st.session_state[k_b] = v_b
+        st.session_state["venant_de_archive"] = False
+
+    tot_rec_c, tot_vis_c, pts_j_c, details_c = calculer_totaux_actuels(dict_joueurs, matchs_pairs)
+    
+    afficher_dashboard = True
+    if not est_spectateur:
+        col_t1, col_t2 = st.columns([3, 1])
+        with col_t1:
+            afficher_dashboard = st.toggle(
+                "📊 **Afficher le résumé des scores en direct**",
+                value=st.session_state.get("toggle_voir_resultats_editeur", False),
+                key="toggle_voir_resultats_editeur"
+            )
+
+    if afficher_dashboard:
+        with st.container(border=True):
+            st.markdown(f"#### 🎱 Résultats courants : **{equipe_receveur}** ({tot_rec_c} pts) vs **{equipe_visiteur}** ({tot_vis_c} pts)")
             
-            with st.container(border=True):
-                st.markdown(f"#### 🎱 Résultats courants : **{equipe_receveur}** ({tot_rec_c} pts) vs **{equipe_visiteur}** ({tot_vis_c} pts)")
-                
-                if tot_rec_c > tot_vis_c:
-                    st.success(f"🏆 **{equipe_receveur}** mène par **{tot_rec_c - tot_vis_c} point(s)** ({tot_rec_c} à {tot_vis_c}).")
-                elif tot_vis_c > tot_rec_c:
-                    st.success(f"🏆 **{equipe_visiteur}** mène par **{tot_vis_c - tot_rec_c} point(s)** ({tot_vis_c} à {tot_rec_c}).")
-                else:
-                    st.info(f"🤝 **Égalité provisoire** : {tot_rec_c} à {tot_vis_c}.")
+            if tot_rec_c > tot_vis_c:
+                st.success(f"🏆 **{equipe_receveur}** mène par **{tot_rec_c - tot_vis_c} point(s)** ({tot_rec_c} à {tot_vis_c}).")
+            elif tot_vis_c > tot_rec_c:
+                st.success(f"🏆 **{equipe_visiteur}** mène par **{tot_vis_c - tot_rec_c} point(s)** ({tot_vis_c} à {tot_rec_c}).")
+            else:
+                st.info(f"🤝 **Égalité provisoire** : {tot_rec_c} à {tot_vis_c}.")
 
-                # Scores par équipe
-                c_sc1, c_sc2 = st.columns(2)
-                c_sc1.metric(f"Total {equipe_receveur}", f"{tot_rec_c} pts")
-                c_sc2.metric(f"Total {equipe_visiteur}", f"{tot_vis_c} pts")
+            # Scores par équipe
+            c_sc1, c_sc2 = st.columns(2)
+            c_sc1.metric(f"Total {equipe_receveur}", f"{tot_rec_c} pts")
+            c_sc2.metric(f"Total {equipe_visiteur}", f"{tot_vis_c} pts")
 
-                # Points des joueurs
-                st.markdown("##### 👤 Points individuels cumulés")
-                col_pj1, col_pj2 = st.columns(2)
-                with col_pj1:
-                    st.markdown(f"**🏠 {equipe_receveur}**")
-                    cr1, cr2, cr3 = st.columns(3)
-                    p1 = dict_joueurs["j1_rec"]
-                    p2 = dict_joueurs["j2_rec"]
-                    p3 = dict_joueurs["j3_rec"]
-                    cr1.metric(p1["nom"] + (" (Abs.)" if not p1["present"] else ""), f"{pts_j_c['j1_rec']} pts")
-                    cr2.metric(p2["nom"] + (" (Abs.)" if not p2["present"] else ""), f"{pts_j_c['j2_rec']} pts")
-                    cr3.metric(p3["nom"] + (" (Abs.)" if not p3["present"] else ""), f"{pts_j_c['j3_rec']} pts")
+            # Points des joueurs
+            st.markdown("##### 👤 Points individuels cumulés")
+            col_pj1, col_pj2 = st.columns(2)
+            with col_pj1:
+                st.markdown(f"**🏠 {equipe_receveur}**")
+                cr1, cr2, cr3 = st.columns(3)
+                p1 = dict_joueurs["j1_rec"]
+                p2 = dict_joueurs["j2_rec"]
+                p3 = dict_joueurs["j3_rec"]
+                cr1.metric(p1["nom"] + (" (Abs.)" if not p1["present"] else ""), f"{pts_j_c['j1_rec']} pts")
+                cr2.metric(p2["nom"] + (" (Abs.)" if not p2["present"] else ""), f"{pts_j_c['j2_rec']} pts")
+                cr3.metric(p3["nom"] + (" (Abs.)" if not p3["present"] else ""), f"{pts_j_c['j3_rec']} pts")
 
-                with col_pj2:
-                    st.markdown(f"**🚗 {equipe_visiteur}**")
-                    cv1, cv2, cv3 = st.columns(3)
-                    pv1 = dict_joueurs["j1_vis"]
-                    pv2 = dict_joueurs["j2_vis"]
-                    pv3 = dict_joueurs["j3_vis"]
-                    cv1.metric(pv1["nom"] + (" (Abs.)" if not pv1["present"] else ""), f"{pts_j_c['j1_vis']} pts")
-                    cv2.metric(pv2["nom"] + (" (Abs.)" if not pv2["present"] else ""), f"{pts_j_c['j2_vis']} pts")
-                    cv3.metric(pv3["nom"] + (" (Abs.)" if not pv3["present"] else ""), f"{pts_j_c['j3_vis']} pts")
+            with col_pj2:
+                st.markdown(f"**🚗 {equipe_visiteur}**")
+                cv1, cv2, cv3 = st.columns(3)
+                pv1 = dict_joueurs["j1_vis"]
+                pv2 = dict_joueurs["j2_vis"]
+                pv3 = dict_joueurs["j3_vis"]
+                cv1.metric(pv1["nom"] + (" (Abs.)" if not pv1["present"] else ""), f"{pts_j_c['j1_vis']} pts")
+                cv2.metric(pv2["nom"] + (" (Abs.)" if not pv2["present"] else ""), f"{pts_j_c['j2_vis']} pts")
+                cv3.metric(pv3["nom"] + (" (Abs.)" if not pv3["present"] else ""), f"{pts_j_c['j3_vis']} pts")
 
-                # Tableau récapitulatif des 9 manches
+            # Tableau récapitulatif des 9 manches (visible en mode spectateur)
+            if est_spectateur:
                 st.markdown("##### 📋 État des 9 manches")
                 lignes_md = [
                     f"| Manche | Joueur ({equipe_receveur}) | Pts {equipe_receveur} | Pts {equipe_visiteur} | Joueur ({equipe_visiteur}) | Statut |",
@@ -1559,7 +1500,9 @@ if not est_editeur:
 
                 st.markdown("\n".join(lignes_md))
 
-if not est_spectateur:
+if not est_spectateur and choix_vue != label_direct:
+    st.info("💡 **Feuille archivée affichée ci-dessus.** La grille de saisie du match en cours est temporairement masquée. Pour continuer la saisie du match actuel, sélectionnez « 🔴 Saisie du match en direct » dans la liste déroulante ci-dessus ou cliquez sur « 🔙 Revenir au match en cours ».")
+elif not est_spectateur:
     st.markdown("---")
     st.markdown("### 🎯 Grille de saisie des 9 manches (Rotation alternée 3 contre 3)")
     st.info(
@@ -1802,6 +1745,12 @@ if not est_spectateur:
     # Sauvegarde automatique en arrière-plan (uniquement par l'éditeur actif et si le match n'est pas validé)
     if est_editeur and not match_valide:
         sauvegarder_donnees(donnees_a_sauvegarder)
+        st.session_state["scores_en_cours_backup"] = {
+            f"s_a_{n}": st.session_state.get(f"s_a_{n}", 0) for n in range(1, 10)
+        }
+        st.session_state["scores_en_cours_backup"].update({
+            f"s_b_{n}": st.session_state.get(f"s_b_{n}", 0) for n in range(1, 10)
+        })
 
     st.divider()
 
