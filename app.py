@@ -422,6 +422,29 @@ def envoyer_courriel(destinataires_str, sujet, texte_brut, html_contenu, config,
         return False, f"Échec de l'envoi du courriel : {str(e)}"
 
 # ==============================================================================
+# CONTRÔLE D'ACCÈS À L'ENTRÉE (AUTHENTIFICATION OBLIGATOIRE)
+# ==============================================================================
+if not st.session_state.get("authentifie", False):
+    st.markdown("<div style='text-align: center; margin-top: 40px;'>", unsafe_allow_html=True)
+    st.title("🎱 Ligue de billard du Saphir")
+    st.subheader("Accès sécurisé à l'application")
+    st.markdown("Veuillez saisir le mot de passe pour accéder à la feuille de match et aux résultats.")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    col_l1, col_l2, col_l3 = st.columns([1, 1.2, 1])
+    with col_l2:
+        mdp_saisi = st.text_input("Mot de passe d'accès", type="password", key="login_pass_input", placeholder="Entrez le mot de passe...")
+        if st.button("🔓 Entrer", type="primary", use_container_width=True):
+            mdp_attendu = charger_mot_de_passe_admin()
+            if mdp_saisi == mdp_attendu:
+                st.session_state["authentifie"] = True
+                st.rerun()
+            else:
+                st.error("❌ Mot de passe incorrect.")
+        st.caption("💡 *Mot de passe par défaut : `saphir2026`*")
+    st.stop()
+
+# ==============================================================================
 # IDENTIFICATION DE SESSION & GESTION DU VERROU
 # ==============================================================================
 if "user_session_id" not in st.session_state:
@@ -566,10 +589,12 @@ with col_h4:
                 except Exception:
                     pass
 
-            # 3. Conserver l'identifiant de session et l'état de consultation
+            # 3. Conserver l'authentification, l'identifiant de session et l'état de consultation
+            auth_ok = st.session_state.get("authentifie", False)
             user_sess = st.session_state.get("user_session_id")
             mode_c = st.session_state.get("mode_consultation", False)
             st.session_state.clear()
+            st.session_state["authentifie"] = auth_ok
             if user_sess:
                 st.session_state["user_session_id"] = user_sess
             st.session_state["mode_consultation"] = mode_c
@@ -602,6 +627,10 @@ st.divider()
 
 # --- BARRE LATÉRALE : SÉLECTION DU MATCH ET JOUEURS ---
 st.sidebar.header("📋 Paramètres du Match")
+if st.sidebar.button("🚪 Déconnexion", use_container_width=True, help="Ferme la session et retourne à l'écran de mot de passe"):
+    liberer_verrou(my_session_id)
+    st.session_state["authentifie"] = False
+    st.rerun()
 
 if noms_equipes:
     options_rec = noms_equipes + ["Autre / Personnalisée"]
@@ -1156,86 +1185,82 @@ if est_editeur and not match_valide:
 st.divider()
 
 # ==============================================================================
-# ESPACE ADMINISTRATION (PROTÉGÉ PAR MOT DE PASSE)
+# ESPACE ADMINISTRATION (SAISON, SMTP ET SÉCURITÉ)
 # ==============================================================================
-st.markdown("### 🔒 Espace Administration")
+st.markdown("### ⚙️ Espace Administration")
 
-with st.expander("⚙️ Ouvrir le panneau d'administration (Protégé)", expanded=st.session_state.get("admin_connecte", False)):
-    mdp_admin_actuel = charger_mot_de_passe_admin()
-    
-    if not st.session_state.get("admin_connecte", False):
-        st.markdown("##### 🔑 Identification requise")
-        col_adm_in, col_adm_btn = st.columns([3, 1])
-        with col_adm_in:
-            saisie_mdp = st.text_input("Mot de passe administrateur", type="password", key="saisie_admin_pwd", placeholder="Entrez le mot de passe...")
-        with col_adm_btn:
-            st.write("")
-            st.write("")
-            if st.button("🔓 Déverrouiller", use_container_width=True):
-                if saisie_mdp == mdp_admin_actuel:
-                    st.session_state["admin_connecte"] = True
-                    st.success("Connexion réussie !")
+with st.expander("🛠️ Ouvrir le panneau d'administration (Saison, SMTP et Sécurité)", expanded=False):
+    tab_saison, tab_smtp, tab_secu = st.tabs([
+        "🗓️ Démarrer une nouvelle saison",
+        "📧 Configuration SMTP",
+        "🔑 Mot de passe d'accès"
+    ])
+
+    with tab_saison:
+        st.markdown("#### 🗓️ Démarrer une nouvelle saison")
+        
+        nb_matchs = 0
+        if os.path.exists(HISTORIQUE_FILE):
+            try:
+                with open(HISTORIQUE_FILE, "r", encoding="utf-8") as f:
+                    data_hist = json.load(f)
+                    if isinstance(data_hist, list):
+                        nb_matchs = len(data_hist)
+            except Exception:
+                nb_matchs = 0
+
+        st.write(f"📊 **Statut de l'historique :** `{nb_matchs} match(s)` actuellement enregistré(s) dans `{HISTORIQUE_FILE}`.")
+        st.warning("⚠️ **Attention :** Démarrer une nouvelle saison réinitialise complètement l'historique de tous les matchs précédents. Aucun archivage n'est effectué.")
+
+        with st.popover("🚨 Réinitialiser et démarrer la nouvelle saison", use_container_width=True):
+            st.markdown("### ⚠️ Confirmation obligatoire")
+            st.write(f"Voulez-vous vraiment effacer les **{nb_matchs} match(s)** enregistrés dans l'historique ?")
+            st.write("Cette action est irréversible et supprimera le fichier d'historique.")
+            if st.button("🔴 Confirmer la réinitialisation de la saison", type="primary", use_container_width=True):
+                try:
+                    if os.path.exists(HISTORIQUE_FILE):
+                        os.remove(HISTORIQUE_FILE)
+                    st.success("✅ Historique réinitialisé avec succès ! La nouvelle saison est ouverte.")
+                    st.rerun()
+                except Exception as e_hist:
+                    st.error(f"Erreur lors de la suppression de l'historique : {e_hist}")
+
+    with tab_smtp:
+        st.markdown("#### ⚙️ Configuration du serveur de messagerie (SMTP)")
+        smtp_dest = st.text_input("Destinataire(s) (séparés par virgule)", value=config_email.get("destinataires", ""), key="admin_smtp_dest")
+        col_c1, col_c2 = st.columns(2)
+        smtp_serveur = col_c1.text_input("Serveur SMTP", value=config_email.get("smtp_serveur", "smtp.gmail.com"), key="admin_smtp_serveur")
+        smtp_port = col_c2.number_input("Port SMTP", value=int(config_email.get("smtp_port", 587)), key="admin_smtp_port")
+        smtp_expediteur = col_c1.text_input("Courriel expéditeur", value=config_email.get("smtp_expediteur", ""), key="admin_smtp_exp")
+        smtp_mdp = col_c2.text_input("Mot de passe / Clé d'application", type="password", value=config_email.get("smtp_mdp", ""), key="admin_smtp_pwd")
+        smtp_ssl = st.checkbox("Utiliser SSL (Port 465)", value=config_email.get("smtp_ssl", False), key="admin_smtp_ssl")
+
+        col_btn_cfg1, col_btn_cfg2 = st.columns(2)
+        with col_btn_cfg1:
+            if st.button("💾 Enregistrer la configuration SMTP", use_container_width=True):
+                nouvelle_cfg = {
+                    "destinataires": smtp_dest,
+                    "smtp_serveur": smtp_serveur,
+                    "smtp_port": int(smtp_port),
+                    "smtp_expediteur": smtp_expediteur,
+                    "smtp_mdp": smtp_mdp,
+                    "smtp_ssl": smtp_ssl
+                }
+                if sauvegarder_config_email(nouvelle_cfg):
+                    config_email = nouvelle_cfg
+                    st.success("✅ Configuration SMTP enregistrée avec succès dans le fichier !")
                     st.rerun()
                 else:
-                    st.error("Mot de passe incorrect.")
-        st.caption("💡 *Mot de passe par défaut : `saphir2026`*")
-    else:
-        col_adm_head1, col_adm_head2 = st.columns([3, 1])
-        col_adm_head1.success("🟢 **Session administrateur active.**")
-        with col_adm_head2:
-            if st.button("🔒 Verrouiller la session", use_container_width=True):
-                st.session_state["admin_connecte"] = False
-                st.rerun()
+                    st.error("Erreur lors de la sauvegarde du fichier.")
 
-        tab_saison, tab_smtp, tab_secu = st.tabs([
-            "🗓️ Démarrer une nouvelle saison",
-            "📧 Configuration SMTP",
-            "🔑 Mot de passe Admin"
-        ])
-
-        with tab_saison:
-            st.markdown("#### 🗓️ Démarrer une nouvelle saison")
-            
-            nb_matchs = 0
-            if os.path.exists(HISTORIQUE_FILE):
-                try:
-                    with open(HISTORIQUE_FILE, "r", encoding="utf-8") as f:
-                        data_hist = json.load(f)
-                        if isinstance(data_hist, list):
-                            nb_matchs = len(data_hist)
-                except Exception:
-                    nb_matchs = 0
-
-            st.write(f"📊 **Statut de l'historique :** `{nb_matchs} match(s)` actuellement enregistré(s) dans `{HISTORIQUE_FILE}`.")
-            st.warning("⚠️ **Attention :** Démarrer une nouvelle saison réinitialise complètement l'historique de tous les matchs précédents. Aucun archivage n'est effectué.")
-
-            with st.popover("🚨 Réinitialiser et démarrer la nouvelle saison", use_container_width=True):
-                st.markdown("### ⚠️ Confirmation obligatoire")
-                st.write(f"Voulez-vous vraiment effacer les **{nb_matchs} match(s)** enregistrés dans l'historique ?")
-                st.write("Cette action est irréversible et supprimera le fichier d'historique.")
-                if st.button("🔴 Confirmer la réinitialisation de la saison", type="primary", use_container_width=True):
-                    try:
-                        if os.path.exists(HISTORIQUE_FILE):
-                            os.remove(HISTORIQUE_FILE)
-                        st.success("✅ Historique réinitialisé avec succès ! La nouvelle saison est ouverte.")
-                        st.rerun()
-                    except Exception as e_hist:
-                        st.error(f"Erreur lors de la suppression de l'historique : {e_hist}")
-
-        with tab_smtp:
-            st.markdown("#### ⚙️ Configuration du serveur de messagerie (SMTP)")
-            smtp_dest = st.text_input("Destinataire(s) (séparés par virgule)", value=config_email.get("destinataires", ""), key="admin_smtp_dest")
-            col_c1, col_c2 = st.columns(2)
-            smtp_serveur = col_c1.text_input("Serveur SMTP", value=config_email.get("smtp_serveur", "smtp.gmail.com"), key="admin_smtp_serveur")
-            smtp_port = col_c2.number_input("Port SMTP", value=int(config_email.get("smtp_port", 587)), key="admin_smtp_port")
-            smtp_expediteur = col_c1.text_input("Courriel expéditeur", value=config_email.get("smtp_expediteur", ""), key="admin_smtp_exp")
-            smtp_mdp = col_c2.text_input("Mot de passe / Clé d'application", type="password", value=config_email.get("smtp_mdp", ""), key="admin_smtp_pwd")
-            smtp_ssl = st.checkbox("Utiliser SSL (Port 465)", value=config_email.get("smtp_ssl", False), key="admin_smtp_ssl")
-
-            col_btn_cfg1, col_btn_cfg2 = st.columns(2)
-            with col_btn_cfg1:
-                if st.button("💾 Enregistrer la configuration SMTP", use_container_width=True):
-                    nouvelle_cfg = {
+        with col_btn_cfg2:
+            if st.button("🧪 Tester la configuration (courriel test)", use_container_width=True):
+                if not smtp_dest:
+                    st.error("⚠️ Veuillez renseigner au moins une adresse de destinataire.")
+                elif not smtp_expediteur:
+                    st.error("⚠️ Veuillez renseigner l'adresse courriel de l'expéditeur.")
+                else:
+                    cfg_test = {
                         "destinataires": smtp_dest,
                         "smtp_serveur": smtp_serveur,
                         "smtp_port": int(smtp_port),
@@ -1243,52 +1268,30 @@ with st.expander("⚙️ Ouvrir le panneau d'administration (Protégé)", expand
                         "smtp_mdp": smtp_mdp,
                         "smtp_ssl": smtp_ssl
                     }
-                    if sauvegarder_config_email(nouvelle_cfg):
-                        config_email = nouvelle_cfg
-                        st.success("✅ Configuration SMTP enregistrée avec succès dans le fichier !")
-                        st.rerun()
+                    with st.spinner("Test de connexion SMTP en cours..."):
+                        succes_test, msg_test = envoyer_courriel(
+                            smtp_dest,
+                            "🎱 Test de configuration SMTP - Ligue du Saphir",
+                            "Ce message confirme que votre configuration SMTP fonctionne correctement !",
+                            "<p>Ce message confirme que votre configuration <strong>SMTP</strong> fonctionne correctement !</p>",
+                            cfg_test
+                        )
+                    if succes_test:
+                        st.success(f"✅ {msg_test} (Envoyé à : `{smtp_dest}`)")
                     else:
-                        st.error("Erreur lors de la sauvegarde du fichier.")
+                        st.error(f"❌ {msg_test}")
 
-            with col_btn_cfg2:
-                if st.button("🧪 Tester la configuration (courriel test)", use_container_width=True):
-                    if not smtp_dest:
-                        st.error("⚠️ Veuillez renseigner au moins une adresse de destinataire.")
-                    elif not smtp_expediteur:
-                        st.error("⚠️ Veuillez renseigner l'adresse courriel de l'expéditeur.")
-                    else:
-                        cfg_test = {
-                            "destinataires": smtp_dest,
-                            "smtp_serveur": smtp_serveur,
-                            "smtp_port": int(smtp_port),
-                            "smtp_expediteur": smtp_expediteur,
-                            "smtp_mdp": smtp_mdp,
-                            "smtp_ssl": smtp_ssl
-                        }
-                        with st.spinner("Test de connexion SMTP en cours..."):
-                            succes_test, msg_test = envoyer_courriel(
-                                smtp_dest,
-                                "🎱 Test de configuration SMTP - Ligue du Saphir",
-                                "Ce message confirme que votre configuration SMTP fonctionne correctement !",
-                                "<p>Ce message confirme que votre configuration <strong>SMTP</strong> fonctionne correctement !</p>",
-                                cfg_test
-                            )
-                        if succes_test:
-                            st.success(f"✅ {msg_test} (Envoyé à : `{smtp_dest}`)")
-                        else:
-                            st.error(f"❌ {msg_test}")
-
-        with tab_secu:
-            st.markdown("#### 🔑 Changer le mot de passe administrateur")
-            nouveau_mdp = st.text_input("Nouveau mot de passe", type="password", key="new_admin_pwd")
-            confirm_mdp = st.text_input("Confirmer le nouveau mot de passe", type="password", key="confirm_admin_pwd")
-            if st.button("💾 Mettre à jour le mot de passe admin", use_container_width=True):
-                if not nouveau_mdp:
-                    st.error("Le mot de passe ne peut pas être vide.")
-                elif nouveau_mdp != confirm_mdp:
-                    st.error("Les deux mots de passe ne correspondent pas.")
+    with tab_secu:
+        st.markdown("#### 🔑 Modifier le mot de passe d'accès à l'application")
+        nouveau_mdp = st.text_input("Nouveau mot de passe d'accès", type="password", key="new_admin_pwd")
+        confirm_mdp = st.text_input("Confirmer le nouveau mot de passe", type="password", key="confirm_admin_pwd")
+        if st.button("💾 Mettre à jour le mot de passe", use_container_width=True):
+            if not nouveau_mdp:
+                st.error("Le mot de passe ne peut pas être vide.")
+            elif nouveau_mdp != confirm_mdp:
+                st.error("Les deux mots de passe ne correspondent pas.")
+            else:
+                if sauvegarder_mot_de_passe_admin(nouveau_mdp):
+                    st.success("✅ Mot de passe d'accès mis à jour avec succès !")
                 else:
-                    if sauvegarder_mot_de_passe_admin(nouveau_mdp):
-                        st.success("✅ Mot de passe mis à jour avec succès !")
-                    else:
-                        st.error("Erreur lors de la sauvegarde.")
+                    st.error("Erreur lors de la sauvegarde.")
