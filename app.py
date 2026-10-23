@@ -410,6 +410,7 @@ def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_j
             </tr>
         </table>
         <p><strong>Date :</strong> {date_str}</p>
+        {rectif_bandeau}
         <div style="background-color: #f4f6f9; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
             <h3 style="margin: 0; color: #1e3d59;">Résultat final du match :</h3>
             <p style="font-size: 18px; margin: 8px 0;">
@@ -476,6 +477,17 @@ def charger_historique_matchs():
 
 def obtenir_html_match(m):
     """Renvoie le HTML officiel du match ou le reconstitue fidèlement à partir des données archivées."""
+    rectif_bandeau = ""
+    if m.get("date_rectification"):
+        d_rect = m.get("date_rectification")
+        m_rect = m.get("motif_rectification", "Correction administrative")
+        rectif_bandeau = f"""
+        <div style="background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba; border-left: 5px solid #ffc107; padding: 10px 14px; border-radius: 6px; margin-bottom: 14px; font-size: 13px;">
+            <strong>⚠️ FEUILLE OFFICIELLE RECTIFIÉE</strong> le {d_rect}<br>
+            <em>Motif officiel : {m_rect}</em>
+        </div>
+        """
+
     if m.get("html_officiel"):
         html_existant = m["html_officiel"]
         if "Armoiries" not in html_existant and "armoiries" not in html_existant:
@@ -486,6 +498,8 @@ def obtenir_html_match(m):
                     '<td style="vertical-align: middle;">',
                     f'{logo_td}\n                <td style="vertical-align: middle;">'
                 )
+        if m.get("date_rectification") and "FEUILLE OFFICIELLE RECTIFIÉE" not in html_existant:
+            html_existant = html_existant.replace('<div style="background-color: #f4f6f9;', f'{rectif_bandeau}\n        <div style="background-color: #f4f6f9;')
         return html_existant
     
     rec = m.get("receveur", "Receveur")
@@ -564,6 +578,7 @@ def obtenir_html_match(m):
             </tr>
         </table>
         <p><strong>Date :</strong> {date_str}</p>
+        {rectif_bandeau}
         <div style="background-color: #f4f6f9; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
             <h3 style="margin: 0; color: #1e3d59;">Résultat final du match :</h3>
             <p style="font-size: 18px; margin: 8px 0;">
@@ -1910,8 +1925,9 @@ if not est_spectateur:
     st.markdown("### ⚙️ Espace Administration")
 
     with st.expander("🛠️ Ouvrir le panneau d'administration (Saison, SMTP et Sécurité)", expanded=False):
-        tab_saison, tab_smtp, tab_secu = st.tabs([
+        tab_saison, tab_rectif, tab_smtp, tab_secu = st.tabs([
             "🗓️ Démarrer une nouvelle saison",
+            "✏️ Rectifier un match archivé",
             "📧 Configuration SMTP",
             "🔑 Mot de passe d'accès"
         ])
@@ -1944,6 +1960,171 @@ if not est_spectateur:
                         st.rerun()
                     except Exception as e_hist:
                         st.error(f"Erreur lors de la suppression de l'historique : {e_hist}")
+
+        with tab_rectif:
+            st.markdown("#### ✏️ Rectifier un match archivé")
+            st.caption("Permet de corriger une erreur de score ou de joueur sur un match passé. Une copie de sauvegarde automatique de l'historique est effectuée avant chaque modification.")
+
+            historique_complet = charger_historique_matchs()
+            if not historique_complet:
+                st.info("Aucun match n'est actuellement archivé dans l'historique.")
+            else:
+                options_rectif = []
+                for i, m_h in enumerate(historique_complet):
+                    d_h = m_h.get("date_enregistrement", m_h.get("date", "Date inconnue"))
+                    r_h = m_h.get("receveur", "Receveur")
+                    v_h = m_h.get("visiteur", "Visiteur")
+                    tr_h = m_h.get("total_receveur", 0)
+                    tv_h = m_h.get("total_visiteur", 0)
+                    rectif_tag = " [Rectifié]" if m_h.get("date_rectification") else ""
+                    options_rectif.append(f"Match #{i+1} : {d_h} — {r_h} ({tr_h}) vs {v_h} ({tv_h}){rectif_tag}")
+
+                idx_sel = st.selectbox(
+                    "Sélectionnez le match à corriger :",
+                    range(len(options_rectif)),
+                    format_func=lambda x: options_rectif[x],
+                    key="select_match_to_rectify"
+                )
+                m_sel = historique_complet[idx_sel]
+
+                rec_sel = m_sel.get("receveur", "Receveur")
+                vis_sel = m_sel.get("visiteur", "Visiteur")
+                date_sel = m_sel.get("date_enregistrement", m_sel.get("date", "Date inconnue"))
+
+                if m_sel.get("date_rectification"):
+                    st.warning(f"ℹ️ Ce match a déjà été rectifié le **{m_sel.get('date_rectification')}** (Motif : *{m_sel.get('motif_rectification')}*).")
+
+                col_mot1, col_mot2 = st.columns([2, 1])
+                with col_mot1:
+                    motif_saisi = st.text_input(
+                        "Motif officiel de la rectification :",
+                        placeholder="Ex: Correction score manche 3 suite à erreur de feuille",
+                        key=f"motif_input_{idx_sel}"
+                    )
+                with col_mot2:
+                    envoyer_mail_rectif = st.checkbox(
+                        "📧 Envoyer courriel rectificatif",
+                        value=bool(config_email.get("destinataires")),
+                        key=f"check_mail_rect_{idx_sel}",
+                        help="Transmet la feuille rectifiée aux destinataires configurés"
+                    )
+
+                if envoyer_mail_rectif:
+                    dest_rectif_input = st.text_input(
+                        "Destinataire(s) du rectificatif :",
+                        value=config_email.get("destinataires", ""),
+                        key=f"dest_mail_rect_{idx_sel}"
+                    )
+
+                st.markdown("##### 📋 Correction des 9 manches")
+                matchs_dict_sel = m_sel.get("matchs", {})
+
+                nouveaux_scores = {}
+                erreurs_manches = []
+
+                for num_m in range(1, 10):
+                    str_m = str(num_m)
+                    m_data = matchs_dict_sel.get(str_m, {})
+                    ja_def = m_data.get("joueur_a", f"Joueur 1 ({rec_sel})")
+                    jb_def = m_data.get("joueur_b", f"Joueur 2 ({vis_sel})")
+                    sa_def = int(m_data.get("score_a", 0))
+                    sb_def = int(m_data.get("score_b", 0))
+                    ja_abs = bool(m_data.get("joueur_a_absent", False))
+                    jb_abs = bool(m_data.get("joueur_b_absent", False))
+
+                    with st.container(border=True):
+                        c_m_titre, c_m_ja, c_m_sa, c_m_sb, c_m_jb = st.columns([1, 2, 1, 1, 2])
+                        c_m_titre.markdown(f"**Manche {num_m}**")
+                        
+                        nom_a_edite = c_m_ja.text_input(f"Joueur ({rec_sel})", value=ja_def, key=f"rec_ja_{idx_sel}_{num_m}")
+                        sa_edite = c_m_sa.number_input(f"Pts {rec_sel}", min_value=0, max_value=8, value=sa_def, key=f"rec_sa_{idx_sel}_{num_m}")
+                        sb_edite = c_m_sb.number_input(f"Pts {vis_sel}", min_value=0, max_value=8, value=sb_def, key=f"rec_sb_{idx_sel}_{num_m}")
+                        nom_b_edite = c_m_jb.text_input(f"Joueur ({vis_sel})", value=jb_def, key=f"rec_jb_{idx_sel}_{num_m}")
+
+                        if sa_edite == 8 and sb_edite == 8:
+                            st.error(f"❌ Manche {num_m} : Les deux joueurs ne peuvent pas avoir 8 points.")
+                            erreurs_manches.append(num_m)
+                        elif sa_edite < 8 and sb_edite < 8 and (sa_edite > 0 or sb_edite > 0):
+                            st.warning(f"⚠️ Manche {num_m} : Un des deux joueurs doit avoir 8 points (règle du billard au 8).")
+                            erreurs_manches.append(num_m)
+
+                        nouveaux_scores[str_m] = {
+                            "score_a": int(sa_edite),
+                            "score_b": int(sb_edite),
+                            "joueur_a": nom_a_edite.strip(),
+                            "joueur_b": nom_b_edite.strip(),
+                            "joueur_a_absent": ja_abs,
+                            "joueur_b_absent": jb_abs
+                        }
+
+                tot_rec_nouveau = sum(m["score_a"] for m in nouveaux_scores.values())
+                tot_vis_nouveau = sum(m["score_b"] for m in nouveaux_scores.values())
+
+                st.markdown(f"**Nouveau score total :** `{rec_sel}` **{tot_rec_nouveau}** — **{tot_vis_nouveau}** `{vis_sel}`")
+
+                if st.button("💾 Enregistrer la rectification officielle", type="primary", use_container_width=True, key=f"btn_confirm_rectif_{idx_sel}"):
+                    if erreurs_manches:
+                        st.error(f"❌ Veuillez corriger les erreurs sur les manches : {', '.join(map(str, sorted(set(erreurs_manches))))}")
+                    elif not motif_saisi.strip():
+                        st.error("❌ Veuillez obligatoirement renseigner un motif pour justifier la rectification de la feuille officielle.")
+                    else:
+                        # 1. Sauvegarde de sécurité automatique
+                        try:
+                            backup_fn = os.path.join(BASE_DIR, f"historique_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
+                            with open(backup_fn, "w", encoding="utf-8") as f_bk:
+                                json.dump(historique_complet, f_bk, ensure_ascii=False, indent=4)
+                        except Exception:
+                            pass
+
+                        # 2. Mise à jour du match
+                        date_rectif_str = datetime.now().strftime("%d/%m/%Y à %H:%M")
+                        m_sel["matchs"] = nouveaux_scores
+                        m_sel["total_receveur"] = tot_rec_nouveau
+                        m_sel["total_visiteur"] = tot_vis_nouveau
+                        m_sel["date_rectification"] = date_rectif_str
+                        m_sel["motif_rectification"] = motif_saisi.strip()
+
+                        # Reconstitution propre du HTML officiel avec bandeau de rectification
+                        m_sel["html_officiel"] = None
+                        nouveau_html = obtenir_html_match(m_sel)
+                        m_sel["html_officiel"] = nouveau_html
+
+                        historique_complet[idx_sel] = m_sel
+
+                        # 3. Enregistrement sur le disque
+                        with open(HISTORIQUE_FILE, "w", encoding="utf-8") as f_h:
+                            json.dump(historique_complet, f_h, ensure_ascii=False, indent=4)
+
+                        st.success(f"✅ Match #{idx_sel+1} rectifié avec succès et sauvegardé dans l'historique !")
+
+                        # 4. Envoi éventuel du courriel de rectificatif
+                        if envoyer_mail_rectif and dest_rectif_input.strip():
+                            sujet_rect = f"[RECTIFICATIF] 🎱 Ligue du Saphir : {rec_sel} ({tot_rec_nouveau}) vs {vis_sel} ({tot_vis_nouveau}) - {date_sel}"
+                            texte_rect = (
+                                f"RECTIFICATIF DE MATCH OFFICIEL - Ligue de billard du Saphir\n"
+                                f"Date du match : {date_sel}\n"
+                                f"Date de rectification : {date_rectif_str}\n"
+                                f"Motif : {motif_saisi.strip()}\n\n"
+                                f"Nouveau résultat : {rec_sel} ({tot_rec_nouveau}) vs {vis_sel} ({tot_vis_nouveau})\n\n"
+                                f"Veuillez consulter la feuille HTML ci-jointe pour le détail des manches corrigées."
+                            )
+                            pj_rect = [HISTORIQUE_FILE] if os.path.exists(HISTORIQUE_FILE) else None
+                            with st.spinner("Envoi du courriel de rectificatif en cours..."):
+                                ok_m, rep_m = envoyer_courriel(
+                                    dest_rectif_input.strip(),
+                                    sujet_rect,
+                                    texte_rect,
+                                    nouveau_html,
+                                    config_email,
+                                    pieces_jointes=pj_rect
+                                )
+                            if ok_m:
+                                st.success(f"✉️ Courriel de rectificatif envoyé à `{dest_rectif_input.strip()}` !")
+                            else:
+                                st.warning(f"⚠️ {rep_m}")
+
+                        time.sleep(1.5)
+                        st.rerun()
 
         with tab_smtp:
             st.markdown("#### ⚙️ Configuration du serveur de messagerie (SMTP)")
