@@ -538,15 +538,42 @@ def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_j
             f"Approbation {visiteur} : {approbateur_vis or 'Non renseigné'}"
         ])
 
+    def _recup_nom(d, key, fallback=""):
+        if isinstance(d, dict) and key in d:
+            val = d[key]
+            if isinstance(val, dict):
+                return val.get("nom", fallback)
+            return str(val)
+        return fallback
+
+    def _recup_pts(d, key):
+        if isinstance(d, dict) and key in d:
+            return d[key]
+        return 0
+
+    j1_r = _recup_nom(dict_joueurs, "j1_rec", "Joueur 1")
+    j2_r = _recup_nom(dict_joueurs, "j2_rec", "Joueur 2")
+    j3_r = _recup_nom(dict_joueurs, "j3_rec", "Joueur 3")
+    j1_v = _recup_nom(dict_joueurs, "j1_vis", "Joueur 1")
+    j2_v = _recup_nom(dict_joueurs, "j2_vis", "Joueur 2")
+    j3_v = _recup_nom(dict_joueurs, "j3_vis", "Joueur 3")
+
+    p1_r = _recup_pts(pts_joueurs, "j1_rec")
+    p2_r = _recup_pts(pts_joueurs, "j2_rec")
+    p3_r = _recup_pts(pts_joueurs, "j3_rec")
+    p1_v = _recup_pts(pts_joueurs, "j1_vis")
+    p2_v = _recup_pts(pts_joueurs, "j2_vis")
+    p3_v = _recup_pts(pts_joueurs, "j3_vis")
+
     lignes_texte.extend([
         f"\nPoints individuels {receveur} :",
-        f"  - {dict_joueurs['j1_rec']['nom']} : {pts_joueurs['j1_rec']} pts",
-        f"  - {dict_joueurs['j2_rec']['nom']} : {pts_joueurs['j2_rec']} pts",
-        f"  - {dict_joueurs['j3_rec']['nom']} : {pts_joueurs['j3_rec']} pts",
+        f"  - {j1_r} : {p1_r} pts",
+        f"  - {j2_r} : {p2_r} pts",
+        f"  - {j3_r} : {p3_r} pts",
         f"\nPoints individuels {visiteur} :",
-        f"  - {dict_joueurs['j1_vis']['nom']} : {pts_joueurs['j1_vis']} pts",
-        f"  - {dict_joueurs['j2_vis']['nom']} : {pts_joueurs['j2_vis']} pts",
-        f"  - {dict_joueurs['j3_vis']['nom']} : {pts_joueurs['j3_vis']} pts",
+        f"  - {j1_v} : {p1_v} pts",
+        f"  - {j2_v} : {p2_v} pts",
+        f"  - {j3_v} : {p3_v} pts",
         "\nDétail des 9 manches :"
     ])
 
@@ -555,10 +582,23 @@ def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_j
         m = matchs.get(str(num), {})
         sa = m.get("score_a", 0)
         sb = m.get("score_b", 0)
-        ja = dict_joueurs[m["joueur_a"]]["nom"]
-        jb = dict_joueurs[m["joueur_b"]]["nom"]
-        ja_abs = not dict_joueurs[m["joueur_a"]]["present"]
-        jb_abs = not dict_joueurs[m["joueur_b"]]["present"]
+
+        ja_raw = m.get("joueur_a", "")
+        jb_raw = m.get("joueur_b", "")
+
+        if isinstance(ja_raw, str) and ja_raw in dict_joueurs:
+            ja = dict_joueurs[ja_raw].get("nom", ja_raw)
+            ja_abs = not dict_joueurs[ja_raw].get("present", True)
+        else:
+            ja = str(ja_raw)
+            ja_abs = bool(m.get("joueur_a_absent", False))
+
+        if isinstance(jb_raw, str) and jb_raw in dict_joueurs:
+            jb = dict_joueurs[jb_raw].get("nom", jb_raw)
+            jb_abs = not dict_joueurs[jb_raw].get("present", True)
+        else:
+            jb = str(jb_raw)
+            jb_abs = bool(m.get("joueur_b_absent", False))
 
         label_a = f"{ja} (Absent : {sa} pts)" if ja_abs else ja
         label_b = f"{jb} (Absent : {sb} pts)" if jb_abs else jb
@@ -654,17 +694,17 @@ def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_j
                 <div class="joueur-card" style="flex: 1; background: white; padding: 8px 10px; border-radius: 6px; border: 1px solid #ddd;">
                     <h4 style="margin: 0 0 6px 0; color: #0b3c5d; font-size: 13px;">Points individuels — {receveur} :</h4>
                     <ul style="margin: 0; padding-left: 18px; font-size: 13px;">
-                        <li><strong>{dict_joueurs['j1_rec']['nom']}</strong> : {pts_joueurs['j1_rec']} pts</li>
-                        <li><strong>{dict_joueurs['j2_rec']['nom']}</strong> : {pts_joueurs['j2_rec']} pts</li>
-                        <li><strong>{dict_joueurs['j3_rec']['nom']}</strong> : {pts_joueurs['j3_rec']} pts</li>
+                        <li><strong>{j1_r}</strong> : {p1_r} pts</li>
+                        <li><strong>{j2_r}</strong> : {p2_r} pts</li>
+                        <li><strong>{j3_r}</strong> : {p3_r} pts</li>
                     </ul>
                 </div>
                 <div class="joueur-card" style="flex: 1; background: white; padding: 8px 10px; border-radius: 6px; border: 1px solid #ddd;">
                     <h4 style="margin: 0 0 6px 0; color: #0b3c5d; font-size: 13px;">Points individuels — {visiteur} :</h4>
                     <ul style="margin: 0; padding-left: 18px; font-size: 13px;">
-                        <li><strong>{dict_joueurs['j1_vis']['nom']}</strong> : {pts_joueurs['j1_vis']} pts</li>
-                        <li><strong>{dict_joueurs['j2_vis']['nom']}</strong> : {pts_joueurs['j2_vis']} pts</li>
-                        <li><strong>{dict_joueurs['j3_vis']['nom']}</strong> : {pts_joueurs['j3_vis']} pts</li>
+                        <li><strong>{j1_v}</strong> : {p1_v} pts</li>
+                        <li><strong>{j2_v}</strong> : {p2_v} pts</li>
+                        <li><strong>{j3_v}</strong> : {p3_v} pts</li>
                     </ul>
                 </div>
             </div>
