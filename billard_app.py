@@ -1,10 +1,12 @@
 import json
 import os
+import re
 import smtplib
 import time
 import uuid
 from datetime import datetime
 from email.mime.application import MIMEApplication
+from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import streamlit as st
@@ -366,7 +368,9 @@ def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_j
         absents_html_bloc = f"<p style='color: #d32f2f;'><strong>Joueur(s) absent(s) :</strong> {', '.join(absents_info)}</p>"
 
     logo_b64 = charger_armoiries_base64()
-    logo_td = f'<td style="width: 70px; vertical-align: middle; padding-right: 12px;"><img src="{logo_b64}" alt="Armoiries" style="height: 65px; width: 65px; object-fit: contain; border-radius: 4px;"></td>' if logo_b64 else ''
+    src_val = logo_b64 if logo_b64 else "cid:armoiries_logo"
+    arm_existe = bool(logo_b64 or os.path.isfile(find_armoiries_path()))
+    logo_td = f'<td style="width: 70px; vertical-align: middle; padding-right: 12px;"><img src="{src_val}" alt="Armoiries" style="height: 65px; width: 65px; object-fit: contain; border-radius: 4px;"></td>' if arm_existe else ''
 
     html = f"""
     <html>
@@ -513,7 +517,9 @@ def obtenir_html_match(m):
     vainqueur = rec if tot_rec > tot_vis else (vis if tot_vis > tot_rec else "Égalité")
 
     logo_b64 = charger_armoiries_base64()
-    logo_td = f'<td style="width: 70px; vertical-align: middle; padding-right: 12px;"><img src="{logo_b64}" alt="Armoiries" style="height: 65px; width: 65px; object-fit: contain; border-radius: 4px;"></td>' if logo_b64 else ''
+    src_val = logo_b64 if logo_b64 else "cid:armoiries_logo"
+    arm_existe = bool(logo_b64 or os.path.isfile(find_armoiries_path()))
+    logo_td = f'<td style="width: 70px; vertical-align: middle; padding-right: 12px;"><img src="{src_val}" alt="Armoiries" style="height: 65px; width: 65px; object-fit: contain; border-radius: 4px;"></td>' if arm_existe else ''
 
     html = f"""
     <html>
@@ -586,7 +592,7 @@ def obtenir_html_match(m):
     return html
 
 def envoyer_courriel(destinataires_str, sujet, texte_brut, html_contenu, config, pieces_jointes=None):
-    """Envoie un courriel automatique via SMTP selon la configuration chargée, avec pièces jointes optionnelles."""
+    """Envoie un courriel automatique via SMTP avec intégration universelle de l'image armoiries (CID inline) et pièces jointes."""
     destinataires = [d.strip() for d in destinataires_str.split(",") if d.strip()]
     if not destinataires:
         return False, "Aucune adresse de destinataire valide spécifiée."
@@ -605,13 +611,56 @@ def envoyer_courriel(destinataires_str, sujet, texte_brut, html_contenu, config,
     msg["From"] = expediteur
     msg["To"] = ", ".join(destinataires)
 
-    # Corps du message en alternative texte brut et HTML
-    corps = MIMEMultipart("alternative")
-    part1 = MIMEText(texte_brut, "plain", "utf-8")
-    part2 = MIMEText(html_contenu, "html", "utf-8")
-    corps.attach(part1)
-    corps.attach(part2)
-    msg.attach(corps)
+    # Conteneur related pour le corps HTML et les images intégrées inline
+    msg_related = MIMEMultipart("related")
+
+    # Conteneur alternative pour le texte brut et HTML
+    msg_alternative = MIMEMultipart("alternative")
+    part_texte = MIMEText(texte_brut, "plain", "utf-8")
+    msg_alternative.attach(part_texte)
+
+    # Traitement de l'image pour courriel :
+    # Gmail, Outlook et Yahoo bloquent les images encodées en base64 direct dans le corps du courriel.
+    # L'image doit être attachée avec Content-ID (cid:armoiries_logo) pour s'afficher directement et sans blocage.
+    arm_path = find_armoiries_path()
+    html_email = html_contenu
+    part_img = None
+
+    if os.path.isfile(arm_path):
+        try:
+            from PIL import Image
+            import io
+            im = Image.open(arm_path)
+            resample_filter = getattr(getattr(Image, "Resampling", Image), "LANCZOS", getattr(Image, "ANTIALIAS", 1))
+            im.thumbnail((160, 160), resample_filter)
+            buf = io.BytesIO()
+            im.save(buf, format="PNG", optimize=True)
+            img_bytes = buf.getvalue()
+        except Exception:
+            try:
+                with open(arm_path, "rb") as f:
+                    img_bytes = f.read()
+            except Exception:
+                img_bytes = None
+
+        if img_bytes:
+            # Remplacement des data URI par cid:armoiries_logo
+            html_email = re.sub(r'src="data:image/[^"]+"', 'src="cid:armoiries_logo"', html_email)
+            html_email = re.sub(r"src='data:image/[^']+'", "src='cid:armoiries_logo'", html_email)
+
+            if "cid:armoiries_logo" in html_email:
+                part_img = MIMEImage(img_bytes, _subtype="png")
+                part_img.add_header("Content-ID", "<armoiries_logo>")
+                part_img.add_header("Content-Disposition", "inline", filename="armoiries.png")
+
+    part_html = MIMEText(html_email, "html", "utf-8")
+    msg_alternative.attach(part_html)
+    msg_related.attach(msg_alternative)
+
+    if part_img:
+        msg_related.attach(part_img)
+
+    msg.attach(msg_related)
 
     # Ajout des pièces jointes demandées
     if pieces_jointes:
