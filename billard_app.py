@@ -1920,59 +1920,28 @@ elif not est_spectateur:
             st.info("⚖️ **Résultat du match :** Égalité parfaite (Match nul)")
 
         st.markdown("#### 🎯 Détail des 9 manches")
-        lignes_manches_html = []
+        table_md = [
+            f"| Manche | Joueur ({equipe_rec}) | {equipe_rec} | {equipe_vis} | Joueur ({equipe_vis}) |",
+            "| :---: | :--- | :---: | :---: | :--- |"
+        ]
         for num in range(1, 10):
             m = matchs_dict.get(str(num), {})
             sa = m.get("score_a", 0)
             sb = m.get("score_b", 0)
-            ja = m.get("joueur_a", "")
-            jb = m.get("joueur_b", "")
-            ja_abs = m.get("joueur_a_absent", False)
-            jb_abs = m.get("joueur_b_absent", False)
+            ja = str(m.get("joueur_a", "")).replace("|", "/")
+            jb = str(m.get("joueur_b", "")).replace("|", "/")
+            ja_abs = " *(Absent)*" if m.get("joueur_a_absent") else ""
+            jb_abs = " *(Absent)*" if m.get("joueur_b_absent") else ""
 
-            lbl_a = f"{ja} <span style='color: #c62828; font-size: 11px;'>[ABSENT]</span>" if ja_abs else ja
-            lbl_b = f"{jb} <span style='color: #c62828; font-size: 11px;'>[ABSENT]</span>" if jb_abs else jb
+            # Score vert en gras pour le vainqueur de la manche (8 pts)
+            sc_a_str = f"**{sa}**" if sa == 8 else f"{sa}"
+            sc_b_str = f"**{sb}**" if sb == 8 else f"{sb}"
 
-            color_a = "#2e7d32" if sa == 8 else "#1e3d59"
-            color_b = "#2e7d32" if sb == 8 else "#1e3d59"
+            table_md.append(f"| **Manche {num}** | {ja}{ja_abs} | {sc_a_str} | {sc_b_str} | {jb}{jb_abs} |")
 
-            lignes_manches_html.append(f"""
-            <tr style="border-bottom: 1px solid #e0e0e0; text-align: center;">
-                <td style="padding: 6px 8px; font-weight: bold; background-color: #f7f9fa;">Manche {num}</td>
-                <td style="padding: 6px 8px; text-align: right;">{lbl_a}</td>
-                <td style="padding: 6px 8px; font-weight: bold; font-size: 15px; color: {color_a};">{sa}</td>
-                <td style="padding: 6px 4px; color: #999;">-</td>
-                <td style="padding: 6px 8px; font-weight: bold; font-size: 15px; color: {color_b};">{sb}</td>
-                <td style="padding: 6px 8px; text-align: left;">{lbl_b}</td>
-            </tr>
-            """)
+        table_md.append(f"| **TOTAL** | **{equipe_rec}** | **{tot_rec} pts** | **{tot_vis} pts** | **{equipe_vis}** |")
 
-        tableau_html = f"""
-        <div style="max-height: 280px; overflow-y: auto; border: 1px solid #d0d7de; border-radius: 6px; margin-bottom: 12px;">
-        <table style="width: 100%; border-collapse: collapse; font-family: sans-serif; font-size: 13px;">
-            <thead>
-                <tr style="background-color: #0b3c5d; color: white; text-align: center;">
-                    <th style="padding: 8px;">Manche</th>
-                    <th style="padding: 8px; text-align: right;">{equipe_rec}</th>
-                    <th style="padding: 8px;" colspan="3">Points</th>
-                    <th style="padding: 8px; text-align: left;">{equipe_vis}</th>
-                </tr>
-            </thead>
-            <tbody>
-                {''.join(lignes_manches_html)}
-                <tr style="background-color: #e8f0fe; font-weight: bold; border-top: 2px solid #0b3c5d; text-align: center;">
-                    <td style="padding: 8px;">TOTAL</td>
-                    <td style="padding: 8px; text-align: right;">{equipe_rec}</td>
-                    <td style="padding: 8px; font-size: 16px; color: #0d47a1;">{tot_rec}</td>
-                    <td style="padding: 8px;">-</td>
-                    <td style="padding: 8px; font-size: 16px; color: #0d47a1;">{tot_vis}</td>
-                    <td style="padding: 8px; text-align: left;">{equipe_vis}</td>
-                </tr>
-            </tbody>
-        </table>
-        </div>
-        """
-        st.markdown(tableau_html, unsafe_allow_html=True)
+        st.markdown("\n".join(table_md))
 
         # Points individuels
         st.markdown("#### 👤 Points individuels par joueur")
@@ -2143,7 +2112,22 @@ elif not est_spectateur:
         col_ap1, col_ap2 = st.columns(2)
         col_ap1.metric(f"{equipe_receveur}", f"{total_pts_receveur} pts")
         col_ap2.metric(f"{equipe_visiteur}", f"{total_pts_visiteur} pts")
-        st.caption(f"Score actuel : {total_pts_receveur} vs {total_pts_visiteur}. Les 9 manches et le choix des approbateurs sont finalisés lors de la validation officielle.")
+
+        table_ap_md = [
+            f"| Manche | Joueur ({equipe_receveur}) | {equipe_receveur} | {equipe_visiteur} | Joueur ({equipe_visiteur}) |",
+            "| :---: | :--- | :---: | :---: | :--- |"
+        ]
+        for num in range(1, 10):
+            m_ap = donnees_a_sauvegarder["matchs"].get(str(num), {})
+            sa = m_ap.get("score_a", 0)
+            sb = m_ap.get("score_b", 0)
+            ja = str(m_ap.get("joueur_a", "")).replace("|", "/")
+            jb = str(m_ap.get("joueur_b", "")).replace("|", "/")
+            sc_a_str = f"**{sa}**" if sa == 8 else f"{sa}"
+            sc_b_str = f"**{sb}**" if sb == 8 else f"{sb}"
+            table_ap_md.append(f"| **Manche {num}** | {ja} | {sc_a_str} | {sc_b_str} | {jb} |")
+        table_ap_md.append(f"| **TOTAL** | **{equipe_receveur}** | **{total_pts_receveur} pts** | **{total_pts_visiteur} pts** | **{equipe_visiteur}** |")
+        st.markdown("\n".join(table_ap_md))
 
     match_valide = False
 
