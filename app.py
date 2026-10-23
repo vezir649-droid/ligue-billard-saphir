@@ -148,8 +148,10 @@ def charger_sauvegarde():
     return {}
 
 def sauvegarder_donnees(data):
-    """Écrit atomiquement la sauvegarde pour éviter les corruptions."""
+    """Écrit atomiquement la sauvegarde pour éviter les corruptions et horodate les modifications."""
     try:
+        data["derniere_mise_a_jour"] = datetime.now().strftime("%H:%M:%S")
+        data["ts_modif"] = time.time()
         with open(BACKUP_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
     except Exception as e:
@@ -1487,59 +1489,77 @@ else:
             st.session_state[k_b] = v_b
         st.session_state["venant_de_archive"] = False
 
-    tot_rec_c, tot_vis_c, pts_j_c, details_c = calculer_totaux_actuels(dict_joueurs, matchs_pairs)
-    
-    afficher_dashboard = True
-    if not est_spectateur:
-        col_t1, col_t2 = st.columns([3, 1])
-        with col_t1:
-            afficher_dashboard = st.toggle(
-                "📊 **Afficher le résumé des scores en direct**",
-                value=st.session_state.get("toggle_voir_resultats_editeur", False),
-                key="toggle_voir_resultats_editeur"
-            )
+    if est_spectateur:
+        @st.fragment(run_every="5s")
+        def fragment_tableau_spectateur():
+            # 1. Vérification des mises à jour faites par le marqueur
+            sauv = charger_sauvegarde()
+            mtime_actuel = 0
+            if os.path.exists(BACKUP_FILE):
+                try:
+                    mtime_actuel = os.path.getmtime(BACKUP_FILE)
+                except Exception:
+                    mtime_actuel = 0
 
-    if afficher_dashboard:
-        with st.container(border=True):
-            st.markdown(f"#### 🎱 Résultats courants : **{equipe_receveur}** ({tot_rec_c} pts) vs **{equipe_visiteur}** ({tot_vis_c} pts)")
-            
-            if tot_rec_c > tot_vis_c:
-                st.success(f"🏆 **{equipe_receveur}** mène par **{tot_rec_c - tot_vis_c} point(s)** ({tot_rec_c} à {tot_vis_c}).")
-            elif tot_vis_c > tot_rec_c:
-                st.success(f"🏆 **{equipe_visiteur}** mène par **{tot_vis_c - tot_rec_c} point(s)** ({tot_vis_c} à {tot_rec_c}).")
-            else:
-                st.info(f"🤝 **Égalité provisoire** : {tot_rec_c} à {tot_vis_c}.")
+            if "dernier_mtime_vu" not in st.session_state:
+                st.session_state["dernier_mtime_vu"] = mtime_actuel
+            elif mtime_actuel > st.session_state.get("dernier_mtime_vu", 0):
+                st.session_state["dernier_mtime_vu"] = mtime_actuel
+                if sauv and "matchs" in sauv:
+                    restaurer_session(sauv)
+                st.toast("🔔 Le marqueur a mis à jour les résultats du match !", icon="🎱")
 
-            # Scores par équipe
-            c_sc1, c_sc2 = st.columns(2)
-            c_sc1.metric(f"Total {equipe_receveur}", f"{tot_rec_c} pts")
-            c_sc2.metric(f"Total {equipe_visiteur}", f"{tot_vis_c} pts")
+            heure_maj = sauv.get("derniere_mise_a_jour", datetime.now().strftime("%H:%M:%S"))
+            tot_rec_c, tot_vis_c, pts_j_c, details_c = calculer_totaux_actuels(dict_joueurs, matchs_pairs)
 
-            # Points des joueurs
-            st.markdown("##### 👤 Points individuels cumulés")
-            col_pj1, col_pj2 = st.columns(2)
-            with col_pj1:
-                st.markdown(f"**🏠 {equipe_receveur}**")
-                cr1, cr2, cr3 = st.columns(3)
-                p1 = dict_joueurs["j1_rec"]
-                p2 = dict_joueurs["j2_rec"]
-                p3 = dict_joueurs["j3_rec"]
-                cr1.metric(p1["nom"] + (" (Abs.)" if not p1["present"] else ""), f"{pts_j_c['j1_rec']} pts")
-                cr2.metric(p2["nom"] + (" (Abs.)" if not p2["present"] else ""), f"{pts_j_c['j2_rec']} pts")
-                cr3.metric(p3["nom"] + (" (Abs.)" if not p3["present"] else ""), f"{pts_j_c['j3_rec']} pts")
+            with st.container(border=True):
+                col_t_titre, col_t_badge = st.columns([2.5, 1.5])
+                with col_t_titre:
+                    st.markdown(f"#### 🎱 Résultats courants : **{equipe_receveur}** ({tot_rec_c} pts) vs **{equipe_visiteur}** ({tot_vis_c} pts)")
+                with col_t_badge:
+                    st.markdown(
+                        f"<div style='text-align: right; font-size: 13px; color: #2e7d32; font-weight: bold; padding-top: 5px;'>"
+                        f"🟢 En direct (Synchro auto : {heure_maj})"
+                        f"</div>",
+                        unsafe_allow_html=True
+                    )
 
-            with col_pj2:
-                st.markdown(f"**🚗 {equipe_visiteur}**")
-                cv1, cv2, cv3 = st.columns(3)
-                pv1 = dict_joueurs["j1_vis"]
-                pv2 = dict_joueurs["j2_vis"]
-                pv3 = dict_joueurs["j3_vis"]
-                cv1.metric(pv1["nom"] + (" (Abs.)" if not pv1["present"] else ""), f"{pts_j_c['j1_vis']} pts")
-                cv2.metric(pv2["nom"] + (" (Abs.)" if not pv2["present"] else ""), f"{pts_j_c['j2_vis']} pts")
-                cv3.metric(pv3["nom"] + (" (Abs.)" if not pv3["present"] else ""), f"{pts_j_c['j3_vis']} pts")
+                if tot_rec_c > tot_vis_c:
+                    st.success(f"🏆 **{equipe_receveur}** mène par **{tot_rec_c - tot_vis_c} point(s)** ({tot_rec_c} à {tot_vis_c}).")
+                elif tot_vis_c > tot_rec_c:
+                    st.success(f"🏆 **{equipe_visiteur}** mène par **{tot_vis_c - tot_rec_c} point(s)** ({tot_vis_c} à {tot_rec_c}).")
+                else:
+                    st.info(f"🤝 **Égalité provisoire** : {tot_rec_c} à {tot_vis_c}.")
 
-            # Tableau récapitulatif des 9 manches (visible en mode spectateur)
-            if est_spectateur:
+                # Scores par équipe
+                c_sc1, c_sc2 = st.columns(2)
+                c_sc1.metric(f"Total {equipe_receveur}", f"{tot_rec_c} pts")
+                c_sc2.metric(f"Total {equipe_visiteur}", f"{tot_vis_c} pts")
+
+                # Points des joueurs
+                st.markdown("##### 👤 Points individuels cumulés")
+                col_pj1, col_pj2 = st.columns(2)
+                with col_pj1:
+                    st.markdown(f"**🏠 {equipe_receveur}**")
+                    cr1, cr2, cr3 = st.columns(3)
+                    p1 = dict_joueurs["j1_rec"]
+                    p2 = dict_joueurs["j2_rec"]
+                    p3 = dict_joueurs["j3_rec"]
+                    cr1.metric(p1["nom"] + (" (Abs.)" if not p1["present"] else ""), f"{pts_j_c['j1_rec']} pts")
+                    cr2.metric(p2["nom"] + (" (Abs.)" if not p2["present"] else ""), f"{pts_j_c['j2_rec']} pts")
+                    cr3.metric(p3["nom"] + (" (Abs.)" if not p3["present"] else ""), f"{pts_j_c['j3_rec']} pts")
+
+                with col_pj2:
+                    st.markdown(f"**🚗 {equipe_visiteur}**")
+                    cv1, cv2, cv3 = st.columns(3)
+                    pv1 = dict_joueurs["j1_vis"]
+                    pv2 = dict_joueurs["j2_vis"]
+                    pv3 = dict_joueurs["j3_vis"]
+                    cv1.metric(pv1["nom"] + (" (Abs.)" if not pv1["present"] else ""), f"{pts_j_c['j1_vis']} pts")
+                    cv2.metric(pv2["nom"] + (" (Abs.)" if not pv2["present"] else ""), f"{pts_j_c['j2_vis']} pts")
+                    cv3.metric(pv3["nom"] + (" (Abs.)" if not pv3["present"] else ""), f"{pts_j_c['j3_vis']} pts")
+
+                # Tableau récapitulatif des 9 manches
                 st.markdown("##### 📋 État des 9 manches")
                 lignes_md = [
                     f"| Manche | Joueur ({equipe_receveur}) | Pts {equipe_receveur} | Pts {equipe_visiteur} | Joueur ({equipe_visiteur}) | Statut |",
@@ -1571,6 +1591,59 @@ else:
                     lignes_md.append(f"| **Manche {row['manche']}** | {nom_a} | {sc_a} | {sc_b} | {nom_b} | {statut} |")
 
                 st.markdown("\n".join(lignes_md))
+                st.caption("⚡ *Synchronisation en direct active : votre écran se met à jour automatiquement toutes les 5 secondes dès qu'un point est inscrit.*")
+
+        fragment_tableau_spectateur()
+
+    else:
+        # Affichage pour l'éditeur avec toggle optionnel
+        col_t1, col_t2 = st.columns([3, 1])
+        with col_t1:
+            afficher_dashboard = st.toggle(
+                "📊 **Afficher le résumé des scores en direct**",
+                value=st.session_state.get("toggle_voir_resultats_editeur", False),
+                key="toggle_voir_resultats_editeur"
+            )
+
+        if afficher_dashboard:
+            tot_rec_c, tot_vis_c, pts_j_c, details_c = calculer_totaux_actuels(dict_joueurs, matchs_pairs)
+            with st.container(border=True):
+                st.markdown(f"#### 🎱 Résultats courants : **{equipe_receveur}** ({tot_rec_c} pts) vs **{equipe_visiteur}** ({tot_vis_c} pts)")
+                
+                if tot_rec_c > tot_vis_c:
+                    st.success(f"🏆 **{equipe_receveur}** mène par **{tot_rec_c - tot_vis_c} point(s)** ({tot_rec_c} à {tot_vis_c}).")
+                elif tot_vis_c > tot_rec_c:
+                    st.success(f"🏆 **{equipe_visiteur}** mène par **{tot_vis_c - tot_rec_c} point(s)** ({tot_vis_c} à {tot_rec_c}).")
+                else:
+                    st.info(f"🤝 **Égalité provisoire** : {tot_rec_c} à {tot_vis_c}.")
+
+                # Scores par équipe
+                c_sc1, c_sc2 = st.columns(2)
+                c_sc1.metric(f"Total {equipe_receveur}", f"{tot_rec_c} pts")
+                c_sc2.metric(f"Total {equipe_visiteur}", f"{tot_vis_c} pts")
+
+                # Points des joueurs
+                st.markdown("##### 👤 Points individuels cumulés")
+                col_pj1, col_pj2 = st.columns(2)
+                with col_pj1:
+                    st.markdown(f"**🏠 {equipe_receveur}**")
+                    cr1, cr2, cr3 = st.columns(3)
+                    p1 = dict_joueurs["j1_rec"]
+                    p2 = dict_joueurs["j2_rec"]
+                    p3 = dict_joueurs["j3_rec"]
+                    cr1.metric(p1["nom"] + (" (Abs.)" if not p1["present"] else ""), f"{pts_j_c['j1_rec']} pts")
+                    cr2.metric(p2["nom"] + (" (Abs.)" if not p2["present"] else ""), f"{pts_j_c['j2_rec']} pts")
+                    cr3.metric(p3["nom"] + (" (Abs.)" if not p3["present"] else ""), f"{pts_j_c['j3_rec']} pts")
+
+                with col_pj2:
+                    st.markdown(f"**🚗 {equipe_visiteur}**")
+                    cv1, cv2, cv3 = st.columns(3)
+                    pv1 = dict_joueurs["j1_vis"]
+                    pv2 = dict_joueurs["j2_vis"]
+                    pv3 = dict_joueurs["j3_vis"]
+                    cv1.metric(pv1["nom"] + (" (Abs.)" if not pv1["present"] else ""), f"{pts_j_c['j1_vis']} pts")
+                    cv2.metric(pv2["nom"] + (" (Abs.)" if not pv2["present"] else ""), f"{pts_j_c['j2_vis']} pts")
+                    cv3.metric(pv3["nom"] + (" (Abs.)" if not pv3["present"] else ""), f"{pts_j_c['j3_vis']} pts")
 
 if not est_spectateur and choix_vue != label_direct:
     col_av1, col_av2 = st.columns([3, 1])
