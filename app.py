@@ -1392,43 +1392,42 @@ def sauvegarder_tournois_data(data):
         return False
 
 def obtenir_tous_les_joueurs_tournoi(equipes_dict=None):
-    """Récupère l'ensemble des joueurs disponibles (équipes et historique)."""
-    joueurs = set()
-    if equipes_dict:
-        for eq, liste_j in equipes_dict.items():
+    """Récupère l'ensemble des joueurs réguliers inscrits dans la ligue."""
+    joueurs_officiels = []
+    eq_data = equipes_dict if equipes_dict else charger_equipes_csv()
+    if eq_data:
+        for eq, liste_j in eq_data.items():
             for j in liste_j:
-                if j and not j.startswith("Joueur "):
-                    joueurs.add(j.strip())
-    if os.path.exists(EQUIPES_CSV_FILE):
+                j_clean = (j or "").strip()
+                if j_clean and not j_clean.startswith("Joueur ") and j_clean not in joueurs_officiels:
+                    joueurs_officiels.append(j_clean)
+
+    if not joueurs_officiels and os.path.exists(EQUIPES_CSV_FILE):
         try:
             with open(EQUIPES_CSV_FILE, "r", encoding="utf-8") as f:
                 for line in f:
                     parts = [p.strip() for p in line.strip().split(",") if p.strip()]
                     if len(parts) >= 2:
                         for p in parts[1:]:
-                            if p and not p.startswith("Joueur "):
-                                joueurs.add(p)
+                            if p and not p.startswith("Joueur ") and p not in joueurs_officiels:
+                                joueurs_officiels.append(p)
         except Exception:
             pass
-    if os.path.exists(HISTORIQUE_FILE):
-        try:
-            with open(HISTORIQUE_FILE, "r", encoding="utf-8") as f:
-                h = json.load(f)
-                for m in h:
-                    for num, manche in m.get("matchs", {}).items():
-                        ja = (manche.get("joueur_a") or "").strip()
-                        jb = (manche.get("joueur_b") or "").strip()
-                        if ja and not ja.startswith("Joueur "): joueurs.add(ja)
-                        if jb and not jb.startswith("Joueur "): joueurs.add(jb)
-        except Exception:
-            pass
-    return sorted(list(joueurs))
+
+    return sorted(joueurs_officiels)
+
+def obtenir_toutes_les_equipes_tournoi():
+    """Récupère les 8 équipes officielles inscrites dans la ligue."""
+    eq_data = charger_equipes_csv()
+    if eq_data:
+        return sorted(list(eq_data.keys()))
+    return ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel"]
 
 def generer_arbre_elimination(participants, race_prelim=2, race_finale=3, titre="Tournoi"):
     """
-    Génère un arbre à élimination directe strict SANS AUCUN PASSE-DROIT (aucun Bye).
-    Tous les participants (simples ou duos) s'affrontent dès le premier tour.
-    Le nombre de participants doit être une puissance exacte de 2 (2, 4, 8, 16, 32).
+    Génère un arbre à élimination directe strict SANS AUCUN PASSE-DROIT au premier tour.
+    Tous les participants (simples ou équipes) s'affrontent dès le premier tour.
+    Prend en charge tous les effectifs pairs (ex: 2, 4, 6, 8, 12, 16, 24, 32).
     Format officiel des rondes :
     - Préliminaires : 2 de 3 (premier à 2 victoires, race_to = 2)
     - Finale : 3 de 5 (premier à 3 victoires, race_to = 3)
@@ -1436,71 +1435,105 @@ def generer_arbre_elimination(participants, race_prelim=2, race_finale=3, titre=
     p_liste = list(participants)
     random.shuffle(p_liste)
     n = len(p_liste)
-    if n not in [2, 4, 8, 16, 32]:
+    if n < 2:
         return None
 
-    noms_tours = {
-        2: ["Finale"],
-        4: ["Demi-finales", "Finale"],
-        8: ["Quarts de finale", "Demi-finales", "Finale"],
-        16: ["Huitièmes de finale", "Quarts de finale", "Demi-finales", "Finale"],
-        32: ["1/16 de finale", "Huitièmes de finale", "Quarts de finale", "Demi-finales", "Finale"]
-    }
-    total_tours = int(math.log2(n))
-    tours_labels = noms_tours.get(n, [f"Tour {i+1}" for i in range(total_tours)])
-
-    tours = []
-    nb_matchs_tour = n // 2
-    matchs_tour_1 = []
-    race_t1 = race_finale if total_tours == 1 else race_prelim
-    fmt_t1 = "3 de 5" if race_t1 == 3 else ("2 de 3" if race_t1 == 2 else f"Course à {race_t1}")
-
-    for m_i in range(nb_matchs_tour):
+    nb_matchs_t1 = n // 2
+    matchs_t1 = []
+    for m_i in range(nb_matchs_t1):
         eq_a = p_liste[2 * m_i]
         eq_b = p_liste[2 * m_i + 1]
-        matchs_tour_1.append({
+        matchs_t1.append({
             "id": f"T1_M{m_i+1}",
             "equipe_a": eq_a,
             "equipe_b": eq_b,
             "score_a": 0,
             "score_b": 0,
-            "race_to": race_t1,
-            "format_label": fmt_t1,
             "termine": False,
-            "vainqueur": None
+            "vainqueur": None,
+            "source_a": None,
+            "source_b": None
         })
 
-    tours.append({
-        "numero": 1,
-        "nom": tours_labels[0],
-        "race_to": race_t1,
-        "format_label": fmt_t1,
-        "matchs": matchs_tour_1
-    })
+    curr_matchs = matchs_t1
+    t_num = 1
+    tours_matchs = [matchs_t1]
 
-    for t_i in range(2, total_tours + 1):
-        nb_matchs = n // (2 ** t_i)
-        race_ti = race_finale if t_i == total_tours else race_prelim
-        fmt_ti = "3 de 5" if race_ti == 3 else ("2 de 3" if race_ti == 2 else f"Course à {race_ti}")
-        matchs_t = []
-        for m_i in range(nb_matchs):
-            matchs_t.append({
-                "id": f"T{t_i}_M{m_i+1}",
+    while len(curr_matchs) > 1:
+        t_num += 1
+        nb_winners = len(curr_matchs)
+        next_m_list = []
+        if nb_winners % 2 == 0:
+            for m_i in range(nb_winners // 2):
+                next_m_list.append({
+                    "id": f"T{t_num}_M{m_i+1}",
+                    "equipe_a": "À déterminer",
+                    "equipe_b": "À déterminer",
+                    "score_a": 0,
+                    "score_b": 0,
+                    "termine": False,
+                    "vainqueur": None,
+                    "source_a": f"T{t_num-1}_M{2*m_i+1}",
+                    "source_b": f"T{t_num-1}_M{2*m_i+2}"
+                })
+            tours_matchs.append(next_m_list)
+            curr_matchs = next_m_list
+        else:
+            # 3 vainqueurs (ex: après quarts d'un tournoi à 24)
+            next_m_list.append({
+                "id": f"T{t_num}_M1",
                 "equipe_a": "À déterminer",
                 "equipe_b": "À déterminer",
                 "score_a": 0,
                 "score_b": 0,
-                "race_to": race_ti,
-                "format_label": fmt_ti,
                 "termine": False,
-                "vainqueur": None
+                "vainqueur": None,
+                "source_a": f"T{t_num-1}_M1",
+                "source_b": f"T{t_num-1}_M2"
             })
-        tours.append({
-            "numero": t_i,
-            "nom": tours_labels[t_i - 1],
-            "race_to": race_ti,
-            "format_label": fmt_ti,
-            "matchs": matchs_t
+            tours_matchs.append(next_m_list)
+            t_num += 1
+            finale_m = [{
+                "id": f"T{t_num}_M1",
+                "equipe_a": "À déterminer",
+                "equipe_b": "À déterminer",
+                "score_a": 0,
+                "score_b": 0,
+                "termine": False,
+                "vainqueur": None,
+                "source_a": f"T{t_num-1}_M1",
+                "source_b": f"T{t_num-2}_M3"
+            }]
+            tours_matchs.append(finale_m)
+            break
+
+    total_tours = len(tours_matchs)
+    nom_map = {
+        1: "Finale",
+        2: "Demi-finales",
+        3: "Quarts de finale",
+        4: "Huitièmes de finale",
+        5: "Tour préliminaire"
+    }
+
+    final_tours = []
+    for idx, m_list in enumerate(tours_matchs, 1):
+        is_finale = (idx == total_tours)
+        race_t = race_finale if is_finale else race_prelim
+        fmt_t = "3 de 5" if race_t == 3 else ("2 de 3" if race_t == 2 else f"Course à {race_t}")
+        rounds_from_end = total_tours - idx + 1
+        default_nom = nom_map.get(rounds_from_end, f"Tour {idx}")
+
+        for m in m_list:
+            m["race_to"] = race_t
+            m["format_label"] = fmt_t
+
+        final_tours.append({
+            "numero": idx,
+            "nom": default_nom,
+            "race_to": race_t,
+            "format_label": fmt_t,
+            "matchs": m_list
         })
 
     return {
@@ -1511,7 +1544,7 @@ def generer_arbre_elimination(participants, race_prelim=2, race_finale=3, titre=
         "race_finale": race_finale,
         "participants": p_liste,
         "total_tours": total_tours,
-        "tours": tours,
+        "tours": final_tours,
         "statut": "en_cours",
         "vainqueur_final": None,
         "finaliste": None
@@ -1525,11 +1558,9 @@ def actualiser_score_elimination(tournoi, tour_num, match_id, score_a, score_b):
     tour_courant = tournoi["tours"][t_idx]
 
     m_trouve = None
-    m_idx_in_tour = 0
-    for idx, m in enumerate(tour_courant["matchs"]):
+    for m in tour_courant["matchs"]:
         if m["id"] == match_id:
             m_trouve = m
-            m_idx_in_tour = idx
             break
 
     if not m_trouve:
@@ -1544,21 +1575,38 @@ def actualiser_score_elimination(tournoi, tour_num, match_id, score_a, score_b):
 
     m_trouve["score_a"] = score_a
     m_trouve["score_b"] = score_b
-
     vainqueur = m_trouve["equipe_a"] if score_a > score_b else m_trouve["equipe_b"]
     perdant = m_trouve["equipe_b"] if score_a > score_b else m_trouve["equipe_a"]
     m_trouve["vainqueur"] = vainqueur
     m_trouve["termine"] = True
 
-    if tour_num < tournoi["total_tours"]:
-        prochain_tour = tournoi["tours"][tour_num]
-        prochain_match_idx = m_idx_in_tour // 2
-        prochain_match = prochain_tour["matchs"][prochain_match_idx]
-        if m_idx_in_tour % 2 == 0:
-            prochain_match["equipe_a"] = vainqueur
-        else:
-            prochain_match["equipe_b"] = vainqueur
-    else:
+    # Propager aux matchs futurs selon source_a / source_b
+    propage = False
+    for t in tournoi["tours"][tour_num:]:
+        for m_futur in t["matchs"]:
+            if m_futur.get("source_a") == match_id:
+                m_futur["equipe_a"] = vainqueur
+                propage = True
+            if m_futur.get("source_b") == match_id:
+                m_futur["equipe_b"] = vainqueur
+                propage = True
+
+    # Fallback pour compatibilité
+    if not propage and tour_num < tournoi["total_tours"]:
+        try:
+            m_idx_in_tour = tour_courant["matchs"].index(m_trouve)
+            prochain_tour = tournoi["tours"][tour_num]
+            prochain_match_idx = m_idx_in_tour // 2
+            if prochain_match_idx < len(prochain_tour["matchs"]):
+                prochain_match = prochain_tour["matchs"][prochain_match_idx]
+                if m_idx_in_tour % 2 == 0:
+                    prochain_match["equipe_a"] = vainqueur
+                else:
+                    prochain_match["equipe_b"] = vainqueur
+        except Exception:
+            pass
+
+    if tour_num == tournoi["total_tours"]:
         tournoi["vainqueur_final"] = vainqueur
         tournoi["finaliste"] = perdant
         tournoi["statut"] = "termine"
@@ -1818,37 +1866,66 @@ def afficher_section_tournoi(mode="simple"):
             participants_finaux = []
 
             if mode == "simple":
-                st.markdown("##### 👤 Liste des joueurs participants")
+                st.markdown("##### 👤 Liste des joueurs inscrits")
+                col_sel_btn1, col_sel_btn2 = st.columns([1.5, 3.5])
+                with col_sel_btn1:
+                    if st.button("👥 Sélectionner tous les inscrits", key=f"btn_all_{mode}", use_container_width=True):
+                        st.session_state[f"sel_participants_{mode}"] = tous_candidats
+                        st.rerun()
+                with col_sel_btn2:
+                    st.caption("ℹ️ Par défaut, **tous les joueurs réguliers inscrits** participent au tournoi.")
+
                 selection_j = st.multiselect(
-                    "Sélectionnez les joueurs inscrits :",
+                    "Joueurs participants au tournoi :",
                     options=tous_candidats,
-                    default=tous_candidats[:8] if len(tous_candidats) >= 8 else tous_candidats,
+                    default=st.session_state.get(f"sel_participants_{mode}", tous_candidats),
                     key=f"sel_participants_{mode}",
-                    help="Cochez tous les joueurs qui participent au tournoi."
+                    help="Tous les joueurs inscrits sont sélectionnés par défaut."
                 )
                 participants_finaux = selection_j
-                st.caption(f"ℹ️ **{len(participants_finaux)} joueur(s) inscrit(s)** au tournoi.")
+                st.caption(f"🎯 **{len(participants_finaux)} joueur(s) inscrit(s)** participant au tournoi.")
 
             else:
-                # Mode DOUBLE
-                st.markdown("##### 👥 Constitution des équipes de double")
+                # Mode DOUBLE / ÉQUIPES
+                st.markdown("##### 👥 Constitution des équipes de double / équipes de ligue")
                 methode_duos = st.radio(
-                    "Méthode de constitution des duos :",
-                    ["🎲 Tirage au sort aléatoire (Pige des équipes)", "✍️ Formation manuelle des duos"],
+                    "Modalité de participation :",
+                    [
+                        "🏆 Les 8 équipes officielles inscrites de la ligue (Rondes complètes)",
+                        "🎲 Tirage au sort aléatoire (Pige des équipes parmi tous les joueurs inscrits)",
+                        "✍️ Formation manuelle des duos / équipes"
+                    ],
                     key=f"methode_duos_{mode}"
                 )
 
-                if methode_duos == "🎲 Tirage au sort aléatoire (Pige des équipes)":
+                if methode_duos.startswith("🏆"):
+                    eq_dict = charger_equipes_csv()
+                    equipes_officielles = sorted(list(eq_dict.keys())) if eq_dict else ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel"]
+                    st.success(f"🏆 **Les {len(equipes_officielles)} équipes inscrites de la ligue participent toutes au tournoi :**")
+                    cols_eq = st.columns(2)
+                    for idx_e, nom_e in enumerate(equipes_officielles):
+                        roster = ", ".join(eq_dict.get(nom_e, [])) if eq_dict else ""
+                        with cols_eq[idx_e % 2]:
+                            st.markdown(f"• **Équipe {nom_e}** : `{roster}`")
+                    participants_finaux = equipes_officielles
+
+                elif methode_duos.startswith("🎲"):
+                    col_pige_btn1, col_pige_btn2 = st.columns([1.5, 3.5])
+                    with col_pige_btn1:
+                        if st.button("👥 Sélectionner tous les joueurs", key=f"btn_all_pool_{mode}", use_container_width=True):
+                            st.session_state[f"pool_double_{mode}"] = tous_candidats
+                            st.rerun()
+
                     selection_pool = st.multiselect(
-                        "Sélectionnez tous les joueurs qui participeront au tirage au sort :",
+                        "Sélectionnez les joueurs participant au tirage au sort des équipes :",
                         options=tous_candidats,
-                        default=tous_candidats[:8] if len(tous_candidats) >= 8 else tous_candidats,
+                        default=st.session_state.get(f"pool_double_{mode}", tous_candidats),
                         key=f"pool_double_{mode}"
                     )
                     st.caption(f"Pool de joueurs sélectionnés : **{len(selection_pool)} joueurs**")
 
                     if len(selection_pool) % 2 != 0:
-                        st.warning("⚠️ Le nombre de joueurs sélectionnés est impair. Veuillez ajouter ou retirer un joueur pour former des paires complètes.")
+                        st.warning("⚠️ Le nombre de joueurs est impair. Ajoutez ou retirez un joueur pour former des paires complètes.")
 
                     if f"paires_tirees_{mode}" in st.session_state and st.session_state[f"paires_tirees_{mode}"]:
                         st.markdown("###### 🎲 Paires tirées au sort :")
@@ -1868,7 +1945,7 @@ def afficher_section_tournoi(mode="simple"):
 
                 else:
                     # Formation manuelle des duos
-                    st.caption("Entrez les noms des équipes ou paires (ex: Guy V. & André St-P.) :")
+                    st.caption("Entrez les noms des équipes ou paires :")
                     nb_duos = st.number_input("Nombre de duos :", min_value=2, max_value=16, value=4, step=1, key=f"nb_duos_man_{mode}")
                     duos_manuels = []
                     for i in range(int(nb_duos)):
@@ -1884,39 +1961,32 @@ def afficher_section_tournoi(mode="simple"):
 
             nb_p = len(participants_finaux)
             is_elim = "Élimination" in type_format
-            puissances_ok = [2, 4, 8, 16, 32]
-            
-            # Règle stricte : AUCUN PASSE-DROIT AU PREMIER TOUR
             bloquer_lancement = False
-            msg_aide = ""
 
             if is_elim:
                 if nb_p < 2:
                     bloquer_lancement = True
-                    st.info(f"ℹ️ Sélectionnez au moins 2 {'duos' if mode == 'double' else 'joueurs'} pour configurer le tournoi.")
-                elif nb_p not in puissances_ok:
+                    st.info(f"ℹ️ Sélectionnez au moins 2 {'équipes' if mode == 'double' else 'joueurs'} pour configurer le tournoi.")
+                elif nb_p % 2 != 0:
                     bloquer_lancement = True
-                    # Trouver la puissance la plus proche pour conseiller l'utilisateur
-                    puiss_sup = next(p for p in puissances_ok if p > nb_p)
-                    puiss_inf = max([p for p in puissances_ok if p < nb_p], default=2)
-                    diff_manque = puiss_sup - nb_p
                     st.warning(
-                        f"🛡️ **Règle officielle : Aucun passe-droit (exempt) au premier tour !**\n\n"
-                        f"Pour garantir que chaque {'duo' if mode == 'double' else 'joueur'} dispute un vrai match dès le premier tour, "
-                        f"le tableau à élimination directe doit comporter exactement **2, 4, 8 ou 16 {'duos' if mode == 'double' else 'participants'}** "
-                        f"(actuellement : **{nb_p}**).\n\n"
-                        f"👉 **Option A :** Ajoutez **{diff_manque} {'duo(s)' if mode == 'double' else 'joueur(s)'}** pour atteindre **{puiss_sup} participants** (ou retirez-en pour atteindre {puiss_inf}).\n\n"
-                        f"👉 **Option B :** Sélectionnez le format **« 🔄 Championnat toutes rondes (Round-Robin) »** ci-dessus : tout le monde joue contre tout le monde, **sans aucun passe-droit**, quel que soit le nombre de participants !"
+                        f"🛡️ **Règle officielle : Aucun passe-droit au premier tour !**\n\n"
+                        f"Le nombre de participants inscrits (**{nb_p}**) est impair. "
+                        f"Pour que chaque participant affronte un adversaire dès le premier tour sans aucun exempt, "
+                        f"veuillez ajuster à un nombre pair (ex: {nb_p - 1} ou {nb_p + 1} participants)."
                     )
                 else:
-                    st.success(f"🟢 **Tableau complet sans passe-droit :** Les **{nb_p} {'duos' if mode == 'double' else 'joueurs'}** s'affronteront tous dès le premier tour sans aucun exempt !")
+                    st.success(
+                        f"🟢 **Tous les participants inscrits jouent dès la première ronde !**\n\n"
+                        f"Les **{nb_p} {'équipes inscrites' if mode == 'double' else 'joueurs inscrits'}** disputeront tous un match au 1er tour sans aucun passe-droit."
+                    )
             else:
                 if nb_p < 2:
                     bloquer_lancement = True
-                    st.info(f"ℹ️ Sélectionnez au moins 2 {'duos' if mode == 'double' else 'joueurs'} pour démarrer un championnat toutes rondes.")
+                    st.info(f"ℹ️ Sélectionnez au moins 2 {'équipes' if mode == 'double' else 'joueurs'} pour démarrer un championnat toutes rondes.")
                 else:
                     nb_matchs_tot = (nb_p * (nb_p - 1)) // 2
-                    st.success(f"🟢 **Championnat Round-Robin sans passe-droit :** {nb_p} participants, {nb_matchs_tot} rencontres au total. Tout le monde affronte tout le monde !")
+                    st.success(f"🟢 **Championnat Round-Robin :** Les **{nb_p} participants inscrits** s'affronteront tous sans exception ({nb_matchs_tot} rencontres au total) !")
 
             btn_lancer = st.button(
                 "🚀 Lancer le tournoi et générer le tableau officiel",
@@ -2153,8 +2223,8 @@ def afficher_section_tournoi(mode="simple"):
 def afficher_onglet_tournois():
     """Onglet principal Tournois avec sous-onglets Simple et Double."""
     subtab_simple, subtab_double = st.tabs([
-        "👤 Tournoi en Simple",
-        "👥 Tournoi en Double"
+        "👤 Tournoi en Simple (Tous les joueurs)",
+        "👥 Tournoi en Double / Équipes (Équipes inscrites)"
     ])
 
     with subtab_simple:
