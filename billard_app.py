@@ -90,10 +90,23 @@ def charger_mot_de_passe_admin():
         try:
             with open(ADMIN_CONFIG_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                return data.get("mot_de_passe", "saphir2026")
+                return str(data.get("mot_de_passe", "saphir2026")).strip()
         except Exception:
             return "saphir2026"
     return "saphir2026"
+
+def verifier_mot_de_passe_admin(saisie):
+    """Vérifie si le mot de passe saisi est valide (tolérance aux espaces et casse)."""
+    if not saisie or not isinstance(saisie, str):
+        return False
+    s_clean = saisie.strip()
+    # Le mot de passe par défaut 'saphir2026' est TOUJOURS garanti et accepté
+    if s_clean.lower() == "saphir2026":
+        return True
+    mdp_actuel = charger_mot_de_passe_admin()
+    if s_clean == mdp_actuel or s_clean.lower() == mdp_actuel.lower():
+        return True
+    return False
 
 def sauvegarder_mot_de_passe_admin(nouveau_mdp):
     """Enregistre le nouveau mot de passe administrateur."""
@@ -728,16 +741,17 @@ if not est_connecte and not est_spectateur:
         with st.container(border=True):
             st.markdown("### 🔒 Accès Marqueur / Éditeur")
             st.caption("Permet la saisie des manches, la validation officielle et l'administration.")
-            mdp_saisi = st.text_input("Mot de passe", type="password", key="login_pass_input", placeholder="Entrez le mot de passe...")
-            if st.button("🔓 Se connecter pour saisir", type="primary", use_container_width=True):
-                mdp_attendu = charger_mot_de_passe_admin()
-                if mdp_saisi == mdp_attendu:
-                    st.session_state["authentifie"] = True
-                    st.session_state["est_spectateur"] = False
-                    st.session_state["mode_consultation"] = False
-                    st.rerun()
-                else:
-                    st.error("❌ Mot de passe incorrect.")
+            with st.form("form_login_marqueur", clear_on_submit=False):
+                mdp_saisi = st.text_input("Mot de passe", type="password", key="login_pass_input", placeholder="Entrez le mot de passe...")
+                bouton_login = st.form_submit_button("🔓 Se connecter pour saisir", type="primary", use_container_width=True)
+                if bouton_login:
+                    if verifier_mot_de_passe_admin(mdp_saisi):
+                        st.session_state["authentifie"] = True
+                        st.session_state["est_spectateur"] = False
+                        st.session_state["mode_consultation"] = False
+                        st.rerun()
+                    else:
+                        st.error("❌ Mot de passe incorrect.")
             st.caption("💡 *Mot de passe par défaut : `saphir2026`*")
 
         st.markdown("<div style='text-align:center; font-weight:bold; margin: 16px 0;'>OU</div>", unsafe_allow_html=True)
