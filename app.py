@@ -327,8 +327,198 @@ def restaurer_session(data):
 
     return True
 
+# ==============================================================================
+# FEUILLE DE STYLE OFFICIELLE D'IMPRESSION (CALIBRÉE POUR UNE SEULE PAGE A4)
+# ==============================================================================
+STYLE_PRINT_A4 = """
+@page {
+    size: A4 portrait;
+    margin: 6mm 8mm;
+}
+@media print {
+    *, *:before, *:after {
+        box-sizing: border-box !important;
+    }
+    html, body {
+        width: 100% !important;
+        height: auto !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #ffffff !important;
+        font-family: Arial, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+        font-size: 10.5pt !important;
+        line-height: 1.25 !important;
+        color: #111111 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+    .no-print {
+        display: none !important;
+    }
+    /* Empêche toute rupture de page involontaire */
+    .fiche-a4, table, tr, td, th, div, p {
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+    }
+    .fiche-a4 {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        page-break-after: avoid !important;
+        page-break-before: avoid !important;
+        break-after: avoid !important;
+    }
+    .header-table {
+        width: 100% !important;
+        border-bottom: 2px solid #0b3c5d !important;
+        padding-bottom: 3px !important;
+        margin-bottom: 5px !important;
+        border-collapse: collapse !important;
+    }
+    .header-logo-td {
+        width: 48px !important;
+        padding-right: 8px !important;
+        vertical-align: middle !important;
+    }
+    .header-logo-img {
+        height: 44px !important;
+        width: 44px !important;
+        object-fit: contain !important;
+    }
+    .header-title-h2 {
+        color: #0b3c5d !important;
+        margin: 0 !important;
+        font-size: 15px !important;
+        line-height: 1.2 !important;
+    }
+    .header-title-sub {
+        color: #555 !important;
+        font-size: 11px !important;
+        font-weight: bold !important;
+        margin-top: 1px !important;
+    }
+    .date-para {
+        margin: 3px 0 5px 0 !important;
+        font-size: 10.5px !important;
+        line-height: 1.2 !important;
+    }
+    .rectif-box {
+        background-color: #fff3cd !important;
+        color: #856404 !important;
+        border: 1px solid #ffeeba !important;
+        border-left: 4px solid #ffc107 !important;
+        padding: 3px 6px !important;
+        border-radius: 4px !important;
+        margin-bottom: 4px !important;
+        font-size: 9.5px !important;
+        line-height: 1.2 !important;
+    }
+    .result-container {
+        background-color: #f4f6f9 !important;
+        padding: 6px 10px !important;
+        border-radius: 4px !important;
+        margin-bottom: 6px !important;
+    }
+    .result-h3 {
+        margin: 0 0 2px 0 !important;
+        color: #1e3d59 !important;
+        font-size: 12px !important;
+    }
+    .result-scores {
+        font-size: 13px !important;
+        margin: 2px 0 !important;
+        line-height: 1.2 !important;
+    }
+    .result-scores-pts {
+        font-size: 16px !important;
+        color: #0d47a1 !important;
+        font-weight: bold !important;
+    }
+    .result-winner {
+        font-weight: bold !important;
+        color: #2e7d32 !important;
+        font-size: 12px !important;
+        margin: 2px 0 3px 0 !important;
+    }
+    .absents-box {
+        font-size: 9.5px !important;
+        padding: 3px 6px !important;
+        margin: 3px 0 !important;
+    }
+    .joueurs-flex {
+        display: flex !important;
+        gap: 8px !important;
+        margin-top: 4px !important;
+    }
+    .joueur-card {
+        flex: 1 !important;
+        background: #ffffff !important;
+        padding: 4px 6px !important;
+        border-radius: 4px !important;
+        border: 1px solid #ddd !important;
+    }
+    .joueur-card h4 {
+        margin: 0 0 2px 0 !important;
+        color: #0b3c5d !important;
+        font-size: 10.5px !important;
+    }
+    .joueur-card ul {
+        margin: 0 !important;
+        padding-left: 14px !important;
+        font-size: 10px !important;
+        line-height: 1.2 !important;
+    }
+    .approb-container {
+        margin-top: 4px !important;
+        padding: 4px 6px !important;
+        background-color: #f1f8e9 !important;
+        border: 1px solid #c8e6c9 !important;
+        border-left: 3px solid #2e7d32 !important;
+        border-radius: 4px !important;
+    }
+    .approb-h4 {
+        margin: 0 0 2px 0 !important;
+        color: #1b5e20 !important;
+        font-size: 10px !important;
+    }
+    .approb-txt {
+        font-size: 9.5px !important;
+        color: #333 !important;
+        line-height: 1.2 !important;
+    }
+    .manches-table {
+        width: 100% !important;
+        border-collapse: collapse !important;
+        font-size: 10.5px !important;
+        line-height: 1.15 !important;
+        margin-top: 4px !important;
+    }
+    .manches-table th {
+        background-color: #0b3c5d !important;
+        color: #ffffff !important;
+        padding: 3.5px 5px !important;
+        font-size: 10.5px !important;
+        font-weight: bold !important;
+        text-align: center !important;
+    }
+    .manches-table td {
+        padding: 2.8px 5px !important;
+        font-size: 10px !important;
+        border-bottom: 1px solid #e0e0e0 !important;
+        text-align: center !important;
+    }
+    .footer-note {
+        font-size: 8px !important;
+        color: #777 !important;
+        margin-top: 4px !important;
+        text-align: center !important;
+    }
+}
+"""
+
 def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_joueurs, dict_joueurs, date_str, absents_info=None, rectif_bandeau="", approbateur_rec="", approbateur_vis=""):
-    """Génère le résumé en texte brut et en HTML avec les totaux par équipe et par joueur."""
+    """Génère le résumé en texte brut et en HTML avec les totaux par équipe et par joueur (formaté pour impression A4)."""
     lignes_texte = [
         f"Ligue de billard Boule en main - Résultats officiels",
         f"Date : {date_str}",
@@ -346,17 +536,15 @@ def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_j
         ])
 
     lignes_texte.extend([
-        "-" * 50,
-        f"Points par joueur — {receveur} :",
-        f"  * {dict_joueurs['j1_rec']['nom']} : {pts_joueurs['j1_rec']} pts",
-        f"  * {dict_joueurs['j2_rec']['nom']} : {pts_joueurs['j2_rec']} pts",
-        f"  * {dict_joueurs['j3_rec']['nom']} : {pts_joueurs['j3_rec']} pts",
-        f"Points par joueur — {visiteur} :",
-        f"  * {dict_joueurs['j1_vis']['nom']} : {pts_joueurs['j1_vis']} pts",
-        f"  * {dict_joueurs['j2_vis']['nom']} : {pts_joueurs['j2_vis']} pts",
-        f"  * {dict_joueurs['j3_vis']['nom']} : {pts_joueurs['j3_vis']} pts",
-        "-" * 50,
-        "Détail des 9 manches :"
+        f"\nPoints individuels {receveur} :",
+        f"  - {dict_joueurs['j1_rec']['nom']} : {pts_joueurs['j1_rec']} pts",
+        f"  - {dict_joueurs['j2_rec']['nom']} : {pts_joueurs['j2_rec']} pts",
+        f"  - {dict_joueurs['j3_rec']['nom']} : {pts_joueurs['j3_rec']} pts",
+        f"\nPoints individuels {visiteur} :",
+        f"  - {dict_joueurs['j1_vis']['nom']} : {pts_joueurs['j1_vis']} pts",
+        f"  - {dict_joueurs['j2_vis']['nom']} : {pts_joueurs['j2_vis']} pts",
+        f"  - {dict_joueurs['j3_vis']['nom']} : {pts_joueurs['j3_vis']} pts",
+        "\nDétail des 9 manches :"
     ])
 
     lignes_html = []
@@ -364,37 +552,41 @@ def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_j
         m = matchs.get(str(num), {})
         sa = m.get("score_a", 0)
         sb = m.get("score_b", 0)
-        ja = m.get("joueur_a", "")
-        jb = m.get("joueur_b", "")
-        ja_abs = m.get("joueur_a_absent", False)
-        jb_abs = m.get("joueur_b_absent", False)
+        ja = dict_joueurs[m["joueur_a"]]["nom"]
+        jb = dict_joueurs[m["joueur_b"]]["nom"]
+        ja_abs = not dict_joueurs[m["joueur_a"]]["present"]
+        jb_abs = not dict_joueurs[m["joueur_b"]]["present"]
 
         label_a = f"{ja} (Absent : {sa} pts)" if ja_abs else ja
         label_b = f"{jb} (Absent : {sb} pts)" if jb_abs else jb
 
-        lignes_texte.append(f"Manche {num} : {label_a} ({sa}) vs {label_b} ({sb})")
+        lignes_texte.append(f"Manche {num} : {label_a} ({sa}) vs ({sb}) {label_b}")
+
+        bg_color = "#f9fbfd" if num % 2 == 1 else "#ffffff"
+        sa_fmt = f"<strong>{sa}</strong>" if sa == 8 else f"{sa}"
+        sb_fmt = f"<strong>{sb}</strong>" if sb == 8 else f"{sb}"
         lignes_html.append(f"""
-            <tr style="border-bottom: 1px solid #ddd; text-align: center;">
-                <td style="padding: 8px;"><strong>Manche {num}</strong></td>
-                <td style="padding: 8px;">{label_a}</td>
-                <td style="padding: 8px; font-weight: bold; color: {'#1b5e20' if sa == 8 else '#333'};">{sa}</td>
-                <td style="padding: 8px; font-weight: bold; color: {'#1b5e20' if sb == 8 else '#333'};">{sb}</td>
-                <td style="padding: 8px;">{label_b}</td>
-            </tr>
+        <tr style="background-color: {bg_color}; border-bottom: 1px solid #e0e0e0; text-align: center;">
+            <td style="padding: 5px 6px; font-weight: bold;">Manche {num}</td>
+            <td style="padding: 5px 6px; text-align: left;">{label_a}</td>
+            <td style="padding: 5px 6px; font-weight: bold; font-size: 13px;">{sa_fmt}</td>
+            <td style="padding: 5px 6px; font-weight: bold; font-size: 13px;">{sb_fmt}</td>
+            <td style="padding: 5px 6px; text-align: left;">{label_b}</td>
+        </tr>
         """)
 
     texte = "\n".join(lignes_texte)
 
     absents_html_bloc = ""
     if absents_info:
-        absents_html_bloc = f"<p style='color: #d32f2f;'><strong>Joueur(s) absent(s) :</strong> {', '.join(absents_info)}</p>"
+        absents_html_bloc = f"<div class='absents-box' style='color: #d32f2f; margin: 4px 0;'><strong>Joueur(s) absent(s) :</strong> {', '.join(absents_info)}</div>"
 
     approbateurs_html_bloc = ""
     if approbateur_rec or approbateur_vis:
         approbateurs_html_bloc = f"""
-            <div style="margin-top: 15px; padding: 12px; background-color: #f1f8e9; border: 1px solid #c8e6c9; border-left: 5px solid #2e7d32; border-radius: 6px;">
-                <h4 style="margin: 0 0 6px 0; color: #1b5e20; font-size: 14px;">✍️ Approbations officielles de la feuille de match :</h4>
-                <div style="font-size: 13px; color: #333;">
+            <div class="approb-container" style="margin-top: 10px; padding: 8px 12px; background-color: #f1f8e9; border: 1px solid #c8e6c9; border-left: 4px solid #2e7d32; border-radius: 6px;">
+                <h4 class="approb-h4" style="margin: 0 0 4px 0; color: #1b5e20; font-size: 13px;">✍️ Approbations officielles de la feuille de match :</h4>
+                <div class="approb-txt" style="font-size: 12px; color: #333;">
                     • Représentant <strong>{receveur}</strong> : <u>{approbateur_rec or 'Non renseigné'}</u><br>
                     • Représentant <strong>{visiteur}</strong> : <u>{approbateur_vis or 'Non renseigné'}</u>
                 </div>
@@ -404,55 +596,69 @@ def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_j
     logo_b64 = charger_armoiries_base64()
     src_val = logo_b64 if logo_b64 else "cid:armoiries_logo"
     arm_existe = bool(logo_b64 or os.path.isfile(find_armoiries_path()))
-    logo_td = f'<td style="width: 70px; vertical-align: middle; padding-right: 12px;"><img src="{src_val}" alt="Armoiries" style="height: 65px; width: 65px; object-fit: contain; border-radius: 4px;"></td>' if arm_existe else ''
+    logo_td = f'<td class="header-logo-td" style="width: 65px; vertical-align: middle; padding-right: 12px;"><img class="header-logo-img" src="{src_val}" alt="Armoiries" style="height: 60px; width: 60px; object-fit: contain; border-radius: 4px;"></td>' if arm_existe else ''
 
-    html = f"""
-    <html>
-    <head>
-        <meta charset="utf-8">
-        <title>Feuille de match officielle - Ligue de billard Boule en main</title>
-        <style>
-            @media print {{
-                .no-print {{ display: none !important; }}
-                body {{ margin: 10mm; font-size: 11pt; }}
-            }}
-        </style>
-    </head>
-    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #222;">
-        <table style="width: 100%; border-bottom: 2px solid #0b3c5d; padding-bottom: 8px; margin-bottom: 12px; border-collapse: collapse;">
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Feuille de match officielle - Ligue de billard Boule en main</title>
+    <style>
+        {STYLE_PRINT_A4}
+        body {{
+            font-family: Arial, sans-serif;
+            line-height: 1.5;
+            color: #222;
+            margin: 0;
+            padding: 10px;
+        }}
+        .fiche-a4 {{
+            max-width: 850px;
+            margin: 0 auto;
+        }}
+    </style>
+</head>
+<body>
+    <div class="fiche-a4">
+        <div class="no-print" style="text-align: right; margin-bottom: 10px;">
+            <button onclick="window.print()" style="background-color: #0b3c5d; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer;">
+                🖨️ Imprimer cette feuille (A4)
+            </button>
+        </div>
+        <table class="header-table" style="width: 100%; border-bottom: 2px solid #0b3c5d; padding-bottom: 6px; margin-bottom: 10px; border-collapse: collapse;">
             <tr>
                 {logo_td}
-                <td style="vertical-align: middle;">
-                    <h2 style="color: #0b3c5d; margin: 0; font-size: 20px;">🎱 Ligue de billard Boule en main</h2>
-                    <div style="color: #555; font-size: 14px; font-weight: bold; margin-top: 2px;">Feuille de match officielle</div>
+                <td class="header-title" style="vertical-align: middle;">
+                    <h2 class="header-title-h2" style="color: #0b3c5d; margin: 0; font-size: 19px;">🎱 Ligue de billard Boule en main</h2>
+                    <div class="header-title-sub" style="color: #555; font-size: 13px; font-weight: bold; margin-top: 2px;">Feuille de match officielle</div>
                 </td>
             </tr>
         </table>
-        <p><strong>Date :</strong> {date_str}</p>
+        <p class="date-para" style="margin: 4px 0 8px 0; font-size: 13px;"><strong>Date :</strong> {date_str}</p>
         {rectif_bandeau}
-        <div style="background-color: #f4f6f9; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-            <h3 style="margin: 0; color: #1e3d59;">Résultat final du match :</h3>
-            <p style="font-size: 18px; margin: 8px 0;">
-                <strong>{receveur}</strong> : <span style="font-size: 22px; color: #0d47a1;">{total_rec}</span> pts<br>
-                <strong>{visiteur}</strong> : <span style="font-size: 22px; color: #0d47a1;">{total_vis}</span> pts
+        <div class="result-container" style="background-color: #f4f6f9; padding: 12px 14px; border-radius: 8px; margin-bottom: 12px;">
+            <h3 class="result-h3" style="margin: 0; color: #1e3d59; font-size: 15px;">Résultat final du match :</h3>
+            <p class="result-scores" style="font-size: 16px; margin: 6px 0;">
+                <strong>{receveur}</strong> : <span class="result-scores-pts" style="font-size: 20px; color: #0d47a1;">{total_rec}</span> pts &nbsp;|&nbsp;
+                <strong>{visiteur}</strong> : <span class="result-scores-pts" style="font-size: 20px; color: #0d47a1;">{total_vis}</span> pts
             </p>
-            <p style="font-weight: bold; color: #2e7d32; font-size: 16px;">
+            <p class="result-winner" style="font-weight: bold; color: #2e7d32; font-size: 14px; margin: 4px 0;">
                 Vainqueur : {receveur if total_rec > total_vis else (visiteur if total_vis > total_rec else "Égalité")}
             </p>
             {absents_html_bloc}
             
-            <div style="margin-top: 15px; display: flex; gap: 20px;">
-                <div style="flex: 1; background: white; padding: 10px; border-radius: 6px; border: 1px solid #ddd;">
-                    <h4 style="margin: 0 0 8px 0; color: #0b3c5d;">Points individuels — {receveur} :</h4>
-                    <ul style="margin: 0; padding-left: 20px; font-size: 14px;">
+            <div class="joueurs-flex" style="margin-top: 10px; display: flex; gap: 14px;">
+                <div class="joueur-card" style="flex: 1; background: white; padding: 8px 10px; border-radius: 6px; border: 1px solid #ddd;">
+                    <h4 style="margin: 0 0 6px 0; color: #0b3c5d; font-size: 13px;">Points individuels — {receveur} :</h4>
+                    <ul style="margin: 0; padding-left: 18px; font-size: 13px;">
                         <li><strong>{dict_joueurs['j1_rec']['nom']}</strong> : {pts_joueurs['j1_rec']} pts</li>
                         <li><strong>{dict_joueurs['j2_rec']['nom']}</strong> : {pts_joueurs['j2_rec']} pts</li>
                         <li><strong>{dict_joueurs['j3_rec']['nom']}</strong> : {pts_joueurs['j3_rec']} pts</li>
                     </ul>
                 </div>
-                <div style="flex: 1; background: white; padding: 10px; border-radius: 6px; border: 1px solid #ddd;">
-                    <h4 style="margin: 0 0 8px 0; color: #0b3c5d;">Points individuels — {visiteur} :</h4>
-                    <ul style="margin: 0; padding-left: 20px; font-size: 14px;">
+                <div class="joueur-card" style="flex: 1; background: white; padding: 8px 10px; border-radius: 6px; border: 1px solid #ddd;">
+                    <h4 style="margin: 0 0 6px 0; color: #0b3c5d; font-size: 13px;">Points individuels — {visiteur} :</h4>
+                    <ul style="margin: 0; padding-left: 18px; font-size: 13px;">
                         <li><strong>{dict_joueurs['j1_vis']['nom']}</strong> : {pts_joueurs['j1_vis']} pts</li>
                         <li><strong>{dict_joueurs['j2_vis']['nom']}</strong> : {pts_joueurs['j2_vis']} pts</li>
                         <li><strong>{dict_joueurs['j3_vis']['nom']}</strong> : {pts_joueurs['j3_vis']} pts</li>
@@ -461,26 +667,27 @@ def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_j
             </div>
             {approbateurs_html_bloc}
         </div>
-        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+        <table class="manches-table" style="width: 100%; border-collapse: collapse; font-size: 13px;">
             <thead>
                 <tr style="background-color: #0b3c5d; color: white;">
-                    <th style="padding: 10px;">Manche</th>
-                    <th style="padding: 10px;">Joueur ({receveur})</th>
-                    <th style="padding: 10px;">Pts</th>
-                    <th style="padding: 10px;">Pts</th>
-                    <th style="padding: 10px;">Joueur ({visiteur})</th>
+                    <th style="padding: 7px 6px;">Manche</th>
+                    <th style="padding: 7px 6px; text-align: left;">Joueur ({receveur})</th>
+                    <th style="padding: 7px 6px;">Pts</th>
+                    <th style="padding: 7px 6px;">Pts</th>
+                    <th style="padding: 7px 6px; text-align: left;">Joueur ({visiteur})</th>
                 </tr>
             </thead>
             <tbody>
                 {''.join(lignes_html)}
             </tbody>
         </table>
-        <p style="font-size: 12px; color: #777; margin-top: 25px;">
+        <p class="footer-note" style="font-size: 11px; color: #777; margin-top: 12px; text-align: center;">
             Feuille générée automatiquement via l'application officielle de saisie - Ligue de billard Boule en main.
         </p>
-    </body>
-    </html>
-    """
+    </div>
+</body>
+</html>
+"""
     return texte, html
 
 def charger_historique_matchs():
@@ -535,13 +742,13 @@ def verifier_match_deja_valide(equipe_rec, equipe_vis, matchs_actuels, historiqu
     return False, None
 
 def obtenir_html_match(m):
-    """Renvoie le HTML officiel du match ou le reconstitue fidèlement à partir des données archivées."""
+    """Renvoie le HTML officiel du match ou le reconstitue fidèlement à partir des données archivées, calibré pour une page A4."""
     rectif_bandeau = ""
     if m.get("date_rectification"):
         d_rect = m.get("date_rectification")
         m_rect = m.get("motif_rectification", "Correction administrative")
         rectif_bandeau = f"""
-        <div style="background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba; border-left: 5px solid #ffc107; padding: 10px 14px; border-radius: 6px; margin-bottom: 14px; font-size: 13px;">
+        <div class="rectif-box" style="background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba; border-left: 5px solid #ffc107; padding: 8px 12px; border-radius: 6px; margin-bottom: 10px; font-size: 12px;">
             <strong>⚠️ FEUILLE OFFICIELLE RECTIFIÉE</strong> le {d_rect}<br>
             <em>Motif officiel : {m_rect}</em>
         </div>
@@ -554,9 +761,9 @@ def obtenir_html_match(m):
     approbateurs_bloc = ""
     if app_r or app_v:
         approbateurs_bloc = f"""
-        <div style="margin-top: 15px; padding: 12px; background-color: #f1f8e9; border: 1px solid #c8e6c9; border-left: 5px solid #2e7d32; border-radius: 6px;">
-            <h4 style="margin: 0 0 6px 0; color: #1b5e20; font-size: 14px;">✍️ Approbations officielles de la feuille de match :</h4>
-            <div style="font-size: 13px; color: #333;">
+        <div class="approb-container" style="margin-top: 10px; padding: 8px 12px; background-color: #f1f8e9; border: 1px solid #c8e6c9; border-left: 4px solid #2e7d32; border-radius: 6px;">
+            <h4 class="approb-h4" style="margin: 0 0 4px 0; color: #1b5e20; font-size: 13px;">✍️ Approbations officielles de la feuille de match :</h4>
+            <div class="approb-txt" style="font-size: 12px; color: #333;">
                 • Représentant <strong>{nom_rec_disp}</strong> : <u>{app_r or 'Non renseigné'}</u><br>
                 • Représentant <strong>{nom_vis_disp}</strong> : <u>{app_v or 'Non renseigné'}</u>
             </div>
@@ -565,20 +772,26 @@ def obtenir_html_match(m):
 
     if m.get("html_officiel"):
         html_existant = m["html_officiel"]
+        # Injection du style d'impression A4 pour forcer une seule page
+        if "<style>" in html_existant and "</style>" in html_existant:
+            html_existant = re.sub(r"<style>.*?</style>", f"<style>\n{STYLE_PRINT_A4}\n</style>", html_existant, flags=re.DOTALL)
+        elif "</head>" in html_existant:
+            html_existant = html_existant.replace("</head>", f"<style>\n{STYLE_PRINT_A4}\n</style>\n</head>")
+
         if "Armoiries" not in html_existant and "armoiries" not in html_existant:
             logo_b64 = charger_armoiries_base64()
             if logo_b64:
-                logo_td = f'<td style="width: 70px; vertical-align: middle; padding-right: 12px;"><img src="{logo_b64}" alt="Armoiries" style="height: 65px; width: 65px; object-fit: contain; border-radius: 4px;"></td>'
+                logo_td = f'<td class="header-logo-td" style="width: 65px; vertical-align: middle; padding-right: 12px;"><img class="header-logo-img" src="{logo_b64}" alt="Armoiries" style="height: 60px; width: 60px; object-fit: contain; border-radius: 4px;"></td>'
                 html_existant = html_existant.replace(
                     '<td style="vertical-align: middle;">',
-                    f'{logo_td}\n                <td style="vertical-align: middle;">'
+                    f'{logo_td}\n                <td class="header-title" style="vertical-align: middle;">'
                 )
         if m.get("date_rectification") and "FEUILLE OFFICIELLE RECTIFIÉE" not in html_existant:
             html_existant = html_existant.replace('<div style="background-color: #f4f6f9;', f'{rectif_bandeau}\n        <div style="background-color: #f4f6f9;')
         if (app_r or app_v) and "Approbations officielles" not in html_existant:
             html_existant = html_existant.replace(
                 '<table style="width: 100%; border-collapse: collapse; font-size: 14px;">',
-                f'{approbateurs_bloc}\n        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">'
+                f'{approbateurs_bloc}\n        <table class="manches-table" style="width: 100%; border-collapse: collapse; font-size: 14px;">'
             )
         return html_existant
     
@@ -608,16 +821,17 @@ def obtenir_html_match(m):
         pts_rec_j[ja] = pts_rec_j.get(ja, 0) + sa
         pts_vis_j[jb] = pts_vis_j.get(jb, 0) + sb
         
-        color_a = '#1b5e20' if sa == 8 else '#333'
-        color_b = '#1b5e20' if sb == 8 else '#333'
+        bg_color = "#f9fbfd" if num % 2 == 1 else "#ffffff"
+        sa_fmt = f"<strong>{sa}</strong>" if sa == 8 else f"{sa}"
+        sb_fmt = f"<strong>{sb}</strong>" if sb == 8 else f"{sb}"
         
         lignes_html.append(f"""
-            <tr style="border-bottom: 1px solid #ddd; text-align: center;">
-                <td style="padding: 8px;"><strong>Manche {num}</strong></td>
-                <td style="padding: 8px;">{label_a}</td>
-                <td style="padding: 8px; font-weight: bold; color: {color_a};">{sa}</td>
-                <td style="padding: 8px; font-weight: bold; color: {color_b};">{sb}</td>
-                <td style="padding: 8px;">{label_b}</td>
+            <tr style="background-color: {bg_color}; border-bottom: 1px solid #ddd; text-align: center;">
+                <td style="padding: 5px 6px;"><strong>Manche {num}</strong></td>
+                <td style="padding: 5px 6px; text-align: left;">{label_a}</td>
+                <td style="padding: 5px 6px; font-weight: bold; font-size: 13px;">{sa_fmt}</td>
+                <td style="padding: 5px 6px; font-weight: bold; font-size: 13px;">{sb_fmt}</td>
+                <td style="padding: 5px 6px; text-align: left;">{label_b}</td>
             </tr>
         """)
 
@@ -628,78 +842,88 @@ def obtenir_html_match(m):
     logo_b64 = charger_armoiries_base64()
     src_val = logo_b64 if logo_b64 else "cid:armoiries_logo"
     arm_existe = bool(logo_b64 or os.path.isfile(find_armoiries_path()))
-    logo_td = f'<td style="width: 70px; vertical-align: middle; padding-right: 12px;"><img src="{src_val}" alt="Armoiries" style="height: 65px; width: 65px; object-fit: contain; border-radius: 4px;"></td>' if arm_existe else ''
+    logo_td = f'<td class="header-logo-td" style="width: 65px; vertical-align: middle; padding-right: 12px;"><img class="header-logo-img" src="{src_val}" alt="Armoiries" style="height: 60px; width: 60px; object-fit: contain; border-radius: 4px;"></td>' if arm_existe else ''
 
-    html = f"""
-    <html>
-    <head>
-        <meta charset="utf-8">
-        <title>Feuille de match officielle - Ligue de billard Boule en main</title>
-        <style>
-            @media print {{
-                .no-print {{ display: none !important; }}
-                body {{ margin: 10mm; font-size: 11pt; }}
-            }}
-        </style>
-    </head>
-    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #222; margin: 0; padding: 10px;">
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Feuille de match officielle - Ligue de billard Boule en main</title>
+    <style>
+        {STYLE_PRINT_A4}
+        body {{
+            font-family: Arial, sans-serif;
+            line-height: 1.5;
+            color: #222;
+            margin: 0;
+            padding: 10px;
+        }}
+        .fiche-a4 {{
+            max-width: 850px;
+            margin: 0 auto;
+        }}
+    </style>
+</head>
+<body>
+    <div class="fiche-a4">
         <div class="no-print" style="text-align: right; margin-bottom: 10px;">
             <button onclick="window.print()" style="background-color: #0b3c5d; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer;">
-                🖨️ Imprimer cette feuille
+                🖨️ Imprimer cette feuille (A4)
             </button>
         </div>
-        <table style="width: 100%; border-bottom: 2px solid #0b3c5d; padding-bottom: 8px; margin-bottom: 12px; border-collapse: collapse;">
+        <table class="header-table" style="width: 100%; border-bottom: 2px solid #0b3c5d; padding-bottom: 6px; margin-bottom: 10px; border-collapse: collapse;">
             <tr>
                 {logo_td}
-                <td style="vertical-align: middle;">
-                    <h2 style="color: #0b3c5d; margin: 0; font-size: 20px;">🎱 Ligue de billard Boule en main</h2>
-                    <div style="color: #555; font-size: 14px; font-weight: bold; margin-top: 2px;">Feuille de match officielle</div>
+                <td class="header-title" style="vertical-align: middle;">
+                    <h2 class="header-title-h2" style="color: #0b3c5d; margin: 0; font-size: 19px;">🎱 Ligue de billard Boule en main</h2>
+                    <div class="header-title-sub" style="color: #555; font-size: 13px; font-weight: bold; margin-top: 2px;">Feuille de match officielle</div>
                 </td>
             </tr>
         </table>
-        <p><strong>Date :</strong> {date_str}</p>
+        <p class="date-para" style="margin: 4px 0 8px 0; font-size: 13px;"><strong>Date :</strong> {date_str}</p>
         {rectif_bandeau}
-        <div style="background-color: #f4f6f9; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-            <h3 style="margin: 0; color: #1e3d59;">Résultat final du match :</h3>
-            <p style="font-size: 18px; margin: 8px 0;">
-                <strong>{rec}</strong> : <span style="font-size: 22px; color: #0d47a1;">{tot_rec}</span> pts<br>
-                <strong>{vis}</strong> : <span style="font-size: 22px; color: #0d47a1;">{tot_vis}</span> pts
+        <div class="result-container" style="background-color: #f4f6f9; padding: 12px 14px; border-radius: 8px; margin-bottom: 12px;">
+            <h3 class="result-h3" style="margin: 0; color: #1e3d59; font-size: 15px;">Résultat final du match :</h3>
+            <p class="result-scores" style="font-size: 16px; margin: 6px 0;">
+                <strong>{rec}</strong> : <span class="result-scores-pts" style="font-size: 20px; color: #0d47a1;">{tot_rec}</span> pts &nbsp;|&nbsp;
+                <strong>{vis}</strong> : <span class="result-scores-pts" style="font-size: 20px; color: #0d47a1;">{tot_vis}</span> pts
             </p>
-            <p style="font-weight: bold; color: #2e7d32; font-size: 16px;">
+            <p class="result-winner" style="font-weight: bold; color: #2e7d32; font-size: 14px; margin: 4px 0;">
                 Vainqueur : {vainqueur}
             </p>
-            <div style="margin-top: 15px; display: flex; gap: 20px;">
-                <div style="flex: 1; background: white; padding: 10px; border-radius: 6px; border: 1px solid #ddd;">
-                    <h4 style="margin: 0 0 8px 0; color: #0b3c5d;">Points individuels — {rec} :</h4>
-                    <ul style="margin: 0; padding-left: 20px; font-size: 14px;">{li_rec}</ul>
+            <div class="joueurs-flex" style="margin-top: 10px; display: flex; gap: 14px;">
+                <div class="joueur-card" style="flex: 1; background: white; padding: 8px 10px; border-radius: 6px; border: 1px solid #ddd;">
+                    <h4 style="margin: 0 0 6px 0; color: #0b3c5d; font-size: 13px;">Points individuels — {rec} :</h4>
+                    <ul style="margin: 0; padding-left: 18px; font-size: 13px;">{li_rec}</ul>
                 </div>
-                <div style="flex: 1; background: white; padding: 10px; border-radius: 6px; border: 1px solid #ddd;">
-                    <h4 style="margin: 0 0 8px 0; color: #0b3c5d;">Points individuels — {vis} :</h4>
-                    <ul style="margin: 0; padding-left: 20px; font-size: 14px;">{li_vis}</ul>
+                <div class="joueur-card" style="flex: 1; background: white; padding: 8px 10px; border-radius: 6px; border: 1px solid #ddd;">
+                    <h4 style="margin: 0 0 6px 0; color: #0b3c5d; font-size: 13px;">Points individuels — {vis} :</h4>
+                    <ul style="margin: 0; padding-left: 18px; font-size: 13px;">{li_vis}</ul>
                 </div>
             </div>
             {approbateurs_bloc}
         </div>
-        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+        <table class="manches-table" style="width: 100%; border-collapse: collapse; font-size: 13px;">
             <thead>
                 <tr style="background-color: #0b3c5d; color: white;">
-                    <th style="padding: 10px;">Manche</th>
-                    <th style="padding: 10px;">Joueur ({rec})</th>
-                    <th style="padding: 10px;">Pts</th>
-                    <th style="padding: 10px;">Pts</th>
-                    <th style="padding: 10px;">Joueur ({vis})</th>
+                    <th style="padding: 7px 6px;">Manche</th>
+                    <th style="padding: 7px 6px; text-align: left;">Joueur ({rec})</th>
+                    <th style="padding: 7px 6px;">Pts</th>
+                    <th style="padding: 7px 6px;">Pts</th>
+                    <th style="padding: 7px 6px; text-align: left;">Joueur ({vis})</th>
                 </tr>
             </thead>
             <tbody>
                 {''.join(lignes_html)}
             </tbody>
         </table>
-        <p style="font-size: 12px; color: #777; margin-top: 25px;">
+        <p class="footer-note" style="font-size: 11px; color: #777; margin-top: 12px; text-align: center;">
             Feuille générée automatiquement via l'application officielle de saisie - Ligue de billard Boule en main.
         </p>
-    </body>
-    </html>
-    """
+    </div>
+</body>
+</html>
+"""
     return html
 
 def generer_rapport_historique_convivial(historique):
@@ -2255,7 +2479,7 @@ with tab_feuille:
                 st.components.v1.html(
                     f"""
                     <button onclick="lancerImpression()" style="width:100%; height:38px; background-color:#0b3c5d; color:white; border:none; border-radius:6px; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif; font-size:14px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;">
-                        🖨️ Imprimer
+                        🖨️ Imprimer (Page A4)
                     </button>
                     <script>
                     function lancerImpression() {{
@@ -2264,9 +2488,10 @@ with tab_feuille:
                         win.document.write({html_print_data});
                         win.document.close();
                         win.focus();
+                        win.document.title = "Feuille de match officielle - A4";
                         setTimeout(function() {{
                             win.print();
-                        }}, 300);
+                        }}, 350);
                     }}
                     </script>
                     """,
