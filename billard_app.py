@@ -1388,12 +1388,13 @@ if choix_vue != label_direct:
     
     with st.container(border=True):
         st.markdown(f"#### 📜 Feuille officielle archivée — {m_arch.get('date_enregistrement', m_arch.get('date', ''))}")
+        date_slug = str(m_arch.get('date_enregistrement', 'match')).replace('/', '-').replace(' ', '_').replace(':', 'h').replace('à', '')
+        rec_slug = str(m_arch.get('receveur', 'rec')).replace(' ', '_')
+        vis_slug = str(m_arch.get('visiteur', 'vis')).replace(' ', '_')
+
         c_btn1, c_btn2, c_btn3 = st.columns([2, 1, 1])
         c_btn1.info("✉️ **Copie certifiée conforme :** Ce résultat correspond exactement à la feuille de match officielle transmise par courriel lors de la validation.")
         with c_btn2:
-            date_slug = str(m_arch.get('date_enregistrement', 'match')).replace('/', '-').replace(' ', '_').replace(':', 'h').replace('à', '')
-            rec_slug = str(m_arch.get('receveur', 'rec')).replace(' ', '_')
-            vis_slug = str(m_arch.get('visiteur', 'vis')).replace(' ', '_')
             st.download_button(
                 label="📥 Télécharger (HTML)",
                 data=html_arch,
@@ -1424,6 +1425,57 @@ if choix_vue != label_direct:
                 """,
                 height=42
             )
+
+        # Option d'envoi par courriel à une adresse saisie dans un champ adjacent
+        col_m_input, col_m_btn = st.columns([3, 1])
+        with col_m_input:
+            email_dest_saisie = st.text_input(
+                "Adresse courriel du destinataire",
+                placeholder="Entrez une adresse courriel pour recevoir cette feuille (ex: joueur@courriel.com)...",
+                key=f"mail_dest_{date_slug}",
+                label_visibility="collapsed"
+            )
+        with col_m_btn:
+            btn_envoyer_mail = st.button(
+                "📧 Envoyer par courriel",
+                use_container_width=True,
+                key=f"btn_send_{date_slug}",
+                help="Transmettre cette feuille officielle par courriel à l'adresse spécifiée"
+            )
+
+        if btn_envoyer_mail:
+            dest_propre = email_dest_saisie.strip()
+            if not dest_propre or "@" not in dest_propre:
+                st.error("⚠️ Veuillez saisir une adresse courriel valide avant d'envoyer.")
+            else:
+                with st.spinner("Envoi du courriel en cours..."):
+                    cfg_courriel = charger_config_email()
+                    rec_m = m_arch.get("receveur", "Receveur")
+                    vis_m = m_arch.get("visiteur", "Visiteur")
+                    tot_r = m_arch.get("total_receveur", 0)
+                    tot_v = m_arch.get("total_visiteur", 0)
+                    date_m = m_arch.get("date_enregistrement", m_arch.get("date", "Date inconnue"))
+                    
+                    sujet_envoi = f"🎱 Feuille de match : {rec_m} ({tot_r}) vs {vis_m} ({tot_v}) - {date_m}"
+                    texte_envoi = (
+                        f"Feuille de match officielle - Ligue de billard du Saphir\n"
+                        f"Date : {date_m}\n"
+                        f"Rencontre : {rec_m} ({tot_r} pts) vs {vis_m} ({tot_v} pts)\n\n"
+                        f"Veuillez consulter la version HTML de ce courriel pour visualiser la feuille officielle complète."
+                    )
+                    pj = [HISTORIQUE_FILE] if os.path.exists(HISTORIQUE_FILE) else None
+                    succes_envoi, msg_envoi = envoyer_courriel(
+                        dest_propre,
+                        sujet_envoi,
+                        texte_envoi,
+                        html_arch,
+                        cfg_courriel,
+                        pieces_jointes=pj
+                    )
+                if succes_envoi:
+                    st.success(f"✅ Feuille de match transmise avec succès à `{dest_propre}` !")
+                else:
+                    st.error(f"❌ {msg_envoi}")
         
         st.components.v1.html(html_arch, height=650, scrolling=True)
 
