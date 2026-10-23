@@ -312,6 +312,16 @@ def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_j
 
     html = f"""
     <html>
+    <head>
+        <meta charset="utf-8">
+        <title>Feuille de match officielle - Ligue du Saphir</title>
+        <style>
+            @media print {{
+                .no-print {{ display: none !important; }}
+                body {{ margin: 10mm; font-size: 11pt; }}
+            }}
+        </style>
+    </head>
     <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #222;">
         <h2 style="color: #0b3c5d;">🎱 Ligue de billard du Saphir - Feuille de match officielle</h2>
         <p><strong>Date :</strong> {date_str}</p>
@@ -429,7 +439,22 @@ def obtenir_html_match(m):
 
     html = f"""
     <html>
+    <head>
+        <meta charset="utf-8">
+        <title>Feuille de match officielle - Ligue du Saphir</title>
+        <style>
+            @media print {{
+                .no-print {{ display: none !important; }}
+                body {{ margin: 10mm; font-size: 11pt; }}
+            }}
+        </style>
+    </head>
     <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #222; margin: 0; padding: 10px;">
+        <div class="no-print" style="text-align: right; margin-bottom: 10px;">
+            <button onclick="window.print()" style="background-color: #0b3c5d; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer;">
+                🖨️ Imprimer cette feuille
+            </button>
+        </div>
         <h2 style="color: #0b3c5d;">🎱 Ligue de billard du Saphir - Feuille de match officielle</h2>
         <p><strong>Date :</strong> {date_str}</p>
         <div style="background-color: #f4f6f9; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
@@ -1246,7 +1271,7 @@ if not est_editeur:
             
             with st.container(border=True):
                 st.markdown(f"#### 📜 Feuille officielle archivée — {m_arch.get('date_enregistrement', m_arch.get('date', ''))}")
-                c_btn1, c_btn2 = st.columns([3, 1])
+                c_btn1, c_btn2, c_btn3 = st.columns([2, 1, 1])
                 c_btn1.info("✉️ **Copie certifiée conforme :** Ce résultat correspond exactement à la feuille de match officielle transmise par courriel lors de la validation.")
                 with c_btn2:
                     date_slug = str(m_arch.get('date_enregistrement', 'match')).replace('/', '-').replace(' ', '_').replace(':', 'h').replace('à', '')
@@ -1258,6 +1283,28 @@ if not est_editeur:
                         file_name=f"feuille_{rec_slug}_vs_{vis_slug}_{date_slug}.html",
                         mime="text/html",
                         use_container_width=True
+                    )
+                with c_btn3:
+                    html_print_data = json.dumps(html_arch)
+                    st.components.v1.html(
+                        f"""
+                        <button onclick="lancerImpression()" style="width:100%; height:38px; background-color:#0b3c5d; color:white; border:none; border-radius:6px; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif; font-size:14px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;">
+                            🖨️ Imprimer
+                        </button>
+                        <script>
+                        function lancerImpression() {{
+                            var win = window.open('', '_blank');
+                            win.document.open();
+                            win.document.write({html_print_data});
+                            win.document.close();
+                            win.focus();
+                            setTimeout(function() {{
+                                win.print();
+                            }}, 300);
+                        }}
+                        </script>
+                        """,
+                        height=42
                     )
                 
                 st.components.v1.html(html_arch, height=650, scrolling=True)
