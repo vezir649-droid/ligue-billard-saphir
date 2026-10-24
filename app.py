@@ -2228,17 +2228,28 @@ def modal_arborescence_tournoi(tournoi_obj, mode_str="simple"):
 
 def afficher_section_tournoi(mode="simple"):
     """Affiche l'interface complète de configuration ou de déroulement d'un tournoi (Simple ou Double)."""
-    est_spectateur = st.session_state.get("est_spectateur", False)
-    est_editeur = not est_spectateur
+    est_spectateur = st.session_state.get("est_spectateur", False) or not st.session_state.get("authentifie", False)
+    est_editeur = st.session_state.get("authentifie", False) and not st.session_state.get("est_spectateur", False)
 
     tournois_data = charger_tournois_data()
     tournoi = tournois_data.get(mode)
 
-    libelle_mode = "Tournoi en Simple (1 contre 1)" if mode == "simple" else "Tournoi en Double (2 contre 2)"
+    libelle_mode = "Tournoi en Simple (1 contre 1)" if mode == "simple" else "Tournoi en Double / Équipes (2 contre 2)"
     st.markdown(f"### {'👤' if mode == 'simple' else '👥'} {libelle_mode}")
 
-    # 1. CAS OÙ AUCUN TOURNOI N'EST EN COURS : FORMULAIRE DE CRÉATION
+    # 1. CAS OÙ AUCUN TOURNOI N'EST EN COURS : FORMULAIRE DE CRÉATION OU CONSULTATION
     if not tournoi:
+        if not est_editeur:
+            with st.container(border=True):
+                st.markdown(f"#### 👁️ **{libelle_mode} — Mode Consultation**")
+                st.info(
+                    "🔒 **La création et la configuration des tournois sont réservées au marqueur officiel.**\n\n"
+                    "Aucun tournoi n'est actuellement en cours. "
+                    "Dès que le marqueur officiel lancera la compétition, "
+                    "vous pourrez consulter ici en direct l'arborescence des rencontres, les résultats des matchs et le classement."
+                )
+            return
+
         st.caption(f"Configurez les paramètres et inscrivez les participants pour lancer un nouveau {libelle_mode.lower()}.")
         with st.container(border=True):
             col_cfg1, col_cfg2 = st.columns([2, 1])
@@ -2443,7 +2454,11 @@ def afficher_section_tournoi(mode="simple"):
         html_tournoi = generer_html_tournoi(tournoi, mode=mode)
         html_t_json = json.dumps(html_tournoi)
 
-        col_top1, col_top2, col_top3, col_top4 = st.columns([2.2, 1.4, 1.2, 0.9])
+        if est_editeur:
+            col_top1, col_top2, col_top3, col_top4 = st.columns([2.2, 1.4, 1.2, 0.9])
+        else:
+            col_top1, col_top2, col_top3 = st.columns([2.5, 1.4, 1.2])
+
         with col_top1:
             st.markdown(f"#### 🏆 **{titre_t}**")
             badge_statut = "🟢 **En cours**" if statut == "en_cours" else "🏆 **Tournoi Terminé**"
@@ -2452,6 +2467,8 @@ def afficher_section_tournoi(mode="simple"):
             else:
                 format_nom = "Championnat Round-Robin (2 de 3)"
             st.caption(f"Statut : {badge_statut} &nbsp;|&nbsp; Formule : `{format_nom}` &nbsp;|&nbsp; Créé le : {tournoi.get('date_creation', 'N/D')}")
+            if not est_editeur:
+                st.caption("👁️ *Mode Spectateur (Consultation seule)*")
 
         with col_top2:
             if st.button("🌳 Visualiser l'arborescence", key=f"btn_visu_modal_{mode}", type="primary", use_container_width=True, help="Affiche l'arborescence complète, tous les matchs et permet l'impression"):
@@ -2480,15 +2497,16 @@ def afficher_section_tournoi(mode="simple"):
                 height=42
             )
 
-        with col_top4:
-            with st.popover("🔄 Réinitialiser", use_container_width=True, disabled=not est_editeur):
-                st.markdown("### ⚠️ Réinitialisation")
-                st.write("Voulez-vous clôturer ce tournoi et en configurer un nouveau ?")
-                st.caption("Les données actuelles seront effacées pour démarrer une nouvelle compétition.")
-                if st.button("🔴 Confirmer la réinitialisation", type="primary", use_container_width=True, key=f"btn_confirm_reset_{mode}"):
-                    tournois_data[mode] = None
-                    sauvegarder_tournois_data(tournois_data)
-                    st.rerun()
+        if est_editeur:
+            with col_top4:
+                with st.popover("🔄 Réinitialiser", use_container_width=True):
+                    st.markdown("### ⚠️ Réinitialisation")
+                    st.write("Voulez-vous clôturer ce tournoi et en configurer un nouveau ?")
+                    st.caption("Les données actuelles seront effacées pour démarrer une nouvelle compétition.")
+                    if st.button("🔴 Confirmer la réinitialisation", type="primary", use_container_width=True, key=f"btn_confirm_reset_{mode}"):
+                        tournois_data[mode] = None
+                        sauvegarder_tournois_data(tournois_data)
+                        st.rerun()
 
         with st.expander("🌳 Consulter l'arborescence graphique et tous les matchs", expanded=False):
             st.components.v1.html(html_tournoi, height=520, scrolling=True)
@@ -2554,22 +2572,25 @@ def afficher_section_tournoi(mode="simple"):
 
                                 with col_m2:
                                     if not termine and ea != "À déterminer" and eb != "À déterminer":
-                                        col_s1, col_s2, col_s3 = st.columns([1, 1, 1.5])
-                                        with col_s1:
-                                            sc_a_in = st.number_input(f"{ea[:10]}", min_value=0, max_value=m_race, value=0, key=f"sc_a_{mode}_{m_id}")
-                                        with col_s2:
-                                            sc_b_in = st.number_input(f"{eb[:10]}", min_value=0, max_value=m_race, value=0, key=f"sc_b_{mode}_{m_id}")
-                                        with col_s3:
-                                            st.write("")
-                                            if st.button("✅ Valider", key=f"btn_v_{mode}_{m_id}", use_container_width=True, disabled=not est_editeur):
-                                                if sc_a_in == sc_b_in:
-                                                    st.error("Match nul impossible.")
-                                                elif sc_a_in < m_race and sc_b_in < m_race:
-                                                    st.warning(f"Un joueur doit remporter {m_race} manches ({m_fmt}).")
-                                                else:
-                                                    actualiser_score_elimination(tournoi, tour_num, m_id, sc_a_in, sc_b_in)
-                                                    sauvegarder_tournois_data(tournois_data)
-                                                    st.rerun()
+                                        if est_editeur:
+                                            col_s1, col_s2, col_s3 = st.columns([1, 1, 1.5])
+                                            with col_s1:
+                                                sc_a_in = st.number_input(f"{ea[:10]}", min_value=0, max_value=m_race, value=0, key=f"sc_a_{mode}_{m_id}")
+                                            with col_s2:
+                                                sc_b_in = st.number_input(f"{eb[:10]}", min_value=0, max_value=m_race, value=0, key=f"sc_b_{mode}_{m_id}")
+                                            with col_s3:
+                                                st.write("")
+                                                if st.button("✅ Valider", key=f"btn_v_{mode}_{m_id}", use_container_width=True):
+                                                    if sc_a_in == sc_b_in:
+                                                        st.error("Match nul impossible.")
+                                                    elif sc_a_in < m_race and sc_b_in < m_race:
+                                                        st.warning(f"Un joueur doit remporter {m_race} manches ({m_fmt}).")
+                                                    else:
+                                                        actualiser_score_elimination(tournoi, tour_num, m_id, sc_a_in, sc_b_in)
+                                                        sauvegarder_tournois_data(tournois_data)
+                                                        st.rerun()
+                                        else:
+                                            st.caption("⏳ *Rencontre en attente de score (saisie réservée au marqueur)*")
 
         else:
             # FORMAT ROUND-ROBIN
@@ -2623,25 +2644,28 @@ def afficher_section_tournoi(mode="simple"):
 
                     with col_rm2:
                         if not termine:
-                            col_s1, col_s2, col_s3 = st.columns([1, 1, 1.5])
-                            with col_s1:
-                                sc_a_in = st.number_input(f"{ea[:10]}", min_value=0, max_value=rr_race, value=0, key=f"rr_a_{mode}_{m_id}")
-                            with col_s2:
-                                sc_b_in = st.number_input(f"{eb[:10]}", min_value=0, max_value=rr_race, value=0, key=f"rr_b_{mode}_{m_id}")
-                            with col_s3:
-                                st.write("")
-                                if st.button("✅ Valider", key=f"btn_rr_{mode}_{m_id}", use_container_width=True, disabled=not est_editeur):
-                                    if sc_a_in == sc_b_in:
-                                        st.error("Match nul impossible.")
-                                    elif sc_a_in < rr_race and sc_b_in < rr_race:
-                                        st.warning(f"Un joueur doit remporter {rr_race} manches ({rr_fmt}).")
-                                    else:
-                                        m["score_a"] = sc_a_in
-                                        m["score_b"] = sc_b_in
-                                        m["vainqueur"] = ea if sc_a_in > sc_b_in else eb
-                                        m["termine"] = True
-                                        sauvegarder_tournois_data(tournois_data)
-                                        st.rerun()
+                            if est_editeur:
+                                col_s1, col_s2, col_s3 = st.columns([1, 1, 1.5])
+                                with col_s1:
+                                    sc_a_in = st.number_input(f"{ea[:10]}", min_value=0, max_value=rr_race, value=0, key=f"rr_a_{mode}_{m_id}")
+                                with col_s2:
+                                    sc_b_in = st.number_input(f"{eb[:10]}", min_value=0, max_value=rr_race, value=0, key=f"rr_b_{mode}_{m_id}")
+                                with col_s3:
+                                    st.write("")
+                                    if st.button("✅ Valider", key=f"btn_rr_{mode}_{m_id}", use_container_width=True):
+                                        if sc_a_in == sc_b_in:
+                                            st.error("Match nul impossible.")
+                                        elif sc_a_in < rr_race and sc_b_in < rr_race:
+                                            st.warning(f"Un joueur doit remporter {rr_race} manches ({rr_fmt}).")
+                                        else:
+                                            m["score_a"] = sc_a_in
+                                            m["score_b"] = sc_b_in
+                                            m["vainqueur"] = ea if sc_a_in > sc_b_in else eb
+                                            m["termine"] = True
+                                            sauvegarder_tournois_data(tournois_data)
+                                            st.rerun()
+                            else:
+                                st.caption("⏳ *Rencontre en attente de score (saisie réservée au marqueur)*")
 
             if tous_termines and statut != "termine" and classement_rr:
                 tournoi["statut"] = "termine"
