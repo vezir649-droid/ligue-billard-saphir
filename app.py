@@ -743,6 +743,7 @@ def charger_historique_matchs():
                     return data
         except Exception:
             return []
+    return []
 
 def verifier_match_deja_valide(equipe_rec, equipe_vis, matchs_actuels, historique):
     """Vérifie si le match actuellement affiché a déjà été validé et archivé."""
@@ -3323,7 +3324,7 @@ with tab_feuille:
     label_direct = "🔴 Saisie du match en direct (En cours)" if not est_spectateur else "🔴 Match en direct (En cours)"
     options_matchs = [label_direct]
     mapping_matchs = {}
-    for m in reversed(historique_matchs):
+    for m in reversed(historique_matchs or []):
         date_m = m.get("date_enregistrement", m.get("date", "Date inconnue"))
         rec_m = m.get("receveur", "Receveur")
         vis_m = m.get("visiteur", "Visiteur")
