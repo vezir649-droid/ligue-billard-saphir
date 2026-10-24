@@ -6,7 +6,7 @@ import re
 import smtplib
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from email.mime.application import MIMEApplication
 from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
@@ -1424,7 +1424,77 @@ def obtenir_toutes_les_equipes_tournoi():
         return sorted(list(eq_data.keys()))
     return ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel"]
 
-def generer_arbre_elimination(participants, race_prelim=2, race_finale=3, titre="Tournoi"):
+def planifier_horaires_elimination(tours, heure_debut="09:00", duree_min=30, nb_tables=2):
+    """
+    Planifie les heures approximatives de début de chaque match et attribue les tables (1 ou 2).
+    Déroulement en une seule journée débutant à l'heure spécifiée (par défaut 9h00 a.m.).
+    """
+    try:
+        cur_dt = datetime.strptime(heure_debut.strip(), "%H:%M")
+    except Exception:
+        cur_dt = datetime.strptime("09:00", "%H:%M")
+
+    duree = timedelta(minutes=int(duree_min))
+
+    for t in tours:
+        matchs = t.get("matchs", [])
+        if not matchs:
+            continue
+
+        round_start_dt = cur_dt
+        if int(nb_tables) >= 2:
+            # 2 tables : 2 matchs en parallèle à chaque créneau
+            for i, m in enumerate(matchs):
+                vague = i // 2
+                table_num = 1 if (i % 2 == 0) else 2
+                m_dt = round_start_dt + vague * duree
+                m["heure_estimee"] = m_dt.strftime("%Hh%M")
+                m["table"] = f"Table {table_num}"
+                m["table_courte"] = f"T{table_num}"
+            nb_vagues = (len(matchs) + 1) // 2
+            cur_dt = round_start_dt + nb_vagues * duree
+        else:
+            # 1 seule table disponible : matchs les uns après les autres
+            for i, m in enumerate(matchs):
+                m_dt = round_start_dt + i * duree
+                m["heure_estimee"] = m_dt.strftime("%Hh%M")
+                m["table"] = "Table 1"
+                m["table_courte"] = "T1"
+            cur_dt = round_start_dt + len(matchs) * duree
+
+    heure_fin = cur_dt.strftime("%Hh%M")
+    return heure_fin
+
+def planifier_horaires_round_robin(matchs, heure_debut="09:00", duree_min=30, nb_tables=2):
+    """Planifie les horaires pour un championnat round-robin sur 1 ou 2 tables."""
+    try:
+        cur_dt = datetime.strptime(heure_debut.strip(), "%H:%M")
+    except Exception:
+        cur_dt = datetime.strptime("09:00", "%H:%M")
+
+    duree = timedelta(minutes=int(duree_min))
+
+    if int(nb_tables) >= 2:
+        for i, m in enumerate(matchs):
+            vague = i // 2
+            table_num = 1 if (i % 2 == 0) else 2
+            m_dt = cur_dt + vague * duree
+            m["heure_estimee"] = m_dt.strftime("%Hh%M")
+            m["table"] = f"Table {table_num}"
+            m["table_courte"] = f"T{table_num}"
+        nb_vagues = (len(matchs) + 1) // 2
+        heure_fin = (cur_dt + nb_vagues * duree).strftime("%Hh%M")
+    else:
+        for i, m in enumerate(matchs):
+            m_dt = cur_dt + i * duree
+            m["heure_estimee"] = m_dt.strftime("%Hh%M")
+            m["table"] = "Table 1"
+            m["table_courte"] = "T1"
+        heure_fin = (cur_dt + len(matchs) * duree).strftime("%Hh%M")
+
+    return heure_fin
+
+def generer_arbre_elimination(participants, race_prelim=2, race_finale=3, titre="Tournoi", heure_debut="09:00", duree_min=30, nb_tables=2):
     """
     Génère un arbre à élimination directe strict SANS AUCUN PASSE-DROIT au premier tour.
     Tous les participants (simples ou équipes) s'affrontent dès le premier tour.
@@ -1537,6 +1607,8 @@ def generer_arbre_elimination(participants, race_prelim=2, race_finale=3, titre=
             "matchs": m_list
         })
 
+    heure_fin = planifier_horaires_elimination(final_tours, heure_debut=heure_debut, duree_min=duree_min, nb_tables=nb_tables)
+
     return {
         "titre": titre,
         "date_creation": datetime.now().strftime("%d/%m/%Y à %H:%M"),
@@ -1546,6 +1618,10 @@ def generer_arbre_elimination(participants, race_prelim=2, race_finale=3, titre=
         "participants": p_liste,
         "total_tours": total_tours,
         "tours": final_tours,
+        "heure_debut": heure_debut,
+        "duree_match_min": duree_min,
+        "nb_tables": nb_tables,
+        "heure_fin_estimee": heure_fin,
         "statut": "en_cours",
         "vainqueur_final": None,
         "finaliste": None
@@ -1613,7 +1689,7 @@ def actualiser_score_elimination(tournoi, tour_num, match_id, score_a, score_b):
         tournoi["statut"] = "termine"
     return True
 
-def generer_round_robin(participants, race_to=2, titre="Tournoi"):
+def generer_round_robin(participants, race_to=2, titre="Tournoi", heure_debut="09:00", duree_min=30, nb_tables=2):
     """Génère un championnat toutes rondes (Round-Robin). Format officiel : 2 de 3."""
     p_liste = list(participants)
     random.shuffle(p_liste)
@@ -1634,6 +1710,8 @@ def generer_round_robin(participants, race_to=2, titre="Tournoi"):
                 "vainqueur": None
             })
             m_idx += 1
+    heure_fin = planifier_horaires_round_robin(matchs, heure_debut=heure_debut, duree_min=duree_min, nb_tables=nb_tables)
+
     return {
         "titre": titre,
         "date_creation": datetime.now().strftime("%d/%m/%Y à %H:%M"),
@@ -1642,6 +1720,10 @@ def generer_round_robin(participants, race_to=2, titre="Tournoi"):
         "format_label": fmt_label,
         "participants": p_liste,
         "matchs": matchs,
+        "heure_debut": heure_debut,
+        "duree_match_min": duree_min,
+        "nb_tables": nb_tables,
+        "heure_fin_estimee": heure_fin,
         "statut": "en_cours",
         "vainqueur_final": None,
         "finaliste": None
@@ -1739,11 +1821,15 @@ def generer_html_tournoi(tournoi, mode="simple"):
                 win_b = "winner" if (termine and vainq == eb) else ""
                 card_done = "is-done" if termine else ""
 
+                m_h = m.get("heure_estimee", "")
+                m_t_court = m.get("table_courte", "")
+                h_badge = f'<span style="color: #0b3c5d; font-weight: bold;">⏰ {m_h} [{m_t_court}]</span>' if m_h else f'<span>{m_fmt}</span>'
+
                 cards.append(f"""
                 <div class="bracket-card {card_done}">
                     <div class="card-header">
-                        <span>{m_id}</span>
-                        <span>{m_fmt}</span>
+                        <span>{m_id} • {m_fmt}</span>
+                        {h_badge}
                     </div>
                     <div class="card-body">
                         <div class="player-row {win_a}">
@@ -1850,6 +1936,21 @@ def generer_html_tournoi(tournoi, mode="simple"):
         </div>
         """
 
+    h_deb = tournoi.get("heure_debut", "09:00")
+    h_fin = tournoi.get("heure_fin_estimee", "")
+    nb_tab = tournoi.get("nb_tables", 2)
+    duree_tab = tournoi.get("duree_match_min", 30)
+    tab_str = f"{nb_tab} table{'s' if nb_tab > 1 else ''}"
+    horaire_html = f"&nbsp;|&nbsp; ⏰ <strong>Horaire (1 journée) :</strong> {h_deb} à ~{h_fin}" if h_fin else f"&nbsp;|&nbsp; ⏰ <strong>Début :</strong> {h_deb}"
+
+    html_header_p = f"""
+    <p class="date-para" style="margin: 2px 0 4px 0; font-size: 10px;">
+        <strong>Date :</strong> {date_t} {horaire_html} &nbsp;|&nbsp; 
+        <strong>Disponibilité :</strong> {tab_str} (~{duree_tab} min/match) &nbsp;|&nbsp; 
+        <strong>Format :</strong> {format_str} &nbsp;|&nbsp; 
+        <strong>Participants :</strong> {len(tournoi.get('participants', []))}
+    </p>
+    """
     html = f"""<!DOCTYPE html>
 <html>
 <head>
@@ -2139,11 +2240,7 @@ def generer_html_tournoi(tournoi, mode="simple"):
                 </td>
             </tr>
         </table>
-        <p class="date-para" style="margin: 2px 0 4px 0; font-size: 10px;">
-            <strong>Date :</strong> {date_t} &nbsp;|&nbsp; 
-            <strong>Format :</strong> {format_str} &nbsp;|&nbsp; 
-            <strong>Participants :</strong> {len(tournoi.get('participants', []))}
-        </p>
+        {html_header_p}
         {podium_html}
         {arborescence_html}
         <p class="footer-note" style="font-size: 8px; color: #777; margin-top: 6px; text-align: center;">
@@ -2250,6 +2347,35 @@ def afficher_section_tournoi(mode="simple"):
                     "🔹 **Préliminaires :** 2 de 3 *(premier à 2)*\n\n"
                     "🏆 **Grande Finale :** 3 de 5 *(premier à 3)*\n\n"
                     "🔄 **Round-Robin :** 2 de 3"
+                )
+
+            st.markdown("##### 📅 Organisation, Disponibilité des tables & Horaires (1 seule journée)")
+            col_hor1, col_hor2, col_hor3 = st.columns([1.5, 1.2, 1.3])
+            with col_hor1:
+                choix_tables = st.radio(
+                    "Tables de billard disponibles :",
+                    ["🎱 2 tables (Recommandé - 2 matchs en parallèle)", "🎱 1 table (Matchs en alternance)"],
+                    index=0,
+                    key=f"tournoi_tables_{mode}",
+                    help="Si 2 tables sont disponibles, 2 matchs se jouent en simultané. Si 1 table, les matchs se déroulent en alternance."
+                )
+                nb_tables_saisi = 2 if "2 tables" in choix_tables else 1
+            with col_hor2:
+                heure_debut_str = st.selectbox(
+                    "Heure de début du tournoi :",
+                    ["09:00", "08:30", "09:30", "10:00", "13:00"],
+                    index=0,
+                    key=f"tournoi_h_deb_{mode}",
+                    help="Les tournois se déroulent en une seule journée et débutent à 9h a.m."
+                )
+            with col_hor3:
+                duree_min_saisie = st.selectbox(
+                    "Durée estimée par match :",
+                    [30, 25, 35, 40, 45],
+                    index=0,
+                    format_func=lambda x: f"{x} minutes",
+                    key=f"tournoi_duree_{mode}",
+                    help="Durée estimée d'un match (30 minutes par défaut)."
                 )
 
             st.divider()
@@ -2413,9 +2539,24 @@ def afficher_section_tournoi(mode="simple"):
             if btn_lancer:
                 format_slug = "elimination" if is_elim else "round_robin"
                 if format_slug == "elimination":
-                    t_cree = generer_arbre_elimination(participants_finaux, race_prelim=2, race_finale=3, titre=titre_saisi)
+                    t_cree = generer_arbre_elimination(
+                        participants_finaux,
+                        race_prelim=2,
+                        race_finale=3,
+                        titre=titre_saisi,
+                        heure_debut=heure_debut_str,
+                        duree_min=duree_min_saisie,
+                        nb_tables=nb_tables_saisi
+                    )
                 else:
-                    t_cree = generer_round_robin(participants_finaux, race_to=2, titre=titre_saisi)
+                    t_cree = generer_round_robin(
+                        participants_finaux,
+                        race_to=2,
+                        titre=titre_saisi,
+                        heure_debut=heure_debut_str,
+                        duree_min=duree_min_saisie,
+                        nb_tables=nb_tables_saisi
+                    )
 
                 if t_cree:
                     tournois_data[mode] = t_cree
@@ -2449,7 +2590,16 @@ def afficher_section_tournoi(mode="simple"):
                 format_nom = "Élimination directe (Préliminaires 2 de 3 • Finale 3 de 5)"
             else:
                 format_nom = "Championnat Round-Robin (2 de 3)"
-            st.caption(f"Statut : {badge_statut} &nbsp;|&nbsp; Formule : `{format_nom}` &nbsp;|&nbsp; Créé le : {tournoi.get('date_creation', 'N/D')}")
+
+            h_deb = tournoi.get("heure_debut", "09:00")
+            h_fin = tournoi.get("heure_fin_estimee", "")
+            nb_t = tournoi.get("nb_tables", 2)
+            duree_m = tournoi.get("duree_match_min", 30)
+            tables_txt = f"{nb_t} table{'s' if nb_t > 1 else ''}"
+            horaire_txt = f" &nbsp;|&nbsp; ⏰ <strong>Horaire (1 journée) :</strong> {h_deb} à ~{h_fin}" if h_fin else f" &nbsp;|&nbsp; ⏰ <strong>Début :</strong> {h_deb}"
+            tables_info = f" &nbsp;|&nbsp; 🎱 <strong>{tables_txt}</strong> (~{duree_m} min/match)"
+
+            st.caption(f"Statut : {badge_statut} &nbsp;|&nbsp; Formule : `{format_nom}`{horaire_txt}{tables_info}", unsafe_allow_html=True)
             if not est_editeur:
                 st.caption("👁️ *Mode Spectateur (Consultation seule)*")
 
@@ -2539,18 +2689,22 @@ def afficher_section_tournoi(mode="simple"):
                             m_race = m.get("race_to", tour_race)
                             m_fmt = m.get("format_label", tour_fmt)
 
+                            m_h = m.get("heure_estimee", "")
+                            m_tbl = m.get("table", "Table 1")
+                            badge_horaire = f"<span style='background:#e8f0fe; color:#0b3c5d; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600;'>⏰ {m_h} • {m_tbl}</span>" if m_h else ""
+
                             with st.container(border=True):
                                 col_m1, col_m2 = st.columns([3, 2])
                                 with col_m1:
                                     if termine:
-                                        st.markdown(f"**{m_id}** : **{ea}** ({sa}) vs ({sb}) **{eb}**")
+                                        st.markdown(f"**{m_id}** : **{ea}** ({sa}) vs ({sb}) **{eb}** &nbsp; {badge_horaire}", unsafe_allow_html=True)
                                         st.success(f"🏆 **Qualifié :** {vainq} *(score final {sa}-{sb})*")
                                     else:
                                         if ea == "À déterminer" or eb == "À déterminer":
-                                            st.markdown(f"**{m_id}** : `{ea}` vs `{eb}`")
+                                            st.markdown(f"**{m_id}** : `{ea}` vs `{eb}` &nbsp; {badge_horaire}", unsafe_allow_html=True)
                                             st.caption("⏳ En attente des vainqueurs du tour précédent...")
                                         else:
-                                            st.markdown(f"**{m_id}** : 🎯 **{ea}** vs **{eb}**")
+                                            st.markdown(f"**{m_id}** : 🎯 **{ea}** vs **{eb}** &nbsp; {badge_horaire}", unsafe_allow_html=True)
                                             st.caption(f"Format officiel : **{m_fmt}** (premier à {m_race} victoires)")
 
                                 with col_m2:
@@ -2613,16 +2767,20 @@ def afficher_section_tournoi(mode="simple"):
                     tous_termines = False
                 sa, sb = m.get("score_a", 0), m.get("score_b", 0)
 
+                m_h = m.get("heure_estimee", "")
+                m_tbl = m.get("table", "Table 1")
+                badge_horaire_rr = f"<span style='background:#e8f0fe; color:#0b3c5d; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600;'>⏰ {m_h} • {m_tbl}</span>" if m_h else ""
+
                 with st.container(border=True):
                     col_rm1, col_rm2 = st.columns([3, 2])
                     rr_race = tournoi.get("race_to", 2)
                     rr_fmt = tournoi.get("format_label", "2 de 3")
                     with col_rm1:
                         if termine:
-                            st.markdown(f"**{m_id}** : **{ea}** ({sa}) vs ({sb}) **{eb}**")
+                            st.markdown(f"**{m_id}** : **{ea}** ({sa}) vs ({sb}) **{eb}** &nbsp; {badge_horaire_rr}", unsafe_allow_html=True)
                             st.success(f"🏆 Vainqueur : {m['vainqueur']} *(score final {sa}-{sb})*")
                         else:
-                            st.markdown(f"**{m_id}** : 🎯 **{ea}** vs **{eb}**")
+                            st.markdown(f"**{m_id}** : 🎯 **{ea}** vs **{eb}** &nbsp; {badge_horaire_rr}", unsafe_allow_html=True)
                             st.caption(f"Format officiel : **{rr_fmt}** (premier à {rr_race} victoires)")
 
                     with col_rm2:
