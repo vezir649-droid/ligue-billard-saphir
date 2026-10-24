@@ -1425,8 +1425,165 @@ def sauvegarder_historique_tournois(historique_list):
         st.error(f"Erreur lors de la sauvegarde de l'historique des tournois : {e}")
         return False
 
-def archiver_tournoi(tournoi_obj, mode="simple"):
-    """Archive un tournoi dans l'historique officiel s'il n'y figure pas déjà ou met à jour sa fiche."""
+def envoyer_courriel_sauvegarde_tournoi(tournoi_obj=None, mode="simple", destinataires_specifiques=None):
+    """Envoie un courriel aux administrateurs définis dans la configuration SMTP avec en attachement le fichier historique_tournois.json."""
+    config_email = charger_config_email()
+    destinataires = (destinataires_specifiques or config_email.get("destinataires", "")).strip()
+
+    if not destinataires:
+        return False, "Aucune adresse d'administrateur configurée dans les paramètres SMTP."
+
+    if not config_email.get("smtp_serveur") or not config_email.get("smtp_expediteur"):
+        return False, "Configuration SMTP incomplète (serveur ou expéditeur manquant)."
+
+    pj = []
+    if os.path.exists(HISTORIQUE_TOURNOIS_FILE):
+        pj.append(HISTORIQUE_TOURNOIS_FILE)
+
+    mode_label = "Simple (1 contre 1)" if mode == "simple" else "Double / Équipes (2 contre 2)"
+    date_now_str = datetime.now().strftime("%d/%m/%Y à %H:%M")
+
+    if tournoi_obj and isinstance(tournoi_obj, dict):
+        titre_t = tournoi_obj.get("titre", "Tournoi officiel")
+        statut_t = tournoi_obj.get("statut", "en_cours")
+        fmt = tournoi_obj.get("format", "elimination")
+        fmt_label = "Élimination directe (Préliminaires 2 de 3 • Finale 3 de 5)" if fmt == "elimination" else "Championnat Round-Robin (2 de 3)"
+        champion = tournoi_obj.get("vainqueur_final") or tournoi_obj.get("champion") or ""
+        finaliste = tournoi_obj.get("finaliste") or ""
+        nb_tables = tournoi_obj.get("nb_tables", 2)
+        h_deb = tournoi_obj.get("heure_debut", "09:00")
+        h_fin = tournoi_obj.get("heure_fin_estimee", "")
+        horaires_desc = f"{h_deb} à ~{h_fin}" if h_fin else f"Début à {h_deb}"
+
+        sujet = f"🏆 [TOURNOI] Sauvegarde officielle : {titre_t} ({mode_label}) - Ligue de billard"
+
+        texte_brut = (
+            f"LIGUE DE BILLARD BOULE EN MAIN - SAUVEGARDE OFFICIELLE DE TOURNOI\n"
+            f"=================================================================\n\n"
+            f"Tournoi : {titre_t}\n"
+            f"Catégorie : {mode_label}\n"
+            f"Formule : {fmt_label}\n"
+            f"Statut : {statut_t.upper()}\n"
+            f"Champion : {champion if champion else 'En cours'}\n"
+            f"Finaliste : {finaliste if finaliste else '-'}\n"
+            f"Tables : {nb_tables} table(s) | Horaires : {horaires_desc}\n"
+            f"Date d'enregistrement : {date_now_str}\n\n"
+            f"Le fichier officiel d'historique des tournois (historique_tournois.json) est attaché en pièce jointe."
+        )
+
+        podium_bloc = ""
+        if champion and champion != "En cours":
+            podium_bloc = f"""
+            <div style="background: #fffde7; border: 2px solid #fbc02d; border-radius: 8px; padding: 12px; margin: 16px 0; text-align: center;">
+                <div style="font-size: 16px; font-weight: bold; color: #f57f17;">🥇 Champion Officiel : {champion}</div>
+                {f'<div style="font-size: 14px; color: #555; margin-top: 5px;">🥈 Finaliste : {finaliste}</div>' if finaliste and finaliste != '-' else ''}
+            </div>
+            """
+
+        html_contenu = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px; color: #222;">
+    <div style="max-width: 650px; margin: 0 auto; background: #ffffff; border-radius: 8px; border: 1px solid #ddd; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.06);">
+        <div style="background-color: #0b3c5d; color: #ffffff; padding: 18px 24px; text-align: center;">
+            <h2 style="margin: 0; font-size: 20px;">🎱 Ligue de billard Boule en main</h2>
+            <p style="margin: 6px 0 0 0; font-size: 14px; opacity: 0.9;">Sauvegarde & Archivage Officiel de Tournoi</p>
+        </div>
+        <div style="padding: 24px;">
+            <p style="font-size: 15px; margin-top: 0;">Bonjour,</p>
+            <p style="font-size: 14px; line-height: 1.5;">
+                Une sauvegarde officielle du tournoi suivant a été effectuée dans l'application :
+            </p>
+            <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;">
+                <tr style="border-bottom: 1px solid #eee;">
+                    <td style="padding: 8px; font-weight: bold; color: #0b3c5d; width: 35%;">Nom du tournoi :</td>
+                    <td style="padding: 8px; font-weight: 600;">{titre_t}</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #eee; background-color: #fbfbfb;">
+                    <td style="padding: 8px; font-weight: bold; color: #0b3c5d;">Catégorie :</td>
+                    <td style="padding: 8px;">{mode_label}</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #eee;">
+                    <td style="padding: 8px; font-weight: bold; color: #0b3c5d;">Formule :</td>
+                    <td style="padding: 8px;">{fmt_label}</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #eee; background-color: #fbfbfb;">
+                    <td style="padding: 8px; font-weight: bold; color: #0b3c5d;">Statut :</td>
+                    <td style="padding: 8px; font-weight: 600; color: {'#2e7d32' if statut_t == 'termine' else '#1565c0'};">{statut_t.upper()}</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #eee;">
+                    <td style="padding: 8px; font-weight: bold; color: #0b3c5d;">Tables & Horaires :</td>
+                    <td style="padding: 8px;">{nb_tables} table{'s' if nb_tables > 1 else ''} • {horaires_desc}</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #eee; background-color: #fbfbfb;">
+                    <td style="padding: 8px; font-weight: bold; color: #0b3c5d;">Date d'enregistrement :</td>
+                    <td style="padding: 8px;">{date_now_str}</td>
+                </tr>
+            </table>
+
+            {podium_bloc}
+
+            <div style="background-color: #e8f4fd; border-left: 4px solid #1976d2; padding: 12px 16px; border-radius: 4px; margin: 18px 0; font-size: 13px; color: #0d47a1;">
+                📎 <strong>Fichier attaché :</strong> Le fichier officiel <code>historique_tournois.json</code> contenant la conservation complète de tous les tournois est joint à ce courriel.
+            </div>
+
+            <p style="font-size: 13px; color: #666; margin-bottom: 0;">
+                Ce message a été généré automatiquement lors de la sauvegarde du tournoi.
+            </p>
+        </div>
+        <div style="background-color: #f1f3f5; padding: 12px 24px; text-align: center; font-size: 12px; color: #777; border-top: 1px solid #eee;">
+            Ligue de billard Boule en main • Salle Le Saphir
+        </div>
+    </div>
+</body>
+</html>"""
+    else:
+        nb_tournois = len(charger_historique_tournois())
+        sujet = f"🏆 [HISTORIQUE] Sauvegarde officielle des tournois ({nb_tournois} tournoi{'s' if nb_tournois > 1 else ''}) - Ligue de billard"
+        texte_brut = (
+            f"LIGUE DE BILLARD BOULE EN MAIN - HISTORIQUE OFFICIEL DES TOURNOIS\n"
+            f"===============================================================\n\n"
+            f"Nombre de tournois enregistrés : {nb_tournois}\n"
+            f"Date de transmission : {date_now_str}\n\n"
+            f"Le fichier complet (historique_tournois.json) est attaché en pièce jointe."
+        )
+        html_contenu = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px; color: #222;">
+    <div style="max-width: 650px; margin: 0 auto; background: #ffffff; border-radius: 8px; border: 1px solid #ddd; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.06);">
+        <div style="background-color: #0b3c5d; color: #ffffff; padding: 18px 24px; text-align: center;">
+            <h2 style="margin: 0; font-size: 20px;">🎱 Ligue de billard Boule en main</h2>
+            <p style="margin: 6px 0 0 0; font-size: 14px; opacity: 0.9;">Historique Complet des Tournois</p>
+        </div>
+        <div style="padding: 24px;">
+            <p style="font-size: 15px; margin-top: 0;">Bonjour,</p>
+            <p style="font-size: 14px; line-height: 1.5;">
+                Veuillez trouver ci-joint le fichier d'historique officiel complet de tous les tournois enregistrés dans l'application ({nb_tournois} tournoi{'s' if nb_tournois > 1 else ''} au total).
+            </p>
+            <div style="background-color: #e8f4fd; border-left: 4px solid #1976d2; padding: 12px 16px; border-radius: 4px; margin: 18px 0; font-size: 13px; color: #0d47a1;">
+                📎 <strong>Fichier attaché :</strong> <code>historique_tournois.json</code> ({nb_tournois} tournoi{'s' if nb_tournois > 1 else ''} archivé{'s' if nb_tournois > 1 else ''}).
+            </div>
+            <p style="font-size: 12px; color: #888;">Généré le {date_now_str} par l'application officielle de billard.</p>
+        </div>
+        <div style="background-color: #f1f3f5; padding: 12px 24px; text-align: center; font-size: 12px; color: #777; border-top: 1px solid #eee;">
+            Ligue de billard Boule en main • Salle Le Saphir
+        </div>
+    </div>
+</body>
+</html>"""
+
+    return envoyer_courriel(
+        destinataires,
+        sujet,
+        texte_brut,
+        html_contenu,
+        config_email,
+        pieces_jointes=pj
+    )
+
+def archiver_tournoi(tournoi_obj, mode="simple", notifier_admin=True):
+    """Archive un tournoi dans l'historique officiel et envoie un courriel aux administrateurs définis dans SMTP avec en pièce jointe le fichier historique_tournois.json."""
     if not tournoi_obj or not isinstance(tournoi_obj, dict):
         return False
 
@@ -1458,6 +1615,20 @@ def archiver_tournoi(tournoi_obj, mode="simple"):
         historique.insert(0, archive_item)
 
     sauvegarder_historique_tournois(historique)
+
+    if notifier_admin:
+        try:
+            succes, msg = envoyer_courriel_sauvegarde_tournoi(archive_item, mode=mode)
+            try:
+                st.session_state["dernier_envoi_tournoi_statut"] = (succes, msg)
+            except Exception:
+                pass
+        except Exception as e:
+            try:
+                st.session_state["dernier_envoi_tournoi_statut"] = (False, str(e))
+            except Exception:
+                pass
+
     return True
 
 def supprimer_tournoi_historique(id_archive):
@@ -2679,6 +2850,14 @@ def afficher_section_tournoi(mode="simple"):
             tables_info = f" &nbsp;|&nbsp; 🎱 <strong>{tables_txt}</strong> (~{duree_m} min/match)"
 
             st.caption(f"Statut : {badge_statut} &nbsp;|&nbsp; Formule : `{format_nom}`{horaire_txt}{tables_info}", unsafe_allow_html=True)
+            if "dernier_envoi_tournoi_statut" in st.session_state:
+                succes_env_t, msg_env_t = st.session_state.pop("dernier_envoi_tournoi_statut")
+                if succes_env_t:
+                    st.success("📧 Notification transmise aux administrateurs avec `historique_tournois.json` en pièce jointe !")
+                else:
+                    cfg_v = charger_config_email()
+                    if cfg_v.get("destinataires") and cfg_v.get("smtp_expediteur"):
+                        st.info(f"ℹ️ Info courriel administrateurs : {msg_env_t}")
             if not est_editeur:
                 st.caption("👁️ *Mode Spectateur (Consultation seule)*")
 
@@ -2711,20 +2890,24 @@ def afficher_section_tournoi(mode="simple"):
 
         if est_editeur:
             with col_top4:
-                with st.popover("🔄 Réinitialiser / Clôturer", use_container_width=True):
-                    st.markdown("### ⚠️ Clôture & Réinitialisation")
-                    st.write("Voulez-vous clôturer ce tournoi et en configurer un nouveau ?")
-                    st.caption("✅ Ce tournoi sera automatiquement archivé et conservé dans l'historique officiel.")
+                with st.popover("💾 Sauvegarder / Reset", use_container_width=True):
+                    st.markdown("### 💾 Sauvegarde & Clôture")
+                    st.write("Sauvegardez l'état du tournoi ou clôturez-le pour en préparer un nouveau.")
+                    st.caption("✅ Un courriel avec le fichier `historique_tournois.json` en attachement sera automatiquement expédié aux administrateurs définis dans la configuration SMTP.")
                     col_rst1, col_rst2 = st.columns(2)
                     with col_rst1:
-                        if st.button("💾 Archiver seul", use_container_width=True, key=f"btn_arch_only_{mode}"):
-                            archiver_tournoi(tournoi, mode=mode)
-                            st.success("Tournoi archivé dans l'historique !")
+                        if st.button("💾 Sauvegarder & Notifier", use_container_width=True, key=f"btn_arch_only_{mode}"):
+                            with st.spinner("Sauvegarde et transmission du courriel aux administrateurs..."):
+                                archiver_tournoi(tournoi, mode=mode, notifier_admin=True)
+                            st.success("✅ Tournoi sauvegardé et courriel envoyé aux administrateurs avec l'historique en pièce jointe !")
+                            time.sleep(1.0)
+                            st.rerun()
                     with col_rst2:
                         if st.button("🔴 Clôturer & Reset", type="primary", use_container_width=True, key=f"btn_confirm_reset_{mode}"):
-                            archiver_tournoi(tournoi, mode=mode)
-                            tournois_data[mode] = None
-                            sauvegarder_tournois_data(tournois_data)
+                            with st.spinner("Clôture, archivage et notification par courriel..."):
+                                archiver_tournoi(tournoi, mode=mode, notifier_admin=True)
+                                tournois_data[mode] = None
+                                sauvegarder_tournois_data(tournois_data)
                             st.rerun()
 
         with st.expander("🌳 Consulter l'arborescence graphique et tous les matchs", expanded=False):
@@ -2910,8 +3093,19 @@ def afficher_section_historique_tournois():
 
     historique = charger_historique_tournois()
 
-    st.markdown("### 📜 Historique & Archives des Tournois")
-    st.caption("Consultez l'ensemble des tournois passés en Simple et en Double (arborescences, podiums et scores officiels). Accessible aux spectateurs et marqueurs.")
+    col_h_h1, col_h_h2 = st.columns([3, 1.4])
+    with col_h_h1:
+        st.markdown("### 📜 Historique & Archives des Tournois")
+        st.caption("Consultez l'ensemble des tournois passés en Simple et en Double (arborescences, podiums et scores officiels). Accessible aux spectateurs et marqueurs.")
+    with col_h_h2:
+        if est_editeur:
+            if st.button("📧 Envoyer l'historique aux admins", key="btn_send_hist_tournois_mail", use_container_width=True, help="Transmet le fichier historique_tournois.json par courriel aux administrateurs définis dans SMTP"):
+                with st.spinner("Envoi du courriel aux administrateurs..."):
+                    ok_s, msg_s = envoyer_courriel_sauvegarde_tournoi(None)
+                if ok_s:
+                    st.success("✅ Historique envoyé aux administrateurs avec pièce jointe !")
+                else:
+                    st.warning(f"⚠️ {msg_s}")
 
     if not historique:
         with st.container(border=True):
@@ -3002,7 +3196,7 @@ def afficher_section_historique_tournois():
 
     # Rendu du tournoi archivé
     with st.container(border=True):
-        col_dt1, col_dt2, col_dt3 = st.columns([2.5, 1.3, 1.2])
+        col_dt1, col_dt2, col_dt3, col_dt4 = st.columns([2.2, 1.1, 1.2, 0.9])
         with col_dt1:
             st.markdown(f"#### 🏆 **{tournoi_choisi.get('titre', 'Tournoi')}**")
             mode_lbl = "Simple (1 contre 1)" if mode_choisi == "simple" else "Double / Équipes (2 contre 2)"
@@ -3042,7 +3236,17 @@ def afficher_section_historique_tournois():
 
         with col_dt3:
             if est_editeur:
-                with st.popover("🗑️ Supprimer l'archive", use_container_width=True):
+                if st.button("📧 Notifier admins", key=f"btn_mail_arch_{tournoi_choisi.get('id_archive', choix_idx)}", use_container_width=True, help="Envoie ce tournoi et le fichier historique_tournois.json aux administrateurs SMTP"):
+                    with st.spinner("Envoi du courriel aux administrateurs..."):
+                        ok_arch, msg_arch = envoyer_courriel_sauvegarde_tournoi(tournoi_choisi, mode=mode_choisi)
+                    if ok_arch:
+                        st.success("✅ Courriel envoyé avec succès !")
+                    else:
+                        st.warning(f"⚠️ {msg_arch}")
+
+        with col_dt4:
+            if est_editeur:
+                with st.popover("🗑️ Supprimer", use_container_width=True):
                     st.markdown("### ⚠️ Suppression définitive")
                     st.write(f"Supprimer le tournoi **{tournoi_choisi.get('titre')}** de l'historique ?")
                     st.caption("Cette action est irréversible.")
@@ -5285,9 +5489,34 @@ with tab_feuille:
                     with st.expander("👁️ Prévisualiser le rapport convivial avant l'envoi", expanded=False):
                         st.components.v1.html(html_rapport, height=650, scrolling=True)
 
+                st.divider()
+                st.markdown("#### 🏆 Envoyer l'historique officiel des tournois par courriel")
+                st.caption("Expédie le fichier officiel `historique_tournois.json` avec la liste et les résultats de tous les tournois enregistrés aux administrateurs définis dans la configuration SMTP.")
+                hist_t_exp = charger_historique_tournois()
+                col_exp_t1, col_exp_t2 = st.columns(2)
+                col_exp_t1.metric("🏆 Tournois dans l'historique", f"{len(hist_t_exp)} tournoi(s)")
+                dest_def_t = config_email.get("destinataires", "").strip()
+                col_exp_t2.metric("📬 Destinataire(s) SMTP", dest_def_t if dest_def_t else "Non configuré")
+
+                dest_t_input = st.text_input(
+                    "Adresse(s) courriel des administrateurs destinataires :",
+                    value=dest_def_t,
+                    placeholder="Ex: president@ligue.com, marqueur@ligue.com",
+                    key="input_dest_t_export",
+                    help="Par défaut, les adresses des administrateurs enregistrées dans la configuration SMTP ci-dessous."
+                )
+
+                if st.button("📤 Envoyer l'historique des tournois (avec pièce jointe JSON)", type="primary", key="btn_send_export_t_email"):
+                    with st.spinner("Envoi de l'historique des tournois en cours..."):
+                        ok_exp_t, msg_exp_t = envoyer_courriel_sauvegarde_tournoi(None, destinataires_specifiques=dest_t_input.strip())
+                    if ok_exp_t:
+                        st.success(f"✅ {msg_exp_t} (Envoyé à : `{dest_t_input.strip()}` avec `{os.path.basename(HISTORIQUE_TOURNOIS_FILE)}`)")
+                    else:
+                        st.error(f"❌ {msg_exp_t}")
+
             with tab_smtp:
                 st.markdown("#### ⚙️ Configuration du serveur de messagerie (SMTP)")
-                smtp_dest = st.text_input("Destinataire(s) (séparés par virgule)", value=config_email.get("destinataires", ""), key="admin_smtp_dest")
+                smtp_dest = st.text_input("Courriels administrateurs / Destinataire(s) (séparés par virgule)", value=config_email.get("destinataires", ""), key="admin_smtp_dest", help="Adresses qui recevront les résultats officiels des matchs ainsi que les sauvegardes des tournois avec historique_tournois.json en pièce jointe.")
                 col_c1, col_c2 = st.columns(2)
                 smtp_serveur = col_c1.text_input("Serveur SMTP", value=config_email.get("smtp_serveur", "smtp.gmail.com"), key="admin_smtp_serveur")
                 smtp_port = col_c2.number_input("Port SMTP", value=int(config_email.get("smtp_port", 587)), key="admin_smtp_port")
