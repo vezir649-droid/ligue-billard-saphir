@@ -1677,7 +1677,7 @@ def calculer_classement_round_robin(tournoi_rr):
     return classement
 
 def generer_html_tournoi(tournoi, mode="simple"):
-    """Génère la feuille officielle imprimable du tournoi calibrée pour une page A4."""
+    """Génère la feuille officielle imprimable du tournoi avec arborescence complète et tous les matchs."""
     logo_b64 = charger_armoiries_base64()
     src_val = logo_b64 if logo_b64 else "cid:armoiries_logo"
     arm_existe = bool(logo_b64 or os.path.isfile(find_armoiries_path()))
@@ -1686,65 +1686,216 @@ def generer_html_tournoi(tournoi, mode="simple"):
     titre_t = tournoi.get("titre", "Tournoi officiel")
     date_t = tournoi.get("date_creation", "")
     mode_str = "Simple (1 contre 1)" if mode == "simple" else "Double (2 contre 2)"
-    if tournoi.get("format") == "elimination":
-        format_str = "Élimination directe (Préliminaires 2 de 3 • Finale 3 de 5)"
+    is_elim = (tournoi.get("format") == "elimination")
+
+    if is_elim:
+        race_p = tournoi.get("race_prelim", 2)
+        race_f = tournoi.get("race_finale", 3)
+        format_str = f"Élimination directe (Préliminaires {race_p} de {2*race_p-1} • Finale {race_f} de {2*race_f-1})"
     else:
         race_to = tournoi.get("race_to", 2)
         format_str = f"Championnat toutes rondes ({tournoi.get('format_label', '2 de 3')})"
 
+    statut = tournoi.get("statut", "en_cours")
+
     podium_html = ""
-    if tournoi.get("statut") == "termine" and tournoi.get("vainqueur_final"):
+    if statut == "termine" and tournoi.get("vainqueur_final"):
         v_final = tournoi["vainqueur_final"]
         fin_final = tournoi.get("finaliste", "Non spécifié")
         podium_html = f"""
-        <div style="background: linear-gradient(135deg, #fff9c4, #fffde7); border: 2px solid #fbc02d; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; text-align: center;">
-            <div style="font-size: 14px; font-weight: bold; color: #f57f17; margin-bottom: 2px;">🏆 PALMARÈS DU TOURNOI</div>
-            <div style="font-size: 13px; color: #222;">
-                🥇 <strong>Champion :</strong> <span style="font-size: 15px; color: #0b3c5d; font-weight: bold;">{v_final}</span>
+        <div style="background: linear-gradient(135deg, #fff9c4, #fffde7); border: 2px solid #fbc02d; border-radius: 6px; padding: 10px 14px; margin-bottom: 12px; text-align: center;">
+            <div style="font-size: 15px; font-weight: bold; color: #f57f17; margin-bottom: 2px;">🏆 PALMARÈS DU TOURNOI</div>
+            <div style="font-size: 14px; color: #222;">
+                🥇 <strong>Champion :</strong> <span style="font-size: 16px; color: #0b3c5d; font-weight: bold;">{v_final}</span>
                 &nbsp;&nbsp;|&nbsp;&nbsp;
-                🥈 <strong>Finaliste :</strong> <span style="font-size: 13px; color: #555;">{fin_final}</span>
+                🥈 <strong>Finaliste :</strong> <span style="font-size: 14px; color: #555;">{fin_final}</span>
             </div>
         </div>
         """
 
+    # 1. CONSTRUCTION DE L'ARBORESCENCE GRAPHIQUE (BRACKET OU MATRICE)
+    arborescence_html = ""
+    if is_elim:
+        cols_html = []
+        tours = tournoi.get("tours", [])
+        for t in tours:
+            r_name = t.get("nom", f"Tour {t.get('numero', 1)}")
+            r_fmt = t.get("format_label", "")
+            cards = []
+            for m in t.get("matchs", []):
+                m_id = m.get("id", "")
+                m_fmt = m.get("format_label", r_fmt)
+                ea = m.get("equipe_a", "À déterminer")
+                eb = m.get("equipe_b", "À déterminer")
+                sa = m.get("score_a", 0)
+                sb = m.get("score_b", 0)
+                termine = m.get("termine", False)
+                vainq = m.get("vainqueur")
+
+                sc_a_disp = str(sa) if termine else "-"
+                sc_b_disp = str(sb) if termine else "-"
+
+                win_a = "winner" if (termine and vainq == ea) else ""
+                win_b = "winner" if (termine and vainq == eb) else ""
+                card_done = "is-done" if termine else ""
+
+                cards.append(f"""
+                <div class="bracket-card {card_done}">
+                    <div class="card-header">
+                        <span>{m_id}</span>
+                        <span>{m_fmt}</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="player-row {win_a}">
+                            <span class="p-name" title="{ea}">{ea}</span>
+                            <span class="p-score">{sc_a_disp}</span>
+                        </div>
+                        <div class="player-row {win_b}">
+                            <span class="p-name" title="{eb}">{eb}</span>
+                            <span class="p-score">{sc_b_disp}</span>
+                        </div>
+                    </div>
+                </div>
+                """)
+
+            cols_html.append(f"""
+            <div class="bracket-col">
+                <div class="bracket-round-title">
+                    <div class="r-name">{r_name}</div>
+                    <div class="r-fmt">{r_fmt}</div>
+                </div>
+                <div class="bracket-round-matches">
+                    {''.join(cards)}
+                </div>
+            </div>
+            """)
+
+        vainq_final = tournoi.get("vainqueur_final") or "À déterminer"
+        cols_html.append(f"""
+        <div class="bracket-col champion-col">
+            <div class="bracket-round-title" style="background: #f57f17;">
+                <div class="r-name">🏆 Champion</div>
+                <div class="r-fmt">Titre officiel</div>
+            </div>
+            <div class="bracket-round-matches" style="justify-content: center;">
+                <div class="champion-box">
+                    <div class="champ-trophy">🥇</div>
+                    <div class="champ-title">CHAMPION DU TOURNOI</div>
+                    <div class="champ-name">{vainq_final}</div>
+                </div>
+            </div>
+        </div>
+        """)
+
+        arborescence_html = f"""
+        <div class="bracket-section">
+            <h3 style="color: #0b3c5d; margin: 14px 0 8px 0; font-size: 14px; border-bottom: 2px solid #0b3c5d; padding-bottom: 4px; text-transform: uppercase;">
+                🌳 Arborescence officielle du tournoi (Tableau éliminatoire)
+            </h3>
+            <div class="bracket-wrapper">
+                {''.join(cols_html)}
+            </div>
+        </div>
+        """
+    else:
+        # Matrice Round-Robin et confrontations
+        participants = tournoi.get("participants", [])
+        matchs_rr = tournoi.get("matchs", [])
+        scores_matrix = {}
+        for m in matchs_rr:
+            ea, eb = m["equipe_a"], m["equipe_b"]
+            scores_matrix[(ea, eb)] = m
+            scores_matrix[(eb, ea)] = m
+
+        th_parts = "".join([f'<th style="padding: 4px 6px; font-size: 10px; border: 1px solid #c8d9e6;">{p[:12]}</th>' for p in participants])
+        rows_rr_matrix = []
+        for p1 in participants:
+            cells = []
+            for p2 in participants:
+                if p1 == p2:
+                    cells.append('<td style="background: #eef2f5; color: #888; font-weight: bold; border: 1px solid #ddd;">—</td>')
+                else:
+                    m = scores_matrix.get((p1, p2))
+                    if m and m.get("termine"):
+                        sa = m["score_a"] if m["equipe_a"] == p1 else m["score_b"]
+                        sb = m["score_b"] if m["equipe_a"] == p1 else m["score_a"]
+                        bg = "#e8f5e9" if sa > sb else "#ffebee"
+                        fw = "bold" if sa > sb else "normal"
+                        cells.append(f'<td style="background: {bg}; font-weight: {fw}; border: 1px solid #ddd; padding: 4px;">{sa}-{sb}</td>')
+                    else:
+                        cells.append('<td style="border: 1px solid #ddd; color: #aaa; padding: 4px;">-</td>')
+
+            rows_rr_matrix.append(f"""
+            <tr style="text-align: center;">
+                <td style="text-align: left; font-weight: bold; padding: 5px 8px; border: 1px solid #ddd; background: #fafafa;">{p1}</td>
+                {''.join(cells)}
+            </tr>
+            """)
+
+        arborescence_html = f"""
+        <div class="bracket-section">
+            <h3 style="color: #0b3c5d; margin: 14px 0 8px 0; font-size: 14px; border-bottom: 2px solid #0b3c5d; padding-bottom: 4px; text-transform: uppercase;">
+                🔄 Matrice des confrontations directes (Face-à-face)
+            </h3>
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 14px;">
+                    <thead>
+                        <tr style="background: #0b3c5d; color: white; text-align: center;">
+                            <th style="padding: 5px 8px; text-align: left; border: 1px solid #c8d9e6;">Participant</th>
+                            {th_parts}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {''.join(rows_rr_matrix)}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        """
+
+    # 2. LISTE EXHAUSTIVE DE TOUS LES MATCHS DU TOURNOI
     lignes_matchs = []
-    if tournoi.get("format") == "elimination":
+    if is_elim:
         for t in tournoi.get("tours", []):
             nom_tour = t["nom"]
-            fmt_lbl = t.get("format_label", "3 de 5" if t.get("numero") == tournoi.get("total_tours") else "2 de 3")
+            fmt_lbl = t.get("format_label", "2 de 3")
             for m in t["matchs"]:
+                m_id = m.get("id", "")
                 ea = m["equipe_a"]
                 eb = m["equipe_b"]
                 sa = m.get("score_a", 0)
                 sb = m.get("score_b", 0)
+                termine = m.get("termine", False)
                 vainq = m.get("vainqueur")
-                statut_txt = f"🏆 <strong>{vainq}</strong>" if m.get("termine") else "En attente"
-                score_txt = f"{sa} - {sb}" if m.get("termine") else "-"
+                statut_txt = f"🏆 <strong style='color: #1b5e20;'>{vainq}</strong>" if termine else "<span style='color: #888;'>En attente</span>"
+                score_txt = f"<strong>{sa} - {sb}</strong>" if termine else "-"
                 lignes_matchs.append(f"""
                 <tr style="border-bottom: 1px solid #e0e0e0; text-align: center;">
-                    <td style="padding: 4px; font-weight: bold; color: #0b3c5d;">{nom_tour} <span style="font-size: 10px; color: #666; font-weight: normal;">({fmt_lbl})</span></td>
-                    <td style="padding: 4px; text-align: left;">{ea}</td>
-                    <td style="padding: 4px; font-weight: bold; font-size: 12px;">{score_txt}</td>
-                    <td style="padding: 4px; text-align: left;">{eb}</td>
-                    <td style="padding: 4px;">{statut_txt}</td>
+                    <td style="padding: 5px 6px; font-weight: bold; color: #0b3c5d; text-align: left;">{nom_tour} <span style="font-size: 9px; color: #666; font-weight: normal;">({m_id} • {fmt_lbl})</span></td>
+                    <td style="padding: 5px 6px; text-align: left;">{ea}</td>
+                    <td style="padding: 5px 6px; font-size: 12px;">{score_txt}</td>
+                    <td style="padding: 5px 6px; text-align: left;">{eb}</td>
+                    <td style="padding: 5px 6px;">{statut_txt}</td>
                 </tr>
                 """)
     else:
         for idx, m in enumerate(tournoi.get("matchs", []), 1):
+            m_id = m.get("id", f"RR_M{idx}")
             ea = m["equipe_a"]
             eb = m["equipe_b"]
             sa = m.get("score_a", 0)
             sb = m.get("score_b", 0)
+            termine = m.get("termine", False)
             vainq = m.get("vainqueur")
-            statut_txt = f"🏆 <strong>{vainq}</strong>" if m.get("termine") else "En attente"
-            score_txt = f"{sa} - {sb}" if m.get("termine") else "-"
+            statut_txt = f"🏆 <strong style='color: #1b5e20;'>{vainq}</strong>" if termine else "<span style='color: #888;'>À disputer</span>"
+            score_txt = f"<strong>{sa} - {sb}</strong>" if termine else "-"
             lignes_matchs.append(f"""
             <tr style="border-bottom: 1px solid #e0e0e0; text-align: center;">
-                <td style="padding: 4px; font-weight: bold; color: #0b3c5d;">Match #{idx}</td>
-                <td style="padding: 4px; text-align: left;">{ea}</td>
-                <td style="padding: 4px; font-weight: bold; font-size: 12px;">{score_txt}</td>
-                <td style="padding: 4px; text-align: left;">{eb}</td>
-                <td style="padding: 4px;">{statut_txt}</td>
+                <td style="padding: 5px 6px; font-weight: bold; color: #0b3c5d; text-align: left;">Match #{idx} <span style="font-size: 9px; color: #666; font-weight: normal;">({m_id})</span></td>
+                <td style="padding: 5px 6px; text-align: left;">{ea}</td>
+                <td style="padding: 5px 6px; font-size: 12px;">{score_txt}</td>
+                <td style="padding: 5px 6px; text-align: left;">{eb}</td>
+                <td style="padding: 5px 6px;">{statut_txt}</td>
             </tr>
             """)
 
@@ -1752,7 +1903,7 @@ def generer_html_tournoi(tournoi, mode="simple"):
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Feuille officielle de tournoi - {titre_t}</title>
+    <title>Feuille officielle et Arborescence de tournoi - {titre_t}</title>
     <style>
         {STYLE_PRINT_A4}
         body {{
@@ -1761,15 +1912,224 @@ def generer_html_tournoi(tournoi, mode="simple"):
             color: #222;
             margin: 0;
             padding: 10px;
+            background: #ffffff;
         }}
         .fiche-a4 {{
-            max-width: 850px;
+            max-width: 980px;
             margin: 0 auto;
+        }}
+        .no-print-bar {{
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #eef4f8;
+            padding: 10px 14px;
+            border-radius: 8px;
+            border: 1px solid #c8d9e6;
+        }}
+        .btn-print {{
+            background-color: #0b3c5d;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }}
+        .btn-print:hover {{
+            background-color: #082a42;
+        }}
+        .bracket-section {{
+            margin: 14px 0 20px 0;
+        }}
+        .bracket-wrapper {{
+            display: flex;
+            flex-direction: row;
+            gap: 14px;
+            align-items: stretch;
+            justify-content: flex-start;
+            overflow-x: auto;
+            padding: 10px 4px;
+        }}
+        .bracket-col {{
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-width: 180px;
+            max-width: 260px;
+            background: #fbfcfe;
+            border-radius: 8px;
+            border: 1px solid #dce4ec;
+            padding: 10px 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+        }}
+        .bracket-round-title {{
+            text-align: center;
+            background: #0b3c5d;
+            color: white;
+            padding: 6px 8px;
+            border-radius: 6px;
+            margin-bottom: 12px;
+        }}
+        .r-name {{
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }}
+        .r-fmt {{
+            font-size: 10px;
+            color: #cbdbee;
+            margin-top: 1px;
+        }}
+        .bracket-round-matches {{
+            display: flex;
+            flex-direction: column;
+            justify-content: space-around;
+            flex: 1;
+            gap: 12px;
+        }}
+        .bracket-card {{
+            background: white;
+            border: 1.5px solid #0b3c5d;
+            border-radius: 6px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+            overflow: hidden;
+            page-break-inside: avoid;
+        }}
+        .bracket-card.is-done {{
+            border-color: #2e7d32;
+        }}
+        .card-header {{
+            background: #f0f4f8;
+            color: #444;
+            font-size: 9px;
+            font-weight: bold;
+            padding: 3px 8px;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            justify-content: space-between;
+        }}
+        .player-row {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px 8px;
+            font-size: 11px;
+            border-bottom: 1px solid #f0f0f0;
+        }}
+        .player-row:last-child {{
+            border-bottom: none;
+        }}
+        .player-row.winner {{
+            background: #e8f5e9;
+            font-weight: bold;
+            color: #1b5e20;
+        }}
+        .p-name {{
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            padding-right: 6px;
+        }}
+        .p-score {{
+            background: #0b3c5d;
+            color: white;
+            font-size: 11px;
+            font-weight: bold;
+            padding: 1px 6px;
+            border-radius: 3px;
+            min-width: 18px;
+            text-align: center;
+        }}
+        .player-row.winner .p-score {{
+            background: #2e7d32;
+        }}
+        .champion-box {{
+            background: linear-gradient(135deg, #fff9c4, #fffde7);
+            border: 2px solid #fbc02d;
+            border-radius: 8px;
+            padding: 16px 10px;
+            text-align: center;
+            box-shadow: 0 2px 6px rgba(251, 192, 45, 0.25);
+            page-break-inside: avoid;
+        }}
+        .champ-trophy {{
+            font-size: 28px;
+            line-height: 1;
+            margin-bottom: 4px;
+        }}
+        .champ-title {{
+            font-size: 10px;
+            font-weight: bold;
+            color: #f57f17;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 3px;
+        }}
+        .champ-name {{
+            font-size: 13px;
+            font-weight: bold;
+            color: #0b3c5d;
+        }}
+        @media print {{
+            @page {{
+                size: landscape;
+                margin: 6mm 8mm;
+            }}
+            .no-print-bar {{
+                display: none !important;
+            }}
+            .bracket-wrapper {{
+                overflow-x: visible !important;
+                gap: 8px !important;
+                margin: 6px 0 12px 0 !important;
+            }}
+            .bracket-col {{
+                min-width: 0 !important;
+                padding: 4px !important;
+            }}
+            .bracket-round-title {{
+                padding: 3px 4px !important;
+                margin-bottom: 6px !important;
+            }}
+            .r-name {{
+                font-size: 10px !important;
+            }}
+            .r-fmt {{
+                font-size: 8px !important;
+            }}
+            .player-row {{
+                padding: 2px 4px !important;
+                font-size: 9px !important;
+            }}
+            .p-score {{
+                font-size: 9px !important;
+                padding: 0 3px !important;
+            }}
+            .manches-table {{
+                page-break-before: auto;
+            }}
         }}
     </style>
 </head>
 <body>
     <div class="fiche-a4">
+        <div class="no-print-bar">
+            <div>
+                <strong style="color: #0b3c5d; font-size: 13px;">🎱 Feuille officielle & Arborescence du tournoi</strong>
+                <div style="font-size: 11px; color: #555;">Format calibré pour visualisation et impression (A4 Paysage recommandé)</div>
+            </div>
+            <button class="btn-print" onclick="window.print()">
+                🖨️ Imprimer cette page (A4)
+            </button>
+        </div>
         <table class="header-table" style="width: 100%; border-bottom: 2px solid #0b3c5d; padding-bottom: 5px; margin-bottom: 8px; border-collapse: collapse;">
             <tr>
                 {logo_td}
@@ -1785,28 +2145,86 @@ def generer_html_tournoi(tournoi, mode="simple"):
             <strong>Participants :</strong> {len(tournoi.get('participants', []))}
         </p>
         {podium_html}
+        {arborescence_html}
+        <h3 style="color: #0b3c5d; margin: 16px 0 6px 0; font-size: 14px; border-bottom: 2px solid #0b3c5d; padding-bottom: 4px; text-transform: uppercase;">
+            📋 Tableau récapitulatif de toutes les rencontres
+        </h3>
         <table class="manches-table" style="width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 4px;">
             <thead>
                 <tr style="background-color: #0b3c5d; color: white;">
-                    <th style="padding: 5px 4px;">Tour / Rencontre</th>
-                    <th style="padding: 5px 4px; text-align: left;">Participant A</th>
-                    <th style="padding: 5px 4px;">Score</th>
-                    <th style="padding: 5px 4px; text-align: left;">Participant B</th>
-                    <th style="padding: 5px 4px;">Vainqueur</th>
+                    <th style="padding: 5px 6px; text-align: left;">Tour / Rencontre</th>
+                    <th style="padding: 5px 6px; text-align: left;">Participant A</th>
+                    <th style="padding: 5px 6px;">Score</th>
+                    <th style="padding: 5px 6px; text-align: left;">Participant B</th>
+                    <th style="padding: 5px 6px;">Statut / Vainqueur</th>
                 </tr>
             </thead>
             <tbody>
                 {''.join(lignes_matchs)}
             </tbody>
         </table>
-        <p class="footer-note" style="font-size: 9px; color: #777; margin-top: 8px; text-align: center;">
-            Tableau officiel généré via l'application de la Ligue de billard Boule en main.
+        <p class="footer-note" style="font-size: 9px; color: #777; margin-top: 10px; text-align: center;">
+            Tableau officiel et arborescence générés via la plateforme de la Ligue de billard Boule en main.
         </p>
     </div>
 </body>
 </html>
 """
     return html
+
+@st.dialog("🌳 Arborescence & Feuille officielle du tournoi", width="large")
+def modal_arborescence_tournoi(tournoi_obj, mode_str="simple"):
+    """Dialogue grand format affichant l'arborescence complète, les matchs et les options d'impression."""
+    html_feuille = generer_html_tournoi(tournoi_obj, mode=mode_str)
+    html_json_str = json.dumps(html_feuille)
+
+    col_btn_print, col_btn_ext, col_btn_close = st.columns([1.5, 1.5, 1])
+    with col_btn_print:
+        st.components.v1.html(
+            f"""
+            <button onclick="imprimerTournoiModal()" style="width:100%; height:38px; background-color:#0b3c5d; color:white; border:none; border-radius:6px; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif; font-size:13px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;">
+                🖨️ Imprimer la feuille (A4)
+            </button>
+            <script>
+            function imprimerTournoiModal() {{
+                var win = window.open('', '_blank');
+                win.document.open();
+                win.document.write({html_json_str});
+                win.document.close();
+                win.focus();
+                win.document.title = "Feuille officielle de tournoi - Impression";
+                setTimeout(function() {{
+                    win.print();
+                }}, 350);
+            }}
+            </script>
+            """,
+            height=42
+        )
+    with col_btn_ext:
+        st.components.v1.html(
+            f"""
+            <button onclick="ouvrirTournoiNouvelOnglet()" style="width:100%; height:38px; background-color:#2e7d32; color:white; border:none; border-radius:6px; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif; font-size:13px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;">
+                🌐 Ouvrir dans un nouvel onglet
+            </button>
+            <script>
+            function ouvrirTournoiNouvelOnglet() {{
+                var win = window.open('', '_blank');
+                win.document.open();
+                win.document.write({html_json_str});
+                win.document.close();
+                win.focus();
+                win.document.title = "Feuille de Tournoi";
+            }}
+            </script>
+            """,
+            height=42
+        )
+    with col_btn_close:
+        if st.button("✖️ Fermer", use_container_width=True, key=f"btn_close_dlg_{mode_str}"):
+            st.rerun()
+
+    st.components.v1.html(html_feuille, height=650, scrolling=True)
 
 def afficher_section_tournoi(mode="simple"):
     """Affiche l'interface complète de configuration ou de déroulement d'un tournoi (Simple ou Double)."""
@@ -2008,6 +2426,7 @@ def afficher_section_tournoi(mode="simple"):
                 if t_cree:
                     tournois_data[mode] = t_cree
                     sauvegarder_tournois_data(tournois_data)
+                    st.session_state[f"ouvrir_arborescence_auto_{mode}"] = True
                     st.success("✅ Tournoi généré sans aucun passe-droit avec succès !")
                     st.rerun()
 
@@ -2018,7 +2437,13 @@ def afficher_section_tournoi(mode="simple"):
         race_to = tournoi.get("race_to", 2)
         statut = tournoi.get("statut", "en_cours")
 
-        col_top1, col_top2, col_top3 = st.columns([2.5, 1, 1])
+        if st.session_state.pop(f"ouvrir_arborescence_auto_{mode}", False):
+            modal_arborescence_tournoi(tournoi, mode_str=mode)
+
+        html_tournoi = generer_html_tournoi(tournoi, mode=mode)
+        html_t_json = json.dumps(html_tournoi)
+
+        col_top1, col_top2, col_top3, col_top4 = st.columns([2.2, 1.4, 1.2, 0.9])
         with col_top1:
             st.markdown(f"#### 🏆 **{titre_t}**")
             badge_statut = "🟢 **En cours**" if statut == "en_cours" else "🏆 **Tournoi Terminé**"
@@ -2029,8 +2454,10 @@ def afficher_section_tournoi(mode="simple"):
             st.caption(f"Statut : {badge_statut} &nbsp;|&nbsp; Formule : `{format_nom}` &nbsp;|&nbsp; Créé le : {tournoi.get('date_creation', 'N/D')}")
 
         with col_top2:
-            html_tournoi = generer_html_tournoi(tournoi, mode=mode)
-            html_t_json = json.dumps(html_tournoi)
+            if st.button("🌳 Visualiser l'arborescence", key=f"btn_visu_modal_{mode}", type="primary", use_container_width=True, help="Affiche l'arborescence complète, tous les matchs et permet l'impression"):
+                modal_arborescence_tournoi(tournoi, mode_str=mode)
+
+        with col_top3:
             st.components.v1.html(
                 f"""
                 <button onclick="imprimerTournoi()" style="width:100%; height:38px; background-color:#0b3c5d; color:white; border:none; border-radius:6px; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif; font-size:13px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;">
@@ -2053,7 +2480,7 @@ def afficher_section_tournoi(mode="simple"):
                 height=42
             )
 
-        with col_top3:
+        with col_top4:
             with st.popover("🔄 Réinitialiser", use_container_width=True, disabled=not est_editeur):
                 st.markdown("### ⚠️ Réinitialisation")
                 st.write("Voulez-vous clôturer ce tournoi et en configurer un nouveau ?")
@@ -2062,6 +2489,9 @@ def afficher_section_tournoi(mode="simple"):
                     tournois_data[mode] = None
                     sauvegarder_tournois_data(tournois_data)
                     st.rerun()
+
+        with st.expander("🌳 Consulter l'arborescence graphique et tous les matchs", expanded=False):
+            st.components.v1.html(html_tournoi, height=520, scrolling=True)
 
         # Podium si terminé
         if statut == "termine" and tournoi.get("vainqueur_final"):
