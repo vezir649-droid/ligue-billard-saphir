@@ -1383,15 +1383,102 @@ def charger_tournois_data():
             return {}
     return {}
 
-def sauvegarder_tournois_data(data):
-    """Enregistre les données des tournois dans le fichier JSON."""
+def sauvegarder_tournois_data(data, marqueur_session=None, action="sauvegarde"):
+    """Enregistre les données des tournois dans le fichier JSON avec horodatage et traçabilité du marqueur."""
+    if not isinstance(data, dict):
+        return False
     try:
+        now_str = datetime.now().strftime("%d/%m/%Y à %H:%M:%S")
+        data["derniere_sauvegarde"] = {
+            "date": now_str,
+            "session_id": marqueur_session or "marqueur_actif",
+            "action": action
+        }
+        for m in ["simple", "double"]:
+            if m in data and isinstance(data[m], dict):
+                data[m]["date_derniere_sauvegarde"] = now_str
+
         with open(TOURNOIS_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
         return True
     except Exception as e:
         st.error(f"Erreur lors de l'enregistrement du tournoi : {e}")
         return False
+
+def ceder_la_main_avec_sauvegarde(session_id):
+    """
+    Sauvegarde automatiquement le tournoi sur le disque avant de céder la main,
+    puis libère le verrou exclusif.
+    """
+    now_str = datetime.now().strftime("%d/%m/%Y à %H:%M:%S")
+    td = charger_tournois_data()
+    tournois_sauvegardes = []
+    for mode in ["simple", "double"]:
+        t = td.get(mode)
+        if t and isinstance(t, dict):
+            t_nom = t.get("titre", f"Tournoi {mode}")
+            t["date_derniere_sauvegarde"] = now_str
+            tournois_sauvegardes.append(t_nom)
+
+    sauvegarder_tournois_data(td, marqueur_session=session_id, action="cession_de_main")
+
+    try:
+        if "recuperer_donnees_actuelles" in globals():
+            donnees_feuille = recuperer_donnees_actuelles()
+            if donnees_feuille and isinstance(donnees_feuille, dict):
+                sauvegarder_donnees(donnees_feuille)
+    except Exception:
+        pass
+
+    liberer_verrou(session_id)
+    st.session_state["mode_consultation"] = True
+
+    if tournois_sauvegardes:
+        t_txt = ", ".join(tournois_sauvegardes)
+        st.session_state["msg_cession_main"] = f"✅ La main a été cédée. La sauvegarde du tournoi ({t_txt}) a été enregistrée avec succès sur le disque ({now_str})."
+    else:
+        st.session_state["msg_cession_main"] = f"✅ La main a été cédée. Les données ont été sauvegardées avec succès ({now_str})."
+
+def prendre_la_main_avec_rechargement(session_id):
+    """
+    Prend la main pour marquer un tournoi, charge fraîchement la dernière sauvegarde du tournoi
+    depuis le disque et vérifie que la sauvegarde faite par le marqueur précédent est récupérée.
+    """
+    forcer_prise_de_main(session_id)
+    st.session_state["mode_consultation"] = False
+
+    td_fraiche = charger_tournois_data()
+    infos_sauv = td_fraiche.get("derniere_sauvegarde", {})
+    date_sauv_t = infos_sauv.get("date", "")
+    action_sauv = infos_sauv.get("action", "")
+
+    # Purge des clés de saisie en session pour que Streamlit prenne les valeurs du disque
+    cles_a_purger = [k for k in list(st.session_state.keys()) if k.startswith("rr_a_") or k.startswith("rr_b_") or k.startswith("m_sc_a_") or k.startswith("m_sc_b_")]
+    for k in cles_a_purger:
+        del st.session_state[k]
+
+    try:
+        sauv_match = charger_sauvegarde()
+        if sauv_match and "matchs" in sauv_match:
+            restaurer_session(sauv_match)
+    except Exception:
+        pass
+
+    if date_sauv_t:
+        if action_sauv == "cession_de_main":
+            st.session_state["msg_prise_main"] = (
+                f"✅ Prise de main réussie ! La sauvegarde effectuée par le marqueur qui a cédé la main "
+                f"({date_sauv_t}) a été chargée avec succès depuis le disque."
+            )
+        else:
+            st.session_state["msg_prise_main"] = (
+                f"✅ Prise de main réussie ! La dernière sauvegarde du tournoi sur le disque "
+                f"({date_sauv_t}) a été chargée avec succès."
+            )
+    else:
+        st.session_state["msg_prise_main"] = (
+            "✅ Prise de main réussie ! Les données du tournoi enregistrées sur le disque ont été chargées avec succès."
+        )
 
 def charger_historique_tournois():
     """Charge l'ensemble des tournois archivés (Simples et Doubles)."""
@@ -2555,10 +2642,68 @@ def modal_arborescence_tournoi(tournoi_obj, mode_str="simple"):
 
     st.components.v1.html(html_feuille, height=650, scrolling=True)
 
+def afficher_bandeau_verrou_tournoi():
+    """Affiche le bandeau d'état du verrou exclusif et de gestion de prise/cession de main pour les tournois."""
+    my_session_id = st.session_state.get("user_session_id", "")
+    est_spectateur = st.session_state.get("est_spectateur", False) or not st.session_state.get("authentifie", False)
+
+    if est_spectateur:
+        est_editeur = False
+        autre_editeur_actif = False
+        temps_restant = 0
+    else:
+        veut_editer = not st.session_state.get("mode_consultation", False)
+        est_editeur, temps_restant, autre_editeur_actif = gerer_verrou_session(my_session_id, veut_etre_editeur=veut_editer)
+
+    if "msg_prise_main" in st.session_state:
+        st.success(st.session_state.pop("msg_prise_main"))
+    if "msg_cession_main" in st.session_state:
+        st.info(st.session_state.pop("msg_cession_main"))
+
+    td = charger_tournois_data()
+    infos_sauv = td.get("derniere_sauvegarde", {})
+    date_sauv = infos_sauv.get("date", "")
+    action_sauv = infos_sauv.get("action", "")
+    mention_sauv = f" • 💾 Dernière sauvegarde disque : {date_sauv}" if date_sauv else ""
+
+    col_lk1, col_lk2 = st.columns([3.2, 1.2])
+
+    if est_editeur:
+        col_lk1.success(f"🟢 **Vous avez la main exclusive pour marquer et configurer le tournoi.**{mention_sauv}")
+        with col_lk2:
+            if st.button("🔓 Céder la main", key="btn_ceder_main_tournoi", use_container_width=True, help="Sauvegarde automatiquement le tournoi sur le disque et libère la main pour le prochain marqueur"):
+                with st.spinner("Sauvegarde du tournoi et libération de la main..."):
+                    ceder_la_main_avec_sauvegarde(my_session_id)
+                st.rerun()
+    elif est_spectateur:
+        col_lk1.info("👁️ **Mode spectateur (Lecture seule) :** Consultation en direct du tournoi. La saisie des scores est réservée au marqueur officiel.")
+        with col_lk2:
+            st.button("⚡ Prendre la main", key="btn_prendre_main_t_spec", disabled=True, use_container_width=True, help="Le bouton Prendre la main est réservé aux marqueurs authentifiés")
+    else:
+        if autre_editeur_actif:
+            mins = temps_restant // 60
+            secs = temps_restant % 60
+            col_lk1.warning(f"🔒 **Mode consultation (Lecture seule) :** Un autre marqueur a actuellement la main sur la saisie. Vos modifications sont verrouillées.{mention_sauv} *(Inactivité restante : {mins}m {secs:02d}s)*")
+        else:
+            col_lk1.info(f"🔒 **Mode consultation (Lecture seule) :** Vous consultez le tournoi.{mention_sauv}")
+
+        with col_lk2:
+            if st.button("⚡ Prendre la main", key="btn_prendre_main_tournoi", use_container_width=True, help="Prend le contrôle de la saisie, charge la dernière sauvegarde du tournoi depuis le disque et active l'édition"):
+                with st.spinner("Prise de la main et chargement de la sauvegarde du tournoi..."):
+                    prendre_la_main_avec_rechargement(my_session_id)
+                st.rerun()
+
+    return est_editeur
+
 def afficher_section_tournoi(mode="simple"):
     """Affiche l'interface complète de configuration ou de déroulement d'un tournoi (Simple ou Double)."""
     est_spectateur = st.session_state.get("est_spectateur", False) or not st.session_state.get("authentifie", False)
-    est_editeur = st.session_state.get("authentifie", False) and not st.session_state.get("est_spectateur", False)
+    if est_spectateur:
+        est_editeur = False
+    else:
+        my_session_id = st.session_state.get("user_session_id", "")
+        veut_editer = not st.session_state.get("mode_consultation", False)
+        est_editeur, _, _ = gerer_verrou_session(my_session_id, veut_etre_editeur=veut_editer)
 
     tournois_data = charger_tournois_data()
     tournoi = tournois_data.get(mode)
@@ -3088,7 +3233,12 @@ def afficher_section_tournoi(mode="simple"):
 def afficher_section_historique_tournois():
     """Affiche la section complète de consultation des historiques de tournois (accessible spectateurs & marqueurs)."""
     est_spectateur = st.session_state.get("est_spectateur", False) or not st.session_state.get("authentifie", False)
-    est_editeur = st.session_state.get("authentifie", False) and not st.session_state.get("est_spectateur", False)
+    if est_spectateur:
+        est_editeur = False
+    else:
+        my_session_id = st.session_state.get("user_session_id", "")
+        veut_editer = not st.session_state.get("mode_consultation", False)
+        est_editeur, _, _ = gerer_verrou_session(my_session_id, veut_etre_editeur=veut_editer)
 
     historique = charger_historique_tournois()
 
@@ -3275,7 +3425,9 @@ def afficher_section_historique_tournois():
         st.components.v1.html(html_arch, height=520, scrolling=True)
 
 def afficher_onglet_tournois():
-    """Onglet principal Tournois avec sous-onglets Simple, Double et Historique des tournois."""
+    """Onglet principal Tournois avec bandeau de verrou, prise/cession de main, Simple, Double et Historique."""
+    afficher_bandeau_verrou_tournoi()
+
     subtab_simple, subtab_double, subtab_hist = st.tabs([
         "👤 Tournoi en Simple (Tous les joueurs)",
         "👥 Tournoi en Double / Équipes (Équipes inscrites)",
@@ -3874,9 +4026,9 @@ with tab_feuille:
     if est_editeur:
         col_lock1.success("🟢 **Vous avez la main exclusive pour la saisie et la validation du match.**")
         with col_lock2:
-            if st.button("🔓 Céder la main", use_container_width=True, help="Bascule en mode lecture et libère la feuille de match"):
-                liberer_verrou(my_session_id)
-                st.session_state["mode_consultation"] = True
+            if st.button("🔓 Céder la main", use_container_width=True, help="Sauvegarde automatiquement le tournoi et le match sur le disque avant de libérer la main"):
+                with st.spinner("Sauvegarde et libération de la main..."):
+                    ceder_la_main_avec_sauvegarde(my_session_id)
                 st.rerun()
     elif est_spectateur:
         col_lock1.info("👁️ **Mode spectateur (Lecture seule) :** Vous consultez le match en direct. La saisie et l'administration sont désactivées.")
@@ -3895,13 +4047,9 @@ with tab_feuille:
             col_lock1.info("🔒 **Mode consultation (Lecture seule) :** Vous êtes en mode lecture. La feuille est disponible pour être saisie.")
 
         with col_lock2:
-            if st.button("⚡ Prendre la main", use_container_width=True, help="Prend le contrôle de la saisie, rafraîchit la page et active l'édition"):
-                forcer_prise_de_main(my_session_id)
-                st.session_state["mode_consultation"] = False
-                # Rafraîchir immédiatement les scores depuis la dernière sauvegarde sur le disque
-                sauv_fraiche = charger_sauvegarde()
-                if sauv_fraiche and "matchs" in sauv_fraiche:
-                    restaurer_session(sauv_fraiche)
+            if st.button("⚡ Prendre la main", use_container_width=True, help="Prend le contrôle de la saisie, charge les sauvegardes du tournoi et du match depuis le disque et active l'édition"):
+                with st.spinner("Prise de la main et rechargement des sauvegardes..."):
+                    prendre_la_main_avec_rechargement(my_session_id)
                 st.rerun()
 
     # --- BOUTONS D'ACTION HAUT DE PAGE (RESTAURER / ANNULER EFFACEMENT / NOUVEAU MATCH) ---
@@ -4028,8 +4176,8 @@ with tab_feuille:
 
     # --- BARRE LATÉRALE : SÉLECTION DU MATCH ET JOUEURS ---
     st.sidebar.header("📋 Paramètres du Match")
-    if st.sidebar.button("🚪 Déconnexion / Accueil", use_container_width=True, help="Ferme la session et retourne à l'écran d'accueil"):
-        liberer_verrou(my_session_id)
+    if st.sidebar.button("🚪 Déconnexion / Accueil", use_container_width=True, help="Sauvegarde les tournois et le match, libère la main et retourne à l'écran d'accueil"):
+        ceder_la_main_avec_sauvegarde(my_session_id)
         st.session_state["authentifie"] = False
         st.session_state["est_spectateur"] = False
         st.session_state["mode_consultation"] = False
