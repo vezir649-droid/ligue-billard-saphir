@@ -2915,7 +2915,6 @@ def afficher_section_tournoi(mode="simple"):
 
         # Podium si terminé
         if statut == "termine" and tournoi.get("vainqueur_final"):
-            st.balloons()
             with st.container(border=True):
                 st.markdown(
                     f"""
