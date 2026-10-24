@@ -55,6 +55,7 @@ BACKUP_FILE = get_data_path("sauvegarde_saisie_secours.json")
 CORBEILLE_FILE = get_data_path("sauvegarde_annulee_secours.json")
 HISTORIQUE_FILE = get_data_path("historique_matchs.json")
 TOURNOIS_FILE = get_data_path("tournois_data.json")
+HISTORIQUE_TOURNOIS_FILE = get_data_path("historique_tournois.json")
 CONFIG_EMAIL_FILE = get_data_path("config_email.json")
 ADMIN_CONFIG_FILE = get_data_path("config_admin.json")
 EQUIPES_CSV_FILE = get_data_path("equipes-saphir.csv")
@@ -1392,6 +1393,82 @@ def sauvegarder_tournois_data(data):
         st.error(f"Erreur lors de l'enregistrement du tournoi : {e}")
         return False
 
+def charger_historique_tournois():
+    """Charge l'ensemble des tournois archivés (Simples et Doubles)."""
+    if os.path.exists(HISTORIQUE_TOURNOIS_FILE):
+        try:
+            with open(HISTORIQUE_TOURNOIS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    return data
+        except Exception:
+            pass
+    td = charger_tournois_data()
+    if isinstance(td, dict) and "historique" in td and isinstance(td["historique"], list):
+        return td["historique"]
+    return []
+
+def sauvegarder_historique_tournois(historique_list):
+    """Sauvegarde l'historique des tournois dans le fichier JSON."""
+    try:
+        with open(HISTORIQUE_TOURNOIS_FILE, "w", encoding="utf-8") as f:
+            json.dump(historique_list, f, ensure_ascii=False, indent=4)
+        td = charger_tournois_data()
+        td["historique"] = historique_list
+        try:
+            with open(TOURNOIS_FILE, "w", encoding="utf-8") as f:
+                json.dump(td, f, ensure_ascii=False, indent=4)
+        except Exception:
+            pass
+        return True
+    except Exception as e:
+        st.error(f"Erreur lors de la sauvegarde de l'historique des tournois : {e}")
+        return False
+
+def archiver_tournoi(tournoi_obj, mode="simple"):
+    """Archive un tournoi dans l'historique officiel s'il n'y figure pas déjà ou met à jour sa fiche."""
+    if not tournoi_obj or not isinstance(tournoi_obj, dict):
+        return False
+
+    import copy
+    archive_item = copy.deepcopy(tournoi_obj)
+    archive_item["mode"] = mode
+    archive_item["date_archivage"] = datetime.now().strftime("%d/%m/%Y à %H:%M")
+
+    id_archive = archive_item.get("id_archive")
+    if not id_archive:
+        id_archive = f"TOURNOI_{mode.upper()}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{random.randint(100, 999)}"
+        archive_item["id_archive"] = id_archive
+
+    historique = charger_historique_tournois()
+
+    idx_existant = -1
+    for i, h in enumerate(historique):
+        if h.get("id_archive") == id_archive or (
+            h.get("titre") == archive_item.get("titre") and
+            h.get("date_creation") == archive_item.get("date_creation") and
+            h.get("mode") == mode
+        ):
+            idx_existant = i
+            break
+
+    if idx_existant >= 0:
+        historique[idx_existant] = archive_item
+    else:
+        historique.insert(0, archive_item)
+
+    sauvegarder_historique_tournois(historique)
+    return True
+
+def supprimer_tournoi_historique(id_archive):
+    """Supprime un tournoi spécifique de l'historique."""
+    if not id_archive:
+        return False
+    historique = charger_historique_tournois()
+    nouveau_h = [h for h in historique if h.get("id_archive") != id_archive]
+    sauvegarder_historique_tournois(nouveau_h)
+    return True
+
 def obtenir_tous_les_joueurs_tournoi(equipes_dict=None):
     """Récupère l'ensemble des joueurs réguliers inscrits dans la ligue."""
     joueurs_officiels = []
@@ -1687,6 +1764,7 @@ def actualiser_score_elimination(tournoi, tour_num, match_id, score_a, score_b):
         tournoi["vainqueur_final"] = vainqueur
         tournoi["finaliste"] = perdant
         tournoi["statut"] = "termine"
+        archiver_tournoi(tournoi, mode=tournoi.get("mode", "simple"))
     return True
 
 def generer_round_robin(participants, race_to=2, titre="Tournoi", heure_debut="09:00", duree_min=30, nb_tables=2):
@@ -2559,6 +2637,7 @@ def afficher_section_tournoi(mode="simple"):
                     )
 
                 if t_cree:
+                    t_cree["mode"] = mode
                     tournois_data[mode] = t_cree
                     sauvegarder_tournois_data(tournois_data)
                     st.session_state[f"ouvrir_arborescence_auto_{mode}"] = True
@@ -2632,14 +2711,21 @@ def afficher_section_tournoi(mode="simple"):
 
         if est_editeur:
             with col_top4:
-                with st.popover("🔄 Réinitialiser", use_container_width=True):
-                    st.markdown("### ⚠️ Réinitialisation")
+                with st.popover("🔄 Réinitialiser / Clôturer", use_container_width=True):
+                    st.markdown("### ⚠️ Clôture & Réinitialisation")
                     st.write("Voulez-vous clôturer ce tournoi et en configurer un nouveau ?")
-                    st.caption("Les données actuelles seront effacées pour démarrer une nouvelle compétition.")
-                    if st.button("🔴 Confirmer la réinitialisation", type="primary", use_container_width=True, key=f"btn_confirm_reset_{mode}"):
-                        tournois_data[mode] = None
-                        sauvegarder_tournois_data(tournois_data)
-                        st.rerun()
+                    st.caption("✅ Ce tournoi sera automatiquement archivé et conservé dans l'historique officiel.")
+                    col_rst1, col_rst2 = st.columns(2)
+                    with col_rst1:
+                        if st.button("💾 Archiver seul", use_container_width=True, key=f"btn_arch_only_{mode}"):
+                            archiver_tournoi(tournoi, mode=mode)
+                            st.success("Tournoi archivé dans l'historique !")
+                    with col_rst2:
+                        if st.button("🔴 Clôturer & Reset", type="primary", use_container_width=True, key=f"btn_confirm_reset_{mode}"):
+                            archiver_tournoi(tournoi, mode=mode)
+                            tournois_data[mode] = None
+                            sauvegarder_tournois_data(tournois_data)
+                            st.rerun()
 
         with st.expander("🌳 Consulter l'arborescence graphique et tous les matchs", expanded=False):
             st.components.v1.html(html_tournoi, height=520, scrolling=True)
@@ -2813,14 +2899,184 @@ def afficher_section_tournoi(mode="simple"):
                 tournoi["vainqueur_final"] = classement_rr[0][0]
                 if len(classement_rr) > 1:
                     tournoi["finaliste"] = classement_rr[1][0]
+                archiver_tournoi(tournoi, mode=mode)
                 sauvegarder_tournois_data(tournois_data)
                 st.rerun()
 
+def afficher_section_historique_tournois():
+    """Affiche la section complète de consultation des historiques de tournois (accessible spectateurs & marqueurs)."""
+    est_spectateur = st.session_state.get("est_spectateur", False) or not st.session_state.get("authentifie", False)
+    est_editeur = st.session_state.get("authentifie", False) and not st.session_state.get("est_spectateur", False)
+
+    historique = charger_historique_tournois()
+
+    st.markdown("### 📜 Historique & Archives des Tournois")
+    st.caption("Consultez l'ensemble des tournois passés en Simple et en Double (arborescences, podiums et scores officiels). Accessible aux spectateurs et marqueurs.")
+
+    if not historique:
+        with st.container(border=True):
+            st.info("ℹ️ Aucun tournoi archivé pour le moment. Dès qu'un tournoi sera clôturé ou terminé, il sera automatiquement conservé et consultable ici.")
+        return
+
+    # Filtres de recherche
+    col_f1, col_f2 = st.columns([1.5, 2.5])
+    with col_f1:
+        filtre_mode = st.selectbox(
+            "Filtrer par modalité :",
+            ["Tous les tournois", "👤 Tournois en Simple", "👥 Tournois en Double / Équipes"],
+            key="filtre_hist_tournois"
+        )
+    with col_f2:
+        recherche_txt = st.text_input("🔍 Rechercher par titre, date ou champion :", key="rech_hist_tournois")
+
+    # Appliquer les filtres
+    liste_filtree = []
+    for h in historique:
+        mode_h = h.get("mode", "simple")
+        if filtre_mode == "👤 Tournois en Simple" and mode_h != "simple":
+            continue
+        if filtre_mode == "👥 Tournois en Double / Équipes" and mode_h != "double":
+            continue
+
+        query = recherche_txt.strip().lower()
+        if query:
+            titre = (h.get("titre") or "").lower()
+            date_c = (h.get("date_creation") or "").lower()
+            date_a = (h.get("date_archivage") or "").lower()
+            v_fin = (h.get("vainqueur_final") or "").lower()
+            fin = (h.get("finaliste") or "").lower()
+            if query not in titre and query not in date_c and query not in date_a and query not in v_fin and query not in fin:
+                continue
+        liste_filtree.append(h)
+
+    if not liste_filtree:
+        st.warning("Aucun tournoi archivé ne correspond à vos critères de recherche.")
+        return
+
+    # Tableau récapitulatif
+    st.markdown(f"##### 📋 Liste des tournois archivés ({len(liste_filtree)})")
+    lignes_recap = []
+    for h in liste_filtree:
+        mode_label = "👤 Simple" if h.get("mode") == "simple" else "👥 Double / Équipes"
+        fmt_label = "Élimination" if h.get("format") == "elimination" else "Round-Robin"
+        nb_part = len(h.get("participants", []))
+        champ = h.get("vainqueur_final") or "Non déterminé"
+        finaliste = h.get("finaliste") or "Non déterminé"
+        statut_label = "🏆 Terminé" if h.get("statut") == "termine" else "🟢 Archivé"
+
+        lignes_recap.append({
+            "Date": h.get("date_creation", h.get("date_archivage", "")),
+            "Titre du tournoi": h.get("titre", "Tournoi officiel"),
+            "Modalité": mode_label,
+            "Format": fmt_label,
+            "Participants": nb_part,
+            "🥇 Champion": champ,
+            "🥈 Finaliste": finaliste,
+            "Statut": statut_label
+        })
+
+    df_hist = pd.DataFrame(lignes_recap)
+    st.dataframe(df_hist, use_container_width=True, hide_index=True)
+
+    st.divider()
+
+    # Sélection pour consultation détaillée
+    st.markdown("##### 🌳 Consultation détaillée d'un tournoi archivé")
+    options_select = []
+    for idx, h in enumerate(liste_filtree):
+        mode_icon = "👤" if h.get("mode") == "simple" else "👥"
+        titre = h.get("titre", "Tournoi")
+        date_c = h.get("date_creation", "")
+        v_fin = h.get("vainqueur_final") or "En cours"
+        options_select.append((idx, f"{mode_icon} {titre} — {date_c} (Champion : {v_fin})"))
+
+    choix_idx = st.selectbox(
+        "Sélectionnez le tournoi à afficher en détail :",
+        options=[idx for idx, label in options_select],
+        format_func=lambda x: dict(options_select).get(x, ""),
+        key="select_tournoi_detail_hist"
+    )
+
+    tournoi_choisi = liste_filtree[choix_idx]
+    mode_choisi = tournoi_choisi.get("mode", "simple")
+
+    # Rendu du tournoi archivé
+    with st.container(border=True):
+        col_dt1, col_dt2, col_dt3 = st.columns([2.5, 1.3, 1.2])
+        with col_dt1:
+            st.markdown(f"#### 🏆 **{tournoi_choisi.get('titre', 'Tournoi')}**")
+            mode_lbl = "Simple (1 contre 1)" if mode_choisi == "simple" else "Double / Équipes (2 contre 2)"
+            fmt_lbl = "Élimination directe" if tournoi_choisi.get("format") == "elimination" else "Round-Robin"
+            h_deb = tournoi_choisi.get("heure_debut", "09:00")
+            h_fin = tournoi_choisi.get("heure_fin_estimee", "")
+            nb_tab = tournoi_choisi.get("nb_tables", 2)
+            horaire_info = f"&nbsp;|&nbsp; ⏰ {h_deb} à ~{h_fin}" if h_fin else f"&nbsp;|&nbsp; ⏰ Début : {h_deb}"
+            st.caption(f"Modalité : **{mode_lbl}** &nbsp;|&nbsp; Format : `{fmt_lbl}`{horaire_info} &nbsp;|&nbsp; 🎱 {nb_tab} table(s)")
+            st.caption(f"Créé le : {tournoi_choisi.get('date_creation', 'N/D')} &nbsp;|&nbsp; Participants : {len(tournoi_choisi.get('participants', []))}")
+
+        html_arch = generer_html_tournoi(tournoi_choisi, mode=mode_choisi)
+        html_arch_json = json.dumps(html_arch)
+
+        with col_dt2:
+            st.components.v1.html(
+                f"""
+                <button onclick="imprimerTournoiArchive()" style="width:100%; height:38px; background-color:#0b3c5d; color:white; border:none; border-radius:6px; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif; font-size:12px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;">
+                    🖨️ Imprimer l'arborescence (A4)
+                </button>
+                <script>
+                function imprimerTournoiArchive() {{
+                    var win = window.open('', '_blank');
+                    win.document.open();
+                    win.document.write({html_arch_json});
+                    win.document.close();
+                    win.focus();
+                    win.document.title = "Arborescence Tournoi Passé - A4";
+                    setTimeout(function() {{
+                        win.print();
+                    }}, 350);
+                }}
+                </script>
+                """,
+                height=42
+            )
+
+        with col_dt3:
+            if est_editeur:
+                with st.popover("🗑️ Supprimer l'archive", use_container_width=True):
+                    st.markdown("### ⚠️ Suppression définitive")
+                    st.write(f"Supprimer le tournoi **{tournoi_choisi.get('titre')}** de l'historique ?")
+                    st.caption("Cette action est irréversible.")
+                    if st.button("🔴 Confirmer la suppression", type="primary", use_container_width=True, key=f"btn_del_arch_{tournoi_choisi.get('id_archive', choix_idx)}"):
+                        supprimer_tournoi_historique(tournoi_choisi.get("id_archive"))
+                        st.success("Tournoi supprimé de l'historique.")
+                        st.rerun()
+
+        # Palmarès / Podium
+        if tournoi_choisi.get("vainqueur_final"):
+            st.markdown(
+                f"""
+                <div style="background: linear-gradient(135deg, #fff9c4, #fffde7); border: 2px solid #fbc02d; border-radius: 8px; padding: 10px 14px; margin: 10px 0; text-align: center;">
+                    <div style="font-size: 14px; font-weight: bold; color: #f57f17; margin-bottom: 2px;">🏆 PALMARÈS DU TOURNOI</div>
+                    <div style="font-size: 13px; color: #222;">
+                        🥇 <strong>Champion :</strong> <span style="font-size: 15px; color: #0b3c5d; font-weight: bold;">{tournoi_choisi.get('vainqueur_final')}</span>
+                        &nbsp;&nbsp;|&nbsp;&nbsp;
+                        🥈 <strong>Finaliste :</strong> <span style="font-size: 13px; color: #555;">{tournoi_choisi.get('finaliste', 'N/D')}</span>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        # Arborescence graphique complète du tournoi archivé
+        st.markdown("###### 🌳 Arborescence officielle du tournoi")
+        st.components.v1.html(html_arch, height=520, scrolling=True)
+
 def afficher_onglet_tournois():
-    """Onglet principal Tournois avec sous-onglets Simple et Double."""
-    subtab_simple, subtab_double = st.tabs([
+    """Onglet principal Tournois avec sous-onglets Simple, Double et Historique des tournois."""
+    subtab_simple, subtab_double, subtab_hist = st.tabs([
         "👤 Tournoi en Simple (Tous les joueurs)",
-        "👥 Tournoi en Double / Équipes (Équipes inscrites)"
+        "👥 Tournoi en Double / Équipes (Équipes inscrites)",
+        "📜 Historique des tournois (Archives)"
     ])
 
     with subtab_simple:
@@ -2828,6 +3084,9 @@ def afficher_onglet_tournois():
 
     with subtab_double:
         afficher_section_tournoi(mode="double")
+
+    with subtab_hist:
+        afficher_section_historique_tournois()
 
 
 # ==============================================================================
