@@ -1677,7 +1677,7 @@ def calculer_classement_round_robin(tournoi_rr):
     return classement
 
 def generer_html_tournoi(tournoi, mode="simple"):
-    """Génère la feuille officielle imprimable du tournoi avec arborescence complète et tous les matchs."""
+    """Génère la feuille officielle imprimable du tournoi limitée strictement à l'arborescence (Arbre / Matrice)."""
     logo_b64 = charger_armoiries_base64()
     src_val = logo_b64 if logo_b64 else "cid:armoiries_logo"
     arm_existe = bool(logo_b64 or os.path.isfile(find_armoiries_path()))
@@ -1685,7 +1685,7 @@ def generer_html_tournoi(tournoi, mode="simple"):
 
     titre_t = tournoi.get("titre", "Tournoi officiel")
     date_t = tournoi.get("date_creation", "")
-    mode_str = "Simple (1 contre 1)" if mode == "simple" else "Double (2 contre 2)"
+    mode_str = "Simple (1 contre 1)" if mode == "simple" else "Double / Équipes (2 contre 2)"
     is_elim = (tournoi.get("format") == "elimination")
 
     if is_elim:
@@ -1703,17 +1703,17 @@ def generer_html_tournoi(tournoi, mode="simple"):
         v_final = tournoi["vainqueur_final"]
         fin_final = tournoi.get("finaliste", "Non spécifié")
         podium_html = f"""
-        <div style="background: linear-gradient(135deg, #fff9c4, #fffde7); border: 2px solid #fbc02d; border-radius: 6px; padding: 10px 14px; margin-bottom: 12px; text-align: center;">
-            <div style="font-size: 15px; font-weight: bold; color: #f57f17; margin-bottom: 2px;">🏆 PALMARÈS DU TOURNOI</div>
-            <div style="font-size: 14px; color: #222;">
-                🥇 <strong>Champion :</strong> <span style="font-size: 16px; color: #0b3c5d; font-weight: bold;">{v_final}</span>
+        <div style="background: linear-gradient(135deg, #fff9c4, #fffde7); border: 2px solid #fbc02d; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; text-align: center;">
+            <div style="font-size: 13px; font-weight: bold; color: #f57f17; margin-bottom: 2px;">🏆 PALMARÈS OFFICIEL DU TOURNOI</div>
+            <div style="font-size: 12px; color: #222;">
+                🥇 <strong>Champion :</strong> <span style="font-size: 14px; color: #0b3c5d; font-weight: bold;">{v_final}</span>
                 &nbsp;&nbsp;|&nbsp;&nbsp;
-                🥈 <strong>Finaliste :</strong> <span style="font-size: 14px; color: #555;">{fin_final}</span>
+                🥈 <strong>Finaliste :</strong> <span style="font-size: 13px; color: #555;">{fin_final}</span>
             </div>
         </div>
         """
 
-    # 1. CONSTRUCTION DE L'ARBORESCENCE GRAPHIQUE (BRACKET OU MATRICE)
+    # CONSTRUCTION DE L'ARBORESCENCE GRAPHIQUE (BRACKET OU MATRICE)
     arborescence_html = ""
     if is_elim:
         cols_html = []
@@ -1789,16 +1789,13 @@ def generer_html_tournoi(tournoi, mode="simple"):
 
         arborescence_html = f"""
         <div class="bracket-section">
-            <h3 style="color: #0b3c5d; margin: 14px 0 8px 0; font-size: 14px; border-bottom: 2px solid #0b3c5d; padding-bottom: 4px; text-transform: uppercase;">
-                🌳 Arborescence officielle du tournoi (Tableau éliminatoire)
-            </h3>
             <div class="bracket-wrapper">
                 {''.join(cols_html)}
             </div>
         </div>
         """
     else:
-        # Matrice Round-Robin et confrontations
+        # Matrice Round-Robin (Face-à-face)
         participants = tournoi.get("participants", [])
         matchs_rr = tournoi.get("matchs", [])
         scores_matrix = {}
@@ -1834,11 +1831,11 @@ def generer_html_tournoi(tournoi, mode="simple"):
 
         arborescence_html = f"""
         <div class="bracket-section">
-            <h3 style="color: #0b3c5d; margin: 14px 0 8px 0; font-size: 14px; border-bottom: 2px solid #0b3c5d; padding-bottom: 4px; text-transform: uppercase;">
-                🔄 Matrice des confrontations directes (Face-à-face)
+            <h3 style="color: #0b3c5d; margin: 10px 0 8px 0; font-size: 13px; border-bottom: 2px solid #0b3c5d; padding-bottom: 4px; text-transform: uppercase;">
+                🔄 Matrice officielle des confrontations directes
             </h3>
             <div style="overflow-x: auto;">
-                <table style="width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 14px;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 10px;">
                     <thead>
                         <tr style="background: #0b3c5d; color: white; text-align: center;">
                             <th style="padding: 5px 8px; text-align: left; border: 1px solid #c8d9e6;">Participant</th>
@@ -1853,78 +1850,32 @@ def generer_html_tournoi(tournoi, mode="simple"):
         </div>
         """
 
-    # 2. LISTE EXHAUSTIVE DE TOUS LES MATCHS DU TOURNOI
-    lignes_matchs = []
-    if is_elim:
-        for t in tournoi.get("tours", []):
-            nom_tour = t["nom"]
-            fmt_lbl = t.get("format_label", "2 de 3")
-            for m in t["matchs"]:
-                m_id = m.get("id", "")
-                ea = m["equipe_a"]
-                eb = m["equipe_b"]
-                sa = m.get("score_a", 0)
-                sb = m.get("score_b", 0)
-                termine = m.get("termine", False)
-                vainq = m.get("vainqueur")
-                statut_txt = f"🏆 <strong style='color: #1b5e20;'>{vainq}</strong>" if termine else "<span style='color: #888;'>En attente</span>"
-                score_txt = f"<strong>{sa} - {sb}</strong>" if termine else "-"
-                lignes_matchs.append(f"""
-                <tr style="border-bottom: 1px solid #e0e0e0; text-align: center;">
-                    <td style="padding: 5px 6px; font-weight: bold; color: #0b3c5d; text-align: left;">{nom_tour} <span style="font-size: 9px; color: #666; font-weight: normal;">({m_id} • {fmt_lbl})</span></td>
-                    <td style="padding: 5px 6px; text-align: left;">{ea}</td>
-                    <td style="padding: 5px 6px; font-size: 12px;">{score_txt}</td>
-                    <td style="padding: 5px 6px; text-align: left;">{eb}</td>
-                    <td style="padding: 5px 6px;">{statut_txt}</td>
-                </tr>
-                """)
-    else:
-        for idx, m in enumerate(tournoi.get("matchs", []), 1):
-            m_id = m.get("id", f"RR_M{idx}")
-            ea = m["equipe_a"]
-            eb = m["equipe_b"]
-            sa = m.get("score_a", 0)
-            sb = m.get("score_b", 0)
-            termine = m.get("termine", False)
-            vainq = m.get("vainqueur")
-            statut_txt = f"🏆 <strong style='color: #1b5e20;'>{vainq}</strong>" if termine else "<span style='color: #888;'>À disputer</span>"
-            score_txt = f"<strong>{sa} - {sb}</strong>" if termine else "-"
-            lignes_matchs.append(f"""
-            <tr style="border-bottom: 1px solid #e0e0e0; text-align: center;">
-                <td style="padding: 5px 6px; font-weight: bold; color: #0b3c5d; text-align: left;">Match #{idx} <span style="font-size: 9px; color: #666; font-weight: normal;">({m_id})</span></td>
-                <td style="padding: 5px 6px; text-align: left;">{ea}</td>
-                <td style="padding: 5px 6px; font-size: 12px;">{score_txt}</td>
-                <td style="padding: 5px 6px; text-align: left;">{eb}</td>
-                <td style="padding: 5px 6px;">{statut_txt}</td>
-            </tr>
-            """)
-
     html = f"""<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Feuille officielle et Arborescence de tournoi - {titre_t}</title>
+    <title>Arborescence officielle du tournoi - {titre_t}</title>
     <style>
         {STYLE_PRINT_A4}
         body {{
             font-family: Arial, sans-serif;
-            line-height: 1.4;
+            line-height: 1.35;
             color: #222;
             margin: 0;
             padding: 10px;
             background: #ffffff;
         }}
         .fiche-a4 {{
-            max-width: 980px;
+            max-width: 1050px;
             margin: 0 auto;
         }}
         .no-print-bar {{
-            margin-bottom: 12px;
+            margin-bottom: 10px;
             display: flex;
             justify-content: space-between;
             align-items: center;
             background: #eef4f8;
-            padding: 10px 14px;
+            padding: 8px 14px;
             border-radius: 8px;
             border: 1px solid #c8d9e6;
         }}
@@ -1945,45 +1896,45 @@ def generer_html_tournoi(tournoi, mode="simple"):
             background-color: #082a42;
         }}
         .bracket-section {{
-            margin: 14px 0 20px 0;
+            margin: 8px 0 10px 0;
         }}
         .bracket-wrapper {{
             display: flex;
             flex-direction: row;
-            gap: 14px;
+            gap: 10px;
             align-items: stretch;
             justify-content: flex-start;
             overflow-x: auto;
-            padding: 10px 4px;
+            padding: 4px 2px;
         }}
         .bracket-col {{
             display: flex;
             flex-direction: column;
             flex: 1;
-            min-width: 180px;
-            max-width: 260px;
+            min-width: 170px;
+            max-width: 250px;
             background: #fbfcfe;
             border-radius: 8px;
             border: 1px solid #dce4ec;
-            padding: 10px 8px;
+            padding: 8px 6px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.03);
         }}
         .bracket-round-title {{
             text-align: center;
             background: #0b3c5d;
             color: white;
-            padding: 6px 8px;
-            border-radius: 6px;
-            margin-bottom: 12px;
+            padding: 5px 6px;
+            border-radius: 5px;
+            margin-bottom: 8px;
         }}
         .r-name {{
-            font-size: 12px;
+            font-size: 11px;
             font-weight: bold;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }}
         .r-fmt {{
-            font-size: 10px;
+            font-size: 9px;
             color: #cbdbee;
             margin-top: 1px;
         }}
@@ -1992,13 +1943,13 @@ def generer_html_tournoi(tournoi, mode="simple"):
             flex-direction: column;
             justify-content: space-around;
             flex: 1;
-            gap: 12px;
+            gap: 8px;
         }}
         .bracket-card {{
             background: white;
             border: 1.5px solid #0b3c5d;
             border-radius: 6px;
-            box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
             overflow: hidden;
             page-break-inside: avoid;
         }}
@@ -2008,9 +1959,9 @@ def generer_html_tournoi(tournoi, mode="simple"):
         .card-header {{
             background: #f0f4f8;
             color: #444;
-            font-size: 9px;
+            font-size: 8.5px;
             font-weight: bold;
-            padding: 3px 8px;
+            padding: 2px 6px;
             border-bottom: 1px solid #e0e0e0;
             display: flex;
             justify-content: space-between;
@@ -2019,8 +1970,8 @@ def generer_html_tournoi(tournoi, mode="simple"):
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 5px 8px;
-            font-size: 11px;
+            padding: 4px 6px;
+            font-size: 10.5px;
             border-bottom: 1px solid #f0f0f0;
         }}
         .player-row:last-child {{
@@ -2041,11 +1992,11 @@ def generer_html_tournoi(tournoi, mode="simple"):
         .p-score {{
             background: #0b3c5d;
             color: white;
-            font-size: 11px;
+            font-size: 10.5px;
             font-weight: bold;
-            padding: 1px 6px;
+            padding: 1px 5px;
             border-radius: 3px;
-            min-width: 18px;
+            min-width: 16px;
             text-align: center;
         }}
         .player-row.winner .p-score {{
@@ -2055,18 +2006,18 @@ def generer_html_tournoi(tournoi, mode="simple"):
             background: linear-gradient(135deg, #fff9c4, #fffde7);
             border: 2px solid #fbc02d;
             border-radius: 8px;
-            padding: 16px 10px;
+            padding: 14px 8px;
             text-align: center;
             box-shadow: 0 2px 6px rgba(251, 192, 45, 0.25);
             page-break-inside: avoid;
         }}
         .champ-trophy {{
-            font-size: 28px;
+            font-size: 26px;
             line-height: 1;
             margin-bottom: 4px;
         }}
         .champ-title {{
-            font-size: 10px;
+            font-size: 9.5px;
             font-weight: bold;
             color: #f57f17;
             text-transform: uppercase;
@@ -2074,47 +2025,96 @@ def generer_html_tournoi(tournoi, mode="simple"):
             margin-bottom: 3px;
         }}
         .champ-name {{
-            font-size: 13px;
+            font-size: 12px;
             font-weight: bold;
             color: #0b3c5d;
         }}
         @media print {{
             @page {{
                 size: landscape;
-                margin: 6mm 8mm;
+                margin: 5mm 6mm;
+            }}
+            body {{
+                margin: 0 !important;
+                padding: 0 !important;
+                background: #ffffff !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }}
+            .fiche-a4 {{
+                max-width: 100% !important;
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
             }}
             .no-print-bar {{
                 display: none !important;
             }}
+            .bracket-section {{
+                margin: 4px 0 0 0 !important;
+            }}
             .bracket-wrapper {{
-                overflow-x: visible !important;
-                gap: 8px !important;
-                margin: 6px 0 12px 0 !important;
+                overflow: visible !important;
+                gap: 6px !important;
+                padding: 0 !important;
+                width: 100% !important;
             }}
             .bracket-col {{
                 min-width: 0 !important;
-                padding: 4px !important;
+                max-width: none !important;
+                flex: 1 1 0px !important;
+                padding: 3px 2px !important;
+                border: 1px solid #b0c4de !important;
+                box-shadow: none !important;
+                background: #fafcfe !important;
             }}
             .bracket-round-title {{
-                padding: 3px 4px !important;
-                margin-bottom: 6px !important;
+                padding: 2px 2px !important;
+                margin-bottom: 4px !important;
             }}
             .r-name {{
-                font-size: 10px !important;
+                font-size: 9px !important;
             }}
             .r-fmt {{
-                font-size: 8px !important;
+                font-size: 7px !important;
+            }}
+            .bracket-round-matches {{
+                gap: 3px !important;
+            }}
+            .bracket-card {{
+                border-width: 1px !important;
+                box-shadow: none !important;
+            }}
+            .card-header {{
+                font-size: 7.5px !important;
+                padding: 1px 3px !important;
             }}
             .player-row {{
-                padding: 2px 4px !important;
-                font-size: 9px !important;
+                padding: 1px 3px !important;
+                font-size: 8px !important;
             }}
             .p-score {{
-                font-size: 9px !important;
-                padding: 0 3px !important;
+                font-size: 8px !important;
+                padding: 0 2px !important;
+                min-width: 12px !important;
             }}
-            .manches-table {{
-                page-break-before: auto;
+            .champion-box {{
+                padding: 6px 3px !important;
+                box-shadow: none !important;
+            }}
+            .champ-trophy {{
+                font-size: 16px !important;
+                margin-bottom: 2px !important;
+            }}
+            .champ-title {{
+                font-size: 7.5px !important;
+            }}
+            .champ-name {{
+                font-size: 9px !important;
+            }}
+            .footer-note {{
+                font-size: 8px !important;
+                margin-top: 4px !important;
             }}
         }}
     </style>
@@ -2123,48 +2123,31 @@ def generer_html_tournoi(tournoi, mode="simple"):
     <div class="fiche-a4">
         <div class="no-print-bar">
             <div>
-                <strong style="color: #0b3c5d; font-size: 13px;">🎱 Feuille officielle & Arborescence du tournoi</strong>
-                <div style="font-size: 11px; color: #555;">Format calibré pour visualisation et impression (A4 Paysage recommandé)</div>
+                <strong style="color: #0b3c5d; font-size: 13px;">🌳 Arborescence officielle du tournoi</strong>
+                <div style="font-size: 11px; color: #555;">Format calibré pour impression sur une seule page A4 (Orientation paysage recommandée)</div>
             </div>
             <button class="btn-print" onclick="window.print()">
-                🖨️ Imprimer cette page (A4)
+                🖨️ Imprimer l'arborescence (A4)
             </button>
         </div>
-        <table class="header-table" style="width: 100%; border-bottom: 2px solid #0b3c5d; padding-bottom: 5px; margin-bottom: 8px; border-collapse: collapse;">
+        <table class="header-table" style="width: 100%; border-bottom: 2px solid #0b3c5d; padding-bottom: 4px; margin-bottom: 6px; border-collapse: collapse;">
             <tr>
                 {logo_td}
                 <td class="header-title" style="vertical-align: middle;">
-                    <h2 class="header-title-h2" style="color: #0b3c5d; margin: 0; font-size: 18px;">🎱 Ligue de billard Boule en main</h2>
-                    <div class="header-title-sub" style="color: #555; font-size: 12px; font-weight: bold; margin-top: 2px;">{titre_t} — {mode_str}</div>
+                    <h2 class="header-title-h2" style="color: #0b3c5d; margin: 0; font-size: 16px;">🎱 Ligue de billard Boule en main</h2>
+                    <div class="header-title-sub" style="color: #555; font-size: 11px; font-weight: bold; margin-top: 1px;">{titre_t} — {mode_str}</div>
                 </td>
             </tr>
         </table>
-        <p class="date-para" style="margin: 3px 0 6px 0; font-size: 11px;">
+        <p class="date-para" style="margin: 2px 0 4px 0; font-size: 10px;">
             <strong>Date :</strong> {date_t} &nbsp;|&nbsp; 
             <strong>Format :</strong> {format_str} &nbsp;|&nbsp; 
             <strong>Participants :</strong> {len(tournoi.get('participants', []))}
         </p>
         {podium_html}
         {arborescence_html}
-        <h3 style="color: #0b3c5d; margin: 16px 0 6px 0; font-size: 14px; border-bottom: 2px solid #0b3c5d; padding-bottom: 4px; text-transform: uppercase;">
-            📋 Tableau récapitulatif de toutes les rencontres
-        </h3>
-        <table class="manches-table" style="width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 4px;">
-            <thead>
-                <tr style="background-color: #0b3c5d; color: white;">
-                    <th style="padding: 5px 6px; text-align: left;">Tour / Rencontre</th>
-                    <th style="padding: 5px 6px; text-align: left;">Participant A</th>
-                    <th style="padding: 5px 6px;">Score</th>
-                    <th style="padding: 5px 6px; text-align: left;">Participant B</th>
-                    <th style="padding: 5px 6px;">Statut / Vainqueur</th>
-                </tr>
-            </thead>
-            <tbody>
-                {''.join(lignes_matchs)}
-            </tbody>
-        </table>
-        <p class="footer-note" style="font-size: 9px; color: #777; margin-top: 10px; text-align: center;">
-            Tableau officiel et arborescence générés via la plateforme de la Ligue de billard Boule en main.
+        <p class="footer-note" style="font-size: 8px; color: #777; margin-top: 6px; text-align: center;">
+            Arborescence officielle générée via l'application de la Ligue de billard Boule en main.
         </p>
     </div>
 </body>
@@ -2172,7 +2155,7 @@ def generer_html_tournoi(tournoi, mode="simple"):
 """
     return html
 
-@st.dialog("🌳 Arborescence & Feuille officielle du tournoi", width="large")
+@st.dialog("🌳 Arborescence officielle du tournoi", width="large")
 def modal_arborescence_tournoi(tournoi_obj, mode_str="simple"):
     """Dialogue grand format affichant l'arborescence complète, les matchs et les options d'impression."""
     html_feuille = generer_html_tournoi(tournoi_obj, mode=mode_str)
@@ -2183,7 +2166,7 @@ def modal_arborescence_tournoi(tournoi_obj, mode_str="simple"):
         st.components.v1.html(
             f"""
             <button onclick="imprimerTournoiModal()" style="width:100%; height:38px; background-color:#0b3c5d; color:white; border:none; border-radius:6px; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif; font-size:13px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;">
-                🖨️ Imprimer la feuille (A4)
+                🖨️ Imprimer l'arborescence (A4)
             </button>
             <script>
             function imprimerTournoiModal() {{
@@ -2478,7 +2461,7 @@ def afficher_section_tournoi(mode="simple"):
             st.components.v1.html(
                 f"""
                 <button onclick="imprimerTournoi()" style="width:100%; height:38px; background-color:#0b3c5d; color:white; border:none; border-radius:6px; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif; font-size:13px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;">
-                    🖨️ Imprimer (A4)
+                    🖨️ Imprimer l'arborescence (A4)
                 </button>
                 <script>
                 function imprimerTournoi() {{
