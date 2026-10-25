@@ -1480,28 +1480,65 @@ def prendre_la_main_avec_rechargement(session_id):
             "✅ Prise de main réussie ! Les données du tournoi enregistrées sur le disque ont été chargées avec succès."
         )
 
-def charger_historique_tournois():
-    """Charge l'ensemble des tournois archivés (Simples et Doubles)."""
+def charger_historique_tournois(inclure_actifs=False):
+    """Charge l'ensemble des tournois archivés (Simples et Doubles).
+    Si inclure_actifs est True, inclut également les tournois actifs sauvegardés dans tournois_data.json."""
+    historique = []
     if os.path.exists(HISTORIQUE_TOURNOIS_FILE):
         try:
             with open(HISTORIQUE_TOURNOIS_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 if isinstance(data, list):
-                    return data
+                    historique = data
         except Exception:
             pass
-    td = charger_tournois_data()
-    if isinstance(td, dict) and "historique" in td and isinstance(td["historique"], list):
-        return td["historique"]
-    return []
+    if not historique:
+        td = charger_tournois_data()
+        if isinstance(td, dict) and "historique" in td and isinstance(td["historique"], list):
+            historique = td["historique"]
+
+    if inclure_actifs:
+        try:
+            td = charger_tournois_data()
+            actifs = []
+            for m in ["simple", "double"]:
+                t_act = td.get(m)
+                if t_act and isinstance(t_act, dict):
+                    id_a = t_act.get("id_archive")
+                    titre_a = t_act.get("titre")
+                    date_c = t_act.get("date_creation")
+                    deja_present = False
+                    for h in historique:
+                        if id_a and h.get("id_archive") == id_a:
+                            deja_present = True
+                            break
+                        if h.get("titre") == titre_a and h.get("date_creation") == date_c and h.get("mode") == m:
+                            deja_present = True
+                            break
+                    if not deja_present:
+                        import copy
+                        t_cop = copy.deepcopy(t_act)
+                        t_cop["mode"] = m
+                        t_cop["est_actif"] = True
+                        if not t_cop.get("id_archive"):
+                            t_cop["id_archive"] = f"ACTIF_{m.upper()}"
+                        actifs.append(t_cop)
+            if actifs:
+                return actifs + historique
+        except Exception:
+            pass
+
+    return historique
 
 def sauvegarder_historique_tournois(historique_list):
     """Sauvegarde l'historique des tournois dans le fichier JSON."""
     try:
+        # Ne sauvegarder que les tournois archivés (exclure d'éventuels items temporairement marqués comme actifs)
+        liste_a_sauver = [h for h in historique_list if not h.get("est_actif")] if isinstance(historique_list, list) else []
         with open(HISTORIQUE_TOURNOIS_FILE, "w", encoding="utf-8") as f:
-            json.dump(historique_list, f, ensure_ascii=False, indent=4)
+            json.dump(liste_a_sauver, f, ensure_ascii=False, indent=4)
         td = charger_tournois_data()
-        td["historique"] = historique_list
+        td["historique"] = liste_a_sauver
         try:
             with open(TOURNOIS_FILE, "w", encoding="utf-8") as f:
                 json.dump(td, f, ensure_ascii=False, indent=4)
@@ -2723,6 +2760,9 @@ def afficher_bandeau_verrou_tournoi():
 
 def afficher_section_tournoi(mode="simple"):
     """Affiche l'interface complète de configuration ou de déroulement d'un tournoi (Simple ou Double)."""
+    if f"msg_annulation_{mode}" in st.session_state:
+        st.info(st.session_state.pop(f"msg_annulation_{mode}"))
+
     est_spectateur = st.session_state.get("est_spectateur", False) or not st.session_state.get("authentifie", False)
     if est_spectateur:
         est_editeur = False
@@ -3021,7 +3061,7 @@ def afficher_section_tournoi(mode="simple"):
         html_t_json = json.dumps(html_tournoi)
 
         if est_editeur:
-            col_top1, col_top2, col_top3, col_top4 = st.columns([2.2, 1.4, 1.2, 0.9])
+            col_top1, col_top2, col_top3, col_top4, col_top5 = st.columns([2.0, 1.2, 1.1, 1.0, 1.1])
         else:
             col_top1, col_top2, col_top3, col_top4 = st.columns([2.1, 1.2, 1.1, 1.3])
 
@@ -3083,24 +3123,55 @@ def afficher_section_tournoi(mode="simple"):
 
         if est_editeur:
             with col_top4:
-                with st.popover("💾 Sauvegarder / Reset", use_container_width=True):
-                    st.markdown("### 💾 Sauvegarde & Clôture")
-                    st.write("Sauvegardez l'état du tournoi ou clôturez-le pour en préparer un nouveau.")
-                    st.caption("✅ Un courriel avec le fichier `historique_tournois.json` en attachement sera automatiquement expédié aux administrateurs définis dans la configuration SMTP.")
-                    col_rst1, col_rst2 = st.columns(2)
-                    with col_rst1:
-                        if st.button("💾 Sauvegarder & Notifier", use_container_width=True, key=f"btn_arch_only_{mode}"):
-                            with st.spinner("Sauvegarde et transmission du courriel aux administrateurs..."):
-                                archiver_tournoi(tournoi, mode=mode, notifier_admin=True)
-                            st.success("✅ Tournoi sauvegardé et courriel envoyé aux administrateurs avec l'historique en pièce jointe !")
-                            time.sleep(1.0)
-                            st.rerun()
-                    with col_rst2:
-                        if st.button("🔴 Clôturer & Reset", type="primary", use_container_width=True, key=f"btn_confirm_reset_{mode}"):
-                            with st.spinner("Clôture, archivage et notification par courriel..."):
+                with st.popover("💾 Sauvegarder", use_container_width=True):
+                    st.markdown("### 💾 Sauvegarde du tournoi")
+                    st.write("Sauvegardez l'état actuel de la compétition dans l'historique officiel.")
+                    st.caption("✅ Un courriel avec le fichier `historique_tournois.json` en attachement sera automatiquement expédié aux administrateurs définis dans SMTP.")
+                    if st.button("💾 Sauvegarder & Notifier", type="primary", use_container_width=True, key=f"btn_arch_only_{mode}"):
+                        with st.spinner("Sauvegarde et transmission du courriel aux administrateurs..."):
+                            archiver_tournoi(tournoi, mode=mode, notifier_admin=True)
+                        st.success("✅ Tournoi sauvegardé et courriel envoyé aux administrateurs avec l'historique en pièce jointe !")
+                        time.sleep(1.0)
+                        st.rerun()
+
+                    if statut == "termine":
+                        st.divider()
+                        st.markdown("#### 🏆 Clôture définitive")
+                        st.write("Le tournoi est terminé. Vous pouvez clôturer la session pour archiver le tournoi et libérer la grille.")
+                        if st.button("🏁 Clôturer & Libérer la grille", type="primary", use_container_width=True, key=f"btn_confirm_cloture_{mode}"):
+                            with st.spinner("Clôture et archivage final..."):
                                 archiver_tournoi(tournoi, mode=mode, notifier_admin=True)
                                 tournois_data[mode] = None
                                 sauvegarder_tournois_data(tournois_data)
+                            st.session_state[f"msg_annulation_{mode}"] = f"🏆 Le {libelle_mode.lower()} a été clôturé et archivé avec succès."
+                            st.rerun()
+
+            with col_top5:
+                with st.popover("❌ Annuler le tournoi", use_container_width=True, help="Annuler le tournoi en cours avec confirmation obligatoire avant de procéder"):
+                    st.markdown("### ⚠️ Annulation du tournoi")
+                    st.error("Êtes-vous certain de vouloir annuler le tournoi en cours ? Cette opération arrêtera la compétition active.")
+                    st.markdown("**Confirmation obligatoire avant de procéder :**")
+                    confirme_annul = st.checkbox(
+                        "Je confirme vouloir annuler ce tournoi actif",
+                        key=f"chk_confirm_cancel_{mode}"
+                    )
+                    col_can1, col_can2 = st.columns(2)
+                    with col_can1:
+                        if st.button("🔴 Confirmer l'annulation", type="primary", use_container_width=True, disabled=not confirme_annul, key=f"btn_confirm_cancel_action_{mode}", help="Réinitialise immédiatement le tournoi sans archivage"):
+                            tournois_data[mode] = None
+                            sauvegarder_tournois_data(tournois_data)
+                            st.session_state[f"msg_annulation_{mode}"] = f"❌ Le {libelle_mode.lower()} a été annulé avec succès."
+                            st.rerun()
+                    with col_can2:
+                        if st.button("💾 Archiver puis annuler", use_container_width=True, disabled=not confirme_annul, key=f"btn_save_and_cancel_action_{mode}", help="Enregistre une copie d'archive avec le statut 'Annulé' avant de libérer la grille"):
+                            with st.spinner("Archivage et annulation en cours..."):
+                                import copy
+                                t_copy = copy.deepcopy(tournoi)
+                                t_copy["statut"] = "annule"
+                                archiver_tournoi(t_copy, mode=mode, notifier_admin=True)
+                                tournois_data[mode] = None
+                                sauvegarder_tournois_data(tournois_data)
+                                st.session_state[f"msg_annulation_{mode}"] = f"❌ Le {libelle_mode.lower()} a été archivé sous le statut 'Annulé' puis réinitialisé."
                             st.rerun()
         else:
             with col_top4:
@@ -3309,7 +3380,7 @@ def afficher_section_tournoi(mode="simple"):
                 st.rerun()
 
 def afficher_section_historique_tournois():
-    """Affiche la section complète de consultation des historiques de tournois (accessible spectateurs & marqueurs)."""
+    """Affiche la section complète de consultation des tournois sauvegardés et historiques (accessible spectateurs & marqueurs)."""
     est_spectateur = st.session_state.get("est_spectateur", False) or not st.session_state.get("authentifie", False)
     if est_spectateur:
         est_editeur = False
@@ -3318,13 +3389,16 @@ def afficher_section_historique_tournois():
         veut_editer = not st.session_state.get("mode_consultation", False)
         est_editeur, _, _ = gerer_verrou_session(my_session_id, veut_etre_editeur=veut_editer)
 
-    historique = charger_historique_tournois()
+    historique = charger_historique_tournois(inclure_actifs=True)
 
-    col_h_h1, col_h_h2 = st.columns([3, 1.4])
+    col_h_h1, col_h_h2, col_h_h3 = st.columns([2.5, 1.1, 1.4])
     with col_h_h1:
-        st.markdown("### 📜 Historique & Archives des Tournois")
-        st.caption("Consultez l'ensemble des tournois passés en Simple et en Double (arborescences, podiums et scores officiels). Accessible aux spectateurs et marqueurs.")
+        st.markdown("### 📜 Liste des Tournois Sauvegardés & Historique")
+        st.caption("Consultez la liste complète de tous les tournois sauvegardés (en cours et terminés), leurs arborescences de matchs, podiums et options d'impression A4. Accessible aux spectateurs et aux marqueurs.")
     with col_h_h2:
+        if st.button("🔄 Actualiser la liste", key="btn_refresh_hist_tournois", use_container_width=True, help="Recharge la liste des tournois sauvegardés depuis le disque"):
+            st.rerun()
+    with col_h_h3:
         if est_editeur:
             if st.button("📧 Envoyer l'historique aux admins", key="btn_send_hist_tournois_mail", use_container_width=True, help="Transmet le fichier historique_tournois.json par courriel aux administrateurs définis dans SMTP"):
                 with st.spinner("Envoi du courriel aux administrateurs..."):
@@ -3336,27 +3410,59 @@ def afficher_section_historique_tournois():
 
     if not historique:
         with st.container(border=True):
-            st.info("ℹ️ Aucun tournoi archivé pour le moment. Dès qu'un tournoi sera clôturé ou terminé, il sera automatiquement conservé et consultable ici.")
+            st.info("ℹ️ Aucun tournoi sauvegardé pour le moment. Dès qu'un tournoi sera créé, sauvegardé ou terminé, il apparaîtra automatiquement dans cette liste.")
         return
 
+    # Compteurs rapides / KPIs
+    nb_total = len(historique)
+    nb_simples = sum(1 for h in historique if h.get("mode") == "simple")
+    nb_doubles = sum(1 for h in historique if h.get("mode") == "double")
+    nb_en_cours = sum(1 for h in historique if h.get("statut") == "en_cours" or h.get("est_actif"))
+    nb_termines = sum(1 for h in historique if h.get("statut") == "termine")
+
+    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+    kpi1.metric("🏆 Total sauvegardés", f"{nb_total} tournoi(s)")
+    kpi2.metric("👤 Simples", f"{nb_simples}")
+    kpi3.metric("👥 Doubles", f"{nb_doubles}")
+    kpi4.metric("📊 En cours / Terminés", f"{nb_en_cours} / {nb_termines}")
+
+    st.markdown("---")
+
     # Filtres de recherche
-    col_f1, col_f2 = st.columns([1.5, 2.5])
+    col_f1, col_f2, col_f3 = st.columns([1.4, 1.4, 2.2])
     with col_f1:
         filtre_mode = st.selectbox(
-            "Filtrer par modalité :",
-            ["Tous les tournois", "👤 Tournois en Simple", "👥 Tournois en Double / Équipes"],
+            "Modalité :",
+            ["Toutes les modalités", "👤 Tournois en Simple", "👥 Tournois en Double / Équipes"],
             key="filtre_hist_tournois"
         )
     with col_f2:
-        recherche_txt = st.text_input("🔍 Rechercher par titre, date ou champion :", key="rech_hist_tournois")
+        filtre_statut = st.selectbox(
+            "Statut :",
+            ["Tous les statuts", "🟢 En cours", "🏆 Terminés", "❌ Annulés"],
+            key="filtre_statut_hist_tournois"
+        )
+    with col_f3:
+        recherche_txt = st.text_input("🔍 Rechercher par titre, date, participant ou champion :", key="rech_hist_tournois")
 
     # Appliquer les filtres
     liste_filtree = []
     for h in historique:
         mode_h = h.get("mode", "simple")
+        statut_h = h.get("statut", "en_cours")
+        if h.get("est_actif") and statut_h != "termine":
+            statut_h = "en_cours"
+
         if filtre_mode == "👤 Tournois en Simple" and mode_h != "simple":
             continue
         if filtre_mode == "👥 Tournois en Double / Équipes" and mode_h != "double":
+            continue
+
+        if filtre_statut == "🟢 En cours" and statut_h != "en_cours":
+            continue
+        if filtre_statut == "🏆 Terminés" and statut_h != "termine":
+            continue
+        if filtre_statut == "❌ Annulés" and statut_h != "annule":
             continue
 
         query = recherche_txt.strip().lower()
@@ -3366,53 +3472,67 @@ def afficher_section_historique_tournois():
             date_a = (h.get("date_archivage") or "").lower()
             v_fin = (h.get("vainqueur_final") or "").lower()
             fin = (h.get("finaliste") or "").lower()
-            if query not in titre and query not in date_c and query not in date_a and query not in v_fin and query not in fin:
+            parts_str = " ".join([str(p).lower() for p in h.get("participants", [])])
+            if query not in titre and query not in date_c and query not in date_a and query not in v_fin and query not in fin and query not in parts_str:
                 continue
         liste_filtree.append(h)
 
     if not liste_filtree:
-        st.warning("Aucun tournoi archivé ne correspond à vos critères de recherche.")
+        st.warning("Aucun tournoi sauvegardé ne correspond à vos critères de recherche.")
         return
 
     # Tableau récapitulatif
-    st.markdown(f"##### 📋 Liste des tournois archivés ({len(liste_filtree)})")
+    st.markdown(f"##### 📋 Liste des tournois sauvegardés ({len(liste_filtree)})")
     lignes_recap = []
     for h in liste_filtree:
-        mode_label = "👤 Simple" if h.get("mode") == "simple" else "👥 Double / Équipes"
+        mode_label = "👤 Simple" if h.get("mode") == "simple" else "👥 Double"
         fmt_label = "Élimination" if h.get("format") == "elimination" else "Round-Robin"
         nb_part = len(h.get("participants", []))
-        champ = h.get("vainqueur_final") or "Non déterminé"
-        finaliste = h.get("finaliste") or "Non déterminé"
-        statut_label = "🏆 Terminé" if h.get("statut") == "termine" else "🟢 Archivé"
+        champ = h.get("vainqueur_final") or ("En cours" if h.get("statut") == "en_cours" or h.get("est_actif") else "Non déterminé")
+        finaliste = h.get("finaliste") or ("En cours" if h.get("statut") == "en_cours" or h.get("est_actif") else "-")
+
+        statut_raw = h.get("statut", "en_cours")
+        if h.get("est_actif"):
+            statut_label = "🟢 Actif (En cours)"
+        elif statut_raw == "termine":
+            statut_label = "🏆 Terminé"
+        elif statut_raw == "annule":
+            statut_label = "❌ Annulé"
+        else:
+            statut_label = "💾 Archivé"
+
+        date_aff = h.get("date_creation", h.get("date_archivage", ""))
 
         lignes_recap.append({
-            "Date": h.get("date_creation", h.get("date_archivage", "")),
+            "Date": date_aff,
             "Titre du tournoi": h.get("titre", "Tournoi officiel"),
             "Modalité": mode_label,
             "Format": fmt_label,
             "Participants": nb_part,
+            "Statut": statut_label,
             "🥇 Champion": champ,
-            "🥈 Finaliste": finaliste,
-            "Statut": statut_label
+            "🥈 Finaliste": finaliste
         })
 
     df_hist = pd.DataFrame(lignes_recap)
     st.dataframe(df_hist, use_container_width=True, hide_index=True)
 
-    st.divider()
+    st.markdown("---")
 
     # Sélection pour consultation détaillée
-    st.markdown("##### 🌳 Consultation détaillée d'un tournoi archivé")
+    st.markdown("##### 🌳 Consultation détaillée & Arborescence du tournoi sélectionné")
     options_select = []
     for idx, h in enumerate(liste_filtree):
         mode_icon = "👤" if h.get("mode") == "simple" else "👥"
         titre = h.get("titre", "Tournoi")
         date_c = h.get("date_creation", "")
-        v_fin = h.get("vainqueur_final") or "En cours"
-        options_select.append((idx, f"{mode_icon} {titre} — {date_c} (Champion : {v_fin})"))
+        v_fin = h.get("vainqueur_final") or ("En cours" if h.get("statut") == "en_cours" or h.get("est_actif") else "")
+        champ_txt = f" • 🥇 {v_fin}" if v_fin else ""
+        statut_tag = "🟢 Actif" if h.get("est_actif") else ("🏆 Terminé" if h.get("statut") == "termine" else ("❌ Annulé" if h.get("statut") == "annule" else "💾 Archivé"))
+        options_select.append((idx, f"{mode_icon} [{statut_tag}] {titre} — {date_c}{champ_txt}"))
 
     choix_idx = st.selectbox(
-        "Sélectionnez le tournoi à afficher en détail :",
+        "Sélectionnez le tournoi sauvegardé à afficher en détail :",
         options=[idx for idx, label in options_select],
         format_func=lambda x: dict(options_select).get(x, ""),
         key="select_tournoi_detail_hist"
@@ -3421,7 +3541,7 @@ def afficher_section_historique_tournois():
     tournoi_choisi = liste_filtree[choix_idx]
     mode_choisi = tournoi_choisi.get("mode", "simple")
 
-    # Rendu du tournoi archivé
+    # Rendu du tournoi archivé/sauvegardé
     with st.container(border=True):
         col_dt1, col_dt2, col_dt3, col_dt4 = st.columns([2.2, 1.1, 1.2, 0.9])
         with col_dt1:
@@ -3432,7 +3552,18 @@ def afficher_section_historique_tournois():
             h_fin = tournoi_choisi.get("heure_fin_estimee", "")
             nb_tab = tournoi_choisi.get("nb_tables", 2)
             horaire_info = f"&nbsp;|&nbsp; ⏰ {h_deb} à ~{h_fin}" if h_fin else f"&nbsp;|&nbsp; ⏰ Début : {h_deb}"
-            st.caption(f"Modalité : **{mode_lbl}** &nbsp;|&nbsp; Format : `{fmt_lbl}`{horaire_info} &nbsp;|&nbsp; 🎱 {nb_tab} table(s)")
+
+            statut_choisi = tournoi_choisi.get("statut", "en_cours")
+            if tournoi_choisi.get("est_actif"):
+                badge_st = "🟢 **Actif en cours (Sauvegardé)**"
+            elif statut_choisi == "termine":
+                badge_st = "🏆 **Tournoi Terminé**"
+            elif statut_choisi == "annule":
+                badge_st = "❌ **Tournoi Annulé**"
+            else:
+                badge_st = "💾 **Archivé**"
+
+            st.caption(f"Statut : {badge_st} &nbsp;|&nbsp; Modalité : **{mode_lbl}** &nbsp;|&nbsp; Format : `{fmt_lbl}`{horaire_info} &nbsp;|&nbsp; 🎱 {nb_tab} table(s)")
             st.caption(f"Créé le : {tournoi_choisi.get('date_creation', 'N/D')} &nbsp;|&nbsp; Participants : {len(tournoi_choisi.get('participants', []))}")
 
         html_arch = generer_html_tournoi(tournoi_choisi, mode=mode_choisi)
@@ -3451,7 +3582,7 @@ def afficher_section_historique_tournois():
                     win.document.write({html_arch_json});
                     win.document.close();
                     win.focus();
-                    win.document.title = "Arborescence Tournoi Passé - A4";
+                    win.document.title = "Arborescence Tournoi - A4";
                     setTimeout(function() {{
                         win.print();
                     }}, 350);
@@ -3473,14 +3604,17 @@ def afficher_section_historique_tournois():
 
         with col_dt4:
             if est_editeur:
-                with st.popover("🗑️ Supprimer", use_container_width=True):
-                    st.markdown("### ⚠️ Suppression définitive")
-                    st.write(f"Supprimer le tournoi **{tournoi_choisi.get('titre')}** de l'historique ?")
-                    st.caption("Cette action est irréversible.")
-                    if st.button("🔴 Confirmer la suppression", type="primary", use_container_width=True, key=f"btn_del_arch_{tournoi_choisi.get('id_archive', choix_idx)}"):
-                        supprimer_tournoi_historique(tournoi_choisi.get("id_archive"))
-                        st.success("Tournoi supprimé de l'historique.")
-                        st.rerun()
+                if tournoi_choisi.get("est_actif"):
+                    st.caption("🔒 Tournoi actif (annulation via l'onglet dédié)")
+                else:
+                    with st.popover("🗑️ Supprimer", use_container_width=True):
+                        st.markdown("### ⚠️ Suppression définitive")
+                        st.write(f"Supprimer le tournoi **{tournoi_choisi.get('titre')}** de l'historique ?")
+                        st.caption("Cette action est irréversible.")
+                        if st.button("🔴 Confirmer la suppression", type="primary", use_container_width=True, key=f"btn_del_arch_{tournoi_choisi.get('id_archive', choix_idx)}"):
+                            supprimer_tournoi_historique(tournoi_choisi.get("id_archive"))
+                            st.success("Tournoi supprimé de l'historique.")
+                            st.rerun()
 
         # Palmarès / Podium
         if tournoi_choisi.get("vainqueur_final"):
@@ -3497,10 +3631,30 @@ def afficher_section_historique_tournois():
                 """,
                 unsafe_allow_html=True
             )
+        elif tournoi_choisi.get("statut") == "annule":
+            st.info("ℹ️ Ce tournoi a été annulé par le marqueur officiel.")
 
         # Arborescence graphique complète du tournoi archivé
         st.markdown("###### 🌳 Arborescence officielle du tournoi")
         st.components.v1.html(html_arch, height=520, scrolling=True)
+
+    # Accordéon complet pour explorer tous les tournois de la liste
+    with st.expander("📂 Consulter tous les tournois de la liste sous forme de fiches déroulantes", expanded=False):
+        for idx_c, t_c in enumerate(liste_filtree):
+            mode_i = "👤" if t_c.get("mode") == "simple" else "👥"
+            t_titre = t_c.get("titre", "Tournoi")
+            t_date = t_c.get("date_creation", t_c.get("date_archivage", ""))
+            t_stat = "🟢 Actif" if t_c.get("est_actif") else ("🏆 Terminé" if t_c.get("statut") == "termine" else ("❌ Annulé" if t_c.get("statut") == "annule" else "💾 Archivé"))
+            champ_i = t_c.get("vainqueur_final") or ("En cours" if t_c.get("est_actif") or t_c.get("statut") == "en_cours" else "N/D")
+            with st.container(border=True):
+                col_c1, col_c2 = st.columns([3, 1])
+                with col_c1:
+                    st.markdown(f"**{mode_i} {t_titre}** &nbsp;•&nbsp; `{t_stat}` &nbsp;•&nbsp; 📅 {t_date}")
+                    st.caption(f"Format : `{t_c.get('format', 'elimination')}` &nbsp;|&nbsp; Participants : {len(t_c.get('participants', []))} &nbsp;|&nbsp; 🥇 Champion : **{champ_i}**")
+                with col_c2:
+                    if st.button("👁️ Voir ce tournoi", key=f"btn_see_card_{idx_c}", use_container_width=True):
+                        st.session_state["select_tournoi_detail_hist"] = idx_c
+                        st.rerun()
 
 def afficher_onglet_tournois():
     """Onglet principal Tournois avec bandeau de verrou, prise/cession de main, Simple, Double et Historique."""
@@ -3509,7 +3663,7 @@ def afficher_onglet_tournois():
     subtab_simple, subtab_double, subtab_hist = st.tabs([
         "👤 Tournoi en Simple (Tous les joueurs)",
         "👥 Tournoi en Double / Équipes (Équipes inscrites)",
-        "📜 Historique des tournois (Archives)"
+        "📜 Liste des tournois sauvegardés & Historique"
     ])
 
     with subtab_simple:
