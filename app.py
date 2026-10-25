@@ -18,8 +18,14 @@ import streamlit as st
 # 1. Configuration de la page (Immédiatement après les imports, au tout début du script)
 _base_dir = os.path.dirname(os.path.abspath(__file__))
 _candidats_icones = [
+    os.path.join(_base_dir, "armoiries.ico"),
+    os.path.join(_base_dir, "favicon.ico"),
+    os.path.join(os.getcwd(), "armoiries.ico"),
+    os.path.join(os.getcwd(), "favicon.ico"),
     os.path.join(_base_dir, "armoiries.png"),
     os.path.join(os.getcwd(), "armoiries.png"),
+    "armoiries.ico",
+    "favicon.ico",
     "armoiries.png"
 ]
 icone_app = "🎱"

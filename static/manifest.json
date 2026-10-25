@@ -22,6 +22,11 @@
       "sizes": "180x180",
       "type": "image/png",
       "purpose": "any maskable"
+    },
+    {
+      "src": "app/static/favicon.ico",
+      "sizes": "256x256 64x64 32x32 16x16",
+      "type": "image/x-icon"
     }
   ]
 }
