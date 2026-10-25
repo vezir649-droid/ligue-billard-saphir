@@ -2131,6 +2131,36 @@ def calculer_classement_round_robin(tournoi_rr):
     classement = sorted(stats.items(), key=lambda x: (x[1]["pts"], x[1]["diff"], x[1]["pour"]), reverse=True)
     return classement
 
+def formater_nom_abrege_joueur(nom_joueur):
+    """Formate un nom de joueur pour l'arborescence imprimable :
+    première lettre du prénom et nom de famille (ex: Guy Vézina -> G. Vézina, Guy Vézina & Michel Caron -> G. Vézina & M. Caron)."""
+    if not nom_joueur:
+        return ""
+    nom_str = str(nom_joueur).strip()
+
+    # Si c'est un duo en double (séparateur ' & ', ' / ', ' et ')
+    for sep in [" & ", " / ", " et "]:
+        if sep in nom_str:
+            duo_parts = nom_str.split(sep)
+            return sep.join([formater_nom_abrege_joueur(p) for p in duo_parts])
+
+    # Textes indicatifs et placeholders du bracket
+    lower = nom_str.lower()
+    if lower in ["à déterminer", "a determiner", "bye", "en attente", "tbd", "exempt", "-", ""]:
+        return nom_str
+    if lower.startswith("vainqueur") or lower.startswith("perdant") or lower.startswith("gagnant") or lower.startswith("match"):
+        return nom_str
+
+    parts = nom_str.split()
+    if len(parts) <= 1:
+        return nom_str
+
+    prenom = parts[0]
+    nom_famille = " ".join(parts[1:])
+
+    initiale = prenom[0].upper()
+    return f"{initiale}. {nom_famille}"
+
 def generer_html_tournoi(tournoi, mode="simple"):
     """Génère la feuille officielle imprimable du tournoi limitée strictement à l'arborescence (Arbre / Matrice)."""
     logo_b64 = charger_armoiries_base64()
@@ -2155,8 +2185,8 @@ def generer_html_tournoi(tournoi, mode="simple"):
 
     podium_html = ""
     if statut == "termine" and tournoi.get("vainqueur_final"):
-        v_final = tournoi["vainqueur_final"]
-        fin_final = tournoi.get("finaliste", "Non spécifié")
+        v_final = formater_nom_abrege_joueur(tournoi["vainqueur_final"])
+        fin_final = formater_nom_abrege_joueur(tournoi.get("finaliste", "Non spécifié"))
         podium_html = f"""
         <div style="background: linear-gradient(135deg, #fff9c4, #fffde7); border: 2px solid #fbc02d; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; text-align: center;">
             <div style="font-size: 13px; font-weight: bold; color: #f57f17; margin-bottom: 2px;">🏆 PALMARÈS OFFICIEL DU TOURNOI</div>
@@ -2198,6 +2228,8 @@ def generer_html_tournoi(tournoi, mode="simple"):
                 m_t_court = m.get("table_courte", "")
                 h_badge = f'<span style="color: #0b3c5d; font-weight: bold;">⏰ {m_h} [{m_t_court}]</span>' if m_h else f'<span>{m_fmt}</span>'
 
+                ea_disp = formater_nom_abrege_joueur(ea)
+                eb_disp = formater_nom_abrege_joueur(eb)
                 cards.append(f"""
                 <div class="bracket-card {card_done}">
                     <div class="card-header">
@@ -2206,11 +2238,11 @@ def generer_html_tournoi(tournoi, mode="simple"):
                     </div>
                     <div class="card-body">
                         <div class="player-row {win_a}">
-                            <span class="p-name" title="{ea}">{ea}</span>
+                            <span class="p-name" title="{ea}">{ea_disp}</span>
                             <span class="p-score">{sc_a_disp}</span>
                         </div>
                         <div class="player-row {win_b}">
-                            <span class="p-name" title="{eb}">{eb}</span>
+                            <span class="p-name" title="{eb}">{eb_disp}</span>
                             <span class="p-score">{sc_b_disp}</span>
                         </div>
                     </div>
@@ -2230,6 +2262,7 @@ def generer_html_tournoi(tournoi, mode="simple"):
             """)
 
         vainq_final = tournoi.get("vainqueur_final") or "À déterminer"
+        vainq_final_disp = formater_nom_abrege_joueur(vainq_final)
         cols_html.append(f"""
         <div class="bracket-col champion-col">
             <div class="bracket-round-title" style="background: #f57f17;">
@@ -2240,7 +2273,7 @@ def generer_html_tournoi(tournoi, mode="simple"):
                 <div class="champion-box">
                     <div class="champ-trophy">🥇</div>
                     <div class="champ-title">CHAMPION DU TOURNOI</div>
-                    <div class="champ-name">{vainq_final}</div>
+                    <div class="champ-name">{vainq_final_disp}</div>
                 </div>
             </div>
         </div>
@@ -2263,7 +2296,7 @@ def generer_html_tournoi(tournoi, mode="simple"):
             scores_matrix[(ea, eb)] = m
             scores_matrix[(eb, ea)] = m
 
-        th_parts = "".join([f'<th style="padding: 4px 6px; font-size: 10px; border: 1px solid #c8d9e6;">{p[:12]}</th>' for p in participants])
+        th_parts = "".join([f'<th style="padding: 4px 6px; font-size: 10px; border: 1px solid #c8d9e6;" title="{p}">{formater_nom_abrege_joueur(p)}</th>' for p in participants])
         rows_rr_matrix = []
         for p1 in participants:
             cells = []
@@ -2281,9 +2314,10 @@ def generer_html_tournoi(tournoi, mode="simple"):
                     else:
                         cells.append('<td style="border: 1px solid #ddd; color: #aaa; padding: 4px;">-</td>')
 
+            p1_disp = formater_nom_abrege_joueur(p1)
             rows_rr_matrix.append(f"""
             <tr style="text-align: center;">
-                <td style="text-align: left; font-weight: bold; padding: 5px 8px; border: 1px solid #ddd; background: #fafafa;">{p1}</td>
+                <td style="text-align: left; font-weight: bold; padding: 5px 8px; border: 1px solid #ddd; background: #fafafa;" title="{p1}">{p1_disp}</td>
                 {''.join(cells)}
             </tr>
             """)
