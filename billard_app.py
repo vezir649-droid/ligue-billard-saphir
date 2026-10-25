@@ -2847,82 +2847,101 @@ def afficher_section_tournoi(mode="simple"):
                 st.caption(f"🎯 **{len(participants_finaux)} joueur(s) inscrit(s)** participant au tournoi.")
 
             else:
-                # Mode DOUBLE / ÉQUIPES
-                st.markdown("##### 👥 Constitution des équipes de double / équipes de ligue")
-                methode_duos = st.radio(
-                    "Modalité de participation :",
-                    [
-                        "🏆 Les 8 équipes officielles inscrites de la ligue (Rondes complètes)",
-                        "🎲 Tirage au sort aléatoire (Pige des équipes parmi tous les joueurs inscrits)",
-                        "✍️ Formation manuelle des duos / équipes"
-                    ],
-                    key=f"methode_duos_{mode}"
-                )
+                # Mode DOUBLE : Sélection des duos de joueurs avec drop boxes
+                st.markdown("##### 👥 Sélection des duos de joueurs inscrits (Drop boxes)")
+                st.caption("Constituez les équipes de double en sélectionnant les deux joueurs de chaque duo dans les listes déroulantes ci-dessous.")
 
-                if methode_duos.startswith("🏆"):
-                    eq_dict = charger_equipes_csv()
-                    equipes_officielles = sorted(list(eq_dict.keys())) if eq_dict else ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel"]
-                    st.success(f"🏆 **Les {len(equipes_officielles)} équipes inscrites de la ligue participent toutes au tournoi :**")
-                    cols_eq = st.columns(2)
-                    for idx_e, nom_e in enumerate(equipes_officielles):
-                        roster = ", ".join(eq_dict.get(nom_e, [])) if eq_dict else ""
-                        with cols_eq[idx_e % 2]:
-                            st.markdown(f"• **Équipe {nom_e}** : `{roster}`")
-                    participants_finaux = equipes_officielles
-
-                elif methode_duos.startswith("🎲"):
-                    col_pige_btn1, col_pige_btn2 = st.columns([1.5, 3.5])
-                    with col_pige_btn1:
-                        if st.button("👥 Sélectionner tous les joueurs", key=f"btn_all_pool_{mode}", use_container_width=True):
-                            st.session_state[f"pool_double_{mode}"] = tous_candidats
+                col_nb_d1, col_nb_d2 = st.columns([1.5, 3])
+                with col_nb_d1:
+                    nb_duos_choisi = st.selectbox(
+                        "Nombre de duos participant :",
+                        options=[8, 4, 12, 16, 2, 6, 10, 14],
+                        index=0,
+                        key=f"nb_duos_select_{mode}",
+                        help="Sélectionnez le nombre de duos (8 duos = 16 joueurs, idéal pour un tournoi à élimination sur 3 rondes sans passe-droit)."
+                    )
+                with col_nb_d2:
+                    col_btn_pige, col_btn_reset = st.columns(2)
+                    with col_btn_pige:
+                        st.write("")
+                        if st.button("🎲 Piger au hasard", key=f"btn_pige_drop_{mode}", use_container_width=True, help="Remplit aléatoirement les drop boxes avec les joueurs inscrits"):
+                            pool_pige = list(tous_candidats)
+                            random.shuffle(pool_pige)
+                            for d_idx in range(nb_duos_choisi):
+                                if len(pool_pige) >= 2:
+                                    st.session_state[f"duo_{d_idx}_j1_{mode}"] = pool_pige.pop(0)
+                                    st.session_state[f"duo_{d_idx}_j2_{mode}"] = pool_pige.pop(0)
+                            st.rerun()
+                    with col_btn_reset:
+                        st.write("")
+                        if st.button("🔄 Réinitialiser", key=f"btn_reset_duos_{mode}", use_container_width=True, help="Restaure la sélection séquentielle des joueurs"):
+                            for d_idx in range(16):
+                                st.session_state.pop(f"duo_{d_idx}_j1_{mode}", None)
+                                st.session_state.pop(f"duo_{d_idx}_j2_{mode}", None)
                             st.rerun()
 
-                    selection_pool = st.multiselect(
-                        "Sélectionnez les joueurs participant au tirage au sort des équipes :",
-                        options=tous_candidats,
-                        default=st.session_state.get(f"pool_double_{mode}", tous_candidats),
-                        key=f"pool_double_{mode}"
-                    )
-                    st.caption(f"Pool de joueurs sélectionnés : **{len(selection_pool)} joueurs**")
+                st.markdown("###### 📋 Choix des joueurs par duo :")
 
-                    if len(selection_pool) % 2 != 0:
-                        st.warning("⚠️ Le nombre de joueurs est impair. Ajoutez ou retirez un joueur pour former des paires complètes.")
+                duos_selectionnes = []
+                joueurs_dans_duos = []
+                doublons = set()
 
-                    if f"paires_tirees_{mode}" in st.session_state and st.session_state[f"paires_tirees_{mode}"]:
-                        st.markdown("###### 🎲 Paires tirées au sort :")
-                        for idx_p, p_nom in enumerate(st.session_state[f"paires_tirees_{mode}"], 1):
-                            st.markdown(f"• **Duo #{idx_p}** : `{p_nom}`")
-                        participants_finaux = st.session_state[f"paires_tirees_{mode}"]
+                cols_duos = st.columns(2)
+                for i in range(nb_duos_choisi):
+                    with cols_duos[i % 2]:
+                        with st.container(border=True):
+                            st.markdown(f"**🎯 Duo #{i + 1}**")
+                            col_j1, col_j2 = st.columns(2)
 
-                    if st.button("🎲 Tirer les équipes au sort", key=f"btn_pige_{mode}", disabled=len(selection_pool) < 4 or len(selection_pool) % 2 != 0):
-                        pool_shuffled = list(selection_pool)
-                        random.shuffle(pool_shuffled)
-                        paires = []
-                        for i in range(0, len(pool_shuffled), 2):
-                            paires.append(f"{pool_shuffled[i]} & {pool_shuffled[i+1]}")
-                        st.session_state[f"paires_tirees_{mode}"] = paires
-                        participants_finaux = paires
-                        st.rerun()
+                            def_idx1 = (i * 2) % len(tous_candidats) if tous_candidats else 0
+                            def_idx2 = (i * 2 + 1) % len(tous_candidats) if len(tous_candidats) > 1 else 0
 
+                            with col_j1:
+                                st.caption("Joueur 1 :")
+                                j1 = st.selectbox(
+                                    f"Joueur 1 (Duo {i+1})",
+                                    options=tous_candidats,
+                                    index=def_idx1,
+                                    key=f"duo_{i}_j1_{mode}",
+                                    label_visibility="collapsed"
+                                )
+                            with col_j2:
+                                st.caption("Joueur 2 :")
+                                j2 = st.selectbox(
+                                    f"Joueur 2 (Duo {i+1})",
+                                    options=tous_candidats,
+                                    index=def_idx2,
+                                    key=f"duo_{i}_j2_{mode}",
+                                    label_visibility="collapsed"
+                                )
+
+                            if j1 == j2:
+                                st.error(f"⚠️ Un joueur ne peut pas être jumelé avec lui-même ({j1}).")
+                                doublons.add(j1)
+                            if j1 in joueurs_dans_duos:
+                                doublons.add(j1)
+                            joueurs_dans_duos.append(j1)
+                            if j2 in joueurs_dans_duos:
+                                doublons.add(j2)
+                            joueurs_dans_duos.append(j2)
+
+                            duo_nom = f"{j1} & {j2}"
+                            st.markdown(f"🤝 **Duo #{i+1} :** `{duo_nom}`")
+                            duos_selectionnes.append(duo_nom)
+
+                participants_finaux = duos_selectionnes
+
+                if doublons:
+                    doublons_str = ", ".join(sorted(list(doublons)))
+                    st.warning(f"⚠️ **Joueurs sélectionnés en double :** {doublons_str}. Chaque joueur ne doit figurer que dans un seul duo.")
                 else:
-                    # Formation manuelle des duos
-                    st.caption("Entrez les noms des équipes ou paires :")
-                    nb_duos = st.number_input("Nombre de duos :", min_value=2, max_value=16, value=4, step=1, key=f"nb_duos_man_{mode}")
-                    duos_manuels = []
-                    for i in range(int(nb_duos)):
-                        col_d1, col_d2 = st.columns(2)
-                        with col_d1:
-                            j_a = st.selectbox(f"Duo #{i+1} — Joueur 1 :", options=tous_candidats, index=i % len(tous_candidats) if tous_candidats else 0, key=f"duo_{i}_ja_{mode}")
-                        with col_d2:
-                            j_b = st.selectbox(f"Duo #{i+1} — Joueur 2 :", options=tous_candidats, index=(i+1) % len(tous_candidats) if tous_candidats else 0, key=f"duo_{i}_jb_{mode}")
-                        duos_manuels.append(f"{j_a} & {j_b}")
-                    participants_finaux = duos_manuels
+                    st.success(f"🟢 **{len(participants_finaux)} duos constitués** avec succès ({len(set(joueurs_dans_duos))} joueurs distincts prêts pour le tournoi en double).")
 
             st.divider()
 
             nb_p = len(participants_finaux)
             is_elim = "Élimination" in type_format
-            bloquer_lancement = False
+            bloquer_lancement = bool(doublons) if (mode == "double" and 'doublons' in locals()) else False
 
             if is_elim:
                 if nb_p < 2:
