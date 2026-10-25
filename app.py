@@ -3703,14 +3703,12 @@ def afficher_tableau_de_bord_progression(historique):
             )
             leader = classement_equipes[0]
             max_attaque = max(stats_equipes.values(), key=lambda x: x["pour"])
-            meilleure_defense = min(stats_equipes.values(), key=lambda x: x["moy_contre"])
 
             # 1. Cartes KPI Équipes
-            k1, k2, k3, k4 = st.columns(4)
+            k1, k2, k3 = st.columns(3)
             k1.metric("🏁 Matchs joués", f"{len(historique)} rencontres")
-            k2.metric("🥇 Leader actuel", leader["nom"], f"{leader['v']}V - {leader['d']}D - {leader['n']}N")
+            k2.metric("🥇 Leader actuel", leader["nom"], f"{leader['v']}V - {leader['d']}D")
             k3.metric("🔥 Meilleure attaque", max_attaque["nom"], f"{max_attaque['pour']} pts ({max_attaque['moy_pour']:.1f}/m)")
-            k4.metric("🛡️ Meilleure défense", meilleure_defense["nom"], f"{meilleure_defense['moy_contre']:.1f} pts/m concédés")
 
             st.markdown("---")
 
@@ -3721,16 +3719,6 @@ def afficher_tableau_de_bord_progression(historique):
             lignes_tab = []
             for rang, eq_data in enumerate(classement_equipes, start=1):
                 badge_rang = medailles.get(rang, f"#{rang}")
-                forme_icons = []
-                for res in eq_data["forme"][-5:]:
-                    if res == "V":
-                        forme_icons.append("🟢")
-                    elif res == "D":
-                        forme_icons.append("🔴")
-                    else:
-                        forme_icons.append("🟡")
-                forme_str = " ".join(forme_icons) if forme_icons else "-"
-                diff_sym = f"+{eq_data['diff']}" if eq_data['diff'] > 0 else str(eq_data['diff'])
 
                 lignes_tab.append({
                     "Rang": badge_rang,
@@ -3738,24 +3726,14 @@ def afficher_tableau_de_bord_progression(historique):
                     "PJ": eq_data["pj"],
                     "V": eq_data["v"],
                     "D": eq_data["d"],
-                    "N": eq_data["n"],
                     "Points Pour (BP)": eq_data["pour"],
-                    "Points Contre (BC)": eq_data["contre"],
-                    "Différence": diff_sym,
-                    "Moy. Pts/Match": f"{eq_data['moy_pour']:.1f}",
-                    "5 derniers matchs": forme_str
+                    "Moy. Pts/Match": f"{eq_data['moy_pour']:.1f}"
                 })
 
             df_standings = pd.DataFrame(lignes_tab)
             st.dataframe(df_standings, use_container_width=True, hide_index=True)
 
-            st.markdown("---")
 
-            # 3. Graphique d'évolution des points cumulés
-            st.markdown("#### 📈 Course au championnat — Points cumulés au fil des rencontres")
-            st.caption("Ce graphique illustre l'accumulation des points pour chaque équipe match après match.")
-            if not df_prog_equipes.empty:
-                st.line_chart(df_prog_equipes, height=360)
 
             st.markdown("---")
 
@@ -3897,7 +3875,7 @@ def afficher_tableau_de_bord_progression(historique):
 
                 # Graphique d'évolution du joueur par match
                 if fj["matchs_synthese"]:
-                    st.markdown(f"##### 📈 Évolution de la moyenne match après match ({choix_j})")
+                    st.markdown(f"##### 📊 Moyenne match après match ({choix_j})")
                     indices_m = sorted(fj["matchs_synthese"].keys())
 
                     labels_pj = []
@@ -3922,7 +3900,7 @@ def afficher_tableau_de_bord_progression(historique):
                         "Moyenne générale cumulée": moys_cumul
                     }, index=labels_pj)
 
-                    st.line_chart(df_chart_j, height=300)
+                    st.bar_chart(df_chart_j, height=320)
 
                 # Historique détaillé de toutes ses manches
                 if fj["chronologie"]:
