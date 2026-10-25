@@ -2594,12 +2594,12 @@ def modal_arborescence_tournoi(tournoi_obj, mode_str="simple"):
     html_feuille = generer_html_tournoi(tournoi_obj, mode=mode_str)
     html_json_str = json.dumps(html_feuille)
 
-    col_btn_print, col_btn_ext, col_btn_close = st.columns([1.5, 1.5, 1])
+    col_btn_print, col_btn_ext, col_btn_refresh, col_btn_close = st.columns([1.3, 1.4, 1.2, 0.8])
     with col_btn_print:
         st.components.v1.html(
             f"""
             <button onclick="imprimerTournoiModal()" style="width:100%; height:38px; background-color:#0b3c5d; color:white; border:none; border-radius:6px; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif; font-size:13px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;">
-                🖨️ Imprimer l'arborescence (A4)
+                🖨️ Imprimer (A4)
             </button>
             <script>
             function imprimerTournoiModal() {{
@@ -2621,7 +2621,7 @@ def modal_arborescence_tournoi(tournoi_obj, mode_str="simple"):
         st.components.v1.html(
             f"""
             <button onclick="ouvrirTournoiNouvelOnglet()" style="width:100%; height:38px; background-color:#2e7d32; color:white; border:none; border-radius:6px; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif; font-size:13px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;">
-                🌐 Ouvrir dans un nouvel onglet
+                🌐 Nouvel onglet
             </button>
             <script>
             function ouvrirTournoiNouvelOnglet() {{
@@ -2636,6 +2636,9 @@ def modal_arborescence_tournoi(tournoi_obj, mode_str="simple"):
             """,
             height=42
         )
+    with col_btn_refresh:
+        if st.button("🔄 Actualiser", use_container_width=True, key=f"btn_act_dlg_{mode_str}", help="Recharge les derniers résultats saisis pour ce tournoi"):
+            st.rerun()
     with col_btn_close:
         if st.button("✖️ Fermer", use_container_width=True, key=f"btn_close_dlg_{mode_str}"):
             st.rerun()
@@ -2676,10 +2679,18 @@ def afficher_bandeau_verrou_tournoi():
                     ceder_la_main_avec_sauvegarde(my_session_id)
                 st.rerun()
     elif est_spectateur:
-        col_lk1.info("👁️ **Mode spectateur (Lecture seule) :** Consultation en direct du tournoi. La saisie des scores est réservée au marqueur officiel.")
+        tournoi_actif = any(td.get(m) and isinstance(td.get(m), dict) and td.get(m).get("statut") == "en_cours" for m in ["simple", "double"])
+        texte_spec = "👁️ **Mode spectateur (Lecture seule) :** Consultation en direct du tournoi actif." if tournoi_actif else "👁️ **Mode spectateur (Lecture seule) :** Consultation des tournois. La saisie des scores est réservée au marqueur."
+        col_lk1.info(texte_spec)
         with col_lk2:
-            st.button("⚡ Prendre la main", key="btn_prendre_main_t_spec", disabled=True, use_container_width=True, help="Le bouton Prendre la main est réservé aux marqueurs authentifiés")
+            if st.button("🔄 Actualiser les résultats", key="btn_refresh_t_spec", type="primary" if tournoi_actif else "secondary", use_container_width=True, help="Recharge les derniers résultats et scores en direct du tournoi"):
+                try:
+                    st.toast("🔄 Résultats du tournoi actualisés !")
+                except Exception:
+                    pass
+                st.rerun()
     else:
+        tournoi_actif = any(td.get(m) and isinstance(td.get(m), dict) and td.get(m).get("statut") == "en_cours" for m in ["simple", "double"])
         if autre_editeur_actif:
             mins = temps_restant // 60
             secs = temps_restant % 60
@@ -2688,10 +2699,25 @@ def afficher_bandeau_verrou_tournoi():
             col_lk1.info(f"🔒 **Mode consultation (Lecture seule) :** Vous consultez le tournoi.{mention_sauv}")
 
         with col_lk2:
-            if st.button("⚡ Prendre la main", key="btn_prendre_main_tournoi", use_container_width=True, help="Prend le contrôle de la saisie, charge la dernière sauvegarde du tournoi depuis le disque et active l'édition"):
-                with st.spinner("Prise de la main et chargement de la sauvegarde du tournoi..."):
-                    prendre_la_main_avec_rechargement(my_session_id)
-                st.rerun()
+            if tournoi_actif:
+                col_pm, col_act = st.columns([1.2, 1.2])
+                with col_pm:
+                    if st.button("⚡ Prendre la main", key="btn_prendre_main_tournoi", use_container_width=True, help="Prend le contrôle de la saisie, charge la dernière sauvegarde du tournoi et active l'édition"):
+                        with st.spinner("Prise de la main et chargement..."):
+                            prendre_la_main_avec_rechargement(my_session_id)
+                        st.rerun()
+                with col_act:
+                    if st.button("🔄 Actualiser", key="btn_refresh_t_ed_consult", use_container_width=True, help="Recharge les résultats du tournoi sans prendre la main"):
+                        try:
+                            st.toast("🔄 Résultats actualisés !")
+                        except Exception:
+                            pass
+                        st.rerun()
+            else:
+                if st.button("⚡ Prendre la main", key="btn_prendre_main_tournoi", use_container_width=True, help="Prend le contrôle de la saisie, charge la dernière sauvegarde du tournoi et active l'édition"):
+                    with st.spinner("Prise de la main et chargement..."):
+                        prendre_la_main_avec_rechargement(my_session_id)
+                    st.rerun()
 
     return est_editeur
 
@@ -2722,6 +2748,8 @@ def afficher_section_tournoi(mode="simple"):
                     "Dès que le marqueur officiel lancera la compétition, "
                     "vous pourrez consulter ici en direct l'arborescence des rencontres, les résultats des matchs et le classement."
                 )
+                if st.button("🔄 Vérifier si un tournoi a été lancé", key=f"btn_check_launch_{mode}", use_container_width=True, help="Vérifie si le marqueur a débuté un nouveau tournoi"):
+                    st.rerun()
             return
 
         st.caption(f"Configurez les paramètres et inscrivez les participants pour lancer un nouveau {libelle_mode.lower()}.")
@@ -2976,7 +3004,7 @@ def afficher_section_tournoi(mode="simple"):
         if est_editeur:
             col_top1, col_top2, col_top3, col_top4 = st.columns([2.2, 1.4, 1.2, 0.9])
         else:
-            col_top1, col_top2, col_top3 = st.columns([2.5, 1.4, 1.2])
+            col_top1, col_top2, col_top3, col_top4 = st.columns([2.1, 1.2, 1.1, 1.3])
 
         with col_top1:
             st.markdown(f"#### 🏆 **{titre_t}**")
@@ -3004,7 +3032,8 @@ def afficher_section_tournoi(mode="simple"):
                     if cfg_v.get("destinataires") and cfg_v.get("smtp_expediteur"):
                         st.info(f"ℹ️ Info courriel administrateurs : {msg_env_t}")
             if not est_editeur:
-                st.caption("👁️ *Mode Spectateur (Consultation seule)*")
+                heure_actuelle_str = datetime.now().strftime("%H:%M:%S")
+                st.caption(f"👁️ *Mode Consultation (Lecture seule)* &nbsp;•&nbsp; ⏱️ *Dernière actualisation : {heure_actuelle_str}*")
 
         with col_top2:
             if st.button("🌳 Visualiser l'arborescence", key=f"btn_visu_modal_{mode}", type="primary", use_container_width=True, help="Affiche l'arborescence complète, tous les matchs et permet l'impression"):
@@ -3054,6 +3083,36 @@ def afficher_section_tournoi(mode="simple"):
                                 tournois_data[mode] = None
                                 sauvegarder_tournois_data(tournois_data)
                             st.rerun()
+        else:
+            with col_top4:
+                col_r_btn, col_r_auto = st.columns([1.6, 1.1])
+                with col_r_btn:
+                    if st.button("🔄 Actualiser", key=f"btn_refresh_tournoi_{mode}", type="primary", use_container_width=True, help="Recharge immédiatement les derniers scores et l'avancement du tournoi"):
+                        try:
+                            st.toast("🔄 Résultats du tournoi actualisés !")
+                        except Exception:
+                            pass
+                        st.rerun()
+                with col_r_auto:
+                    auto_refresh_actif = st.checkbox("⏱️ 30s", key=f"chk_auto_refresh_{mode}", help="Actualise automatiquement les scores du tournoi toutes les 30 secondes")
+
+                if auto_refresh_actif:
+                    st.components.v1.html(
+                        f"""
+                        <script>
+                        setTimeout(function() {{
+                            var btns = window.parent.document.querySelectorAll('button');
+                            for (var i = 0; i < btns.length; i++) {{
+                                if (btns[i].innerText.includes('Actualiser')) {{
+                                    btns[i].click();
+                                    break;
+                                }}
+                            }}
+                        }}, 30000);
+                        </script>
+                        """,
+                        height=0
+                    )
 
         with st.expander("🌳 Consulter l'arborescence graphique et tous les matchs", expanded=False):
             st.components.v1.html(html_tournoi, height=520, scrolling=True)
