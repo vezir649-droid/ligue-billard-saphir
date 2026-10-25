@@ -2860,6 +2860,26 @@ def modal_arborescence_tournoi(tournoi_obj, mode_str="simple"):
 
     st.components.v1.html(html_feuille, height=650, scrolling=True)
 
+def actualiser_resultats_tournoi(notif_msg=None):
+    """Actualise systématiquement l'ensemble des résultats du tournoi depuis le disque."""
+    for k in list(st.session_state.keys()):
+        if k.startswith("sc_a_") or k.startswith("sc_b_") or k.startswith("rr_a_") or k.startswith("rr_b_"):
+            try:
+                del st.session_state[k]
+            except Exception:
+                pass
+    if os.path.exists(TOURNOIS_FILE):
+        try:
+            st.session_state["dernier_mtime_tournois_vu"] = os.path.getmtime(TOURNOIS_FILE)
+        except Exception:
+            pass
+    msg = notif_msg if notif_msg else "🔄 Résultats du tournoi actualisés !"
+    try:
+        st.toast(msg, icon="🏆")
+    except Exception:
+        pass
+    st.rerun()
+
 def afficher_bandeau_verrou_tournoi():
     """Affiche le bandeau d'état du verrou exclusif et de gestion de prise/cession de main pour les tournois."""
     my_session_id = st.session_state.get("user_session_id", "")
@@ -2897,19 +2917,17 @@ def afficher_bandeau_verrou_tournoi():
         tournoi_actif = any(td.get(m) and isinstance(td.get(m), dict) and td.get(m).get("statut") == "en_cours" for m in ["simple", "double"])
         texte_spec = "👁️ **Mode spectateur (Lecture seule) :** Consultation en direct du tournoi actif." if tournoi_actif else "👁️ **Mode spectateur (Lecture seule) :** Consultation des tournois. La saisie des scores est réservée au marqueur."
         col_lk1.info(texte_spec)
+        col_lk1.caption("🔄 *Veille automatique active : dès que le marqueur met à jour le tournoi, les résultats sont actualisés systématiquement.*")
         with col_lk2:
             if st.button("🔄 Actualiser les résultats", key="btn_refresh_t_spec", type="primary" if tournoi_actif else "secondary", use_container_width=True, help="Recharge les derniers résultats et scores en direct du tournoi"):
-                try:
-                    st.toast("🔄 Résultats du tournoi actualisés !")
-                except Exception:
-                    pass
-                st.rerun()
+                actualiser_resultats_tournoi()
     else:
         tournoi_actif = any(td.get(m) and isinstance(td.get(m), dict) and td.get(m).get("statut") == "en_cours" for m in ["simple", "double"])
         if autre_editeur_actif:
             mins = temps_restant // 60
             secs = temps_restant % 60
             col_lk1.warning(f"🔒 **Mode consultation (Lecture seule) :** Un autre marqueur a actuellement la main sur la saisie. Vos modifications sont verrouillées.{mention_sauv} *(Inactivité restante : {mins}m {secs:02d}s)*")
+            col_lk1.caption("🔄 *Veille automatique active : dès que le marqueur met à jour le tournoi, les résultats sont actualisés systématiquement.*")
         else:
             col_lk1.info(f"🔒 **Mode consultation (Lecture seule) :** Vous consultez le tournoi.{mention_sauv}")
 
@@ -2923,16 +2941,31 @@ def afficher_bandeau_verrou_tournoi():
                         st.rerun()
                 with col_act:
                     if st.button("🔄 Actualiser", key="btn_refresh_t_ed_consult", use_container_width=True, help="Recharge les résultats du tournoi sans prendre la main"):
-                        try:
-                            st.toast("🔄 Résultats actualisés !")
-                        except Exception:
-                            pass
-                        st.rerun()
+                        actualiser_resultats_tournoi()
             else:
                 if st.button("⚡ Prendre la main", key="btn_prendre_main_tournoi", use_container_width=True, help="Prend le contrôle de la saisie, charge la dernière sauvegarde du tournoi et active l'édition"):
                     with st.spinner("Prise de la main et chargement..."):
                         prendre_la_main_avec_rechargement(my_session_id)
                     st.rerun()
+
+    # Veille automatique réactive pour spectateurs et mode consultation
+    if not est_editeur:
+        @st.fragment(run_every="4s")
+        def surveiller_maj_marqueur_tournoi():
+            if os.path.exists(TOURNOIS_FILE):
+                try:
+                    mtime_actuel = os.path.getmtime(TOURNOIS_FILE)
+                except Exception:
+                    mtime_actuel = 0
+                cle_vu = "dernier_mtime_tournois_vu"
+                if cle_vu not in st.session_state:
+                    st.session_state[cle_vu] = mtime_actuel
+                elif mtime_actuel > st.session_state.get(cle_vu, 0):
+                    st.session_state[cle_vu] = mtime_actuel
+                    time.sleep(0.2)
+                    actualiser_resultats_tournoi("🔔 Le marqueur a mis à jour le tournoi ! Actualisation systématique des résultats effectuée.")
+
+        surveiller_maj_marqueur_tournoi()
 
     return est_editeur
 
@@ -2940,6 +2973,24 @@ def afficher_section_tournoi(mode="simple"):
     """Affiche l'interface complète de configuration ou de déroulement d'un tournoi (Simple ou Double)."""
     if f"msg_annulation_{mode}" in st.session_state:
         st.info(st.session_state.pop(f"msg_annulation_{mode}"))
+
+    # Actualisation systématique si mise à jour du marqueur détectée
+    if not (st.session_state.get("est_spectateur", False) or not st.session_state.get("authentifie", False)):
+        my_sid = st.session_state.get("user_session_id", "")
+        veut_ed = not st.session_state.get("mode_consultation", False)
+        is_ed, _, _ = gerer_verrou_session(my_sid, veut_etre_editeur=veut_ed)
+    else:
+        is_ed = False
+
+    if not is_ed and os.path.exists(TOURNOIS_FILE):
+        try:
+            mtime_t = os.path.getmtime(TOURNOIS_FILE)
+            cle_t = "dernier_mtime_tournois_vu"
+            if cle_t in st.session_state and mtime_t > st.session_state[cle_t]:
+                st.session_state[cle_t] = mtime_t
+                actualiser_resultats_tournoi("🔔 Le marqueur a mis à jour le tournoi ! Actualisation systématique des résultats.")
+        except Exception:
+            pass
 
     est_spectateur = st.session_state.get("est_spectateur", False) or not st.session_state.get("authentifie", False)
     if est_spectateur:
@@ -3361,11 +3412,7 @@ def afficher_section_tournoi(mode="simple"):
                 col_r_btn, col_r_auto = st.columns([1.6, 1.1])
                 with col_r_btn:
                     if st.button("🔄 Actualiser", key=f"btn_refresh_tournoi_{mode}", type="primary", use_container_width=True, help="Recharge immédiatement les derniers scores et l'avancement du tournoi"):
-                        try:
-                            st.toast("🔄 Résultats du tournoi actualisés !")
-                        except Exception:
-                            pass
-                        st.rerun()
+                        actualiser_resultats_tournoi()
                 with col_r_auto:
                     auto_refresh_actif = st.checkbox("⏱️ 30s", key=f"chk_auto_refresh_{mode}", help="Actualise automatiquement les scores du tournoi toutes les 30 secondes")
 
