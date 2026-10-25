@@ -1866,34 +1866,46 @@ def planifier_horaires_round_robin(matchs, heure_debut="09:00", duree_min=30, nb
 
     return heure_fin
 
-def generer_arbre_elimination(participants, race_prelim=2, race_finale=3, titre="Tournoi", heure_debut="09:00", duree_min=30, nb_tables=2):
+def generer_arbre_elimination(participants, race_prelim=2, race_finale=3, titre="Tournoi", heure_debut="09:00", duree_min=30, nb_tables=2, passe_droit_participant=None):
     """
-    Génère un arbre à élimination directe strict SANS AUCUN PASSE-DROIT au premier tour.
-    Tous les participants (simples ou équipes) s'affrontent dès le premier tour.
-    Prend en charge tous les effectifs pairs (ex: 2, 4, 6, 8, 12, 16, 24, 32).
+    Génère un arbre à élimination directe.
+    Si passe_droit_participant est spécifié, ce joueur ou duo bénéficie d'une exemption (passe-droit)
+    au premier tour et est immédiatement promu au deuxième tour.
+    Prend en charge tous les effectifs (pairs ou impairs avec passe-droit).
     Format officiel des rondes :
     - Préliminaires : 2 de 3 (premier à 2 victoires, race_to = 2)
     - Finale : 3 de 5 (premier à 3 victoires, race_to = 3)
     """
     p_liste = list(participants)
-    random.shuffle(p_liste)
-    n = len(p_liste)
-    if n < 2:
+    if not p_liste or len(p_liste) < 2:
         return None
 
+    # Gestion de l'option passe-droit
+    has_pd = bool(passe_droit_participant and passe_droit_participant in p_liste)
+    if has_pd:
+        p_sans_pd = [p for p in p_liste if p != passe_droit_participant]
+        random.shuffle(p_sans_pd)
+        p_ordonnee = [passe_droit_participant, "Exempt (Passe-droit)"] + p_sans_pd
+    else:
+        random.shuffle(p_liste)
+        p_ordonnee = p_liste
+
+    n = len(p_ordonnee)
     nb_matchs_t1 = n // 2
     matchs_t1 = []
     for m_i in range(nb_matchs_t1):
-        eq_a = p_liste[2 * m_i]
-        eq_b = p_liste[2 * m_i + 1]
+        eq_a = p_ordonnee[2 * m_i]
+        eq_b = p_ordonnee[2 * m_i + 1]
+        is_pd_match = (has_pd and m_i == 0)
         matchs_t1.append({
             "id": f"T1_M{m_i+1}",
             "equipe_a": eq_a,
             "equipe_b": eq_b,
-            "score_a": 0,
+            "score_a": race_prelim if is_pd_match else 0,
             "score_b": 0,
-            "termine": False,
-            "vainqueur": None,
+            "termine": is_pd_match,
+            "passe_droit": is_pd_match,
+            "vainqueur": eq_a if is_pd_match else None,
             "source_a": None,
             "source_b": None
         })
@@ -1908,44 +1920,61 @@ def generer_arbre_elimination(participants, race_prelim=2, race_finale=3, titre=
         next_m_list = []
         if nb_winners % 2 == 0:
             for m_i in range(nb_winners // 2):
+                src_a = f"T{t_num-1}_M{2*m_i+1}"
+                src_b = f"T{t_num-1}_M{2*m_i+2}"
+                prev_m_a = next((m for m in curr_matchs if m["id"] == src_a), None)
+                prev_m_b = next((m for m in curr_matchs if m["id"] == src_b), None)
+                ea = prev_m_a["vainqueur"] if (prev_m_a and prev_m_a.get("termine")) else "À déterminer"
+                eb = prev_m_b["vainqueur"] if (prev_m_b and prev_m_b.get("termine")) else "À déterminer"
                 next_m_list.append({
                     "id": f"T{t_num}_M{m_i+1}",
-                    "equipe_a": "À déterminer",
-                    "equipe_b": "À déterminer",
+                    "equipe_a": ea,
+                    "equipe_b": eb,
                     "score_a": 0,
                     "score_b": 0,
                     "termine": False,
                     "vainqueur": None,
-                    "source_a": f"T{t_num-1}_M{2*m_i+1}",
-                    "source_b": f"T{t_num-1}_M{2*m_i+2}"
+                    "source_a": src_a,
+                    "source_b": src_b
                 })
             tours_matchs.append(next_m_list)
             curr_matchs = next_m_list
         else:
-            # 3 vainqueurs (ex: après quarts d'un tournoi à 24)
+            src_a = f"T{t_num-1}_M1"
+            src_b = f"T{t_num-1}_M2"
+            prev_m_a = next((m for m in curr_matchs if m["id"] == src_a), None)
+            prev_m_b = next((m for m in curr_matchs if m["id"] == src_b), None)
+            ea = prev_m_a["vainqueur"] if (prev_m_a and prev_m_a.get("termine")) else "À déterminer"
+            eb = prev_m_b["vainqueur"] if (prev_m_b and prev_m_b.get("termine")) else "À déterminer"
             next_m_list.append({
                 "id": f"T{t_num}_M1",
-                "equipe_a": "À déterminer",
-                "equipe_b": "À déterminer",
+                "equipe_a": ea,
+                "equipe_b": eb,
                 "score_a": 0,
                 "score_b": 0,
                 "termine": False,
                 "vainqueur": None,
-                "source_a": f"T{t_num-1}_M1",
-                "source_b": f"T{t_num-1}_M2"
+                "source_a": src_a,
+                "source_b": src_b
             })
             tours_matchs.append(next_m_list)
             t_num += 1
+            src_fa = f"T{t_num-1}_M1"
+            src_fb = f"T{t_num-2}_M3"
+            prev_m_fa = next((m for m in next_m_list if m["id"] == src_fa), None)
+            prev_m_fb = next((m for m in curr_matchs if m["id"] == src_fb), None)
+            efa = prev_m_fa["vainqueur"] if (prev_m_fa and prev_m_fa.get("termine")) else "À déterminer"
+            efb = prev_m_fb["vainqueur"] if (prev_m_fb and prev_m_fb.get("termine")) else "À déterminer"
             finale_m = [{
                 "id": f"T{t_num}_M1",
-                "equipe_a": "À déterminer",
-                "equipe_b": "À déterminer",
+                "equipe_a": efa,
+                "equipe_b": efb,
                 "score_a": 0,
                 "score_b": 0,
                 "termine": False,
                 "vainqueur": None,
-                "source_a": f"T{t_num-1}_M1",
-                "source_b": f"T{t_num-2}_M3"
+                "source_a": src_fa,
+                "source_b": src_fb
             }]
             tours_matchs.append(finale_m)
             break
@@ -2062,6 +2091,95 @@ def actualiser_score_elimination(tournoi, tour_num, match_id, score_a, score_b):
         archiver_tournoi(tournoi, mode=tournoi.get("mode", "simple"))
     return True
 
+def attribuer_passe_droit_elimination(tournoi, tour_num, match_id, beneficiaire):
+    """Accorde un passe-droit à un joueur ou duo dans un match à élimination directe et le promeut immédiatement au tour suivant."""
+    t_idx = tour_num - 1
+    if t_idx < 0 or t_idx >= len(tournoi.get("tours", [])):
+        return False
+    tour_courant = tournoi["tours"][t_idx]
+
+    m_trouve = None
+    for m in tour_courant.get("matchs", []):
+        if m["id"] == match_id:
+            m_trouve = m
+            break
+
+    if not m_trouve:
+        return False
+
+    race_to = m_trouve.get("race_to", tour_courant.get("race_to", 3 if tour_num == tournoi.get("total_tours") else 2))
+
+    ea = m_trouve.get("equipe_a")
+    eb = m_trouve.get("equipe_b")
+
+    m_trouve["passe_droit"] = True
+    m_trouve["vainqueur"] = beneficiaire
+    m_trouve["termine"] = True
+
+    if beneficiaire == ea:
+        m_trouve["score_a"] = race_to
+        m_trouve["score_b"] = 0
+        perdant = eb
+    else:
+        m_trouve["score_a"] = 0
+        m_trouve["score_b"] = race_to
+        perdant = ea
+
+    # Propagation directe aux matchs des tours suivants
+    propage = False
+    for t in tournoi["tours"][tour_num:]:
+        for m_futur in t.get("matchs", []):
+            if m_futur.get("source_a") == match_id:
+                m_futur["equipe_a"] = beneficiaire
+                propage = True
+            if m_futur.get("source_b") == match_id:
+                m_futur["equipe_b"] = beneficiaire
+                propage = True
+
+    # Fallback pour compatibilité arborescence
+    if not propage and tour_num < tournoi.get("total_tours", 1):
+        try:
+            m_idx_in_tour = tour_courant["matchs"].index(m_trouve)
+            prochain_tour = tournoi["tours"][tour_num]
+            prochain_match_idx = m_idx_in_tour // 2
+            if prochain_match_idx < len(prochain_tour["matchs"]):
+                prochain_match = prochain_tour["matchs"][prochain_match_idx]
+                if m_idx_in_tour % 2 == 0:
+                    prochain_match["equipe_a"] = beneficiaire
+                else:
+                    prochain_match["equipe_b"] = beneficiaire
+        except Exception:
+            pass
+
+    # Si c'était la finale
+    if tour_num == tournoi.get("total_tours"):
+        tournoi["vainqueur_final"] = beneficiaire
+        tournoi["finaliste"] = perdant
+        tournoi["statut"] = "termine"
+        archiver_tournoi(tournoi, mode=tournoi.get("mode", "simple"))
+
+    return True
+
+def attribuer_passe_droit_round_robin(tournoi, match_id, beneficiaire):
+    """Accorde un passe-droit dans une rencontre de Round-Robin (victoire par forfait/défaut)."""
+    matchs_rr = tournoi.get("matchs", [])
+    rr_race = tournoi.get("race_to", 2)
+    for m in matchs_rr:
+        if m["id"] == match_id:
+            m["passe_droit"] = True
+            m["termine"] = True
+            m["vainqueur"] = beneficiaire
+            if beneficiaire == m["equipe_a"]:
+                m["score_a"] = rr_race
+                m["score_b"] = 0
+            else:
+                m["score_a"] = 0
+                m["score_b"] = rr_race
+            return True
+    return False
+
+
+
 def generer_round_robin(participants, race_to=2, titre="Tournoi", heure_debut="09:00", duree_min=30, nb_tables=2):
     """Génère un championnat toutes rondes (Round-Robin). Format officiel : 2 de 3."""
     p_liste = list(participants)
@@ -2138,6 +2256,8 @@ def formater_nom_court_joueur(nom, avec_point=True):
     nom_str = str(nom).strip()
     lower = nom_str.lower()
     if lower in ["à déterminer", "a determiner", "bye", "en attente", "tbd", "exempt", "-", ""]:
+        return nom_str
+    if lower.startswith("exempt") or "passe-droit" in lower or "passe droit" in lower:
         return nom_str
     if lower.startswith("vainqueur") or lower.startswith("perdant") or lower.startswith("gagnant") or lower.startswith("match"):
         return nom_str
@@ -2231,8 +2351,13 @@ def generer_html_tournoi(tournoi, mode="simple"):
                 termine = m.get("termine", False)
                 vainq = m.get("vainqueur")
 
-                sc_a_disp = str(sa) if termine else "-"
-                sc_b_disp = str(sb) if termine else "-"
+                m_pd = m.get("passe_droit", False)
+                if m_pd and termine:
+                    sc_a_disp = "BYE" if vainq == ea else "-"
+                    sc_b_disp = "BYE" if vainq == eb else "-"
+                else:
+                    sc_a_disp = str(sa) if termine else "-"
+                    sc_b_disp = str(sb) if termine else "-"
 
                 win_a = "winner" if (termine and vainq == ea) else ""
                 win_b = "winner" if (termine and vainq == eb) else ""
@@ -2240,7 +2365,12 @@ def generer_html_tournoi(tournoi, mode="simple"):
 
                 m_h = m.get("heure_estimee", "")
                 m_t_court = m.get("table_courte", "")
-                h_badge = f'<span style="color: #0b3c5d; font-weight: bold;">⏰ {m_h} [{m_t_court}]</span>' if m_h else f'<span>{m_fmt}</span>'
+                if m_pd:
+                    h_badge = '<span style="color: #2e7d32; font-weight: bold;">🎟️ Passe-droit</span>'
+                elif m_h:
+                    h_badge = f'<span style="color: #0b3c5d; font-weight: bold;">⏰ {m_h} [{m_t_court}]</span>'
+                else:
+                    h_badge = f'<span>{m_fmt}</span>'
 
                 ea_disp = formater_nom_abrege_joueur(ea)
                 eb_disp = formater_nom_abrege_joueur(eb)
@@ -3032,22 +3162,38 @@ def afficher_section_tournoi(mode="simple"):
             bloquer_lancement = bool(doublons) if (mode == "double" and 'doublons' in locals()) else False
 
             if is_elim:
+                col_pd1, col_pd2 = st.columns([1.8, 2.2])
+                with col_pd1:
+                    activer_pd_init = st.checkbox(
+                        "🎟️ Option Passe-droit (Exempter 1 participant au 1er tour)",
+                        value=(nb_p % 2 != 0),
+                        key=f"chk_opt_pd_{mode}",
+                        help="Promeut directement un joueur ou duo au tour suivant dès le premier tour."
+                    )
+                with col_pd2:
+                    beneficiaire_pd_init = None
+                    if activer_pd_init and participants_finaux:
+                        beneficiaire_pd_init = st.selectbox(
+                            "Joueur ou duo bénéficiant du passe-droit :",
+                            options=participants_finaux,
+                            key=f"sel_benef_pd_{mode}",
+                            help="Ce participant sera directement promu au 2e tour."
+                        )
+
                 if nb_p < 2:
                     bloquer_lancement = True
                     st.info(f"ℹ️ Sélectionnez au moins 2 {'équipes' if mode == 'double' else 'joueurs'} pour configurer le tournoi.")
-                elif nb_p % 2 != 0:
+                elif nb_p % 2 != 0 and not activer_pd_init:
                     bloquer_lancement = True
                     st.warning(
-                        f"🛡️ **Règle officielle : Aucun passe-droit au premier tour !**\n\n"
-                        f"Le nombre de participants inscrits (**{nb_p}**) est impair. "
-                        f"Pour que chaque participant affronte un adversaire dès le premier tour sans aucun exempt, "
-                        f"veuillez ajuster à un nombre pair (ex: {nb_p - 1} ou {nb_p + 1} participants)."
+                        f"⚠️ **Effectif impair ({nb_p} participants) :**\n\n"
+                        f"Activez l'option **🎟️ Option Passe-droit** ci-dessus pour promouvoir un participant directement au tour suivant, ou ajustez à un effectif pair."
                     )
                 else:
-                    st.success(
-                        f"🟢 **Tous les participants inscrits jouent dès la première ronde !**\n\n"
-                        f"Les **{nb_p} {'équipes inscrites' if mode == 'double' else 'joueurs inscrits'}** disputeront tous un match au 1er tour sans aucun passe-droit."
-                    )
+                    if activer_pd_init and beneficiaire_pd_init:
+                        st.success(f"🎟️ **Passe-droit activé :** **{beneficiaire_pd_init}** sera promu d'office au 2e tour ! Les autres participants disputeront le premier tour.")
+                    else:
+                        st.success(f"🟢 **Prêt à lancer :** Les **{nb_p} participants** s'affronteront au 1er tour.")
             else:
                 if nb_p < 2:
                     bloquer_lancement = True
@@ -3062,7 +3208,7 @@ def afficher_section_tournoi(mode="simple"):
                 use_container_width=True,
                 disabled=bloquer_lancement,
                 key=f"btn_lancer_{mode}",
-                help="Pour un arbre à élimination sans passe-droit, le nombre de participants doit être 2, 4, 8 ou 16. En Round-Robin, tout nombre >= 2 est accepté."
+                help="Génère l'arbre officiel des rencontres avec promotion automatique du passe-droit le cas échéant."
             )
 
             if btn_lancer:
@@ -3075,7 +3221,8 @@ def afficher_section_tournoi(mode="simple"):
                         titre=titre_saisi,
                         heure_debut=heure_debut_str,
                         duree_min=duree_min_saisie,
-                        nb_tables=nb_tables_saisi
+                        nb_tables=nb_tables_saisi,
+                        passe_droit_participant=(beneficiaire_pd_init if (is_elim and activer_pd_init) else None)
                     )
                 else:
                     t_cree = generer_round_robin(
@@ -3296,7 +3443,10 @@ def afficher_section_tournoi(mode="simple"):
                                 with col_m1:
                                     if termine:
                                         st.markdown(f"**{m_id}** : **{ea}** ({sa}) vs ({sb}) **{eb}** &nbsp; {badge_horaire}", unsafe_allow_html=True)
-                                        st.success(f"🏆 **Qualifié :** {vainq} *(score final {sa}-{sb})*")
+                                        if m.get("passe_droit"):
+                                            st.success(f"🎟️ **Passe-droit accordé :** {vainq} est promu au tour suivant !")
+                                        else:
+                                            st.success(f"🏆 **Qualifié :** {vainq} *(score final {sa}-{sb})*")
                                     else:
                                         if ea == "À déterminer" or eb == "À déterminer":
                                             st.markdown(f"**{m_id}** : `{ea}` vs `{eb}` &nbsp; {badge_horaire}", unsafe_allow_html=True)
@@ -3306,24 +3456,43 @@ def afficher_section_tournoi(mode="simple"):
                                             st.caption(f"Format officiel : **{m_fmt}** (premier à {m_race} victoires)")
 
                                 with col_m2:
-                                    if not termine and ea != "À déterminer" and eb != "À déterminer":
+                                    if not termine:
                                         if est_editeur:
-                                            col_s1, col_s2, col_s3 = st.columns([1, 1, 1.5])
+                                            col_s1, col_s2, col_s3, col_s4 = st.columns([1, 1, 1.2, 1.4])
                                             with col_s1:
-                                                sc_a_in = st.number_input(f"{ea[:10]}", min_value=0, max_value=m_race, value=0, key=f"sc_a_{mode}_{m_id}")
+                                                sc_a_in = st.number_input(f"{formater_nom_abrege_joueur(ea)}", min_value=0, max_value=m_race, value=0, key=f"sc_a_{mode}_{m_id}")
                                             with col_s2:
-                                                sc_b_in = st.number_input(f"{eb[:10]}", min_value=0, max_value=m_race, value=0, key=f"sc_b_{mode}_{m_id}")
+                                                sc_b_in = st.number_input(f"{formater_nom_abrege_joueur(eb)}", min_value=0, max_value=m_race, value=0, key=f"sc_b_{mode}_{m_id}")
                                             with col_s3:
                                                 st.write("")
-                                                if st.button("✅ Valider", key=f"btn_v_{mode}_{m_id}", use_container_width=True):
+                                                peut_valider = (ea != "À déterminer" and eb != "À déterminer")
+                                                if st.button("✅ Valider", key=f"btn_v_{mode}_{m_id}", use_container_width=True, disabled=not peut_valider):
                                                     if sc_a_in == sc_b_in:
                                                         st.error("Match nul impossible.")
                                                     elif sc_a_in < m_race and sc_b_in < m_race:
-                                                        st.warning(f"Un joueur doit remporter {m_race} manches ({m_fmt}).")
+                                                        st.warning(f"Un joueur/duo doit remporter {m_race} manches ({m_fmt}).")
                                                     else:
                                                         actualiser_score_elimination(tournoi, tour_num, m_id, sc_a_in, sc_b_in)
                                                         sauvegarder_tournois_data(tournois_data)
                                                         st.rerun()
+                                            with col_s4:
+                                                st.write("")
+                                                candidats_pd = [p for p in [ea, eb] if p and p != "À déterminer"]
+                                                if candidats_pd:
+                                                    with st.popover("🎟️ Passe-droit", use_container_width=True, help="Promouvoir directement un joueur ou duo au tour suivant sans jouer le match"):
+                                                        st.markdown(f"##### 🎟️ Accorder un passe-droit")
+                                                        st.caption(f"Promouvoir au tour suivant pour la rencontre **{m_id}** :")
+                                                        choix_promo = st.radio(
+                                                            "Bénéficiaire du passe-droit :",
+                                                            options=candidats_pd,
+                                                            format_func=lambda x: f"🚀 {x}",
+                                                            key=f"rad_pd_{mode}_{m_id}"
+                                                        )
+                                                        if st.button("🚀 Promouvoir au tour suivant", type="primary", use_container_width=True, key=f"btn_apply_pd_{mode}_{m_id}"):
+                                                            attribuer_passe_droit_elimination(tournoi, tour_num, m_id, choix_promo)
+                                                            sauvegarder_tournois_data(tournois_data)
+                                                            st.success(f"🎟️ Passe-droit accordé ! {choix_promo} est promu au tour suivant.")
+                                                            st.rerun()
                                         else:
                                             st.caption("⏳ *Rencontre en attente de score (saisie réservée au marqueur)*")
 
@@ -3376,7 +3545,10 @@ def afficher_section_tournoi(mode="simple"):
                     with col_rm1:
                         if termine:
                             st.markdown(f"**{m_id}** : **{ea}** ({sa}) vs ({sb}) **{eb}** &nbsp; {badge_horaire_rr}", unsafe_allow_html=True)
-                            st.success(f"🏆 Vainqueur : {m['vainqueur']} *(score final {sa}-{sb})*")
+                            if m.get("passe_droit"):
+                                st.success(f"🎟️ **Passe-droit accordé :** {m['vainqueur']} remporte la rencontre !")
+                            else:
+                                st.success(f"🏆 Vainqueur : {m['vainqueur']} *(score final {sa}-{sb})*")
                         else:
                             st.markdown(f"**{m_id}** : 🎯 **{ea}** vs **{eb}** &nbsp; {badge_horaire_rr}", unsafe_allow_html=True)
                             st.caption(f"Format officiel : **{rr_fmt}** (premier à {rr_race} victoires)")
@@ -3384,24 +3556,40 @@ def afficher_section_tournoi(mode="simple"):
                     with col_rm2:
                         if not termine:
                             if est_editeur:
-                                col_s1, col_s2, col_s3 = st.columns([1, 1, 1.5])
+                                col_s1, col_s2, col_s3, col_s4 = st.columns([1, 1, 1.2, 1.4])
                                 with col_s1:
-                                    sc_a_in = st.number_input(f"{ea[:10]}", min_value=0, max_value=rr_race, value=0, key=f"rr_a_{mode}_{m_id}")
+                                    sc_a_in = st.number_input(f"{formater_nom_abrege_joueur(ea)}", min_value=0, max_value=rr_race, value=0, key=f"rr_a_{mode}_{m_id}")
                                 with col_s2:
-                                    sc_b_in = st.number_input(f"{eb[:10]}", min_value=0, max_value=rr_race, value=0, key=f"rr_b_{mode}_{m_id}")
+                                    sc_b_in = st.number_input(f"{formater_nom_abrege_joueur(eb)}", min_value=0, max_value=rr_race, value=0, key=f"rr_b_{mode}_{m_id}")
                                 with col_s3:
                                     st.write("")
                                     if st.button("✅ Valider", key=f"btn_rr_{mode}_{m_id}", use_container_width=True):
                                         if sc_a_in == sc_b_in:
                                             st.error("Match nul impossible.")
                                         elif sc_a_in < rr_race and sc_b_in < rr_race:
-                                            st.warning(f"Un joueur doit remporter {rr_race} manches ({rr_fmt}).")
+                                            st.warning(f"Un joueur/duo doit remporter {rr_race} manches ({rr_fmt}).")
                                         else:
                                             m["score_a"] = sc_a_in
                                             m["score_b"] = sc_b_in
                                             m["vainqueur"] = ea if sc_a_in > sc_b_in else eb
                                             m["termine"] = True
                                             sauvegarder_tournois_data(tournois_data)
+                                            st.rerun()
+                                with col_s4:
+                                    st.write("")
+                                    with st.popover("🎟️ Passe-droit", use_container_width=True, help="Accorder une victoire par passe-droit"):
+                                        st.markdown("##### 🎟️ Victoire par passe-droit")
+                                        st.caption(f"Rencontre **{m_id}** :")
+                                        choix_promo_rr = st.radio(
+                                            "Bénéficiaire du passe-droit :",
+                                            options=[ea, eb],
+                                            format_func=lambda x: f"🚀 {x}",
+                                            key=f"rad_pd_rr_{mode}_{m_id}"
+                                        )
+                                        if st.button("🚀 Accorder la victoire", type="primary", use_container_width=True, key=f"btn_apply_pd_rr_{mode}_{m_id}"):
+                                            attribuer_passe_droit_round_robin(tournoi, m_id, choix_promo_rr)
+                                            sauvegarder_tournois_data(tournois_data)
+                                            st.success(f"🎟️ Passe-droit accordé à {choix_promo_rr} !")
                                             st.rerun()
                             else:
                                 st.caption("⏳ *Rencontre en attente de score (saisie réservée au marqueur)*")
