@@ -14,13 +14,6 @@ from email.mime.text import MIMEText
 import pandas as pd
 import streamlit as st
 
-# Configuration de la page
-st.set_page_config(
-    page_title="Ligue de billard Boule en main - Saisie",
-    page_icon="🎱",
-    layout="wide"
-)
-
 # Fichiers de données et chemins d'accès robustes
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -50,6 +43,16 @@ def find_armoiries_path():
         if os.path.isfile(c):
             return c
     return os.path.join(BASE_DIR, "armoiries.png")
+
+ARMOIRIES_FILE = find_armoiries_path()
+icone_page = ARMOIRIES_FILE if (ARMOIRIES_FILE and os.path.isfile(ARMOIRIES_FILE)) else "🎱"
+
+# Configuration de la page
+st.set_page_config(
+    page_title="Ligue de billard Boule en main - Saisie",
+    page_icon=icone_page,
+    layout="wide"
+)
 
 BACKUP_FILE = get_data_path("sauvegarde_saisie_secours.json")
 CORBEILLE_FILE = get_data_path("sauvegarde_annulee_secours.json")
@@ -88,6 +91,76 @@ def charger_armoiries_base64(max_taille=(160, 160)):
             return f"data:image/png;base64,{b64}"
         except Exception:
             return ""
+
+def injecter_meta_icones_mobiles():
+    """Injecte les balises d'icônes mobiles (Apple Touch Icon et Android PWA) dans le DOM pour remplacer la couronne Streamlit sur mobile et tablette."""
+    b64_icone = charger_armoiries_base64(max_taille=(192, 192))
+    if not b64_icone:
+        return
+
+    code_js = f"""
+    <script>
+    (function() {{
+        try {{
+            var head = window.parent.document.head;
+            if (!head) return;
+            var iconUri = "{b64_icone}";
+
+            // 1. apple-touch-icon pour iOS Safari (iPhone & iPad)
+            var rels = ["apple-touch-icon", "apple-touch-icon-precomposed"];
+            rels.forEach(function(r) {{
+                var el = window.parent.document.querySelector("link[rel='" + r + "']");
+                if (!el) {{
+                    el = window.parent.document.createElement("link");
+                    el.rel = r;
+                    head.appendChild(el);
+                }}
+                el.href = iconUri;
+            }});
+
+            // 2. Icônes pour Android / Chrome (192x192 & 512x512)
+            var sizes = ["192x192", "512x512", "180x180", "32x32"];
+            sizes.forEach(function(s) {{
+                var el = window.parent.document.querySelector("link[rel='icon'][sizes='" + s + "']");
+                if (!el) {{
+                    el = window.parent.document.createElement("link");
+                    el.rel = "icon";
+                    el.sizes = s;
+                    head.appendChild(el);
+                }}
+                el.href = iconUri;
+            }});
+
+            // 3. Titre mobile et capacité plein écran
+            var metaApp = window.parent.document.querySelector("meta[name='apple-mobile-web-app-title']");
+            if (!metaApp) {{
+                metaApp = window.parent.document.createElement("meta");
+                metaApp.name = "apple-mobile-web-app-title";
+                head.appendChild(metaApp);
+            }}
+            metaApp.content = "Billard Saphir";
+
+            var metaCap = window.parent.document.querySelector("meta[name='apple-mobile-web-app-capable']");
+            if (!metaCap) {{
+                metaCap = window.parent.document.createElement("meta");
+                metaCap.name = "apple-mobile-web-app-capable";
+                head.appendChild(metaCap);
+            }}
+            metaCap.content = "yes";
+
+            // 4. Manifeste PWA
+            var linkMan = window.parent.document.querySelector("link[rel='manifest']");
+            if (!linkMan) {{
+                linkMan = window.parent.document.createElement("link");
+                linkMan.rel = "manifest";
+                linkMan.href = "/app/static/manifest.json";
+                head.appendChild(linkMan);
+            }}
+        }} catch(e) {{}}
+    }})();
+    </script>
+    """
+    st.components.v1.html(code_js, height=0)
 
 def charger_mot_de_passe_admin():
     """Charge le mot de passe d'administration (défaut: saphir2026)."""
@@ -4498,6 +4571,9 @@ def afficher_tableau_de_bord_progression(historique):
 
 
 # ==============================================================================
+# Injection des balises d'icône pour écran d'accueil mobile et tablette (iOS & Android)
+injecter_meta_icones_mobiles()
+
 est_connecte = st.session_state.get("authentifie", False)
 est_spectateur = st.session_state.get("est_spectateur", False)
 
