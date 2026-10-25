@@ -2131,20 +2131,11 @@ def calculer_classement_round_robin(tournoi_rr):
     classement = sorted(stats.items(), key=lambda x: (x[1]["pts"], x[1]["diff"], x[1]["pour"]), reverse=True)
     return classement
 
-def formater_nom_abrege_joueur(nom_joueur):
-    """Formate un nom de joueur pour l'arborescence imprimable :
-    première lettre du prénom et nom de famille (ex: Guy Vézina -> G. Vézina, Guy Vézina & Michel Caron -> G. Vézina & M. Caron)."""
-    if not nom_joueur:
+def formater_nom_court_joueur(nom, avec_point=True):
+    """Extrait l'initiale du prénom et le nom de famille (avec ou sans point)."""
+    if not nom:
         return ""
-    nom_str = str(nom_joueur).strip()
-
-    # Si c'est un duo en double (séparateur ' & ', ' / ', ' et ')
-    for sep in [" & ", " / ", " et "]:
-        if sep in nom_str:
-            duo_parts = nom_str.split(sep)
-            return sep.join([formater_nom_abrege_joueur(p) for p in duo_parts])
-
-    # Textes indicatifs et placeholders du bracket
+    nom_str = str(nom).strip()
     lower = nom_str.lower()
     if lower in ["à déterminer", "a determiner", "bye", "en attente", "tbd", "exempt", "-", ""]:
         return nom_str
@@ -2157,9 +2148,32 @@ def formater_nom_abrege_joueur(nom_joueur):
 
     prenom = parts[0]
     nom_famille = " ".join(parts[1:])
-
     initiale = prenom[0].upper()
-    return f"{initiale}. {nom_famille}"
+    if avec_point:
+        return f"{initiale}. {nom_famille}"
+    else:
+        return f"{initiale} {nom_famille}"
+
+def formater_nom_abrege_joueur(nom_joueur):
+    """Formate un nom de joueur ou de duo pour l'arborescence imprimable.
+    Pour les duos (double) : ultra-compact sans point avec séparateur '/' (ex: G Vézina/M Caron).
+    Pour les simples : première lettre du prénom avec point et nom de famille (ex: G. Vézina)."""
+    if not nom_joueur:
+        return ""
+    nom_str = str(nom_joueur).strip()
+
+    # Détection des duos en double (séparateurs ' & ', ' / ', ' et ')
+    for sep in [" & ", " / ", " et "]:
+        if sep in nom_str:
+            duo_parts = nom_str.split(sep)
+            return "/".join([formater_nom_court_joueur(p, avec_point=False) for p in duo_parts if p.strip()])
+
+    if "/" in nom_str:
+        duo_parts = nom_str.split("/")
+        return "/".join([formater_nom_court_joueur(p, avec_point=False) for p in duo_parts if p.strip()])
+
+    # Joueur individuel (Simple)
+    return formater_nom_court_joueur(nom_str, avec_point=True)
 
 def generer_html_tournoi(tournoi, mode="simple"):
     """Génère la feuille officielle imprimable du tournoi limitée strictement à l'arborescence (Arbre / Matrice)."""
