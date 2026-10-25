@@ -3149,30 +3149,18 @@ def afficher_section_tournoi(mode="simple"):
             with col_top5:
                 with st.popover("❌ Annuler le tournoi", use_container_width=True, help="Annuler le tournoi en cours avec confirmation obligatoire avant de procéder"):
                     st.markdown("### ⚠️ Annulation du tournoi")
-                    st.error("Êtes-vous certain de vouloir annuler le tournoi en cours ? Cette opération arrêtera la compétition active.")
+                    st.warning("⚠️ **Attention :** Vous êtes sur le point d'annuler définitivement le tournoi en cours. Cette action arrêtera immédiatement la compétition et réinitialisera la grille.")
+                    st.info("ℹ️ Ce tournoi **ne sera pas archivé** dans l'historique et **aucun avis par courriel** ne sera envoyé aux administrateurs.")
                     st.markdown("**Confirmation obligatoire avant de procéder :**")
                     confirme_annul = st.checkbox(
-                        "Je confirme vouloir annuler ce tournoi actif",
+                        "Je confirme vouloir annuler définitivement ce tournoi actif",
                         key=f"chk_confirm_cancel_{mode}"
                     )
-                    col_can1, col_can2 = st.columns(2)
-                    with col_can1:
-                        if st.button("🔴 Confirmer l'annulation", type="primary", use_container_width=True, disabled=not confirme_annul, key=f"btn_confirm_cancel_action_{mode}", help="Réinitialise immédiatement le tournoi sans archivage"):
-                            tournois_data[mode] = None
-                            sauvegarder_tournois_data(tournois_data)
-                            st.session_state[f"msg_annulation_{mode}"] = f"❌ Le {libelle_mode.lower()} a été annulé avec succès."
-                            st.rerun()
-                    with col_can2:
-                        if st.button("💾 Archiver puis annuler", use_container_width=True, disabled=not confirme_annul, key=f"btn_save_and_cancel_action_{mode}", help="Enregistre une copie d'archive avec le statut 'Annulé' avant de libérer la grille"):
-                            with st.spinner("Archivage et annulation en cours..."):
-                                import copy
-                                t_copy = copy.deepcopy(tournoi)
-                                t_copy["statut"] = "annule"
-                                archiver_tournoi(t_copy, mode=mode, notifier_admin=True)
-                                tournois_data[mode] = None
-                                sauvegarder_tournois_data(tournois_data)
-                                st.session_state[f"msg_annulation_{mode}"] = f"❌ Le {libelle_mode.lower()} a été archivé sous le statut 'Annulé' puis réinitialisé."
-                            st.rerun()
+                    if st.button("🔴 Confirmer l'annulation", type="primary", use_container_width=True, disabled=not confirme_annul, key=f"btn_confirm_cancel_action_{mode}", help="Réinitialise immédiatement le tournoi sans archivage ni envoi de courriel"):
+                        tournois_data[mode] = None
+                        sauvegarder_tournois_data(tournois_data)
+                        st.session_state[f"msg_annulation_{mode}"] = f"❌ Le {libelle_mode.lower()} a été annulé avec succès (non archivé, aucun courriel expédié)."
+                        st.rerun()
         else:
             with col_top4:
                 col_r_btn, col_r_auto = st.columns([1.6, 1.1])
@@ -3439,7 +3427,7 @@ def afficher_section_historique_tournois():
     with col_f2:
         filtre_statut = st.selectbox(
             "Statut :",
-            ["Tous les statuts", "🟢 En cours", "🏆 Terminés", "❌ Annulés"],
+            ["Tous les statuts", "🟢 En cours", "🏆 Terminés"],
             key="filtre_statut_hist_tournois"
         )
     with col_f3:
