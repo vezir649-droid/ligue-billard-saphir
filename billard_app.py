@@ -1764,6 +1764,50 @@ def supprimer_tournoi_historique(id_archive):
     sauvegarder_historique_tournois(nouveau_h)
     return True
 
+def sauvegarder_tournoi_dans_historique(mode, notifier_admin=True):
+    """Sauvegarde l'état actuel du tournoi dans l'historique officiel et sur le disque."""
+    td = charger_tournois_data()
+    t = td.get(mode)
+    if not t or not isinstance(t, dict):
+        return False, "Aucun tournoi actif à sauvegarder."
+
+    id_arch = t.get("id_archive")
+    if not id_arch:
+        id_arch = f"TOURNOI_{mode.upper()}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{random.randint(100, 999)}"
+        t["id_archive"] = id_arch
+        td[mode] = t
+        sauvegarder_tournois_data(td)
+
+    archiver_tournoi(t, mode=mode, notifier_admin=notifier_admin)
+    return True, "Tournoi sauvegardé dans l'historique avec succès !"
+
+def annuler_completement_tournoi(mode):
+    """Annule complètement le tournoi sans aucune sauvegarde ni envoi de courriel."""
+    td = charger_tournois_data()
+    t = td.get(mode)
+    if t and isinstance(t, dict):
+        id_a = t.get("id_archive")
+        titre = t.get("titre")
+        date_c = t.get("date_creation")
+        # Si ce tournoi avait déjà été archivé dans l'historique lors d'une sauvegarde intermédiaire, le retirer
+        try:
+            hist = charger_historique_tournois()
+            hist_nettoye = [
+                h for h in hist
+                if not (
+                    (id_a and h.get("id_archive") == id_a) or
+                    (h.get("titre") == titre and h.get("date_creation") == date_c and h.get("mode") == mode)
+                )
+            ]
+            if len(hist_nettoye) != len(hist):
+                sauvegarder_historique_tournois(hist_nettoye)
+        except Exception:
+            pass
+
+    td[mode] = None
+    sauvegarder_tournois_data(td)
+    return True
+
 def obtenir_tous_les_joueurs_tournoi(equipes_dict=None):
     """Récupère l'ensemble des joueurs réguliers inscrits dans la ligue."""
     joueurs_officiels = []
@@ -2904,15 +2948,68 @@ def afficher_bandeau_verrou_tournoi():
     action_sauv = infos_sauv.get("action", "")
     mention_sauv = f" • 💾 Dernière sauvegarde disque : {date_sauv}" if date_sauv else ""
 
-    col_lk1, col_lk2 = st.columns([3.2, 1.2])
+    col_lk1, col_lk2 = st.columns([2.3, 2.1])
 
     if est_editeur:
+        modes_actifs = [m for m in ["simple", "double"] if td.get(m) and isinstance(td.get(m), dict)]
         col_lk1.success(f"🟢 **Vous avez la main exclusive pour marquer et configurer le tournoi.**{mention_sauv}")
         with col_lk2:
-            if st.button("🔓 Céder la main", key="btn_ceder_main_tournoi", use_container_width=True, help="Sauvegarde automatiquement le tournoi sur le disque et libère la main pour le prochain marqueur"):
-                with st.spinner("Sauvegarde du tournoi et libération de la main..."):
-                    ceder_la_main_avec_sauvegarde(my_session_id)
-                st.rerun()
+            if modes_actifs:
+                cb1, cb2, cb3, cb4 = st.columns([1.0, 1.2, 1.2, 1.0])
+                with cb1:
+                    if st.button("🔓 Céder", key="btn_ceder_main_tournoi", use_container_width=True, help="Sauvegarde le tournoi sur disque et libère la main"):
+                        with st.spinner("Sauvegarde et libération..."):
+                            ceder_la_main_avec_sauvegarde(my_session_id)
+                        st.rerun()
+                with cb2:
+                    with st.popover("💾 Sauvegarder", use_container_width=True, help="Sauvegarder dans l'historique du tournoi"):
+                        st.markdown("##### 💾 Sauvegarde dans l'historique du tournoi")
+                        for m_act in modes_actifs:
+                            t_act = td.get(m_act)
+                            lbl_m = "Simple (1 vs 1)" if m_act == "simple" else "Double (2 vs 2)"
+                            if st.button(f"💾 Sauvegarder {lbl_m}", key=f"btn_bnd_save_hist_{m_act}", use_container_width=True, help=f"Sauvegarde le tournoi {lbl_m} dans l'historique officiel"):
+                                sauvegarder_tournoi_dans_historique(m_act, notifier_admin=True)
+                                st.success(f"✅ {lbl_m} sauvegardé dans l'historique !")
+                                time.sleep(0.8)
+                                st.rerun()
+                with cb3:
+                    with st.popover("❌ Annuler", use_container_width=True, help="Annulation complète du tournoi sans aucune sauvegarde"):
+                        st.markdown("##### ⚠️ Annulation complète du tournoi")
+                        st.write("Confirmez l'annulation complète. **Dans ce cas, aucune sauvegarde ne sera effectuée** :")
+                        for m_act in modes_actifs:
+                            t_act = td.get(m_act)
+                            lbl_m = "Simple" if m_act == "simple" else "Double"
+                            if st.button(f"🔴 Confirmer annulation {lbl_m}", key=f"btn_bnd_cancel_act_{m_act}", type="primary", use_container_width=True):
+                                annuler_completement_tournoi(m_act)
+                                st.session_state[f"msg_annulation_{m_act}"] = f"❌ Le tournoi {lbl_m} a été complètement annulé (aucune sauvegarde)."
+                                st.rerun()
+                with cb4:
+                    with st.popover("📜 Tournois", use_container_width=True, help="Liste déroulante des tournois sauvegardés"):
+                        st.markdown("##### 📜 Tournois sauvegardés")
+                        hist_pop = charger_historique_tournois(inclure_actifs=True)
+                        if hist_pop:
+                            opts_pop = [(i, f"{'👤' if t.get('mode')=='simple' else '👥'} {t.get('titre')}") for i, t in enumerate(hist_pop)]
+                            sel_pop = st.selectbox("Choisir un tournoi :", options=[i for i, _ in opts_pop], format_func=lambda x: dict(opts_pop).get(x, ""), key="sel_pop_tournois_editeur")
+                            if st.button("👁️ Ouvrir ce tournoi", key="btn_open_pop_t_editeur", use_container_width=True):
+                                st.session_state["select_tournoi_detail_hist"] = sel_pop
+                                st.rerun()
+            else:
+                cb1, cb2 = st.columns([1.2, 1.2])
+                with cb1:
+                    if st.button("🔓 Céder la main", key="btn_ceder_main_tournoi", use_container_width=True, help="Sauvegarde automatiquement le tournoi sur le disque et libère la main"):
+                        with st.spinner("Sauvegarde du tournoi et libération..."):
+                            ceder_la_main_avec_sauvegarde(my_session_id)
+                        st.rerun()
+                with cb2:
+                    with st.popover("📜 Tournois", use_container_width=True, help="Liste déroulante des tournois sauvegardés"):
+                        st.markdown("##### 📜 Tournois sauvegardés")
+                        hist_pop = charger_historique_tournois(inclure_actifs=True)
+                        if hist_pop:
+                            opts_pop = [(i, f"{'👤' if t.get('mode')=='simple' else '👥'} {t.get('titre')}") for i, t in enumerate(hist_pop)]
+                            sel_pop = st.selectbox("Choisir un tournoi :", options=[i for i, _ in opts_pop], format_func=lambda x: dict(opts_pop).get(x, ""), key="sel_pop_tournois_editeur_empty")
+                            if st.button("👁️ Ouvrir ce tournoi", key="btn_open_pop_t_editeur_empty", use_container_width=True):
+                                st.session_state["select_tournoi_detail_hist"] = sel_pop
+                                st.rerun()
     elif est_spectateur:
         tournoi_actif = any(td.get(m) and isinstance(td.get(m), dict) and td.get(m).get("statut") == "en_cours" for m in ["simple", "double"])
         texte_spec = "👁️ **Mode spectateur (Lecture seule) :** Consultation en direct du tournoi actif." if tournoi_actif else "👁️ **Mode spectateur (Lecture seule) :** Consultation des tournois. La saisie des scores est réservée au marqueur."
@@ -3338,7 +3435,7 @@ def afficher_section_tournoi(mode="simple"):
         html_t_json = json.dumps(html_tournoi)
 
         if est_editeur:
-            col_top1, col_top2, col_top3, col_top4, col_top5 = st.columns([2.0, 1.2, 1.1, 1.0, 1.1])
+            col_top1, col_top2, col_top3, col_top4, col_top5 = st.columns([1.8, 1.1, 1.1, 1.4, 1.3])
         else:
             col_top1, col_top2, col_top3, col_top4 = st.columns([2.1, 1.2, 1.1, 1.3])
 
@@ -3400,14 +3497,14 @@ def afficher_section_tournoi(mode="simple"):
 
         if est_editeur:
             with col_top4:
-                with st.popover("💾 Sauvegarder", use_container_width=True):
-                    st.markdown("### 💾 Sauvegarde du tournoi")
-                    st.write("Sauvegardez l'état actuel de la compétition dans l'historique officiel.")
-                    st.caption("✅ Un courriel avec le fichier `historique_tournois.json` en attachement sera automatiquement expédié aux administrateurs définis dans SMTP.")
-                    if st.button("💾 Sauvegarder & Notifier", type="primary", use_container_width=True, key=f"btn_arch_only_{mode}"):
-                        with st.spinner("Sauvegarde et transmission du courriel aux administrateurs..."):
-                            archiver_tournoi(tournoi, mode=mode, notifier_admin=True)
-                        st.success("✅ Tournoi sauvegardé et courriel envoyé aux administrateurs avec l'historique en pièce jointe !")
+                with st.popover("💾 Sauvegarder dans l'historique", use_container_width=True, help="Sauvegarder l'état actuel du tournoi dans l'historique officiel"):
+                    st.markdown("### 💾 Sauvegarde dans l'historique du tournoi")
+                    st.write(f"Sauvegardez l'état actuel du **{libelle_mode.lower()}** dans l'historique officiel des tournois.")
+                    st.caption("✅ Le tournoi apparaîtra dans la liste déroulante des tournois sauvegardés et un courriel avec l'historique sera transmis aux administrateurs.")
+                    if st.button("💾 Sauvegarder dans l'historique", type="primary", use_container_width=True, key=f"btn_arch_only_{mode}"):
+                        with st.spinner("Sauvegarde dans l'historique du tournoi..."):
+                            sauvegarder_tournoi_dans_historique(mode, notifier_admin=True)
+                        st.success("✅ Tournoi sauvegardé avec succès dans l'historique !")
                         time.sleep(1.0)
                         st.rerun()
 
@@ -3417,26 +3514,20 @@ def afficher_section_tournoi(mode="simple"):
                         st.write("Le tournoi est terminé. Vous pouvez clôturer la session pour archiver le tournoi et libérer la grille.")
                         if st.button("🏁 Clôturer & Libérer la grille", type="primary", use_container_width=True, key=f"btn_confirm_cloture_{mode}"):
                             with st.spinner("Clôture et archivage final..."):
-                                archiver_tournoi(tournoi, mode=mode, notifier_admin=True)
+                                sauvegarder_tournoi_dans_historique(mode, notifier_admin=True)
                                 tournois_data[mode] = None
                                 sauvegarder_tournois_data(tournois_data)
                             st.session_state[f"msg_annulation_{mode}"] = f"🏆 Le {libelle_mode.lower()} a été clôturé et archivé avec succès."
                             st.rerun()
 
             with col_top5:
-                with st.popover("❌ Annuler le tournoi", use_container_width=True, help="Annuler le tournoi en cours avec confirmation obligatoire avant de procéder"):
-                    st.markdown("### ⚠️ Annulation du tournoi")
-                    st.warning("⚠️ **Attention :** Vous êtes sur le point d'annuler définitivement le tournoi en cours. Cette action arrêtera immédiatement la compétition et réinitialisera la grille.")
-                    st.info("ℹ️ Ce tournoi **ne sera pas archivé** dans l'historique et **aucun avis par courriel** ne sera envoyé aux administrateurs.")
-                    st.markdown("**Confirmation obligatoire avant de procéder :**")
-                    confirme_annul = st.checkbox(
-                        "Je confirme vouloir annuler définitivement ce tournoi actif",
-                        key=f"chk_confirm_cancel_{mode}"
-                    )
-                    if st.button("🔴 Confirmer l'annulation", type="primary", use_container_width=True, disabled=not confirme_annul, key=f"btn_confirm_cancel_action_{mode}", help="Réinitialise immédiatement le tournoi sans archivage ni envoi de courriel"):
-                        tournois_data[mode] = None
-                        sauvegarder_tournois_data(tournois_data)
-                        st.session_state[f"msg_annulation_{mode}"] = f"❌ Le {libelle_mode.lower()} a été annulé avec succès (non archivé, aucun courriel expédié)."
+                with st.popover("❌ Annulation complète", use_container_width=True, help="Annulation complète du tournoi sans aucune sauvegarde"):
+                    st.markdown("### ⚠️ Annulation complète du tournoi")
+                    st.warning("Voulez-vous vraiment annuler complètement le tournoi en cours ?")
+                    st.write("🛑 **Dans ce cas, aucune sauvegarde ne sera effectuée** et la grille du tournoi sera immédiatement effacée.")
+                    if st.button("🔴 Confirmer l'annulation", type="primary", use_container_width=True, key=f"btn_confirm_cancel_action_{mode}", help="Annule complètement le tournoi sans aucune sauvegarde"):
+                        annuler_completement_tournoi(mode)
+                        st.session_state[f"msg_annulation_{mode}"] = f"❌ Le {libelle_mode.lower()} a été complètement annulé (aucune sauvegarde effectuée)."
                         st.rerun()
         else:
             with col_top4:
@@ -3710,6 +3801,34 @@ def afficher_section_historique_tournois():
                 else:
                     st.warning(f"⚠️ {msg_s}")
 
+    if est_editeur:
+        td_active = charger_tournois_data()
+        tournois_actifs_h = [m for m in ["simple", "double"] if td_active.get(m) and isinstance(td_active.get(m), dict)]
+        if tournois_actifs_h:
+            with st.container(border=True):
+                st.markdown("##### ⚡ Marqueur officiel — Actions sur le tournoi en cours")
+                for m_act in tournois_actifs_h:
+                    t_act = td_active.get(m_act)
+                    lbl_m = "Simple (1 vs 1)" if m_act == "simple" else "Double (2 vs 2)"
+                    c_info, c_save, c_annul = st.columns([2.4, 1.4, 1.4])
+                    with c_info:
+                        st.write(f"🟢 **Tournoi {lbl_m} actif :** *{t_act.get('titre')}* ({t_act.get('format')})")
+                    with c_save:
+                        if st.button(f"💾 Sauvegarder dans l'historique", key=f"btn_top_hist_save_{m_act}", use_container_width=True, help="Sauvegarder l'état actuel dans l'historique officiel"):
+                            sauvegarder_tournoi_dans_historique(m_act, notifier_admin=True)
+                            st.success(f"✅ Tournoi {lbl_m} sauvegardé dans l'historique !")
+                            time.sleep(0.8)
+                            st.rerun()
+                    with c_annul:
+                        with st.popover(f"❌ Annulation complète", use_container_width=True, help="Annulation complète sans aucune sauvegarde"):
+                            st.markdown("###### ⚠️ Annulation complète du tournoi")
+                            st.warning(f"Voulez-vous vraiment annuler complètement le tournoi {lbl_m} ?")
+                            st.write("🛑 **Dans ce cas, aucune sauvegarde ne sera effectuée.**")
+                            if st.button("🔴 Confirmer l'annulation", type="primary", use_container_width=True, key=f"btn_top_hist_cancel_{m_act}"):
+                                annuler_completement_tournoi(m_act)
+                                st.session_state[f"msg_annulation_{m_act}"] = f"❌ Le tournoi {lbl_m} a été complètement annulé (aucune sauvegarde)."
+                                st.rerun()
+
     if not historique:
         with st.container(border=True):
             st.info("ℹ️ Aucun tournoi sauvegardé pour le moment. Dès qu'un tournoi sera créé, sauvegardé ou terminé, il apparaîtra automatiquement dans la liste déroulante.")
@@ -3822,7 +3941,22 @@ def afficher_section_historique_tournois():
         with col_dt4:
             if est_editeur:
                 if tournoi_choisi.get("est_actif"):
-                    st.caption("🔒 Tournoi actif (annulation via l'onglet dédié)")
+                    mode_c = tournoi_choisi.get("mode", "simple")
+                    col_act_h1, col_act_h2 = st.columns([1, 1])
+                    with col_act_h1:
+                        if st.button("💾 Sauvegarder", key=f"btn_hist_save_t_{choix_idx}", use_container_width=True, help="Sauvegarder dans l'historique du tournoi"):
+                            sauvegarder_tournoi_dans_historique(mode_c, notifier_admin=True)
+                            st.success("✅ Sauvegardé dans l'historique !")
+                            time.sleep(0.8)
+                            st.rerun()
+                    with col_act_h2:
+                        with st.popover("❌ Annuler", use_container_width=True, help="Annulation complète du tournoi sans sauvegarde"):
+                            st.markdown("###### ⚠️ Annulation complète")
+                            st.write("Confirmez l'annulation complète. **Dans ce cas, aucune sauvegarde ne sera effectuée** :")
+                            if st.button("🔴 Confirmer l'annulation", type="primary", use_container_width=True, key=f"btn_hist_cancel_t_{choix_idx}"):
+                                annuler_completement_tournoi(mode_c)
+                                st.session_state[f"msg_annulation_{mode_c}"] = f"❌ Le tournoi a été complètement annulé (aucune sauvegarde)."
+                                st.rerun()
                 else:
                     with st.popover("🗑️ Supprimer", use_container_width=True):
                         st.markdown("### ⚠️ Suppression définitive")
