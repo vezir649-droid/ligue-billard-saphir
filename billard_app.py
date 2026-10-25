@@ -11,11 +11,31 @@ from email.mime.application import MIMEApplication
 from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from PIL import Image
 import pandas as pd
 import streamlit as st
 
-# Fichiers de données et chemins d'accès robustes
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# 1. Configuration de la page (Immédiatement après les imports, au tout début du script)
+_base_dir = os.path.dirname(os.path.abspath(__file__))
+_candidats_icones = [
+    os.path.join(_base_dir, "armoiries.png"),
+    os.path.join(os.getcwd(), "armoiries.png"),
+    "armoiries.png"
+]
+icone_app = "🎱"
+for _c in _candidats_icones:
+    if os.path.isfile(_c):
+        icone_app = _c
+        break
+
+st.set_page_config(
+    page_title="Ligue de billard Boule en main - Saisie",
+    page_icon=icone_app,
+    layout="wide"
+)
+
+# 2. Fichiers de données et chemins d'accès robustes
+BASE_DIR = _base_dir
 
 def get_data_path(filename):
     """Retourne le chemin complet du fichier en privilégiant le répertoire du script."""
@@ -45,14 +65,6 @@ def find_armoiries_path():
     return os.path.join(BASE_DIR, "armoiries.png")
 
 ARMOIRIES_FILE = find_armoiries_path()
-icone_page = ARMOIRIES_FILE if (ARMOIRIES_FILE and os.path.isfile(ARMOIRIES_FILE)) else "🎱"
-
-# Configuration de la page
-st.set_page_config(
-    page_title="Ligue de billard Boule en main - Saisie",
-    page_icon=icone_page,
-    layout="wide"
-)
 
 BACKUP_FILE = get_data_path("sauvegarde_saisie_secours.json")
 CORBEILLE_FILE = get_data_path("sauvegarde_annulee_secours.json")
