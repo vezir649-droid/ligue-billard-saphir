@@ -3873,34 +3873,71 @@ def afficher_tableau_de_bord_progression(historique):
                     f"{fj['manches']} manches au total"
                 )
 
-                # Graphique d'évolution du joueur par match
+                # Graphique de pointage et moyenne du joueur par match (Bar chart fixe 0 à 24)
                 if fj["matchs_synthese"]:
-                    st.markdown(f"##### 📊 Moyenne match après match ({choix_j})")
+                    st.markdown(f"##### 📊 Pointage et moyenne match par match ({choix_j}) — Échelle fixe 0 à 24")
                     indices_m = sorted(fj["matchs_synthese"].keys())
 
-                    labels_pj = []
-                    moys_match = []
-                    moys_cumul = []
-                    cumul_pts_j = 0
-                    cumul_manches_j = 0
-
+                    rows_chart = []
                     for im in indices_m:
                         sm = fj["matchs_synthese"][im]
                         pts_m = sm["pts"]
                         man_m = sm["manches"]
-                        cumul_pts_j += pts_m
-                        cumul_manches_j += man_m
-                        
-                        labels_pj.append(f"M#{im}")
-                        moys_match.append(round(pts_m / man_m, 2) if man_m > 0 else 0)
-                        moys_cumul.append(round(cumul_pts_j / cumul_manches_j, 2) if cumul_manches_j > 0 else 0)
+                        moy_m = round(pts_m / man_m, 2) if man_m > 0 else 0.0
 
-                    df_chart_j = pd.DataFrame({
-                        "Moyenne du match": moys_match,
-                        "Moyenne générale cumulée": moys_cumul
-                    }, index=labels_pj)
+                        d_raw = str(sm.get("date", f"Match #{im}"))
+                        d_clean = d_raw.split()[0] if " " in d_raw else d_raw
+                        parts_d = d_clean.split("-")
+                        if len(parts_d) == 3 and len(parts_d[0]) == 4:
+                            d_clean = f"{parts_d[2]}/{parts_d[1]}/{parts_d[0]}"
 
-                    st.bar_chart(df_chart_j, height=320)
+                        label_m = f"M#{im} • {d_clean} ({pts_m} pts)"
+                        advs_str = ", ".join(sm.get("adversaires", [])) or "Adversaires"
+
+                        rows_chart.append({
+                            "Match": label_m,
+                            "Pointage": pts_m,
+                            "Date": d_clean,
+                            "Moyenne": f"{moy_m:.2f} / 8.00",
+                            "Adversaires": advs_str
+                        })
+
+                    df_chart_j = pd.DataFrame(rows_chart)
+
+                    try:
+                        import altair as alt
+                        bars = alt.Chart(df_chart_j).mark_bar(
+                            color="#0b3c5d",
+                            cornerRadiusTopLeft=5,
+                            cornerRadiusTopRight=5
+                        ).encode(
+                            x=alt.X("Match:N", sort=None, title="Rencontre, Date & Pointage", axis=alt.Axis(labelAngle=-25)),
+                            y=alt.Y("Pointage:Q", scale=alt.Scale(domain=[0, 24]), title="Pointage du match (Fixe de 0 à 24 pts)"),
+                            tooltip=[
+                                alt.Tooltip("Match:N", title="Rencontre"),
+                                alt.Tooltip("Date:N", title="Date du match"),
+                                alt.Tooltip("Pointage:Q", title="Pointage (/24 pts)"),
+                                alt.Tooltip("Moyenne:N", title="Moyenne par manche (/8)"),
+                                alt.Tooltip("Adversaires:N", title="Adversaires affrontés")
+                            ]
+                        )
+                        text_labels = bars.mark_text(
+                            align="center",
+                            baseline="bottom",
+                            dy=-5,
+                            fontSize=12,
+                            fontWeight="bold",
+                            color="#0b3c5d"
+                        ).encode(
+                            text="Pointage:Q"
+                        )
+                        chart_final = (bars + text_labels).properties(height=340)
+                        st.altair_chart(chart_final, use_container_width=True)
+                    except Exception:
+                        df_fallback = pd.DataFrame({
+                            "Pointage du match (/24)": [r["Pointage"] for r in rows_chart]
+                        }, index=[r["Match"] for r in rows_chart])
+                        st.bar_chart(df_fallback, height=320)
 
                 # Historique détaillé de toutes ses manches
                 if fj["chronologie"]:
