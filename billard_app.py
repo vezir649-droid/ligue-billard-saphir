@@ -3094,14 +3094,15 @@ def afficher_bandeau_verrou_tournoi():
     action_sauv = infos_sauv.get("action", "")
     mention_sauv = f" • 💾 Dernière sauvegarde disque : {date_sauv}" if date_sauv else ""
 
-    col_lk1, col_lk2 = st.columns([2.3, 2.1])
+    modes_actifs = [m for m in ["simple", "double"] if td.get(m) and isinstance(td.get(m), dict)]
+    tournoi_actif = any(td.get(m) and isinstance(td.get(m), dict) and td.get(m).get("statut") == "en_cours" for m in ["simple", "double"])
 
     if est_editeur:
-        modes_actifs = [m for m in ["simple", "double"] if td.get(m) and isinstance(td.get(m), dict)]
+        col_lk1, col_lk2 = st.columns([2.6, 1.8] if modes_actifs else [3.2, 1.2])
         col_lk1.success(f"🟢 **Vous avez la main exclusive pour marquer et configurer le tournoi.**{mention_sauv}")
         with col_lk2:
             if modes_actifs:
-                cb1, cb2, cb3, cb4 = st.columns([1.0, 1.2, 1.2, 1.0])
+                cb1, cb2, cb3 = st.columns([1.0, 1.3, 1.2])
                 with cb1:
                     if st.button("🔓 Céder", key="btn_ceder_main_tournoi", use_container_width=True, help="Sauvegarde le tournoi sur disque et libère la main"):
                         with st.spinner("Sauvegarde et libération..."):
@@ -3129,62 +3130,79 @@ def afficher_bandeau_verrou_tournoi():
                                 annuler_completement_tournoi(m_act)
                                 st.session_state[f"msg_annulation_{m_act}"] = f"❌ Le tournoi {lbl_m} a été complètement annulé (aucune sauvegarde)."
                                 st.rerun()
-                with cb4:
-                    with st.popover("📜 Tournois", use_container_width=True, help="Liste déroulante des tournois sauvegardés"):
-                        st.markdown("##### 📜 Tournois sauvegardés")
-                        hist_pop = charger_historique_tournois(inclure_actifs=True)
-                        if hist_pop:
-                            opts_pop = [(i, f"{'👤' if t.get('mode')=='simple' else '👥'} {t.get('titre')}") for i, t in enumerate(hist_pop)]
-                            sel_pop = st.selectbox("Choisir un tournoi :", options=[i for i, _ in opts_pop], format_func=lambda x: dict(opts_pop).get(x, ""), key="sel_pop_tournois_editeur")
-                            if st.button("👁️ Ouvrir ce tournoi", key="btn_open_pop_t_editeur", use_container_width=True):
-                                st.session_state["select_tournoi_detail_hist"] = sel_pop
-                                st.rerun()
             else:
-                cb1, cb2 = st.columns([1.2, 1.2])
-                with cb1:
-                    if st.button("🔓 Céder la main", key="btn_ceder_main_tournoi", use_container_width=True, help="Sauvegarde automatiquement le tournoi sur le disque et libère la main"):
-                        with st.spinner("Sauvegarde du tournoi et libération..."):
-                            ceder_la_main_avec_sauvegarde(my_session_id)
-                        st.rerun()
-                with cb2:
-                    with st.popover("📜 Tournois", use_container_width=True, help="Liste déroulante des tournois sauvegardés"):
-                        st.markdown("##### 📜 Tournois sauvegardés")
-                        hist_pop = charger_historique_tournois(inclure_actifs=True)
-                        if hist_pop:
-                            opts_pop = [(i, f"{'👤' if t.get('mode')=='simple' else '👥'} {t.get('titre')}") for i, t in enumerate(hist_pop)]
-                            sel_pop = st.selectbox("Choisir un tournoi :", options=[i for i, _ in opts_pop], format_func=lambda x: dict(opts_pop).get(x, ""), key="sel_pop_tournois_editeur_empty")
-                            if st.button("👁️ Ouvrir ce tournoi", key="btn_open_pop_t_editeur_empty", use_container_width=True):
-                                st.session_state["select_tournoi_detail_hist"] = sel_pop
-                                st.rerun()
+                if st.button("🔓 Céder la main", key="btn_ceder_main_tournoi", use_container_width=True, help="Sauvegarde automatiquement le tournoi sur le disque et libère la main"):
+                    with st.spinner("Sauvegarde du tournoi et libération..."):
+                        ceder_la_main_avec_sauvegarde(my_session_id)
+                    st.rerun()
     elif est_spectateur:
-        tournoi_actif = any(td.get(m) and isinstance(td.get(m), dict) and td.get(m).get("statut") == "en_cours" for m in ["simple", "double"])
+        col_lk1, col_lk2 = st.columns([2.5, 1.7])
         texte_spec = "👁️ **Mode spectateur (Lecture seule) :** Consultation en direct du tournoi actif." if tournoi_actif else "👁️ **Mode spectateur (Lecture seule) :** Consultation des tournois. La saisie des scores est réservée au marqueur."
         col_lk1.info(texte_spec)
         col_lk1.caption("🔄 *Veille automatique active : dès que le marqueur met à jour le tournoi, les résultats sont actualisés systématiquement.*")
         with col_lk2:
-            col_b1, col_b2 = st.columns([1.3, 1.3])
+            col_b1, col_b2 = st.columns([1.1, 1.5])
             with col_b1:
                 if st.button("🔄 Actualiser", key="btn_refresh_t_spec", type="primary" if tournoi_actif else "secondary", use_container_width=True, help="Recharge les derniers résultats et scores en direct du tournoi"):
                     actualiser_resultats_tournoi()
             with col_b2:
-                with st.popover("📜 Tournois", use_container_width=True, help="Liste déroulante des tournois sauvegardés"):
+                with st.popover("📜 Tournois", use_container_width=True, help="Sélectionner un tournoi et afficher son arborescence officielle"):
                     st.markdown("##### 📜 Tournois sauvegardés")
-                    st.caption("Sélectionnez un tournoi dans la liste déroulante :")
+                    st.caption("Sélectionnez un tournoi dans la liste déroulante ci-dessous pour afficher immédiatement son arborescence :")
                     hist_pop = charger_historique_tournois(inclure_actifs=True)
                     if hist_pop:
-                        opts_pop = [(i, f"{'👤' if t.get('mode')=='simple' else '👥'} {t.get('titre')} ({t.get('date_creation','')})") for i, t in enumerate(hist_pop)]
-                        sel_pop = st.selectbox("Choisir un tournoi :", options=[i for i, _ in opts_pop], format_func=lambda x: dict(opts_pop).get(x, ""), key="sel_pop_tournois_spec")
+                        opts_pop = [(i, f"{'👤' if t.get('mode')=='simple' else '👥'} [{('Actif' if t.get('est_actif') else (t.get('statut') or 'archivé')).capitalize()}] {t.get('titre')} — {t.get('date_creation','')}") for i, t in enumerate(hist_pop)]
+                        sel_pop = st.selectbox(
+                            "🏆 Choisir un tournoi :",
+                            options=[i for i, _ in opts_pop],
+                            format_func=lambda x: dict(opts_pop).get(x, ""),
+                            key="sel_pop_tournois_spec"
+                        )
                         t_pop = hist_pop[sel_pop]
-                        st.write(f"**Format :** {t_pop.get('format')} • **Statut :** `{t_pop.get('statut')}`")
-                        if t_pop.get("vainqueur_final"):
-                            st.write(f"🥇 **Champion :** {t_pop.get('vainqueur_final')}")
-                        if st.button("👁️ Voir ce tournoi en détail", key="btn_open_pop_t_spec", use_container_width=True):
-                            st.session_state["select_tournoi_detail_hist"] = sel_pop
-                            st.rerun()
+                        mode_pop = t_pop.get("mode", "simple")
+
+                        fmt_lbl = "Élimination directe" if t_pop.get("format") == "elimination" else "Round-Robin"
+                        v_champ = t_pop.get("vainqueur_final")
+                        champ_txt = f" &nbsp;|&nbsp; 🥇 <strong>Champion :</strong> {v_champ}" if v_champ else ""
+                        st.caption(f"Modalité : **{'Simple' if mode_pop == 'simple' else 'Double'}** &nbsp;|&nbsp; Format : `{fmt_lbl}`{champ_txt}", unsafe_allow_html=True)
+
+                        # Sur sélection du tournoi : afficher immédiatement son arborescence officielle
+                        st.markdown("###### 🌳 Arborescence officielle du tournoi")
+                        html_pop = generer_html_tournoi(t_pop, mode=mode_pop)
+                        st.components.v1.html(html_pop, height=480, scrolling=True)
+
+                        col_p_btn1, col_p_btn2 = st.columns([1.4, 1.2])
+                        with col_p_btn1:
+                            html_pop_json = json.dumps(html_pop)
+                            st.components.v1.html(
+                                f"""
+                                <button onclick="imprimerTournoiPop()" style="width:100%; height:36px; background-color:#0b3c5d; color:white; border:none; border-radius:6px; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif; font-size:12px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;">
+                                    🖨️ Imprimer (A4)
+                                </button>
+                                <script>
+                                function imprimerTournoiPop() {{
+                                    var win = window.open('', '_blank');
+                                    win.document.open();
+                                    win.document.write({html_pop_json});
+                                    win.document.close();
+                                    win.focus();
+                                    win.document.title = "Arborescence Tournoi";
+                                    setTimeout(function() {{
+                                        win.print();
+                                    }}, 350);
+                                }}
+                                </script>
+                                """,
+                                height=40
+                            )
+                        with col_p_btn2:
+                            if st.button("👁️ Voir détails", key="btn_open_pop_t_spec", use_container_width=True, help="Ouvrir la fiche complète dans l'onglet des tournois sauvegardés"):
+                                st.session_state["select_tournoi_detail_hist"] = sel_pop
+                                st.rerun()
                     else:
                         st.info("Aucun tournoi sauvegardé.")
     else:
-        tournoi_actif = any(td.get(m) and isinstance(td.get(m), dict) and td.get(m).get("statut") == "en_cours" for m in ["simple", "double"])
+        col_lk1, col_lk2 = st.columns([2.8, 1.4])
         if autre_editeur_actif:
             mins = temps_restant // 60
             secs = temps_restant % 60
@@ -3202,20 +3220,8 @@ def afficher_bandeau_verrou_tournoi():
                             prendre_la_main_avec_rechargement(my_session_id)
                         st.rerun()
                 with col_act:
-                    col_ca1, col_ca2 = st.columns([1, 1])
-                    with col_ca1:
-                        if st.button("🔄 Actualiser", key="btn_refresh_t_ed_consult", use_container_width=True, help="Recharge les résultats du tournoi sans prendre la main"):
-                            actualiser_resultats_tournoi()
-                    with col_ca2:
-                        with st.popover("📜 Tournois", use_container_width=True, help="Liste déroulante des tournois sauvegardés"):
-                            st.markdown("##### 📜 Tournois sauvegardés")
-                            hist_pop = charger_historique_tournois(inclure_actifs=True)
-                            if hist_pop:
-                                opts_pop = [(i, f"{'👤' if t.get('mode')=='simple' else '👥'} {t.get('titre')}") for i, t in enumerate(hist_pop)]
-                                sel_pop = st.selectbox("Choisir un tournoi :", options=[i for i, _ in opts_pop], format_func=lambda x: dict(opts_pop).get(x, ""), key="sel_pop_tournois_consult")
-                                if st.button("👁️ Ouvrir ce tournoi", key="btn_open_pop_t_consult", use_container_width=True):
-                                    st.session_state["select_tournoi_detail_hist"] = sel_pop
-                                    st.rerun()
+                    if st.button("🔄 Actualiser", key="btn_refresh_t_ed_consult", use_container_width=True, help="Recharge les résultats du tournoi sans prendre la main"):
+                        actualiser_resultats_tournoi()
             else:
                 if st.button("⚡ Prendre la main", key="btn_prendre_main_tournoi", use_container_width=True, help="Prend le contrôle de la saisie, charge la dernière sauvegarde du tournoi et active l'édition"):
                     with st.spinner("Prise de la main et chargement..."):
