@@ -3596,8 +3596,13 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
                 )
 
                 key_promus = f"liste_promus_{mode}{key_suffix}"
-                key_add = f"sel_add_promu_{mode}{key_suffix}"
-                key_del = f"sel_del_promu_{mode}{key_suffix}"
+                cnt_add_key = f"cnt_add_promu_{mode}{key_suffix}"
+                cnt_del_key = f"cnt_del_promu_{mode}{key_suffix}"
+
+                if cnt_add_key not in st.session_state:
+                    st.session_state[cnt_add_key] = 0
+                if cnt_del_key not in st.session_state:
+                    st.session_state[cnt_del_key] = 0
 
                 # Initialisation de la liste des promus si non présente
                 if key_promus not in st.session_state:
@@ -3612,53 +3617,46 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
                 placeholder_add = "➕ Choisir un participant à promouvoir..."
                 placeholder_del = "➖ Choisir un promu à replacer..."
 
-                def _cb_add_promu():
-                    val = st.session_state.get(key_add)
-                    if val and val != placeholder_add:
-                        if val not in st.session_state[key_promus]:
-                            st.session_state[key_promus].append(val)
-                        st.session_state[key_add] = placeholder_add
-
-                def _cb_del_promu():
-                    val = st.session_state.get(key_del)
-                    if val and val != placeholder_del:
-                        if val in st.session_state[key_promus]:
-                            st.session_state[key_promus].remove(val)
-                        st.session_state[key_del] = placeholder_del
-
-                options_add = [placeholder_add] + candidats
-                options_del = [placeholder_del] + promus
-
-                if key_add not in st.session_state or st.session_state[key_add] not in options_add:
-                    st.session_state[key_add] = placeholder_add
-                if key_del not in st.session_state or st.session_state[key_del] not in options_del:
-                    st.session_state[key_del] = placeholder_del
+                key_add = f"sel_add_{mode}{key_suffix}_{st.session_state[cnt_add_key]}"
+                key_del = f"sel_del_{mode}{key_suffix}_{st.session_state[cnt_del_key]}"
 
                 st.markdown(f"###### 🔄 Sélection et transfert des participants promus ({len(promus)} / {nb_promus}) :")
                 col_p1, col_p2 = st.columns(2)
                 with col_p1:
                     st.markdown(f"**📋 Participants à sélectionner ({len(candidats)}) :**")
-                    st.selectbox(
+                    choix_add = st.selectbox(
                         "Déplacer vers la liste des promus :",
-                        options=options_add,
+                        options=[placeholder_add] + candidats,
+                        index=0,
                         key=key_add,
-                        on_change=_cb_add_promu,
                         label_visibility="collapsed",
                         help="Sélectionnez un participant dans cette liste pour le promouvoir au 2ᵉ tour (le déplace vers la liste des promus)."
                     )
+                    if choix_add != placeholder_add:
+                        if choix_add not in st.session_state[key_promus]:
+                            st.session_state[key_promus].append(choix_add)
+                        st.session_state[cnt_add_key] += 1
+                        st.rerun()
+
                     if not candidats:
                         st.caption("ℹ️ Tous les participants sont actuellement promus.")
 
                 with col_p2:
                     st.markdown(f"**🎟️ Participants promus au 2ᵉ tour ({len(promus)} / {nb_promus}) :**")
-                    st.selectbox(
+                    choix_del = st.selectbox(
                         "Replacer dans la liste à sélectionner :",
-                        options=options_del,
+                        options=[placeholder_del] + promus,
+                        index=0,
                         key=key_del,
-                        on_change=_cb_del_promu,
                         label_visibility="collapsed",
                         help="Sélectionnez un promu dans cette liste pour le retirer et le replacer dans la liste à sélectionner."
                     )
+                    if choix_del != placeholder_del:
+                        if choix_del in st.session_state[key_promus]:
+                            st.session_state[key_promus].remove(choix_del)
+                        st.session_state[cnt_del_key] += 1
+                        st.rerun()
+
                     if not promus:
                         st.caption("ℹ️ Aucun participant n'est encore promu.")
 
@@ -3666,14 +3664,14 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
                 with col_b1:
                     if st.button("🎲 Tirage au sort des promus", key=f"btn_pige_promus_{mode}{key_suffix}", use_container_width=True, help="Tire au sort exactement le nombre requis de promus parmi les participants"):
                         st.session_state[key_promus] = random.sample(participants_finaux, min(nb_promus, len(participants_finaux)))
-                        st.session_state[key_add] = placeholder_add
-                        st.session_state[key_del] = placeholder_del
+                        st.session_state[cnt_add_key] += 1
+                        st.session_state[cnt_del_key] += 1
                         st.rerun()
                 with col_b2:
                     if st.button("🔄 Réinitialiser la liste des promus", key=f"btn_reset_promus_{mode}{key_suffix}", use_container_width=True, help="Remet tous les promus dans la liste des participants à sélectionner"):
                         st.session_state[key_promus] = []
-                        st.session_state[key_add] = placeholder_add
-                        st.session_state[key_del] = placeholder_del
+                        st.session_state[cnt_add_key] += 1
+                        st.session_state[cnt_del_key] += 1
                         st.rerun()
 
                 promus_selectionnes = list(st.session_state[key_promus])
