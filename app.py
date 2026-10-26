@@ -2185,135 +2185,243 @@ def planifier_horaires_round_robin(matchs, heure_debut="09:00", duree_min=30, nb
     heure_fin = cur_dt.strftime("%Hh%M")
     return heure_fin
 
-def generer_arbre_elimination(participants, race_prelim=2, race_finale=3, titre="Tournoi", heure_debut="09:00", duree_min=30, nb_tables=2, passe_droit_participant=None):
+def calculer_structure_arbre(nb_participants):
     """
-    Génère un arbre à élimination directe.
-    Si passe_droit_participant est spécifié, ce joueur ou duo bénéficie d'une exemption (passe-droit)
-    au premier tour et est immédiatement promu au deuxième tour.
-    Prend en charge tous les effectifs (pairs ou impairs avec passe-droit).
+    Calcule le nombre de participants promus (passe-droit) au second tour
+    afin de garantir un nombre pair de matchs au second tour (demi-finales = 2, quarts = 4, etc.).
+    Retourne (nb_promus, nb_matchs_t1, nb_matchs_t2, puissance_b)
+    """
+    n = nb_participants
+    if n < 2:
+        return 0, 0, 0, 0
+    if n == 2:
+        return 0, 1, 0, 2
+    if n == 3:
+        return 1, 1, 1, 4
+    if n == 4:
+        return 0, 2, 1, 4
+
+    b = 8
+    while b < n:
+        b *= 2
+
+    nb_promus = b - n
+    nb_matchs_t1 = n - (b // 2)
+    nb_matchs_t2 = b // 4  # Toujours un nombre pair (2, 4, 8...) car b >= 8
+    return nb_promus, nb_matchs_t1, nb_matchs_t2, b
+
+def generer_arbre_elimination(participants, race_prelim=2, race_finale=3, titre="Tournoi", heure_debut="09:00", duree_min=30, nb_tables=2, passes_droits=None, passe_droit_participant=None):
+    """
+    Génère un arbre à élimination directe équilibré.
+    Garantit suivant le nombre de participants d'avoir un nombre pair de matchs au second tour
+    (2 en demi-finales, 4 en quarts, etc.) en promouvant un nombre suffisant de participants
+    (passe-droit) directement au second tour.
     Format officiel des rondes :
     - Préliminaires : 2 de 3 (premier à 2 victoires, race_to = 2)
     - Finale : 3 de 5 (premier à 3 victoires, race_to = 3)
     """
     p_liste = list(participants)
-    if not p_liste or len(p_liste) < 2:
+    n = len(p_liste)
+    if not p_liste or n < 2:
         return None
 
-    # Gestion de l'option passe-droit
-    has_pd = bool(passe_droit_participant and passe_droit_participant in p_liste)
-    if has_pd:
-        p_sans_pd = [p for p in p_liste if p != passe_droit_participant]
-        random.shuffle(p_sans_pd)
-        p_ordonnee = [passe_droit_participant, "Exempt (Passe-droit)"] + p_sans_pd
+    nb_promus, nb_m_t1, nb_m_t2, b = calculer_structure_arbre(n)
+
+    # Déterminer les participants promus (passe-droit)
+    promus = []
+    if passes_droits:
+        if isinstance(passes_droits, str):
+            passes_droits = [passes_droits]
+        for p in passes_droits:
+            if p in p_liste and p not in promus and len(promus) < nb_promus:
+                promus.append(p)
+    elif passe_droit_participant and passe_droit_participant in p_liste:
+        promus.append(passe_droit_participant)
+
+    candidats_restants = [p for p in p_liste if p not in promus]
+    random.shuffle(candidats_restants)
+    manquants = nb_promus - len(promus)
+    if manquants > 0:
+        promus.extend(candidats_restants[:manquants])
+        candidats_restants = candidats_restants[manquants:]
+
+    p_t1 = list(candidats_restants)
+    random.shuffle(p_t1)
+
+    tours_matchs = []
+
+    # CAS N == 2 : Finale directe
+    if n == 2:
+        matchs_t1 = [{
+            "id": "T1_M1",
+            "equipe_a": p_liste[0],
+            "equipe_b": p_liste[1],
+            "score_a": 0, "score_b": 0,
+            "termine": False, "vainqueur": None,
+            "source_a": None, "source_b": None, "passe_droit": False
+        }]
+        tours_matchs.append(matchs_t1)
+
+    # CAS N == 3 : Demi-finale (1 match) puis Finale (1 match)
+    elif n == 3:
+        matchs_t1 = [{
+            "id": "T1_M1",
+            "equipe_a": p_t1[0],
+            "equipe_b": p_t1[1],
+            "score_a": 0, "score_b": 0,
+            "termine": False, "vainqueur": None,
+            "source_a": None, "source_b": None, "passe_droit": False
+        }]
+        matchs_t2 = [{
+            "id": "T2_M1",
+            "equipe_a": "À déterminer",
+            "equipe_b": promus[0],
+            "score_a": 0, "score_b": 0,
+            "termine": False, "vainqueur": None,
+            "source_a": "T1_M1", "source_b": None, "passe_droit": False
+        }]
+        tours_matchs.append(matchs_t1)
+        tours_matchs.append(matchs_t2)
+
+    # CAS N == 4 : Demi-finales (2 matchs) puis Finale (1 match)
+    elif n == 4:
+        matchs_t1 = [
+            {
+                "id": "T1_M1",
+                "equipe_a": p_t1[0], "equipe_b": p_t1[1],
+                "score_a": 0, "score_b": 0,
+                "termine": False, "vainqueur": None,
+                "source_a": None, "source_b": None, "passe_droit": False
+            },
+            {
+                "id": "T1_M2",
+                "equipe_a": p_t1[2], "equipe_b": p_t1[3],
+                "score_a": 0, "score_b": 0,
+                "termine": False, "vainqueur": None,
+                "source_a": None, "source_b": None, "passe_droit": False
+            }
+        ]
+        matchs_t2 = [{
+            "id": "T2_M1",
+            "equipe_a": "À déterminer", "equipe_b": "À déterminer",
+            "score_a": 0, "score_b": 0,
+            "termine": False, "vainqueur": None,
+            "source_a": "T1_M1", "source_b": "T1_M2", "passe_droit": False
+        }]
+        tours_matchs.append(matchs_t1)
+        tours_matchs.append(matchs_t2)
+
+    # CAS GÉNÉRAL N >= 5 (garantit un nombre pair de matchs au second tour)
     else:
-        random.shuffle(p_liste)
-        p_ordonnee = p_liste
+        # Tour 1
+        matchs_t1 = []
+        for i in range(nb_m_t1):
+            matchs_t1.append({
+                "id": f"T1_M{i+1}",
+                "equipe_a": p_t1[2*i],
+                "equipe_b": p_t1[2*i+1],
+                "score_a": 0, "score_b": 0,
+                "termine": False, "vainqueur": None,
+                "source_a": None, "source_b": None, "passe_droit": False
+            })
+        tours_matchs.append(matchs_t1)
 
-    n = len(p_ordonnee)
-    nb_matchs_t1 = n // 2
-    matchs_t1 = []
-    for m_i in range(nb_matchs_t1):
-        eq_a = p_ordonnee[2 * m_i]
-        eq_b = p_ordonnee[2 * m_i + 1]
-        is_pd_match = (has_pd and m_i == 0)
-        matchs_t1.append({
-            "id": f"T1_M{m_i+1}",
-            "equipe_a": eq_a,
-            "equipe_b": eq_b,
-            "score_a": race_prelim if is_pd_match else 0,
-            "score_b": 0,
-            "termine": is_pd_match,
-            "passe_droit": is_pd_match,
-            "vainqueur": eq_a if is_pd_match else None,
-            "source_a": None,
-            "source_b": None
-        })
+        # Tour 2 (nb_m_t2 matchs : garanti toujours pair 2, 4, 8...)
+        sources_t1 = [f"T1_M{i+1}" for i in range(nb_m_t1)]
+        promus_copy = list(promus)
+        random.shuffle(promus_copy)
 
-    curr_matchs = matchs_t1
-    t_num = 1
-    tours_matchs = [matchs_t1]
+        matchs_t2 = []
+        M1 = nb_m_t1
+        M2 = nb_m_t2
 
-    while len(curr_matchs) > 1:
-        t_num += 1
-        nb_winners = len(curr_matchs)
-        next_m_list = []
-        if nb_winners % 2 == 0:
-            for m_i in range(nb_winners // 2):
+        if M1 <= M2:
+            promu_idx = 0
+            for i in range(M2):
+                if i < M1:
+                    src_a = sources_t1[i]
+                    eq_a = "À déterminer"
+                else:
+                    src_a = None
+                    eq_a = promus_copy[promu_idx]
+                    promu_idx += 1
+
+                src_b = None
+                eq_b = promus_copy[promu_idx]
+                promu_idx += 1
+
+                matchs_t2.append({
+                    "id": f"T2_M{i+1}",
+                    "equipe_a": eq_a,
+                    "equipe_b": eq_b,
+                    "score_a": 0, "score_b": 0,
+                    "termine": False, "vainqueur": None,
+                    "source_a": src_a, "source_b": src_b, "passe_droit": False
+                })
+        else:
+            promu_idx = 0
+            nb_t1_in_b = M1 - M2
+            for i in range(M2):
+                src_a = sources_t1[i]
+                eq_a = "À déterminer"
+
+                if i < nb_t1_in_b:
+                    src_b = sources_t1[M2 + i]
+                    eq_b = "À déterminer"
+                else:
+                    src_b = None
+                    eq_b = promus_copy[promu_idx]
+                    promu_idx += 1
+
+                matchs_t2.append({
+                    "id": f"T2_M{i+1}",
+                    "equipe_a": eq_a,
+                    "equipe_b": eq_b,
+                    "score_a": 0, "score_b": 0,
+                    "termine": False, "vainqueur": None,
+                    "source_a": src_a, "source_b": src_b, "passe_droit": False
+                })
+        tours_matchs.append(matchs_t2)
+
+        # Tours suivants (T3 jusqu'à la Finale)
+        curr_matchs = matchs_t2
+        t_num = 2
+        while len(curr_matchs) > 1:
+            t_num += 1
+            nb_curr = len(curr_matchs)
+            next_m_list = []
+            for m_i in range(nb_curr // 2):
                 src_a = f"T{t_num-1}_M{2*m_i+1}"
                 src_b = f"T{t_num-1}_M{2*m_i+2}"
-                prev_m_a = next((m for m in curr_matchs if m["id"] == src_a), None)
-                prev_m_b = next((m for m in curr_matchs if m["id"] == src_b), None)
-                ea = prev_m_a["vainqueur"] if (prev_m_a and prev_m_a.get("termine")) else "À déterminer"
-                eb = prev_m_b["vainqueur"] if (prev_m_b and prev_m_b.get("termine")) else "À déterminer"
                 next_m_list.append({
                     "id": f"T{t_num}_M{m_i+1}",
-                    "equipe_a": ea,
-                    "equipe_b": eb,
-                    "score_a": 0,
-                    "score_b": 0,
-                    "termine": False,
-                    "vainqueur": None,
-                    "source_a": src_a,
-                    "source_b": src_b
+                    "equipe_a": "À déterminer",
+                    "equipe_b": "À déterminer",
+                    "score_a": 0, "score_b": 0,
+                    "termine": False, "vainqueur": None,
+                    "source_a": src_a, "source_b": src_b, "passe_droit": False
                 })
             tours_matchs.append(next_m_list)
             curr_matchs = next_m_list
-        else:
-            src_a = f"T{t_num-1}_M1"
-            src_b = f"T{t_num-1}_M2"
-            prev_m_a = next((m for m in curr_matchs if m["id"] == src_a), None)
-            prev_m_b = next((m for m in curr_matchs if m["id"] == src_b), None)
-            ea = prev_m_a["vainqueur"] if (prev_m_a and prev_m_a.get("termine")) else "À déterminer"
-            eb = prev_m_b["vainqueur"] if (prev_m_b and prev_m_b.get("termine")) else "À déterminer"
-            next_m_list.append({
-                "id": f"T{t_num}_M1",
-                "equipe_a": ea,
-                "equipe_b": eb,
-                "score_a": 0,
-                "score_b": 0,
-                "termine": False,
-                "vainqueur": None,
-                "source_a": src_a,
-                "source_b": src_b
-            })
-            tours_matchs.append(next_m_list)
-            t_num += 1
-            src_fa = f"T{t_num-1}_M1"
-            src_fb = f"T{t_num-2}_M3"
-            prev_m_fa = next((m for m in next_m_list if m["id"] == src_fa), None)
-            prev_m_fb = next((m for m in curr_matchs if m["id"] == src_fb), None)
-            efa = prev_m_fa["vainqueur"] if (prev_m_fa and prev_m_fa.get("termine")) else "À déterminer"
-            efb = prev_m_fb["vainqueur"] if (prev_m_fb and prev_m_fb.get("termine")) else "À déterminer"
-            finale_m = [{
-                "id": f"T{t_num}_M1",
-                "equipe_a": efa,
-                "equipe_b": efb,
-                "score_a": 0,
-                "score_b": 0,
-                "termine": False,
-                "vainqueur": None,
-                "source_a": src_fa,
-                "source_b": src_fb
-            }]
-            tours_matchs.append(finale_m)
-            break
 
     total_tours = len(tours_matchs)
-    nom_map = {
-        1: "Finale",
-        2: "Demi-finales",
-        3: "Quarts de finale",
-        4: "Huitièmes de finale",
-        5: "Tour préliminaire"
-    }
-
     final_tours = []
     for idx, m_list in enumerate(tours_matchs, 1):
         is_finale = (idx == total_tours)
         race_t = race_finale if is_finale else race_prelim
         fmt_t = "3 de 5" if race_t == 3 else ("2 de 3" if race_t == 2 else f"Course à {race_t}")
         rounds_from_end = total_tours - idx + 1
-        default_nom = nom_map.get(rounds_from_end, f"Tour {idx}")
+
+        if rounds_from_end == 1:
+            nom = "Finale"
+        elif rounds_from_end == 2:
+            nom = "Demi-finales"
+        elif rounds_from_end == 3:
+            nom = "Quarts de finale" if (idx == 1 and n >= 8) or (idx > 1) else "Tour préliminaire"
+        elif rounds_from_end == 4:
+            nom = "Huitièmes de finale" if (idx == 1 and n >= 16) or (idx > 1) else "Tour préliminaire"
+        else:
+            nom = "Tour préliminaire" if idx == 1 else f"Tour {idx}"
 
         for m in m_list:
             m["race_to"] = race_t
@@ -2321,7 +2429,7 @@ def generer_arbre_elimination(participants, race_prelim=2, race_finale=3, titre=
 
         final_tours.append({
             "numero": idx,
-            "nom": default_nom,
+            "nom": nom,
             "race_to": race_t,
             "format_label": fmt_t,
             "matchs": m_list
@@ -2336,6 +2444,7 @@ def generer_arbre_elimination(participants, race_prelim=2, race_finale=3, titre=
         "race_prelim": race_prelim,
         "race_finale": race_finale,
         "participants": p_liste,
+        "promus_second_tour": promus,
         "total_tours": total_tours,
         "tours": final_tours,
         "heure_debut": heure_debut,
@@ -2651,6 +2760,16 @@ def generer_html_tournoi(tournoi, mode="simple"):
         </div>
         """
 
+    # BANNIÈRE PARTICIPANTS PROMUS AU SECOND TOUR
+    promus_html = ""
+    if is_elim and tournoi.get("promus_second_tour"):
+        promus_str = ", ".join([formater_nom_abrege_joueur(p) for p in tournoi["promus_second_tour"]])
+        promus_html = f"""
+        <div style="background: #eef7ff; border: 1px solid #90caf9; border-radius: 4px; padding: 5px 10px; margin-bottom: 8px; font-size: 11px; color: #0b3c5d;">
+            🎟️ <strong>Participants promus d'office au 2ᵉ tour (Passe-droit) :</strong> {promus_str}
+        </div>
+        """
+
     # CONSTRUCTION DE L'ARBORESCENCE GRAPHIQUE (BRACKET OU MATRICE)
     arborescence_html = ""
     if is_elim:
@@ -2691,8 +2810,20 @@ def generer_html_tournoi(tournoi, mode="simple"):
                 else:
                     h_badge = f'<span>{m_fmt}</span>'
 
-                ea_disp = formater_nom_abrege_joueur(ea)
-                eb_disp = formater_nom_abrege_joueur(eb)
+                promus_set = set(tournoi.get("promus_second_tour", []))
+                if ea == "À déterminer" and m.get("source_a"):
+                    ea_disp = f"Vainq. {m['source_a']}"
+                else:
+                    ea_disp = formater_nom_abrege_joueur(ea)
+                    if not m.get("source_a") and ea in promus_set:
+                        ea_disp += " 🎟️"
+
+                if eb == "À déterminer" and m.get("source_b"):
+                    eb_disp = f"Vainq. {m['source_b']}"
+                else:
+                    eb_disp = formater_nom_abrege_joueur(eb)
+                    if not m.get("source_b") and eb in promus_set:
+                        eb_disp += " 🎟️"
                 cards.append(f"""
                 <div class="bracket-card {card_done}">
                     <div class="card-header">
@@ -3112,6 +3243,7 @@ def generer_html_tournoi(tournoi, mode="simple"):
         </table>
         {html_header_p}
         {podium_html}
+        {promus_html}
         {arborescence_html}
         <p class="footer-note" style="font-size: 8px; color: #777; margin-top: 6px; text-align: center;">
             Arborescence officielle générée via l'application de la Ligue de billard Boule en main.
@@ -3564,46 +3696,58 @@ def afficher_section_tournoi(mode="simple"):
             is_elim = "Élimination" in type_format
             bloquer_lancement = bool(doublons) if (mode == "double" and 'doublons' in locals()) else False
 
-            if is_elim:
-                col_pd1, col_pd2 = st.columns([1.8, 2.2])
-                with col_pd1:
-                    activer_pd_init = st.checkbox(
-                        "🎟️ Option Passe-droit (Exempter 1 participant au 1er tour)",
-                        value=(nb_p % 2 != 0),
-                        key=f"chk_opt_pd_{mode}",
-                        help="Promeut directement un joueur ou duo au tour suivant dès le premier tour."
-                    )
-                with col_pd2:
-                    beneficiaire_pd_init = None
-                    if activer_pd_init and participants_finaux:
-                        beneficiaire_pd_init = st.selectbox(
-                            "Joueur ou duo bénéficiant du passe-droit :",
-                            options=participants_finaux,
-                            key=f"sel_benef_pd_{mode}",
-                            help="Ce participant sera directement promu au 2e tour."
-                        )
+            promus_selectionnes = []
+            if nb_p < 2:
+                bloquer_lancement = True
+                st.info(f"ℹ️ Sélectionnez au moins 2 {'équipes' if mode == 'double' else 'joueurs'} pour configurer le tournoi.")
+            elif is_elim:
+                nb_promus, nb_m_t1, nb_m_t2, b_pow = calculer_structure_arbre(nb_p)
 
-                if nb_p < 2:
-                    bloquer_lancement = True
-                    st.info(f"ℹ️ Sélectionnez au moins 2 {'équipes' if mode == 'double' else 'joueurs'} pour configurer le tournoi.")
-                elif nb_p % 2 != 0 and not activer_pd_init:
-                    bloquer_lancement = True
-                    st.warning(
-                        f"⚠️ **Effectif impair ({nb_p} participants) :**\n\n"
-                        f"Activez l'option **🎟️ Option Passe-droit** ci-dessus pour promouvoir un participant directement au tour suivant, ou ajustez à un effectif pair."
+                if nb_promus > 0:
+                    st.markdown(
+                        f"<div style='background: #eef7ff; border: 1px solid #90caf9; border-radius: 8px; padding: 12px 16px; margin: 8px 0;'>"
+                        f"<strong style='color: #0b3c5d;'>🎟️ Équilibrage officiel de l'arbre ({nb_p} participants)</strong><br>"
+                        f"<span style='font-size: 13px; color: #222;'>"
+                        f"Pour garantir un <strong>nombre pair de matchs au second tour ({nb_m_t2} matchs)</strong>, "
+                        f"<strong>{nb_promus} participant{'s' if nb_promus > 1 else ''}</strong> {'bénéficient' if nb_promus > 1 else 'bénéficie'} "
+                        f"d'un passe-droit et {'sont directement promus' if nb_promus > 1 else 'est directement promu'} au 2ᵉ tour. "
+                        f"Les {nb_p - nb_promus} autres participants disputeront le 1ᵉʳ tour ({nb_m_t1} match{'s' if nb_m_t1 > 1 else ''})."
+                        f"</span></div>",
+                        unsafe_allow_html=True
                     )
+
+                    col_pd1, col_pd2 = st.columns([1.6, 2.4])
+                    with col_pd1:
+                        mode_attribution = st.radio(
+                            "Attribution des passe-droits :",
+                            options=["🎲 Tirage au sort automatique", "✋ Sélection manuelle"],
+                            key=f"rad_mode_pd_{mode}",
+                            help="Par tirage au sort automatique équitable (recommandé) ou par sélection manuelle selon vos têtes de série."
+                        )
+                    with col_pd2:
+                        if mode_attribution == "✋ Sélection manuelle":
+                            promus_selectionnes = st.multiselect(
+                                f"Sélectionnez les {nb_promus} participant(s) promus au 2ᵉ tour :",
+                                options=participants_finaux,
+                                default=participants_finaux[:nb_promus],
+                                max_selections=nb_promus,
+                                key=f"sel_multi_promus_{mode}",
+                                help=f"Exactement {nb_promus} participant(s) doivent être choisis pour garantir l'équilibre de l'arbre."
+                            )
+                            if len(promus_selectionnes) != nb_promus:
+                                bloquer_lancement = True
+                                st.warning(f"⚠️ Veuillez sélectionner exactement **{nb_promus} participant(s)** (actuellement {len(promus_selectionnes)}/{nb_promus}).")
+                        else:
+                            st.caption(f"🎲 *{nb_promus} participant(s) seront tirés au sort équitablement lors de la création pour être promus d'office au second tour.*")
                 else:
-                    if activer_pd_init and beneficiaire_pd_init:
-                        st.success(f"🎟️ **Passe-droit activé :** **{beneficiaire_pd_init}** sera promu d'office au 2e tour ! Les autres participants disputeront le premier tour.")
-                    else:
-                        st.success(f"🟢 **Prêt à lancer :** Les **{nb_p} participants** s'affronteront au 1er tour.")
+                    st.success(
+                        f"🟢 **Effectif équilibré ({nb_p} participants) :** "
+                        f"Aucun passe-droit requis. Tous les participants débuteront au 1ᵉʳ tour ({nb_m_t1} matchs) "
+                        f"et le second tour comportera exactement **{nb_m_t2} matchs (nombre pair)**."
+                    )
             else:
-                if nb_p < 2:
-                    bloquer_lancement = True
-                    st.info(f"ℹ️ Sélectionnez au moins 2 {'équipes' if mode == 'double' else 'joueurs'} pour démarrer un championnat toutes rondes.")
-                else:
-                    nb_matchs_tot = (nb_p * (nb_p - 1)) // 2
-                    st.success(f"🟢 **Championnat Round-Robin :** Les **{nb_p} participants inscrits** s'affronteront tous sans exception ({nb_matchs_tot} rencontres au total) !")
+                nb_matchs_tot = (nb_p * (nb_p - 1)) // 2
+                st.success(f"🟢 **Championnat Round-Robin :** Les **{nb_p} participants inscrits** s'affronteront tous sans exception ({nb_matchs_tot} rencontres au total) !")
 
             btn_lancer = st.button(
                 "🚀 Lancer le tournoi et générer le tableau officiel",
@@ -3611,7 +3755,7 @@ def afficher_section_tournoi(mode="simple"):
                 use_container_width=True,
                 disabled=bloquer_lancement,
                 key=f"btn_lancer_{mode}",
-                help="Génère l'arbre officiel des rencontres avec promotion automatique du passe-droit le cas échéant."
+                help="Génère l'arbre officiel des rencontres avec promotion automatique pour assurer un nombre pair de matchs au 2e tour."
             )
 
             if btn_lancer:
@@ -3625,7 +3769,7 @@ def afficher_section_tournoi(mode="simple"):
                         heure_debut=heure_debut_str,
                         duree_min=duree_min_saisie,
                         nb_tables=nb_tables_saisi,
-                        passe_droit_participant=(beneficiaire_pd_init if (is_elim and activer_pd_init) else None)
+                        passes_droits=(promus_selectionnes if (promus_selectionnes and len(promus_selectionnes) == nb_promus) else None)
                     )
                 else:
                     t_cree = generer_round_robin(
@@ -3642,7 +3786,11 @@ def afficher_section_tournoi(mode="simple"):
                     tournois_data[mode] = t_cree
                     sauvegarder_tournois_data(tournois_data)
                     st.session_state[f"ouvrir_arborescence_auto_{mode}"] = True
-                    st.success("✅ Tournoi généré sans aucun passe-droit avec succès !")
+                    promus_msg = t_cree.get("promus_second_tour", [])
+                    if promus_msg:
+                        st.success(f"✅ Tournoi généré avec succès ! {len(promus_msg)} participant(s) promu(s) au 2ᵉ tour : {', '.join(promus_msg)}.")
+                    else:
+                        st.success("✅ Tournoi officiel généré avec succès !")
                     st.rerun()
 
     # 2. CAS OÙ UN TOURNOI EST EN COURS OU TERMINÉ
@@ -3803,6 +3951,9 @@ def afficher_section_tournoi(mode="simple"):
         # DÉROULEMENT SELON LE FORMAT
         if format_type == "elimination":
             st.markdown("##### 🌳 Tableau des rencontres (Arbre de tournoi)")
+            if tournoi.get("promus_second_tour"):
+                promus_str_view = ", ".join(tournoi["promus_second_tour"])
+                st.info(f"🎟️ **Participants promus d'office au 2ᵉ tour (Passe-droit) :** {promus_str_view}")
             tours = tournoi.get("tours", [])
             tours_onglets = [t["nom"] for t in tours]
 
