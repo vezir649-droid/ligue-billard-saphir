@@ -3452,6 +3452,366 @@ def afficher_bandeau_verrou_tournoi():
 
     return est_editeur
 
+def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_editeur=True):
+    """
+    Formulaire universel et réutilisable pour la création et la configuration
+    d'un nouveau tournoi (en Simple ou en Double / Équipes).
+    """
+    libelle_mode = "Tournoi en Simple (1 contre 1)" if mode == "simple" else "Tournoi en Double / Équipes (2 contre 2)"
+    tournois_data = charger_tournois_data()
+
+    st.caption(f"Configurez les paramètres et inscrivez les participants pour lancer un nouveau {libelle_mode.lower()}.")
+    with st.container(border=True):
+        col_cfg1, col_cfg2 = st.columns([2, 1])
+        with col_cfg1:
+            titre_defaut = f"Tournoi {'Simple' if mode == 'simple' else 'Double'} — {datetime.now().strftime('%d/%m/%Y')}"
+            titre_saisi = st.text_input("Nom du tournoi :", value=titre_defaut, key=f"tournoi_titre_{mode}{key_suffix}")
+            type_format = st.radio(
+                "Format de compétition :",
+                ["🏆 Élimination directe (Arbre de tournoi)", "🔄 Championnat toutes rondes (Round-Robin)"],
+                key=f"tournoi_format_{mode}{key_suffix}"
+            )
+        with col_cfg2:
+            st.markdown("**Formule officielle des matchs :**")
+            st.info(
+                "🔹 **Préliminaires :** 2 de 3 *(premier à 2)*\n\n"
+                "🏆 **Grande Finale :** 3 de 5 *(premier à 3)*\n\n"
+                "🔄 **Round-Robin :** 2 de 3"
+            )
+
+        st.markdown("##### 📅 Organisation, Disponibilité des tables & Horaires (1 seule journée)")
+        st.caption("ℹ️ *Une pause dîner est automatiquement intégrée de 12:00 à 13:00 : aucun match n'est cédulé durant cette période.*")
+        col_hor1, col_hor2, col_hor3 = st.columns([1.5, 1.2, 1.3])
+        with col_hor1:
+            choix_tables = st.radio(
+                "Tables de billard disponibles :",
+                ["🎱 2 tables (Recommandé - 2 matchs en parallèle)", "🎱 1 table (Matchs en alternance)"],
+                index=0,
+                key=f"tournoi_tables_{mode}{key_suffix}",
+                help="Si 2 tables sont disponibles, 2 matchs se jouent en simultané. Si 1 table, les matchs se déroulent en alternance."
+            )
+            nb_tables_saisi = 2 if "2 tables" in choix_tables else 1
+        with col_hor2:
+            heure_debut_str = st.selectbox(
+                "Heure de début du tournoi :",
+                ["09:00", "08:30", "09:30", "10:00", "13:00"],
+                index=0,
+                key=f"tournoi_h_deb_{mode}{key_suffix}",
+                help="Les tournois se déroulent en une seule journée et débutent à 9h a.m."
+            )
+        with col_hor3:
+            duree_min_saisie = st.selectbox(
+                "Durée estimée par match :",
+                [30, 25, 35, 40, 45],
+                index=0,
+                format_func=lambda x: f"{x} minutes",
+                key=f"tournoi_duree_{mode}{key_suffix}",
+                help="Durée estimée d'un match (30 minutes par défaut)."
+            )
+
+        st.divider()
+
+        # Sélection des participants
+        joueurs_disponibles = obtenir_tous_les_joueurs_tournoi()
+
+        # Gestion des invités personnalisés
+        key_invites = f"invites_tournoi_{mode}{key_suffix}"
+        if key_invites not in st.session_state:
+            st.session_state[key_invites] = []
+
+        col_inv1, col_inv2 = st.columns([3, 1])
+        with col_inv1:
+            nouveau_joueur = st.text_input("Ajouter un joueur invité / remplaçant :", key=f"input_invite_{mode}{key_suffix}", placeholder="Ex: Jean Tremblay")
+        with col_inv2:
+            st.write("")
+            if st.button("➕ Ajouter l'invité", key=f"btn_add_invite_{mode}{key_suffix}", use_container_width=True):
+                if nouveau_joueur.strip():
+                    nom_prop = nouveau_joueur.strip()
+                    if nom_prop not in joueurs_disponibles and nom_prop not in st.session_state[key_invites]:
+                        st.session_state[key_invites].append(nom_prop)
+                        st.rerun()
+
+        tous_candidats = sorted(list(set(joueurs_disponibles + st.session_state[key_invites])))
+
+        participants_finaux = []
+
+        if mode == "simple":
+            st.markdown("##### 👤 Liste des joueurs inscrits")
+            col_sel_btn1, col_sel_btn2 = st.columns([1.5, 3.5])
+            with col_sel_btn1:
+                if st.button("👥 Sélectionner tous les inscrits", key=f"btn_all_{mode}{key_suffix}", use_container_width=True):
+                    st.session_state[f"sel_participants_{mode}{key_suffix}"] = tous_candidats
+                    st.rerun()
+            with col_sel_btn2:
+                st.caption("ℹ️ Par défaut, **tous les joueurs réguliers inscrits** participent au tournoi.")
+
+            selection_j = st.multiselect(
+                "Joueurs participants au tournoi :",
+                options=tous_candidats,
+                default=st.session_state.get(f"sel_participants_{mode}{key_suffix}", tous_candidats),
+                key=f"sel_participants_{mode}{key_suffix}",
+                help="Tous les joueurs inscrits sont sélectionnés par défaut."
+            )
+            participants_finaux = selection_j
+            st.caption(f"🎯 **{len(participants_finaux)} joueur(s) inscrit(s)** participant au tournoi.")
+
+        else:
+            # Mode DOUBLE : Sélection des duos de joueurs avec drop boxes
+            st.markdown("##### 👥 Sélection des duos de joueurs inscrits (Drop boxes)")
+            st.caption("Constituez les équipes de double en sélectionnant les deux joueurs de chaque duo dans les listes déroulantes ci-dessous.")
+
+            col_nb_d1, col_nb_d2 = st.columns([1.5, 3])
+            with col_nb_d1:
+                nb_duos_choisi = st.selectbox(
+                    "Nombre de duos participant :",
+                    options=[8, 4, 12, 16, 2, 6, 10, 14],
+                    index=0,
+                    key=f"nb_duos_select_{mode}{key_suffix}",
+                    help="Sélectionnez le nombre de duos (8 duos = 16 joueurs, idéal pour un tournoi à élimination sur 3 rondes sans passe-droit)."
+                )
+            with col_nb_d2:
+                col_btn_pige, col_btn_reset = st.columns(2)
+                with col_btn_pige:
+                    st.write("")
+                    if st.button("🎲 Piger au hasard", key=f"btn_pige_drop_{mode}{key_suffix}", use_container_width=True, help="Remplit aléatoirement les drop boxes avec les joueurs inscrits"):
+                        pool_pige = list(tous_candidats)
+                        random.shuffle(pool_pige)
+                        for d_idx in range(nb_duos_choisi):
+                            if len(pool_pige) >= 2:
+                                st.session_state[f"duo_{d_idx}_j1_{mode}{key_suffix}"] = pool_pige.pop(0)
+                                st.session_state[f"duo_{d_idx}_j2_{mode}{key_suffix}"] = pool_pige.pop(0)
+                        st.rerun()
+                with col_btn_reset:
+                    st.write("")
+                    if st.button("🔄 Réinitialiser", key=f"btn_reset_duos_{mode}{key_suffix}", use_container_width=True, help="Restaure la sélection séquentielle des joueurs"):
+                        for d_idx in range(16):
+                            st.session_state.pop(f"duo_{d_idx}_j1_{mode}{key_suffix}", None)
+                            st.session_state.pop(f"duo_{d_idx}_j2_{mode}{key_suffix}", None)
+                        st.rerun()
+
+            st.markdown("###### 📋 Choix des joueurs par duo :")
+
+            duos_selectionnes = []
+            joueurs_dans_duos = []
+            doublons = set()
+
+            cols_duos = st.columns(2)
+            for i in range(nb_duos_choisi):
+                with cols_duos[i % 2]:
+                    with st.container(border=True):
+                        st.markdown(f"**🎯 Duo #{i + 1}**")
+                        col_j1, col_j2 = st.columns(2)
+
+                        def_idx1 = (i * 2) % len(tous_candidats) if tous_candidats else 0
+                        def_idx2 = (i * 2 + 1) % len(tous_candidats) if len(tous_candidats) > 1 else 0
+
+                        with col_j1:
+                            st.caption("Joueur 1 :")
+                            j1 = st.selectbox(
+                                f"Joueur 1 (Duo {i+1}){key_suffix}",
+                                options=tous_candidats,
+                                index=def_idx1,
+                                key=f"duo_{i}_j1_{mode}{key_suffix}",
+                                label_visibility="collapsed"
+                            )
+                        with col_j2:
+                            st.caption("Joueur 2 :")
+                            j2 = st.selectbox(
+                                f"Joueur 2 (Duo {i+1}){key_suffix}",
+                                options=tous_candidats,
+                                index=def_idx2,
+                                key=f"duo_{i}_j2_{mode}{key_suffix}",
+                                label_visibility="collapsed"
+                            )
+
+                        if j1 == j2:
+                            st.error(f"⚠️ Un joueur ne peut pas être jumelé avec lui-même ({j1}).")
+                            doublons.add(j1)
+                        if j1 in joueurs_dans_duos:
+                            doublons.add(j1)
+                        joueurs_dans_duos.append(j1)
+                        if j2 in joueurs_dans_duos:
+                            doublons.add(j2)
+                        joueurs_dans_duos.append(j2)
+
+                        duo_nom = f"{j1} & {j2}"
+                        st.markdown(f"🤝 **Duo #{i+1} :** `{duo_nom}`")
+                        duos_selectionnes.append(duo_nom)
+
+            participants_finaux = duos_selectionnes
+
+            if doublons:
+                doublons_str = ", ".join(sorted(list(doublons)))
+                st.warning(f"⚠️ **Joueurs sélectionnés en double :** {doublons_str}. Chaque joueur ne doit figurer que dans un seul duo.")
+            else:
+                st.success(f"🟢 **{len(participants_finaux)} duos constitués** avec succès ({len(set(joueurs_dans_duos))} joueurs distincts prêts pour le tournoi en double).")
+
+        st.divider()
+
+        nb_p = len(participants_finaux)
+        is_elim = "Élimination" in type_format
+        bloquer_lancement = bool(doublons) if (mode == "double" and 'doublons' in locals()) else False
+        if not est_editeur:
+            bloquer_lancement = True
+
+        promus_selectionnes = []
+        if nb_p < 2:
+            bloquer_lancement = True
+            st.info(f"ℹ️ Sélectionnez au moins 2 {'équipes' if mode == 'double' else 'joueurs'} pour configurer le tournoi.")
+        elif is_elim:
+            nb_promus, nb_m_t1, nb_m_t2, b_pow = calculer_structure_arbre(nb_p)
+
+            if nb_promus > 0:
+                st.markdown(
+                    f"<div style='background: #eef7ff; border: 1px solid #90caf9; border-radius: 8px; padding: 12px 16px; margin: 8px 0;'>"
+                    f"<strong style='color: #0b3c5d;'>🎟️ Équilibrage officiel de l'arbre ({nb_p} participants)</strong><br>"
+                    f"<span style='font-size: 13px; color: #222;'>"
+                    f"Pour garantir un <strong>nombre pair de matchs au second tour ({nb_m_t2} matchs)</strong>, "
+                    f"<strong>{nb_promus} participant{'s' if nb_promus > 1 else ''}</strong> {'bénéficient' if nb_promus > 1 else 'bénéficie'} "
+                    f"d'un passe-droit et {'sont directement promus' if nb_promus > 1 else 'est directement promu'} au 2ᵉ tour. "
+                    f"Les {nb_p - nb_promus} autres participants disputeront le 1ᵉʳ tour ({nb_m_t1} match{'s' if nb_m_t1 > 1 else ''})."
+                    f"</span></div>",
+                    unsafe_allow_html=True
+                )
+
+                col_pd1, col_pd2 = st.columns([1.6, 2.4])
+                with col_pd1:
+                    mode_attribution = st.radio(
+                        "Attribution des passe-droits :",
+                        options=["🎲 Tirage au sort automatique", "✋ Sélection manuelle"],
+                        key=f"rad_mode_pd_{mode}{key_suffix}",
+                        help="Par tirage au sort automatique équitable (recommandé) ou par sélection manuelle selon vos têtes de série."
+                    )
+                with col_pd2:
+                    if mode_attribution == "✋ Sélection manuelle":
+                        promus_selectionnes = st.multiselect(
+                            f"Sélectionnez les {nb_promus} participant(s) promus au 2ᵉ tour :",
+                            options=participants_finaux,
+                            default=participants_finaux[:nb_promus],
+                            max_selections=nb_promus,
+                            key=f"sel_multi_promus_{mode}{key_suffix}",
+                            help=f"Exactement {nb_promus} participant(s) doivent être choisis pour garantir l'équilibre de l'arbre."
+                        )
+                        if len(promus_selectionnes) != nb_promus:
+                            bloquer_lancement = True
+                            st.warning(f"⚠️ Veuillez sélectionner exactement **{nb_promus} participant(s)** (actuellement {len(promus_selectionnes)}/{nb_promus}).")
+                    else:
+                        st.caption(f"🎲 *{nb_promus} participant(s) seront tirés au sort équitablement lors de la création pour être promus d'office au second tour.*")
+            else:
+                st.success(
+                    f"🟢 **Effectif équilibré ({nb_p} participants) :** "
+                    f"Aucun passe-droit requis. Tous les participants débuteront au 1ᵉʳ tour ({nb_m_t1} matchs) "
+                    f"et le second tour comportera exactement **{nb_m_t2} matchs (nombre pair)**."
+                )
+        else:
+            nb_matchs_tot = (nb_p * (nb_p - 1)) // 2
+            st.success(f"🟢 **Championnat Round-Robin :** Les **{nb_p} participants inscrits** s'affronteront tous sans exception ({nb_matchs_tot} rencontres au total) !")
+
+        if not est_editeur:
+            st.info("🔒 *Bouton de lancement désactivé en mode consultation (prenez la main ci-dessus pour lancer le tournoi).*")
+
+        btn_lancer = st.button(
+            "🚀 Lancer le tournoi et générer le tableau officiel",
+            type="primary",
+            use_container_width=True,
+            disabled=bloquer_lancement,
+            key=f"btn_lancer_{mode}{key_suffix}",
+            help="Génère l'arbre officiel des rencontres avec promotion automatique pour assurer un nombre pair de matchs au 2e tour."
+        )
+
+        if btn_lancer and est_editeur:
+            # Archivage automatique si un tournoi existait déjà dans ce mode
+            if tournois_data.get(mode):
+                sauvegarder_tournoi_dans_historique(mode, notifier_admin=True)
+
+            format_slug = "elimination" if is_elim else "round_robin"
+            if format_slug == "elimination":
+                t_cree = generer_arbre_elimination(
+                    participants_finaux,
+                    race_prelim=2,
+                    race_finale=3,
+                    titre=titre_saisi,
+                    heure_debut=heure_debut_str,
+                    duree_min=duree_min_saisie,
+                    nb_tables=nb_tables_saisi,
+                    passes_droits=(promus_selectionnes if (promus_selectionnes and len(promus_selectionnes) == nb_promus) else None)
+                )
+            else:
+                t_cree = generer_round_robin(
+                    participants_finaux,
+                    race_to=2,
+                    titre=titre_saisi,
+                    heure_debut=heure_debut_str,
+                    duree_min=duree_min_saisie,
+                    nb_tables=nb_tables_saisi
+                )
+
+            if t_cree:
+                t_cree["mode"] = mode
+                tournois_data[mode] = t_cree
+                sauvegarder_tournois_data(tournois_data)
+                st.session_state[f"ouvrir_arborescence_auto_{mode}"] = True
+                promus_msg = t_cree.get("promus_second_tour", [])
+                if promus_msg:
+                    st.success(f"✅ Tournoi généré avec succès ! {len(promus_msg)} participant(s) promu(s) au 2ᵉ tour : {', '.join(promus_msg)}.")
+                else:
+                    st.success("✅ Tournoi officiel généré avec succès !")
+                st.rerun()
+
+def afficher_onglet_nouveau_tournoi():
+    """Onglet dédié à la création d'un nouveau tournoi (Simple ou Double)."""
+    my_session_id = st.session_state.get("user_session_id", "")
+    est_spectateur = st.session_state.get("est_spectateur", False) or not st.session_state.get("authentifie", False)
+
+    if est_spectateur:
+        est_editeur = False
+    else:
+        veut_editer = not st.session_state.get("mode_consultation", False)
+        est_editeur, _, _ = gerer_verrou_session(my_session_id, veut_etre_editeur=veut_editer)
+
+    st.markdown("### ➕ Créer un nouveau tournoi officiel")
+    st.caption("Configurez et lancez une nouvelle compétition officielle en Simple (1 vs 1) ou en Double / Équipes (2 vs 2).")
+
+    if not est_editeur:
+        with st.container(border=True):
+            st.warning("🔒 **La création et la configuration des tournois officiels sont réservées au marqueur officiel avec la main active.**")
+            col_lck1, col_lck2 = st.columns([2, 1])
+            with col_lck1:
+                st.info("Prenez la main ci-contre pour configurer les participants, les tables et lancer un nouveau tournoi.")
+            with col_lck2:
+                if not est_spectateur:
+                    if st.button("⚡ Prendre la main pour créer un tournoi", key="btn_take_lock_new_t", type="primary", use_container_width=True):
+                        with st.spinner("Prise de la main..."):
+                            prendre_la_main_avec_rechargement(my_session_id)
+                        st.rerun()
+                else:
+                    if st.button("🔑 Connexion éditeur / Marqueur", key="btn_login_ed_new_t", type="primary", use_container_width=True):
+                        st.session_state["est_spectateur"] = False
+                        st.session_state["authentifie"] = False
+                        st.rerun()
+
+    choix_type = st.radio(
+        "Type de tournoi à organiser :",
+        ["👤 Tournoi en Simple (1 contre 1 - Joueurs individuels)", "👥 Tournoi en Double / Équipes (2 contre 2 - Duos)"],
+        horizontal=True,
+        key="rad_choix_type_nouveau_tournoi"
+    )
+
+    mode_choisi = "simple" if "Simple" in choix_type else "double"
+
+    td = charger_tournois_data()
+    t_existant = td.get(mode_choisi)
+    if t_existant and isinstance(t_existant, dict):
+        titre_ex = t_existant.get("titre", "Tournoi en cours")
+        statut_ex = t_existant.get("statut", "en_cours")
+        st.warning(
+            f"ℹ️ **Un tournoi {mode_choisi.capitalize()} est actuellement enregistré :** « **{titre_ex}** » ({'🟢 En cours' if statut_ex == 'en_cours' else '🏆 Terminé'}).\n\n"
+            f"En lançant un nouveau tournoi, le tournoi actuel sera **automatiquement archivé dans l'historique officiel** pour conserver l'ensemble de ses données et résultats."
+        )
+
+    afficher_formulaire_creation_tournoi(mode=mode_choisi, key_suffix="_tab_creer", est_editeur=est_editeur)
+
+
 def afficher_section_tournoi(mode="simple"):
     """Affiche l'interface complète de configuration ou de déroulement d'un tournoi (Simple ou Double)."""
     if f"msg_annulation_{mode}" in st.session_state:
@@ -3500,298 +3860,21 @@ def afficher_section_tournoi(mode="simple"):
                     "Dès que le marqueur officiel lancera la compétition, "
                     "vous pourrez consulter ici en direct l'arborescence des rencontres, les résultats des matchs et le classement."
                 )
+                if not est_spectateur:
+                    if st.button("⚡ Prendre la main pour créer un tournoi", key=f"btn_take_sec_{mode}", type="primary", use_container_width=True):
+                        prendre_la_main_avec_rechargement(my_session_id)
+                        st.rerun()
+                else:
+                    if st.button("🔑 Connexion éditeur", key=f"btn_login_sec_{mode}", type="primary", use_container_width=True):
+                        st.session_state["est_spectateur"] = False
+                        st.session_state["authentifie"] = False
+                        st.rerun()
                 if st.button("🔄 Vérifier si un tournoi a été lancé", key=f"btn_check_launch_{mode}", use_container_width=True, help="Vérifie si le marqueur a débuté un nouveau tournoi"):
                     st.rerun()
             return
 
-        st.caption(f"Configurez les paramètres et inscrivez les participants pour lancer un nouveau {libelle_mode.lower()}.")
-        with st.container(border=True):
-            col_cfg1, col_cfg2 = st.columns([2, 1])
-            with col_cfg1:
-                titre_defaut = f"Tournoi {'Simple' if mode == 'simple' else 'Double'} — {datetime.now().strftime('%d/%m/%Y')}"
-                titre_saisi = st.text_input("Nom du tournoi :", value=titre_defaut, key=f"tournoi_titre_{mode}")
-                type_format = st.radio(
-                    "Format de compétition :",
-                    ["🏆 Élimination directe (Arbre de tournoi)", "🔄 Championnat toutes rondes (Round-Robin)"],
-                    key=f"tournoi_format_{mode}"
-                )
-            with col_cfg2:
-                st.markdown("**Formule officielle des matchs :**")
-                st.info(
-                    "🔹 **Préliminaires :** 2 de 3 *(premier à 2)*\n\n"
-                    "🏆 **Grande Finale :** 3 de 5 *(premier à 3)*\n\n"
-                    "🔄 **Round-Robin :** 2 de 3"
-                )
-
-            st.markdown("##### 📅 Organisation, Disponibilité des tables & Horaires (1 seule journée)")
-            st.caption("ℹ️ *Une pause dîner est automatiquement intégrée de 12:00 à 13:00 : aucun match n'est cédulé durant cette période.*")
-            col_hor1, col_hor2, col_hor3 = st.columns([1.5, 1.2, 1.3])
-            with col_hor1:
-                choix_tables = st.radio(
-                    "Tables de billard disponibles :",
-                    ["🎱 2 tables (Recommandé - 2 matchs en parallèle)", "🎱 1 table (Matchs en alternance)"],
-                    index=0,
-                    key=f"tournoi_tables_{mode}",
-                    help="Si 2 tables sont disponibles, 2 matchs se jouent en simultané. Si 1 table, les matchs se déroulent en alternance."
-                )
-                nb_tables_saisi = 2 if "2 tables" in choix_tables else 1
-            with col_hor2:
-                heure_debut_str = st.selectbox(
-                    "Heure de début du tournoi :",
-                    ["09:00", "08:30", "09:30", "10:00", "13:00"],
-                    index=0,
-                    key=f"tournoi_h_deb_{mode}",
-                    help="Les tournois se déroulent en une seule journée et débutent à 9h a.m."
-                )
-            with col_hor3:
-                duree_min_saisie = st.selectbox(
-                    "Durée estimée par match :",
-                    [30, 25, 35, 40, 45],
-                    index=0,
-                    format_func=lambda x: f"{x} minutes",
-                    key=f"tournoi_duree_{mode}",
-                    help="Durée estimée d'un match (30 minutes par défaut)."
-                )
-
-            st.divider()
-
-            # Sélection des participants
-            joueurs_disponibles = obtenir_tous_les_joueurs_tournoi()
-
-            # Gestion des invités personnalisés
-            key_invites = f"invites_tournoi_{mode}"
-            if key_invites not in st.session_state:
-                st.session_state[key_invites] = []
-
-            col_inv1, col_inv2 = st.columns([3, 1])
-            with col_inv1:
-                nouveau_joueur = st.text_input("Ajouter un joueur invité / remplaçant :", key=f"input_invite_{mode}", placeholder="Ex: Jean Tremblay")
-            with col_inv2:
-                st.write("")
-                if st.button("➕ Ajouter l'invité", key=f"btn_add_invite_{mode}", use_container_width=True):
-                    if nouveau_joueur.strip():
-                        nom_prop = nouveau_joueur.strip()
-                        if nom_prop not in joueurs_disponibles and nom_prop not in st.session_state[key_invites]:
-                            st.session_state[key_invites].append(nom_prop)
-                            st.rerun()
-
-            tous_candidats = sorted(list(set(joueurs_disponibles + st.session_state[key_invites])))
-
-            participants_finaux = []
-
-            if mode == "simple":
-                st.markdown("##### 👤 Liste des joueurs inscrits")
-                col_sel_btn1, col_sel_btn2 = st.columns([1.5, 3.5])
-                with col_sel_btn1:
-                    if st.button("👥 Sélectionner tous les inscrits", key=f"btn_all_{mode}", use_container_width=True):
-                        st.session_state[f"sel_participants_{mode}"] = tous_candidats
-                        st.rerun()
-                with col_sel_btn2:
-                    st.caption("ℹ️ Par défaut, **tous les joueurs réguliers inscrits** participent au tournoi.")
-
-                selection_j = st.multiselect(
-                    "Joueurs participants au tournoi :",
-                    options=tous_candidats,
-                    default=st.session_state.get(f"sel_participants_{mode}", tous_candidats),
-                    key=f"sel_participants_{mode}",
-                    help="Tous les joueurs inscrits sont sélectionnés par défaut."
-                )
-                participants_finaux = selection_j
-                st.caption(f"🎯 **{len(participants_finaux)} joueur(s) inscrit(s)** participant au tournoi.")
-
-            else:
-                # Mode DOUBLE : Sélection des duos de joueurs avec drop boxes
-                st.markdown("##### 👥 Sélection des duos de joueurs inscrits (Drop boxes)")
-                st.caption("Constituez les équipes de double en sélectionnant les deux joueurs de chaque duo dans les listes déroulantes ci-dessous.")
-
-                col_nb_d1, col_nb_d2 = st.columns([1.5, 3])
-                with col_nb_d1:
-                    nb_duos_choisi = st.selectbox(
-                        "Nombre de duos participant :",
-                        options=[8, 4, 12, 16, 2, 6, 10, 14],
-                        index=0,
-                        key=f"nb_duos_select_{mode}",
-                        help="Sélectionnez le nombre de duos (8 duos = 16 joueurs, idéal pour un tournoi à élimination sur 3 rondes sans passe-droit)."
-                    )
-                with col_nb_d2:
-                    col_btn_pige, col_btn_reset = st.columns(2)
-                    with col_btn_pige:
-                        st.write("")
-                        if st.button("🎲 Piger au hasard", key=f"btn_pige_drop_{mode}", use_container_width=True, help="Remplit aléatoirement les drop boxes avec les joueurs inscrits"):
-                            pool_pige = list(tous_candidats)
-                            random.shuffle(pool_pige)
-                            for d_idx in range(nb_duos_choisi):
-                                if len(pool_pige) >= 2:
-                                    st.session_state[f"duo_{d_idx}_j1_{mode}"] = pool_pige.pop(0)
-                                    st.session_state[f"duo_{d_idx}_j2_{mode}"] = pool_pige.pop(0)
-                            st.rerun()
-                    with col_btn_reset:
-                        st.write("")
-                        if st.button("🔄 Réinitialiser", key=f"btn_reset_duos_{mode}", use_container_width=True, help="Restaure la sélection séquentielle des joueurs"):
-                            for d_idx in range(16):
-                                st.session_state.pop(f"duo_{d_idx}_j1_{mode}", None)
-                                st.session_state.pop(f"duo_{d_idx}_j2_{mode}", None)
-                            st.rerun()
-
-                st.markdown("###### 📋 Choix des joueurs par duo :")
-
-                duos_selectionnes = []
-                joueurs_dans_duos = []
-                doublons = set()
-
-                cols_duos = st.columns(2)
-                for i in range(nb_duos_choisi):
-                    with cols_duos[i % 2]:
-                        with st.container(border=True):
-                            st.markdown(f"**🎯 Duo #{i + 1}**")
-                            col_j1, col_j2 = st.columns(2)
-
-                            def_idx1 = (i * 2) % len(tous_candidats) if tous_candidats else 0
-                            def_idx2 = (i * 2 + 1) % len(tous_candidats) if len(tous_candidats) > 1 else 0
-
-                            with col_j1:
-                                st.caption("Joueur 1 :")
-                                j1 = st.selectbox(
-                                    f"Joueur 1 (Duo {i+1})",
-                                    options=tous_candidats,
-                                    index=def_idx1,
-                                    key=f"duo_{i}_j1_{mode}",
-                                    label_visibility="collapsed"
-                                )
-                            with col_j2:
-                                st.caption("Joueur 2 :")
-                                j2 = st.selectbox(
-                                    f"Joueur 2 (Duo {i+1})",
-                                    options=tous_candidats,
-                                    index=def_idx2,
-                                    key=f"duo_{i}_j2_{mode}",
-                                    label_visibility="collapsed"
-                                )
-
-                            if j1 == j2:
-                                st.error(f"⚠️ Un joueur ne peut pas être jumelé avec lui-même ({j1}).")
-                                doublons.add(j1)
-                            if j1 in joueurs_dans_duos:
-                                doublons.add(j1)
-                            joueurs_dans_duos.append(j1)
-                            if j2 in joueurs_dans_duos:
-                                doublons.add(j2)
-                            joueurs_dans_duos.append(j2)
-
-                            duo_nom = f"{j1} & {j2}"
-                            st.markdown(f"🤝 **Duo #{i+1} :** `{duo_nom}`")
-                            duos_selectionnes.append(duo_nom)
-
-                participants_finaux = duos_selectionnes
-
-                if doublons:
-                    doublons_str = ", ".join(sorted(list(doublons)))
-                    st.warning(f"⚠️ **Joueurs sélectionnés en double :** {doublons_str}. Chaque joueur ne doit figurer que dans un seul duo.")
-                else:
-                    st.success(f"🟢 **{len(participants_finaux)} duos constitués** avec succès ({len(set(joueurs_dans_duos))} joueurs distincts prêts pour le tournoi en double).")
-
-            st.divider()
-
-            nb_p = len(participants_finaux)
-            is_elim = "Élimination" in type_format
-            bloquer_lancement = bool(doublons) if (mode == "double" and 'doublons' in locals()) else False
-
-            promus_selectionnes = []
-            if nb_p < 2:
-                bloquer_lancement = True
-                st.info(f"ℹ️ Sélectionnez au moins 2 {'équipes' if mode == 'double' else 'joueurs'} pour configurer le tournoi.")
-            elif is_elim:
-                nb_promus, nb_m_t1, nb_m_t2, b_pow = calculer_structure_arbre(nb_p)
-
-                if nb_promus > 0:
-                    st.markdown(
-                        f"<div style='background: #eef7ff; border: 1px solid #90caf9; border-radius: 8px; padding: 12px 16px; margin: 8px 0;'>"
-                        f"<strong style='color: #0b3c5d;'>🎟️ Équilibrage officiel de l'arbre ({nb_p} participants)</strong><br>"
-                        f"<span style='font-size: 13px; color: #222;'>"
-                        f"Pour garantir un <strong>nombre pair de matchs au second tour ({nb_m_t2} matchs)</strong>, "
-                        f"<strong>{nb_promus} participant{'s' if nb_promus > 1 else ''}</strong> {'bénéficient' if nb_promus > 1 else 'bénéficie'} "
-                        f"d'un passe-droit et {'sont directement promus' if nb_promus > 1 else 'est directement promu'} au 2ᵉ tour. "
-                        f"Les {nb_p - nb_promus} autres participants disputeront le 1ᵉʳ tour ({nb_m_t1} match{'s' if nb_m_t1 > 1 else ''})."
-                        f"</span></div>",
-                        unsafe_allow_html=True
-                    )
-
-                    col_pd1, col_pd2 = st.columns([1.6, 2.4])
-                    with col_pd1:
-                        mode_attribution = st.radio(
-                            "Attribution des passe-droits :",
-                            options=["🎲 Tirage au sort automatique", "✋ Sélection manuelle"],
-                            key=f"rad_mode_pd_{mode}",
-                            help="Par tirage au sort automatique équitable (recommandé) ou par sélection manuelle selon vos têtes de série."
-                        )
-                    with col_pd2:
-                        if mode_attribution == "✋ Sélection manuelle":
-                            promus_selectionnes = st.multiselect(
-                                f"Sélectionnez les {nb_promus} participant(s) promus au 2ᵉ tour :",
-                                options=participants_finaux,
-                                default=participants_finaux[:nb_promus],
-                                max_selections=nb_promus,
-                                key=f"sel_multi_promus_{mode}",
-                                help=f"Exactement {nb_promus} participant(s) doivent être choisis pour garantir l'équilibre de l'arbre."
-                            )
-                            if len(promus_selectionnes) != nb_promus:
-                                bloquer_lancement = True
-                                st.warning(f"⚠️ Veuillez sélectionner exactement **{nb_promus} participant(s)** (actuellement {len(promus_selectionnes)}/{nb_promus}).")
-                        else:
-                            st.caption(f"🎲 *{nb_promus} participant(s) seront tirés au sort équitablement lors de la création pour être promus d'office au second tour.*")
-                else:
-                    st.success(
-                        f"🟢 **Effectif équilibré ({nb_p} participants) :** "
-                        f"Aucun passe-droit requis. Tous les participants débuteront au 1ᵉʳ tour ({nb_m_t1} matchs) "
-                        f"et le second tour comportera exactement **{nb_m_t2} matchs (nombre pair)**."
-                    )
-            else:
-                nb_matchs_tot = (nb_p * (nb_p - 1)) // 2
-                st.success(f"🟢 **Championnat Round-Robin :** Les **{nb_p} participants inscrits** s'affronteront tous sans exception ({nb_matchs_tot} rencontres au total) !")
-
-            btn_lancer = st.button(
-                "🚀 Lancer le tournoi et générer le tableau officiel",
-                type="primary",
-                use_container_width=True,
-                disabled=bloquer_lancement,
-                key=f"btn_lancer_{mode}",
-                help="Génère l'arbre officiel des rencontres avec promotion automatique pour assurer un nombre pair de matchs au 2e tour."
-            )
-
-            if btn_lancer:
-                format_slug = "elimination" if is_elim else "round_robin"
-                if format_slug == "elimination":
-                    t_cree = generer_arbre_elimination(
-                        participants_finaux,
-                        race_prelim=2,
-                        race_finale=3,
-                        titre=titre_saisi,
-                        heure_debut=heure_debut_str,
-                        duree_min=duree_min_saisie,
-                        nb_tables=nb_tables_saisi,
-                        passes_droits=(promus_selectionnes if (promus_selectionnes and len(promus_selectionnes) == nb_promus) else None)
-                    )
-                else:
-                    t_cree = generer_round_robin(
-                        participants_finaux,
-                        race_to=2,
-                        titre=titre_saisi,
-                        heure_debut=heure_debut_str,
-                        duree_min=duree_min_saisie,
-                        nb_tables=nb_tables_saisi
-                    )
-
-                if t_cree:
-                    t_cree["mode"] = mode
-                    tournois_data[mode] = t_cree
-                    sauvegarder_tournois_data(tournois_data)
-                    st.session_state[f"ouvrir_arborescence_auto_{mode}"] = True
-                    promus_msg = t_cree.get("promus_second_tour", [])
-                    if promus_msg:
-                        st.success(f"✅ Tournoi généré avec succès ! {len(promus_msg)} participant(s) promu(s) au 2ᵉ tour : {', '.join(promus_msg)}.")
-                    else:
-                        st.success("✅ Tournoi officiel généré avec succès !")
-                    st.rerun()
+        afficher_formulaire_creation_tournoi(mode=mode, key_suffix=f"_sec_{mode}", est_editeur=est_editeur)
+        return
 
     # 2. CAS OÙ UN TOURNOI EST EN COURS OU TERMINÉ
     else:
@@ -3807,7 +3890,7 @@ def afficher_section_tournoi(mode="simple"):
         html_t_json = json.dumps(html_tournoi)
 
         if est_editeur:
-            col_top1, col_top2, col_top3, col_top4, col_top5 = st.columns([1.8, 1.1, 1.1, 1.4, 1.3])
+            col_top1, col_top2, col_top3, col_top_new, col_top4, col_top5 = st.columns([1.6, 1.0, 1.0, 1.1, 1.2, 1.2])
         else:
             col_top1, col_top2, col_top3, col_top4 = st.columns([2.1, 1.2, 1.1, 1.3])
 
@@ -3867,6 +3950,18 @@ def afficher_section_tournoi(mode="simple"):
                 """,
                 height=42
             )
+
+        if est_editeur:
+            with col_top_new:
+                with st.popover("➕ Nouveau", use_container_width=True, help="Créer un nouveau tournoi (archive l'actuel)"):
+                    st.markdown(f"##### ➕ Nouveau tournoi en {mode.capitalize()}")
+                    st.write(f"Voulez-vous créer et lancer un nouveau {libelle_mode.lower()} ?")
+                    st.caption("✅ Le tournoi actuel sera automatiquement archivé dans l'historique officiel.")
+                    if st.button("🚀 Créer un nouveau tournoi", type="primary", use_container_width=True, key=f"btn_pop_new_{mode}"):
+                        sauvegarder_tournoi_dans_historique(mode, notifier_admin=True)
+                        tournois_data[mode] = None
+                        sauvegarder_tournois_data(tournois_data)
+                        st.rerun()
 
         if est_editeur:
             with col_top4:
@@ -4400,14 +4495,25 @@ def afficher_section_historique_tournois():
             st.dataframe(df_recap, use_container_width=True, hide_index=True)
 
 def afficher_onglet_tournois():
-    """Onglet principal Tournois avec bandeau de verrou, prise/cession de main, Simple, Double et Historique."""
+    """Onglet principal Tournois avec bandeau de verrou, prise/cession de main, Création de nouveau tournoi, Simple, Double et Historique."""
     afficher_bandeau_verrou_tournoi()
 
-    subtab_simple, subtab_double, subtab_hist = st.tabs([
-        "👤 Tournoi en Simple (Tous les joueurs)",
-        "👥 Tournoi en Double / Équipes (Équipes inscrites)",
+    td = charger_tournois_data()
+    simple_actif = bool(td.get("simple"))
+    double_actif = bool(td.get("double"))
+
+    lbl_simple = "👤 Tournoi Simple 🟢" if simple_actif else "👤 Tournoi Simple"
+    lbl_double = "👥 Tournoi Double 🟢" if double_actif else "👥 Tournoi Double"
+
+    subtab_creer, subtab_simple, subtab_double, subtab_hist = st.tabs([
+        "➕ Créer un nouveau tournoi",
+        lbl_simple,
+        lbl_double,
         "📜 Liste des tournois sauvegardés & Historique"
     ])
+
+    with subtab_creer:
+        afficher_onglet_nouveau_tournoi()
 
     with subtab_simple:
         afficher_section_tournoi(mode="simple")
