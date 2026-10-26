@@ -3678,12 +3678,12 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
                 nb_actuel = len(promus_selectionnes)
 
                 if nb_actuel == nb_promus:
-                    p_pills = " &nbsp;|&nbsp; ".join([f"<code>🎟️ {p}</code>" for p in promus_selectionnes])
-                    st.success(f"🟢 **Quota atteint ({nb_actuel}/{nb_promus}) :** {p_pills}", unsafe_allow_html=True)
+                    p_pills = " • ".join([f"`🎟️ {p}`" for p in promus_selectionnes])
+                    st.success(f"🟢 **Quota atteint ({nb_actuel}/{nb_promus}) :** {p_pills}")
                 elif nb_actuel < nb_promus:
                     bloquer_lancement = True
-                    p_pills = " &nbsp;|&nbsp; ".join([f"<code>🎟️ {p}</code>" for p in promus_selectionnes]) if promus_selectionnes else "*(aucun)*"
-                    st.warning(f"⚠️ **Sélection incomplète :** Veuillez encore promouvoir **{nb_promus - nb_actuel} participant(s)** via la liste déroulante ci-dessus (actuellement {nb_actuel}/{nb_promus} promus : {p_pills}).", unsafe_allow_html=True)
+                    p_pills = " • ".join([f"`🎟️ {p}`" for p in promus_selectionnes]) if promus_selectionnes else "*(aucun)*"
+                    st.warning(f"⚠️ **Sélection incomplète :** Veuillez encore promouvoir **{nb_promus - nb_actuel} participant(s)** via la liste déroulante ci-dessus (actuellement {nb_actuel}/{nb_promus} promus : {p_pills}).")
                 else:
                     bloquer_lancement = True
                     st.error(f"⚠️ **Trop de promus :** Veuillez replacer **{nb_actuel - nb_promus} participant(s)** dans la liste à sélectionner via la liste déroulante de droite ({nb_actuel}/{nb_promus}).")
