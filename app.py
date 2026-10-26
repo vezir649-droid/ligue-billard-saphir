@@ -184,6 +184,96 @@ def injecter_script_remonter_haut_de_page():
     """Désactivé : ne force plus la remontée automatique en haut de page."""
     pass
 
+def injecter_theme_css_saphir():
+    """Injecte le thème visuel global 'Ligue Saphir' (onglets, cartes de métriques, boutons tactiles et bandeaux)."""
+    st.markdown(
+        """
+        <style>
+        /* Onglets principaux et secondaires plus lisibles et ergonomiques sur tablette/PC */
+        div[data-baseweb="tab-list"] {
+            gap: 8px;
+            background-color: #f0f4f8;
+            padding: 6px 8px;
+            border-radius: 10px;
+            border: 1px solid #d9e2ec;
+        }
+        button[data-baseweb="tab"] {
+            border-radius: 8px !important;
+            padding: 8px 16px !important;
+            font-weight: 600 !important;
+            color: #334e68 !important;
+            transition: all 0.2s ease-in-out !important;
+        }
+        button[data-baseweb="tab"][aria-selected="true"] {
+            background: linear-gradient(135deg, #0b3c5d 0%, #16527a 100%) !important;
+            color: #ffffff !important;
+            box-shadow: 0 2px 6px rgba(11, 60, 93, 0.28) !important;
+            border-bottom: 3px solid #f59e0b !important;
+        }
+        button[data-baseweb="tab"]:hover:not([aria-selected="true"]) {
+            background-color: #e1e8f0 !important;
+            color: #0b3c5d !important;
+        }
+
+        /* Cartes de métriques (KPI) */
+        div[data-testid="stMetric"] {
+            background-color: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-left: 4px solid #0b3c5d;
+            border-radius: 10px;
+            padding: 10px 14px;
+            box-shadow: 0 2px 5px rgba(15, 23, 42, 0.05);
+        }
+
+        /* Expanders des manches plus nets */
+        div[data-testid="stExpander"] {
+            border-radius: 10px !important;
+            border: 1px solid #cbd5e1 !important;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+            margin-bottom: 8px;
+        }
+
+        /* Boutons ergonomiques pour écrans tactiles */
+        div.stButton > button {
+            min-height: 40px;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: transform 0.1s ease, box-shadow 0.15s ease;
+        }
+        div.stButton > button:active {
+            transform: scale(0.99);
+        }
+
+        /* Bandeau Podium Top 3 */
+        .saphir-podium-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+            margin: 10px 0 18px 0;
+        }
+        .saphir-podium-card {
+            border-radius: 10px;
+            padding: 12px 14px;
+            text-align: center;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+        }
+        .saphir-podium-1 {
+            background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+            border: 2px solid #f59e0b;
+        }
+        .saphir-podium-2 {
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            border: 2px solid #94a3b8;
+        }
+        .saphir-podium-3 {
+            background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%);
+            border: 2px solid #d97706;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
 def charger_mot_de_passe_admin():
     """Charge le mot de passe d'administration (défaut: saphir2026)."""
     if os.path.exists(ADMIN_CONFIG_FILE):
@@ -4726,6 +4816,64 @@ def afficher_section_tournoi(mode="simple"):
                     unsafe_allow_html=True
                 )
 
+        # --- BARRE DE PROGRESSION DU TOURNOI & PROCHAINS MATCHS SUR LES TABLES ---
+        tous_les_matchs_t = []
+        if format_type in ["elimination", "double_elimination"]:
+            for t_iter in tournoi.get("tours", []):
+                for m_iter in t_iter.get("matchs", []):
+                    ea_i = m_iter.get("equipe_a", "")
+                    eb_i = m_iter.get("equipe_b", "")
+                    if "Exempt" not in str(ea_i) and "Exempt" not in str(eb_i):
+                        tous_les_matchs_t.append(m_iter)
+        else:
+            tous_les_matchs_t = list(tournoi.get("matchs", []))
+
+        nb_tot_m = len(tous_les_matchs_t)
+        nb_term_m = sum(1 for m_i in tous_les_matchs_t if m_i.get("termine", False))
+        pct_prog = int(round((nb_term_m / nb_tot_m) * 100)) if nb_tot_m > 0 else 0
+
+        prochains_jouables = [
+            m_i for m_i in tous_les_matchs_t
+            if not m_i.get("termine", False)
+            and m_i.get("equipe_a") not in ["À déterminer", "Exempt (Passe-droit)", ""]
+            and m_i.get("equipe_b") not in ["À déterminer", "Exempt (Passe-droit)", ""]
+        ]
+
+        with st.container(border=True):
+            col_pg1, col_pg2 = st.columns([1.4, 2.6])
+            with col_pg1:
+                st.markdown(f"**📊 Progression du tournoi : {nb_term_m} / {nb_tot_m} matchs ({pct_prog}%)**")
+                st.progress(pct_prog / 100.0 if nb_tot_m > 0 else 0.0)
+                st.caption(f"🟢 {nb_term_m} terminé(s) • ⏳ {max(0, nb_tot_m - nb_term_m)} restant(s)")
+            with col_pg2:
+                if statut == "termine":
+                    st.success("🏁 **Toutes les rencontres de ce tournoi sont terminées !**")
+                elif prochains_jouables:
+                    st.markdown("**🎱 En direct / Prochains matchs prêts à appeler aux tables :**")
+                    nb_tables_aff = max(2, int(tournoi.get("nb_tables", 2)))
+                    cartes_html = []
+                    for m_p in prochains_jouables[:nb_tables_aff]:
+                        mid_p = m_p.get("id", "")
+                        ea_p = m_p.get("equipe_a", "")
+                        eb_p = m_p.get("equipe_b", "")
+                        tbl_p = m_p.get("table", "Table 1")
+                        hr_p = m_p.get("heure_estimee", "")
+                        hr_badge = f" • ⏰ {hr_p}" if (hr_p and hr_p != "—") else ""
+                        cartes_html.append(
+                            f"<div style='background:#f0f7ff; border:1px solid #90caf9; border-left:4px solid #0b3c5d; border-radius:6px; padding:6px 10px; font-size:12.5px;'>"
+                            f"<strong style='color:#0b3c5d;'>🎱 {tbl_p}{hr_badge} ({mid_p}) :</strong> "
+                            f"<strong>{ea_p}</strong> <span style='color:#64748b;'>vs</span> <strong>{eb_p}</strong>"
+                            f"</div>"
+                        )
+                    st.markdown(
+                        "<div style='display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:8px;'>"
+                        + "".join(cartes_html)
+                        + "</div>",
+                        unsafe_allow_html=True
+                    )
+                else:
+                    st.info("⏳ En attente de la fin des rencontres précédentes pour déterminer les prochaines affiches.")
+
         # Arborescence graphique complète et toujours à jour (ouverte en permanence)
         st.markdown("##### 🌳 Arborescence officielle du tournoi")
         st.components.v1.html(html_tournoi, height=560, scrolling=True)
@@ -4749,6 +4897,16 @@ def afficher_section_tournoi(mode="simple"):
                 sb = m.get("score_b", 0)
                 m_race = m.get("race_to", tour_race)
                 m_fmt = m.get("format_label", tour_fmt)
+                b_type = m.get("bracket", tour_courant.get("bracket", "winner"))
+
+                if b_type == "loser":
+                    badge_b = "<span style='background:#fff3e0; color:#e65100; border:1px solid #ffb74d; padding:2px 7px; border-radius:8px; font-size:11px; font-weight:700;'>🟧 Seconde Chance</span>"
+                elif b_type == "finale":
+                    badge_b = "<span style='background:#fff8e1; color:#b45309; border:1px solid #f59e0b; padding:2px 7px; border-radius:8px; font-size:11px; font-weight:700;'>🏆 Grande Finale</span>"
+                elif format_type == "double_elimination":
+                    badge_b = "<span style='background:#e0f2fe; color:#0369a1; border:1px solid #7dd3fc; padding:2px 7px; border-radius:8px; font-size:11px; font-weight:700;'>🟦 Gagnants</span>"
+                else:
+                    badge_b = ""
 
                 m_h = m.get("heure_estimee", "")
                 m_tbl = m.get("table", "Table 1")
@@ -4758,17 +4916,17 @@ def afficher_section_tournoi(mode="simple"):
                     col_m1, col_m2 = st.columns([3, 2])
                     with col_m1:
                         if termine:
-                            st.markdown(f"**{m_id}** : **{ea}** ({sa}) vs ({sb}) **{eb}** &nbsp; {badge_horaire}", unsafe_allow_html=True)
+                            st.markdown(f"{badge_b} **{m_id}** : **{ea}** ({sa}) vs ({sb}) **{eb}** &nbsp; {badge_horaire}", unsafe_allow_html=True)
                             if m.get("passe_droit"):
                                 st.success(f"🎟️ **Passe-droit accordé :** {vainq} est promu au tour suivant !")
                             else:
                                 st.success(f"🏆 **Qualifié :** {vainq} *(score final {sa}-{sb})*")
                         else:
                             if ea == "À déterminer" or eb == "À déterminer":
-                                st.markdown(f"**{m_id}** : `{ea}` vs `{eb}` &nbsp; {badge_horaire}", unsafe_allow_html=True)
+                                st.markdown(f"{badge_b} **{m_id}** : `{ea}` vs `{eb}` &nbsp; {badge_horaire}", unsafe_allow_html=True)
                                 st.caption("⏳ En attente des vainqueurs / perdants des tours précédents...")
                             else:
-                                st.markdown(f"**{m_id}** : 🎯 **{ea}** vs **{eb}** &nbsp; {badge_horaire}", unsafe_allow_html=True)
+                                st.markdown(f"{badge_b} **{m_id}** : 🎯 **{ea}** vs **{eb}** &nbsp; {badge_horaire}", unsafe_allow_html=True)
                                 st.caption(f"Format officiel : **{m_fmt}** (premier à {m_race} victoires)")
 
                     with col_m2:
@@ -5496,6 +5654,22 @@ def afficher_tableau_de_bord_progression(historique):
             k2.metric("🥇 Leader actuel", leader["nom"], f"{leader['v']}V - {leader['d']}D")
             k3.metric("🔥 Meilleure attaque", max_attaque["nom"], f"{max_attaque['pour']} pts ({max_attaque['moy_pour']:.1f}/m)")
 
+            # Podium visuel Top 3 Équipes
+            if classement_equipes:
+                cartes_podium_eq = []
+                classes_pod = ["saphir-podium-1", "saphir-podium-2", "saphir-podium-3"]
+                ic_pod = ["🥇 1<sup>re</sup> place", "🥈 2<sup>e</sup> place", "🥉 3<sup>e</sup> place"]
+                for idx_p, eq_p in enumerate(classement_equipes[:3]):
+                    diff_p = f"+{eq_p['diff']}" if eq_p["diff"] > 0 else str(eq_p["diff"])
+                    cartes_podium_eq.append(
+                        f"<div class='saphir-podium-card {classes_pod[idx_p]}'>"
+                        f"<div style='font-size:13px; font-weight:700; color:#475569; margin-bottom:4px;'>{ic_pod[idx_p]}</div>"
+                        f"<div style='font-size:17px; font-weight:800; color:#0b3c5d; margin-bottom:4px;'>{eq_p['nom']}</div>"
+                        f"<div style='font-size:12.5px; color:#334155;'><strong>{eq_p['v']}V - {eq_p['d']}D</strong> &nbsp;•&nbsp; {eq_p['pour']} pts (Diff {diff_p})</div>"
+                        f"</div>"
+                    )
+                st.markdown(f"<div class='saphir-podium-grid'>{''.join(cartes_podium_eq)}</div>", unsafe_allow_html=True)
+
             st.markdown("---")
 
             # 2. Tableau de classement avec forme
@@ -5594,6 +5768,21 @@ def afficher_tableau_de_bord_progression(historique):
             jk2.metric("👑 Meilleur marqueur", top_pts["nom"], f"{top_pts['total_pts']} pts cumulés")
             jk3.metric("🎯 Spécialiste 8 pts", top_8pts["nom"], f"{top_8pts['nb_8pts']} manches gagnées à 8")
             jk4.metric("🎱 Manches disputées", f"{total_manches_ligue} manches", f"{len(stats_joueurs)} joueurs actifs")
+
+            # Podium visuel Top 3 Joueurs
+            if classement_joueurs:
+                cartes_podium_jo = []
+                classes_pod = ["saphir-podium-1", "saphir-podium-2", "saphir-podium-3"]
+                ic_pod = ["🥇 1<sup>er</sup> joueur", "🥈 2<sup>e</sup> joueur", "🥉 3<sup>e</sup> joueur"]
+                for idx_p, jo_p in enumerate(classement_joueurs[:3]):
+                    cartes_podium_jo.append(
+                        f"<div class='saphir-podium-card {classes_pod[idx_p]}'>"
+                        f"<div style='font-size:13px; font-weight:700; color:#475569; margin-bottom:4px;'>{ic_pod[idx_p]}</div>"
+                        f"<div style='font-size:17px; font-weight:800; color:#0b3c5d; margin-bottom:4px;'>{jo_p['nom']}</div>"
+                        f"<div style='font-size:12.5px; color:#334155;'><strong>Moy. {jo_p['moyenne']:.2f}/8</strong> &nbsp;•&nbsp; {jo_p['total_pts']} pts ({jo_p['nb_8pts']}x 8pts)</div>"
+                        f"</div>"
+                    )
+                st.markdown(f"<div class='saphir-podium-grid'>{''.join(cartes_podium_jo)}</div>", unsafe_allow_html=True)
 
             st.markdown("---")
 
@@ -5746,6 +5935,7 @@ def afficher_tableau_de_bord_progression(historique):
 # ==============================================================================
 # Injection des balises d'icône pour écran d'accueil mobile et tablette (iOS & Android)
 injecter_meta_icones_mobiles()
+injecter_theme_css_saphir()
 # Remontée forcée en haut de page désactivée
 
 est_connecte = st.session_state.get("authentifie", False)
@@ -5874,15 +6064,24 @@ if "message_validation_reussie" in st.session_state:
 
 
 # ==============================================================================
-# NAVIGATION PRINCIPALE PAR ONGLETS (FEUILLE DE MATCH vs STATISTIQUES & PROGRESSION)
+# NAVIGATION PRINCIPALE PAR ONGLETS (FEUILLE DE MATCH vs STATISTIQUES vs TOURNOIS vs ADMINISTRATION)
 # ==============================================================================
 historique_matchs = charger_historique_matchs()
 
-tab_feuille, tab_stats, tab_tournoi = st.tabs([
-    "🎱 Feuille de match & Consultation",
-    "📈 Statistiques & Progression",
-    "🏆 Tournois"
-])
+if not est_spectateur:
+    tab_feuille, tab_stats, tab_tournoi, tab_admin = st.tabs([
+        "🎱 Feuille de match & Consultation",
+        "📈 Statistiques & Progression",
+        "🏆 Tournois",
+        "⚙️ Administration"
+    ])
+else:
+    tab_feuille, tab_stats, tab_tournoi = st.tabs([
+        "🎱 Feuille de match & Consultation",
+        "📈 Statistiques & Progression",
+        "🏆 Tournois"
+    ])
+    tab_admin = None
 
 with tab_feuille:
     # --- BANDEAU D'ÉTAT DU VERROU EXCLUSIF (UN SEUL MARQUEUR À LA FOIS) ---
@@ -6047,254 +6246,255 @@ with tab_feuille:
         st.session_state["mode_consultation"] = False
         st.rerun()
 
-    if noms_equipes:
-        options_rec = noms_equipes + ["Autre / Personnalisée"]
-        options_vis = noms_equipes + ["Autre / Personnalisée"]
-    
-        # Équipe Receveuse
-        if "sel_equipe_rec" in st.session_state and st.session_state["sel_equipe_rec"] not in options_rec:
-            st.session_state["sel_equipe_rec"] = options_rec[0]
-        def_idx_rec = 0
-        if "sel_equipe_rec" in st.session_state and st.session_state["sel_equipe_rec"] in options_rec:
-            def_idx_rec = options_rec.index(st.session_state["sel_equipe_rec"])
-        choix_rec = st.sidebar.selectbox("Équipe Receveuse :", options_rec, index=def_idx_rec, key="sel_equipe_rec", disabled=not est_editeur)
-    
-        if choix_rec == "Autre / Personnalisée":
-            equipe_receveur = st.sidebar.text_input("Nom équipe receveuse", value=st.session_state.get("input_custom_rec", "Équipe 1"), key="input_custom_rec", disabled=not est_editeur)
-            roster_rec = ["Joueur 1", "Joueur 2", "Joueur 3"]
+    with st.sidebar.container(border=True):
+        st.markdown("#### 🔵 Équipe Receveuse (🏠)")
+        if noms_equipes:
+            options_rec = noms_equipes + ["Autre / Personnalisée"]
+            if "sel_equipe_rec" in st.session_state and st.session_state["sel_equipe_rec"] not in options_rec:
+                st.session_state["sel_equipe_rec"] = options_rec[0]
+            def_idx_rec = 0
+            if "sel_equipe_rec" in st.session_state and st.session_state["sel_equipe_rec"] in options_rec:
+                def_idx_rec = options_rec.index(st.session_state["sel_equipe_rec"])
+            choix_rec = st.selectbox("Équipe Receveuse :", options_rec, index=def_idx_rec, key="sel_equipe_rec", disabled=not est_editeur)
+
+            if choix_rec == "Autre / Personnalisée":
+                equipe_receveur = st.text_input("Nom équipe receveuse", value=st.session_state.get("input_custom_rec", "Équipe 1"), key="input_custom_rec", disabled=not est_editeur)
+                roster_rec = ["Joueur 1", "Joueur 2", "Joueur 3"]
+            else:
+                equipe_receveur = choix_rec
+                roster_rec = equipes_disponibles[choix_rec]
         else:
-            equipe_receveur = choix_rec
-            roster_rec = equipes_disponibles[choix_rec]
+            equipe_receveur = st.text_input("Équipe Receveuse", value="Équipe 1", key="input_custom_rec", disabled=not est_editeur)
+            roster_rec = ["Jean-François", "Christian", "Antoine"]
+            choix_rec = equipe_receveur
 
-        # Équipe Visiteuse
-        def_idx_vis = 1 if len(noms_equipes) > 1 else 0
-        if "sel_equipe_vis" in st.session_state and st.session_state["sel_equipe_vis"] not in options_vis:
-            st.session_state["sel_equipe_vis"] = options_vis[def_idx_vis]
-        if "sel_equipe_vis" in st.session_state and st.session_state["sel_equipe_vis"] in options_vis:
-            def_idx_vis = options_vis.index(st.session_state["sel_equipe_vis"])
-        choix_vis = st.sidebar.selectbox("Équipe Visiteuse :", options_vis, index=def_idx_vis, key="sel_equipe_vis", disabled=not est_editeur)
-    
-        if choix_vis == "Autre / Personnalisée":
-            equipe_visiteur = st.sidebar.text_input("Nom équipe visiteuse", value=st.session_state.get("input_custom_vis", "Équipe 2"), key="input_custom_vis", disabled=not est_editeur)
-            roster_vis = ["Joueur 1", "Joueur 2", "Joueur 3"]
+        st.markdown(f"**👥 Alignement — {equipe_receveur}**")
+
+        # Options sécurisées pour Joueur 1
+        options_j1_rec = list(roster_rec) + ["Remplaçant..."]
+        if "sel_j1_rec" in st.session_state and st.session_state["sel_j1_rec"] not in options_j1_rec:
+            st.session_state["sel_j1_rec"] = options_j1_rec[0]
+
+        def_idx_j1_rec = 0
+        if "sel_j1_rec" in st.session_state and st.session_state["sel_j1_rec"] in options_j1_rec:
+            def_idx_j1_rec = options_j1_rec.index(st.session_state["sel_j1_rec"])
+
+        col_j1_r1, col_j1_r2 = st.columns([3, 2])
+        sel_j1_rec = col_j1_r1.selectbox("Sélection Joueur 1 :", options_j1_rec, index=def_idx_j1_rec, key="sel_j1_rec", disabled=not est_editeur)
+        if sel_j1_rec == "Remplaçant...":
+            j1_rec = st.text_input("Nom Joueur 1 (Remplaçant)", value=st.session_state.get("cust_j1_rec", "Remplaçant 1"), key="cust_j1_rec", disabled=not est_editeur)
         else:
-            equipe_visiteur = choix_vis
-            roster_vis = equipes_disponibles[choix_vis]
-    else:
-        equipe_receveur = st.sidebar.text_input("Équipe Receveuse", value="Équipe 1", key="input_custom_rec", disabled=not est_editeur)
-        equipe_visiteur = st.sidebar.text_input("Équipe Visiteuse", value="Équipe 2", key="input_custom_vis", disabled=not est_editeur)
-        roster_rec = ["Jean-François", "Christian", "Antoine"]
-        roster_vis = ["Michel", "Nicolas", "Guy"]
-        choix_rec = equipe_receveur
-        choix_vis = equipe_visiteur
+            j1_rec = sel_j1_rec
+        j1_rec_pres = col_j1_r2.toggle("Présent", value=st.session_state.get("pres_j1_rec", True), key="pres_j1_rec", disabled=not est_editeur)
+        if not j1_rec_pres:
+            def_moy_j1 = float(st.session_state.get("moy_j1_rec", 0.625))
+            col_m1, col_m2 = st.columns([3, 2])
+            moy_j1 = col_m1.number_input(
+                f"Moyenne de {j1_rec} :",
+                min_value=0.0,
+                max_value=100.0,
+                value=def_moy_j1,
+                step=0.025,
+                format="%.3f",
+                key="moy_j1_rec",
+                disabled=not est_editeur,
+                help="Saisissez la moyenne (ex. 0.650 ou 65%). Formule : arrondi(moyenne × 24 ÷ 3), max 7."
+            )
+            j1_rec_pts = calculer_score_absent(moy_j1)
+            st.session_state["pts_j1_rec"] = j1_rec_pts
+            col_m2.metric("Score", f"{j1_rec_pts} pts")
+            st.caption(f"📊 *Score calculé : {j1_rec_pts} pts/manche (max 7)*")
+        else:
+            j1_rec_pts = int(st.session_state.get("pts_j1_rec", 0))
 
-    # --- SÉLECTION DES JOUEURS : ÉQUIPE RECEVEUSE ---
-    st.sidebar.markdown(f"### 👥 Joueurs — {equipe_receveur}")
+        # Options sécurisées pour Joueur 2
+        options_j2_rec = [p for p in roster_rec if p != sel_j1_rec] + ["Remplaçant..."]
+        if "sel_j2_rec" in st.session_state and st.session_state["sel_j2_rec"] not in options_j2_rec:
+            st.session_state["sel_j2_rec"] = options_j2_rec[0]
 
-    # Options sécurisées pour Joueur 1
-    options_j1_rec = list(roster_rec) + ["Remplaçant..."]
-    if "sel_j1_rec" in st.session_state and st.session_state["sel_j1_rec"] not in options_j1_rec:
-        st.session_state["sel_j1_rec"] = options_j1_rec[0]
+        def_idx_j2_rec = 0
+        if "sel_j2_rec" in st.session_state and st.session_state["sel_j2_rec"] in options_j2_rec:
+            def_idx_j2_rec = options_j2_rec.index(st.session_state["sel_j2_rec"])
 
-    def_idx_j1_rec = 0
-    if "sel_j1_rec" in st.session_state and st.session_state["sel_j1_rec"] in options_j1_rec:
-        def_idx_j1_rec = options_j1_rec.index(st.session_state["sel_j1_rec"])
+        col_j2_r1, col_j2_r2 = st.columns([3, 2])
+        sel_j2_rec = col_j2_r1.selectbox("Sélection Joueur 2 :", options_j2_rec, index=def_idx_j2_rec, key="sel_j2_rec", disabled=not est_editeur)
+        if sel_j2_rec == "Remplaçant...":
+            j2_rec = st.text_input("Nom Joueur 2 (Remplaçant)", value=st.session_state.get("cust_j2_rec", "Remplaçant 2"), key="cust_j2_rec", disabled=not est_editeur)
+        else:
+            j2_rec = sel_j2_rec
+        j2_rec_pres = col_j2_r2.toggle("Présent", value=st.session_state.get("pres_j2_rec", True), key="pres_j2_rec", disabled=not est_editeur)
+        if not j2_rec_pres:
+            def_moy_j2 = float(st.session_state.get("moy_j2_rec", 0.625))
+            col_m1, col_m2 = st.columns([3, 2])
+            moy_j2 = col_m1.number_input(
+                f"Moyenne de {j2_rec} :",
+                min_value=0.0,
+                max_value=100.0,
+                value=def_moy_j2,
+                step=0.025,
+                format="%.3f",
+                key="moy_j2_rec",
+                disabled=not est_editeur,
+                help="Saisissez la moyenne (ex. 0.650 ou 65%). Formule : arrondi(moyenne × 24 ÷ 3), max 7."
+            )
+            j2_rec_pts = calculer_score_absent(moy_j2)
+            st.session_state["pts_j2_rec"] = j2_rec_pts
+            col_m2.metric("Score", f"{j2_rec_pts} pts")
+            st.caption(f"📊 *Score calculé : {j2_rec_pts} pts/manche (max 7)*")
+        else:
+            j2_rec_pts = int(st.session_state.get("pts_j2_rec", 0))
 
-    col_j1_r1, col_j1_r2 = st.sidebar.columns([3, 2])
-    sel_j1_rec = col_j1_r1.selectbox("Sélection Joueur 1 :", options_j1_rec, index=def_idx_j1_rec, key="sel_j1_rec", disabled=not est_editeur)
-    if sel_j1_rec == "Remplaçant...":
-        j1_rec = st.sidebar.text_input("Nom Joueur 1 (Remplaçant)", value=st.session_state.get("cust_j1_rec", "Remplaçant 1"), key="cust_j1_rec", disabled=not est_editeur)
-    else:
-        j1_rec = sel_j1_rec
-    j1_rec_pres = col_j1_r2.toggle("Présent", value=st.session_state.get("pres_j1_rec", True), key="pres_j1_rec", disabled=not est_editeur)
-    if not j1_rec_pres:
-        def_moy_j1 = float(st.session_state.get("moy_j1_rec", 0.625))
-        col_m1, col_m2 = st.sidebar.columns([3, 2])
-        moy_j1 = col_m1.number_input(
-            f"Moyenne de {j1_rec} :",
-            min_value=0.0,
-            max_value=100.0,
-            value=def_moy_j1,
-            step=0.025,
-            format="%.3f",
-            key="moy_j1_rec",
-            disabled=not est_editeur,
-            help="Saisissez la moyenne (ex. 0.650 ou 65%). Formule : arrondi(moyenne × 24 ÷ 3), max 7."
-        )
-        j1_rec_pts = calculer_score_absent(moy_j1)
-        st.session_state["pts_j1_rec"] = j1_rec_pts
-        col_m2.metric("Score", f"{j1_rec_pts} pts")
-        st.sidebar.caption(f"📊 *Score calculé : {j1_rec_pts} pts/manche (max 7)*")
-    else:
-        j1_rec_pts = int(st.session_state.get("pts_j1_rec", 0))
+        # Joueur 3 (Évident / Déduit automatiquement)
+        col_j3_r1, col_j3_r2 = st.columns([3, 2])
+        restants_rec = [p for p in roster_rec if p != sel_j1_rec and p != sel_j2_rec]
+        j3_rec = restants_rec[0] if restants_rec else "Joueur 3"
+        col_j3_r1.markdown(f"**Joueur 3 (défini) :**<br>`{j3_rec}`", unsafe_allow_html=True)
+        j3_rec_pres = col_j3_r2.toggle("Présent", value=st.session_state.get("pres_j3_rec", True), key="pres_j3_rec", disabled=not est_editeur)
+        if not j3_rec_pres:
+            def_moy_j3 = float(st.session_state.get("moy_j3_rec", 0.625))
+            col_m1, col_m2 = st.columns([3, 2])
+            moy_j3 = col_m1.number_input(
+                f"Moyenne de {j3_rec} :",
+                min_value=0.0,
+                max_value=100.0,
+                value=def_moy_j3,
+                step=0.025,
+                format="%.3f",
+                key="moy_j3_rec",
+                disabled=not est_editeur,
+                help="Saisissez la moyenne (ex. 0.650 ou 65%). Formule : arrondi(moyenne × 24 ÷ 3), max 7."
+            )
+            j3_rec_pts = calculer_score_absent(moy_j3)
+            st.session_state["pts_j3_rec"] = j3_rec_pts
+            col_m2.metric("Score", f"{j3_rec_pts} pts")
+            st.caption(f"📊 *Score calculé : {j3_rec_pts} pts/manche (max 7)*")
+        else:
+            j3_rec_pts = int(st.session_state.get("pts_j3_rec", 0))
 
-    # Options sécurisées pour Joueur 2
-    options_j2_rec = [p for p in roster_rec if p != sel_j1_rec] + ["Remplaçant..."]
-    if "sel_j2_rec" in st.session_state and st.session_state["sel_j2_rec"] not in options_j2_rec:
-        st.session_state["sel_j2_rec"] = options_j2_rec[0]
+    with st.sidebar.container(border=True):
+        st.markdown("#### 🟠 Équipe Visiteuse (🚗)")
+        if noms_equipes:
+            options_vis = noms_equipes + ["Autre / Personnalisée"]
+            def_idx_vis = 1 if len(noms_equipes) > 1 else 0
+            if "sel_equipe_vis" in st.session_state and st.session_state["sel_equipe_vis"] not in options_vis:
+                st.session_state["sel_equipe_vis"] = options_vis[def_idx_vis]
+            if "sel_equipe_vis" in st.session_state and st.session_state["sel_equipe_vis"] in options_vis:
+                def_idx_vis = options_vis.index(st.session_state["sel_equipe_vis"])
+            choix_vis = st.selectbox("Équipe Visiteuse :", options_vis, index=def_idx_vis, key="sel_equipe_vis", disabled=not est_editeur)
 
-    def_idx_j2_rec = 0
-    if "sel_j2_rec" in st.session_state and st.session_state["sel_j2_rec"] in options_j2_rec:
-        def_idx_j2_rec = options_j2_rec.index(st.session_state["sel_j2_rec"])
+            if choix_vis == "Autre / Personnalisée":
+                equipe_visiteur = st.text_input("Nom équipe visiteuse", value=st.session_state.get("input_custom_vis", "Équipe 2"), key="input_custom_vis", disabled=not est_editeur)
+                roster_vis = ["Joueur 1", "Joueur 2", "Joueur 3"]
+            else:
+                equipe_visiteur = choix_vis
+                roster_vis = equipes_disponibles[choix_vis]
+        else:
+            equipe_visiteur = st.text_input("Équipe Visiteuse", value="Équipe 2", key="input_custom_vis", disabled=not est_editeur)
+            roster_vis = ["Michel", "Nicolas", "Guy"]
+            choix_vis = equipe_visiteur
 
-    col_j2_r1, col_j2_r2 = st.sidebar.columns([3, 2])
-    sel_j2_rec = col_j2_r1.selectbox("Sélection Joueur 2 :", options_j2_rec, index=def_idx_j2_rec, key="sel_j2_rec", disabled=not est_editeur)
-    if sel_j2_rec == "Remplaçant...":
-        j2_rec = st.sidebar.text_input("Nom Joueur 2 (Remplaçant)", value=st.session_state.get("cust_j2_rec", "Remplaçant 2"), key="cust_j2_rec", disabled=not est_editeur)
-    else:
-        j2_rec = sel_j2_rec
-    j2_rec_pres = col_j2_r2.toggle("Présent", value=st.session_state.get("pres_j2_rec", True), key="pres_j2_rec", disabled=not est_editeur)
-    if not j2_rec_pres:
-        def_moy_j2 = float(st.session_state.get("moy_j2_rec", 0.625))
-        col_m1, col_m2 = st.sidebar.columns([3, 2])
-        moy_j2 = col_m1.number_input(
-            f"Moyenne de {j2_rec} :",
-            min_value=0.0,
-            max_value=100.0,
-            value=def_moy_j2,
-            step=0.025,
-            format="%.3f",
-            key="moy_j2_rec",
-            disabled=not est_editeur,
-            help="Saisissez la moyenne (ex. 0.650 ou 65%). Formule : arrondi(moyenne × 24 ÷ 3), max 7."
-        )
-        j2_rec_pts = calculer_score_absent(moy_j2)
-        st.session_state["pts_j2_rec"] = j2_rec_pts
-        col_m2.metric("Score", f"{j2_rec_pts} pts")
-        st.sidebar.caption(f"📊 *Score calculé : {j2_rec_pts} pts/manche (max 7)*")
-    else:
-        j2_rec_pts = int(st.session_state.get("pts_j2_rec", 0))
+        st.markdown(f"**👥 Alignement — {equipe_visiteur}**")
 
-    # Joueur 3 (Évident / Déduit automatiquement)
-    col_j3_r1, col_j3_r2 = st.sidebar.columns([3, 2])
-    restants_rec = [p for p in roster_rec if p != sel_j1_rec and p != sel_j2_rec]
-    j3_rec = restants_rec[0] if restants_rec else "Joueur 3"
-    col_j3_r1.markdown(f"**Joueur 3 (défini) :**<br>`{j3_rec}`", unsafe_allow_html=True)
-    j3_rec_pres = col_j3_r2.toggle("Présent", value=st.session_state.get("pres_j3_rec", True), key="pres_j3_rec", disabled=not est_editeur)
-    if not j3_rec_pres:
-        def_moy_j3 = float(st.session_state.get("moy_j3_rec", 0.625))
-        col_m1, col_m2 = st.sidebar.columns([3, 2])
-        moy_j3 = col_m1.number_input(
-            f"Moyenne de {j3_rec} :",
-            min_value=0.0,
-            max_value=100.0,
-            value=def_moy_j3,
-            step=0.025,
-            format="%.3f",
-            key="moy_j3_rec",
-            disabled=not est_editeur,
-            help="Saisissez la moyenne (ex. 0.650 ou 65%). Formule : arrondi(moyenne × 24 ÷ 3), max 7."
-        )
-        j3_rec_pts = calculer_score_absent(moy_j3)
-        st.session_state["pts_j3_rec"] = j3_rec_pts
-        col_m2.metric("Score", f"{j3_rec_pts} pts")
-        st.sidebar.caption(f"📊 *Score calculé : {j3_rec_pts} pts/manche (max 7)*")
-    else:
-        j3_rec_pts = int(st.session_state.get("pts_j3_rec", 0))
+        # Options sécurisées pour Joueur 1
+        options_j1_vis = list(roster_vis) + ["Remplaçant..."]
+        if "sel_j1_vis" in st.session_state and st.session_state["sel_j1_vis"] not in options_j1_vis:
+            st.session_state["sel_j1_vis"] = options_j1_vis[0]
 
-    # --- SÉLECTION DES JOUEURS : ÉQUIPE VISITEUSE ---
-    st.sidebar.markdown(f"### 👥 Joueurs — {equipe_visiteur}")
+        def_idx_j1_vis = 0
+        if "sel_j1_vis" in st.session_state and st.session_state["sel_j1_vis"] in options_j1_vis:
+            def_idx_j1_vis = options_j1_vis.index(st.session_state["sel_j1_vis"])
 
-    # Options sécurisées pour Joueur 1
-    options_j1_vis = list(roster_vis) + ["Remplaçant..."]
-    if "sel_j1_vis" in st.session_state and st.session_state["sel_j1_vis"] not in options_j1_vis:
-        st.session_state["sel_j1_vis"] = options_j1_vis[0]
+        col_j1_v1, col_j1_v2 = st.columns([3, 2])
+        sel_j1_vis = col_j1_v1.selectbox("Sélection Joueur 1 :", options_j1_vis, index=def_idx_j1_vis, key="sel_j1_vis", disabled=not est_editeur)
+        if sel_j1_vis == "Remplaçant...":
+            j1_vis = st.text_input("Nom Visiteur 1 (Remplaçant)", value=st.session_state.get("cust_j1_vis", "Remplaçant 1"), key="cust_j1_vis", disabled=not est_editeur)
+        else:
+            j1_vis = sel_j1_vis
+        j1_vis_pres = col_j1_v2.toggle("Présent", value=st.session_state.get("pres_j1_vis", True), key="pres_j1_vis", disabled=not est_editeur)
+        if not j1_vis_pres:
+            def_moy_v1 = float(st.session_state.get("moy_j1_vis", 0.625))
+            col_m1, col_m2 = st.columns([3, 2])
+            moy_v1 = col_m1.number_input(
+                f"Moyenne de {j1_vis} :",
+                min_value=0.0,
+                max_value=100.0,
+                value=def_moy_v1,
+                step=0.025,
+                format="%.3f",
+                key="moy_j1_vis",
+                disabled=not est_editeur,
+                help="Saisissez la moyenne (ex. 0.650 ou 65%). Formule : arrondi(moyenne × 24 ÷ 3), max 7."
+            )
+            j1_vis_pts = calculer_score_absent(moy_v1)
+            st.session_state["pts_j1_vis"] = j1_vis_pts
+            col_m2.metric("Score", f"{j1_vis_pts} pts")
+            st.caption(f"📊 *Score calculé : {j1_vis_pts} pts/manche (max 7)*")
+        else:
+            j1_vis_pts = int(st.session_state.get("pts_j1_vis", 0))
 
-    def_idx_j1_vis = 0
-    if "sel_j1_vis" in st.session_state and st.session_state["sel_j1_vis"] in options_j1_vis:
-        def_idx_j1_vis = options_j1_vis.index(st.session_state["sel_j1_vis"])
+        # Options sécurisées pour Joueur 2
+        options_j2_vis = [p for p in roster_vis if p != sel_j1_vis] + ["Remplaçant..."]
+        if "sel_j2_vis" in st.session_state and st.session_state["sel_j2_vis"] not in options_j2_vis:
+            st.session_state["sel_j2_vis"] = options_j2_vis[0]
 
-    col_j1_v1, col_j1_v2 = st.sidebar.columns([3, 2])
-    sel_j1_vis = col_j1_v1.selectbox("Sélection Joueur 1 :", options_j1_vis, index=def_idx_j1_vis, key="sel_j1_vis", disabled=not est_editeur)
-    if sel_j1_vis == "Remplaçant...":
-        j1_vis = st.sidebar.text_input("Nom Visiteur 1 (Remplaçant)", value=st.session_state.get("cust_j1_vis", "Remplaçant 1"), key="cust_j1_vis", disabled=not est_editeur)
-    else:
-        j1_vis = sel_j1_vis
-    j1_vis_pres = col_j1_v2.toggle("Présent", value=st.session_state.get("pres_j1_vis", True), key="pres_j1_vis", disabled=not est_editeur)
-    if not j1_vis_pres:
-        def_moy_v1 = float(st.session_state.get("moy_j1_vis", 0.625))
-        col_m1, col_m2 = st.sidebar.columns([3, 2])
-        moy_v1 = col_m1.number_input(
-            f"Moyenne de {j1_vis} :",
-            min_value=0.0,
-            max_value=100.0,
-            value=def_moy_v1,
-            step=0.025,
-            format="%.3f",
-            key="moy_j1_vis",
-            disabled=not est_editeur,
-            help="Saisissez la moyenne (ex. 0.650 ou 65%). Formule : arrondi(moyenne × 24 ÷ 3), max 7."
-        )
-        j1_vis_pts = calculer_score_absent(moy_v1)
-        st.session_state["pts_j1_vis"] = j1_vis_pts
-        col_m2.metric("Score", f"{j1_vis_pts} pts")
-        st.sidebar.caption(f"📊 *Score calculé : {j1_vis_pts} pts/manche (max 7)*")
-    else:
-        j1_vis_pts = int(st.session_state.get("pts_j1_vis", 0))
+        def_idx_j2_vis = 0
+        if "sel_j2_vis" in st.session_state and st.session_state["sel_j2_vis"] in options_j2_vis:
+            def_idx_j2_vis = options_j2_vis.index(st.session_state["sel_j2_vis"])
 
-    # Options sécurisées pour Joueur 2
-    options_j2_vis = [p for p in roster_vis if p != sel_j1_vis] + ["Remplaçant..."]
-    if "sel_j2_vis" in st.session_state and st.session_state["sel_j2_vis"] not in options_j2_vis:
-        st.session_state["sel_j2_vis"] = options_j2_vis[0]
+        col_j2_v1, col_j2_v2 = st.columns([3, 2])
+        sel_j2_vis = col_j2_v1.selectbox("Sélection Joueur 2 :", options_j2_vis, index=def_idx_j2_vis, key="sel_j2_vis", disabled=not est_editeur)
+        if sel_j2_vis == "Remplaçant...":
+            j2_vis = st.text_input("Nom Visiteur 2 (Remplaçant)", value=st.session_state.get("cust_j2_vis", "Remplaçant 2"), key="cust_j2_vis", disabled=not est_editeur)
+        else:
+            j2_vis = sel_j2_vis
+        j2_vis_pres = col_j2_v2.toggle("Présent", value=st.session_state.get("pres_j2_vis", True), key="pres_j2_vis", disabled=not est_editeur)
+        if not j2_vis_pres:
+            def_moy_v2 = float(st.session_state.get("moy_j2_vis", 0.625))
+            col_m1, col_m2 = st.columns([3, 2])
+            moy_v2 = col_m1.number_input(
+                f"Moyenne de {j2_vis} :",
+                min_value=0.0,
+                max_value=100.0,
+                value=def_moy_v2,
+                step=0.025,
+                format="%.3f",
+                key="moy_j2_vis",
+                disabled=not est_editeur,
+                help="Saisissez la moyenne (ex. 0.650 ou 65%). Formule : arrondi(moyenne × 24 ÷ 3), max 7."
+            )
+            j2_vis_pts = calculer_score_absent(moy_v2)
+            st.session_state["pts_j2_vis"] = j2_vis_pts
+            col_m2.metric("Score", f"{j2_vis_pts} pts")
+            st.caption(f"📊 *Score calculé : {j2_vis_pts} pts/manche (max 7)*")
+        else:
+            j2_vis_pts = int(st.session_state.get("pts_j2_vis", 0))
 
-    def_idx_j2_vis = 0
-    if "sel_j2_vis" in st.session_state and st.session_state["sel_j2_vis"] in options_j2_vis:
-        def_idx_j2_vis = options_j2_vis.index(st.session_state["sel_j2_vis"])
-
-    col_j2_v1, col_j2_v2 = st.sidebar.columns([3, 2])
-    sel_j2_vis = col_j2_v1.selectbox("Sélection Joueur 2 :", options_j2_vis, index=def_idx_j2_vis, key="sel_j2_vis", disabled=not est_editeur)
-    if sel_j2_vis == "Remplaçant...":
-        j2_vis = st.sidebar.text_input("Nom Visiteur 2 (Remplaçant)", value=st.session_state.get("cust_j2_vis", "Remplaçant 2"), key="cust_j2_vis", disabled=not est_editeur)
-    else:
-        j2_vis = sel_j2_vis
-    j2_vis_pres = col_j2_v2.toggle("Présent", value=st.session_state.get("pres_j2_vis", True), key="pres_j2_vis", disabled=not est_editeur)
-    if not j2_vis_pres:
-        def_moy_v2 = float(st.session_state.get("moy_j2_vis", 0.625))
-        col_m1, col_m2 = st.sidebar.columns([3, 2])
-        moy_v2 = col_m1.number_input(
-            f"Moyenne de {j2_vis} :",
-            min_value=0.0,
-            max_value=100.0,
-            value=def_moy_v2,
-            step=0.025,
-            format="%.3f",
-            key="moy_j2_vis",
-            disabled=not est_editeur,
-            help="Saisissez la moyenne (ex. 0.650 ou 65%). Formule : arrondi(moyenne × 24 ÷ 3), max 7."
-        )
-        j2_vis_pts = calculer_score_absent(moy_v2)
-        st.session_state["pts_j2_vis"] = j2_vis_pts
-        col_m2.metric("Score", f"{j2_vis_pts} pts")
-        st.sidebar.caption(f"📊 *Score calculé : {j2_vis_pts} pts/manche (max 7)*")
-    else:
-        j2_vis_pts = int(st.session_state.get("pts_j2_vis", 0))
-
-    # Joueur 3 (Évident / Déduit automatiquement)
-    col_j3_v1, col_j3_v2 = st.sidebar.columns([3, 2])
-    restants_vis = [p for p in roster_vis if p != sel_j1_vis and p != sel_j2_vis]
-    j3_vis = restants_vis[0] if restants_vis else "Joueur 3"
-    col_j3_v1.markdown(f"**Joueur 3 (défini) :**<br>`{j3_vis}`", unsafe_allow_html=True)
-    j3_vis_pres = col_j3_v2.toggle("Présent", value=st.session_state.get("pres_j3_vis", True), key="pres_j3_vis", disabled=not est_editeur)
-    if not j3_vis_pres:
-        def_moy_v3 = float(st.session_state.get("moy_j3_vis", 0.625))
-        col_m1, col_m2 = st.sidebar.columns([3, 2])
-        moy_v3 = col_m1.number_input(
-            f"Moyenne de {j3_vis} :",
-            min_value=0.0,
-            max_value=100.0,
-            value=def_moy_v3,
-            step=0.025,
-            format="%.3f",
-            key="moy_j3_vis",
-            disabled=not est_editeur,
-            help="Saisissez la moyenne (ex. 0.650 ou 65%). Formule : arrondi(moyenne × 24 ÷ 3), max 7."
-        )
-        j3_vis_pts = calculer_score_absent(moy_v3)
-        st.session_state["pts_j3_vis"] = j3_vis_pts
-        col_m2.metric("Score", f"{j3_vis_pts} pts")
-        st.sidebar.caption(f"📊 *Score calculé : {j3_vis_pts} pts/manche (max 7)*")
-    else:
-        j3_vis_pts = int(st.session_state.get("pts_j3_vis", 0))
+        # Joueur 3 (Évident / Déduit automatiquement)
+        col_j3_v1, col_j3_v2 = st.columns([3, 2])
+        restants_vis = [p for p in roster_vis if p != sel_j1_vis and p != sel_j2_vis]
+        j3_vis = restants_vis[0] if restants_vis else "Joueur 3"
+        col_j3_v1.markdown(f"**Joueur 3 (défini) :**<br>`{j3_vis}`", unsafe_allow_html=True)
+        j3_vis_pres = col_j3_v2.toggle("Présent", value=st.session_state.get("pres_j3_vis", True), key="pres_j3_vis", disabled=not est_editeur)
+        if not j3_vis_pres:
+            def_moy_v3 = float(st.session_state.get("moy_j3_vis", 0.625))
+            col_m1, col_m2 = st.columns([3, 2])
+            moy_v3 = col_m1.number_input(
+                f"Moyenne de {j3_vis} :",
+                min_value=0.0,
+                max_value=100.0,
+                value=def_moy_v3,
+                step=0.025,
+                format="%.3f",
+                key="moy_j3_vis",
+                disabled=not est_editeur,
+                help="Saisissez la moyenne (ex. 0.650 ou 65%). Formule : arrondi(moyenne × 24 ÷ 3), max 7."
+            )
+            j3_vis_pts = calculer_score_absent(moy_v3)
+            st.session_state["pts_j3_vis"] = j3_vis_pts
+            col_m2.metric("Score", f"{j3_vis_pts} pts")
+            st.caption(f"📊 *Score calculé : {j3_vis_pts} pts/manche (max 7)*")
+        else:
+            j3_vis_pts = int(st.session_state.get("pts_j3_vis", 0))
 
     # Dictionnaire complet des joueurs
     dict_joueurs = {
@@ -6649,34 +6849,61 @@ with tab_feuille:
             fragment_tableau_spectateur()
 
         else:
-            # Affichage pour l'éditeur avec toggle optionnel
-            col_t1, col_t2 = st.columns([3, 1])
+            # Bandeau Scoreboard Live permanent pour le marqueur / éditeur
+            tot_rec_c, tot_vis_c, pts_j_c, details_c = calculer_totaux_actuels(dict_joueurs, matchs_pairs)
+            nb_manches_term = sum(1 for r_m in details_c if (r_m["sa"] == 8 or r_m["sb"] == 8) and not (r_m["sa"] == 8 and r_m["sb"] == 8))
+            pct_manches = int(round((nb_manches_term / 9.0) * 100))
+
+            if tot_rec_c > tot_vis_c:
+                statut_live_html = f"🏆 <strong>{equipe_receveur}</strong> mène par <strong>+{tot_rec_c - tot_vis_c} pt(s)</strong>"
+            elif tot_vis_c > tot_rec_c:
+                statut_live_html = f"🏆 <strong>{equipe_visiteur}</strong> mène par <strong>+{tot_vis_c - tot_rec_c} pt(s)</strong>"
+            else:
+                statut_live_html = f"🤝 <strong>Égalité parfaite</strong> ({tot_rec_c} - {tot_vis_c})"
+
+            st.markdown(
+                f"""
+                <div style="background: linear-gradient(135deg, #0b3c5d 0%, #16527a 100%); color: white; border-radius: 12px; padding: 14px 20px; margin: 8px 0 12px 0; box-shadow: 0 4px 12px rgba(11, 60, 93, 0.2); border-bottom: 4px solid #f59e0b;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                        <div style="flex: 1; min-width: 160px;">
+                            <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: #93c5fd; font-weight: 700;">🔵 Équipe Receveuse (🏠)</div>
+                            <div style="font-size: 18px; font-weight: 800; color: #ffffff;">{equipe_receveur}</div>
+                        </div>
+                        <div style="text-align: center; padding: 4px 18px; background: rgba(255,255,255,0.12); border-radius: 10px; border: 1px solid rgba(255,255,255,0.22);">
+                            <div style="font-size: 26px; font-weight: 900; letter-spacing: 1px; color: #fbbf24;">
+                                {tot_rec_c} <span style="font-size: 15px; color: #e2e8f0; font-weight: 600;">pts</span>
+                                &nbsp;—&nbsp;
+                                {tot_vis_c} <span style="font-size: 15px; color: #e2e8f0; font-weight: 600;">pts</span>
+                            </div>
+                            <div style="font-size: 12px; color: #f8fafc; margin-top: 2px;">{statut_live_html} &nbsp;•&nbsp; ✅ {nb_manches_term}/9 manches ({pct_manches}%)</div>
+                        </div>
+                        <div style="flex: 1; min-width: 160px; text-align: right;">
+                            <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: #fdba74; font-weight: 700;">🟠 Équipe Visiteuse (🚗)</div>
+                            <div style="font-size: 18px; font-weight: 800; color: #ffffff;">{equipe_visiteur}</div>
+                        </div>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+            col_t1, col_t2 = st.columns([2, 2])
             with col_t1:
                 afficher_dashboard = st.toggle(
-                    "📊 **Afficher le résumé des scores en direct**",
+                    "📊 **Afficher le détail des points individuels en direct**",
                     value=st.session_state.get("toggle_voir_resultats_editeur", False),
                     key="toggle_voir_resultats_editeur"
                 )
+            with col_t2:
+                replier_manches_terminees = st.toggle(
+                    "🔽 **Replier automatiquement les manches terminées (8 pts)**",
+                    value=st.session_state.get("toggle_replier_manches_term", False),
+                    key="toggle_replier_manches_term"
+                )
 
             if afficher_dashboard:
-                tot_rec_c, tot_vis_c, pts_j_c, details_c = calculer_totaux_actuels(dict_joueurs, matchs_pairs)
                 with st.container(border=True):
-                    st.markdown(f"#### 🎱 Résultats courants : **{equipe_receveur}** ({tot_rec_c} pts) vs **{equipe_visiteur}** ({tot_vis_c} pts)")
-                
-                    if tot_rec_c > tot_vis_c:
-                        st.success(f"🏆 **{equipe_receveur}** mène par **{tot_rec_c - tot_vis_c} point(s)** ({tot_rec_c} à {tot_vis_c}).")
-                    elif tot_vis_c > tot_rec_c:
-                        st.success(f"🏆 **{equipe_visiteur}** mène par **{tot_vis_c - tot_rec_c} point(s)** ({tot_vis_c} à {tot_rec_c}).")
-                    else:
-                        st.info(f"🤝 **Égalité provisoire** : {tot_rec_c} à {tot_vis_c}.")
-
-                    # Scores par équipe
-                    c_sc1, c_sc2 = st.columns(2)
-                    c_sc1.metric(f"Total {equipe_receveur}", f"{tot_rec_c} pts")
-                    c_sc2.metric(f"Total {equipe_visiteur}", f"{tot_vis_c} pts")
-
-                    # Points des joueurs
-                    st.markdown("##### 👤 Points individuels cumulés")
+                    st.markdown("##### 👤 Points individuels cumulés en direct")
                     col_pj1, col_pj2 = st.columns(2)
                     with col_pj1:
                         st.markdown(f"**🏠 {equipe_receveur}**")
@@ -6729,6 +6956,7 @@ with tab_feuille:
         }
 
         manches_invalides = []
+        replier_auto = st.session_state.get("toggle_replier_manches_term", False)
 
         for num_manche, id_a, id_b in matchs_pairs:
             info_a = dict_joueurs[id_a]
@@ -6738,38 +6966,58 @@ with tab_feuille:
             a_pres = info_a["present"]
             b_pres = info_b["present"]
 
+            # Valeur par défaut si non encore définie dans session_state
+            if not a_pres and b_pres:
+                init_val_a = info_a["pts_absent"]
+                init_val_b = 8
+            elif not b_pres and a_pres:
+                init_val_a = 8
+                init_val_b = info_b["pts_absent"]
+            elif not a_pres and not b_pres:
+                init_val_a = info_a["pts_absent"]
+                init_val_b = info_b["pts_absent"]
+            else:
+                init_val_a = 0
+                init_val_b = 0
+
+            if f"s_a_{num_manche}" not in st.session_state:
+                st.session_state[f"s_a_{num_manche}"] = max(0, min(8, int(init_val_a)))
+            if f"s_b_{num_manche}" not in st.session_state:
+                st.session_state[f"s_b_{num_manche}"] = max(0, min(8, int(init_val_b)))
+
+            cur_sa = int(st.session_state.get(f"s_a_{num_manche}", 0))
+            cur_sb = int(st.session_state.get(f"s_b_{num_manche}", 0))
+            manche_terminee = ((cur_sa == 8 and cur_sb < 8) or (cur_sb == 8 and cur_sa < 8))
+
             status_label = ""
             if not a_pres and not b_pres:
-                status_label = " ❌ (Forfait double : 2 absents)"
+                status_label = " • ❌ Forfait double (2 absents)"
             elif not a_pres:
-                status_label = f" ❌ ({joueur_a} absent : {info_a['pts_absent']} pts)"
+                status_label = f" • ❌ {joueur_a} absent ({info_a['pts_absent']} pts)"
             elif not b_pres:
-                status_label = f" ❌ ({joueur_b} absent : {info_b['pts_absent']} pts)"
+                status_label = f" • ❌ {joueur_b} absent ({info_b['pts_absent']} pts)"
 
-            with st.expander(f"Manche {num_manche} : {joueur_a} ({equipe_receveur}) vs {joueur_b} ({equipe_visiteur}){status_label}", expanded=True):
+            if cur_sa == 8 and cur_sb == 8:
+                icone_manche = "⚠️"
+                resume_score_hdr = f"({cur_sa} - {cur_sb}) — Erreur 8-8"
+            elif manche_terminee:
+                icone_manche = "✅"
+                gagnant_m = joueur_a if cur_sa == 8 else joueur_b
+                resume_score_hdr = f"[{cur_sa} - {cur_sb}] 🏆 {gagnant_m}"
+            elif cur_sa > 0 or cur_sb > 0:
+                icone_manche = "⏳"
+                resume_score_hdr = f"[{cur_sa} - {cur_sb}] — En cours"
+            else:
+                icone_manche = "⚪"
+                resume_score_hdr = "À jouer"
+
+            ouvrir_manche = not (replier_auto and manche_terminee)
+
+            with st.expander(f"{icone_manche} Manche {num_manche} : {joueur_a} ({equipe_receveur}) vs {joueur_b} ({equipe_visiteur}) — {resume_score_hdr}{status_label}", expanded=ouvrir_manche):
                 c1, c2 = st.columns(2)
-            
-                # Valeur par défaut si non encore définie dans session_state
-                if not a_pres and b_pres:
-                    init_val_a = info_a["pts_absent"]
-                    init_val_b = 8
-                elif not b_pres and a_pres:
-                    init_val_a = 8
-                    init_val_b = info_b["pts_absent"]
-                elif not a_pres and not b_pres:
-                    init_val_a = info_a["pts_absent"]
-                    init_val_b = info_b["pts_absent"]
-                else:
-                    init_val_a = 0
-                    init_val_b = 0
-
-                if f"s_a_{num_manche}" not in st.session_state:
-                    st.session_state[f"s_a_{num_manche}"] = max(0, min(8, int(init_val_a)))
-                if f"s_b_{num_manche}" not in st.session_state:
-                    st.session_state[f"s_b_{num_manche}"] = max(0, min(8, int(init_val_b)))
 
                 with c1:
-                    label_champ_a = f"Points de {joueur_a}" + (f" (Absent : {info_a['pts_absent']} pts)" if not a_pres else "")
+                    label_champ_a = f"🔵 Points de {joueur_a} ({equipe_receveur})" + (f" [Absent : {info_a['pts_absent']} pts]" if not a_pres else "")
                     score_a = st.number_input(
                         label_champ_a, 
                         0, 8, 
@@ -6777,7 +7025,7 @@ with tab_feuille:
                         disabled=not est_editeur
                     )
                 with c2:
-                    label_champ_b = f"Points de {joueur_b}" + (f" (Absent : {info_b['pts_absent']} pts)" if not b_pres else "")
+                    label_champ_b = f"🟠 Points de {joueur_b} ({equipe_visiteur})" + (f" [Absent : {info_b['pts_absent']} pts]" if not b_pres else "")
                     score_b = st.number_input(
                         label_champ_b, 
                         0, 8, 
@@ -6785,10 +7033,14 @@ with tab_feuille:
                         disabled=not est_editeur
                     )
             
-                # Validation logique du billard au 8
+                # Validation logique du billard au 8 et retour visuel immédiat
                 if score_a == 8 and score_b == 8:
                     st.warning("⚠️ Les deux joueurs ne peuvent pas avoir 8 points.")
                     manches_invalides.append(num_manche)
+                elif score_a == 8:
+                    st.caption(f"🏆 **Manche {num_manche} remportée par {joueur_a}** ({score_a} à {score_b})")
+                elif score_b == 8:
+                    st.caption(f"🏆 **Manche {num_manche} remportée par {joueur_b}** ({score_b} à {score_a})")
 
                 donnees_a_sauvegarder["matchs"][str(num_manche)] = {
                     "score_a": score_a,
@@ -7201,12 +7453,16 @@ with tab_feuille:
         st.divider()
 
     # ==============================================================================
-    # ESPACE ADMINISTRATION (SAISON, SMTP ET SÉCURITÉ)
+    # ESPACE ADMINISTRATION (SAISON, SMTP ET SÉCURITÉ) — ONGLET DÉDIÉ
     # ==============================================================================
     if not est_spectateur:
-        st.markdown("### ⚙️ Espace Administration")
+        st.caption("💡 *Astuce : L'Espace Administration (édition des équipes, nouvelle saison, rectification d'un match, SMTP et mot de passe) est accessible directement via l'onglet **⚙️ Administration** en haut de page.*")
 
-        with st.expander("🛠️ Ouvrir le panneau d'administration (Équipes, Saison, SMTP et Sécurité)", expanded=False):
+if tab_admin is not None:
+    with tab_admin:
+        st.markdown("### ⚙️ Espace Administration de la Ligue")
+        st.caption("Gérez la composition officielle des équipes, rectifiez un match archivé, démarrez une nouvelle saison ou configurez la messagerie SMTP et la sécurité.")
+        if True:
             tab_equipes, tab_saison, tab_rectif, tab_export, tab_smtp, tab_secu = st.tabs([
                 "👥 Édition des équipes & joueurs",
                 "🗓️ Démarrer une nouvelle saison",
