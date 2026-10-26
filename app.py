@@ -180,6 +180,89 @@ def injecter_meta_icones_mobiles():
     """
     st.components.v1.html(code_js, height=0)
 
+def injecter_script_remonter_haut_de_page():
+    """Injecte un gestionnaire universel qui s'assure d'être toujours en haut de page lors des changements de page, d'onglets ou de navigation."""
+    code_js = """
+    <script>
+    (function() {
+        function remonterToutEnHaut() {
+            try {
+                if (window.parent) {
+                    window.parent.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+                    var pDoc = window.parent.document;
+                    if (pDoc) {
+                        pDoc.documentElement.scrollTop = 0;
+                        pDoc.body.scrollTop = 0;
+                        var scrollSelectors = [
+                            'section.main',
+                            '[data-testid="stMain"]',
+                            '[data-testid="stAppViewContainer"]',
+                            '[data-testid="stAppViewBlockContainer"]',
+                            '.main .block-container',
+                            '#root'
+                        ];
+                        scrollSelectors.forEach(function(sel) {
+                            var els = pDoc.querySelectorAll(sel);
+                            for (var i = 0; i < els.length; i++) {
+                                els[i].scrollTop = 0;
+                            }
+                        });
+                    }
+                }
+            } catch(e) {}
+        }
+
+        // Remontée immédiate et décalée lors de l'exécution
+        remonterToutEnHaut();
+        setTimeout(remonterToutEnHaut, 30);
+        setTimeout(remonterToutEnHaut, 120);
+        setTimeout(remonterToutEnHaut, 300);
+
+        // Écouteur global sur le document parent pour tous les clics d'onglets (tabs) et de navigation
+        try {
+            if (window.parent && window.parent.document && !window.parent.__scrollListenerActif) {
+                window.parent.__scrollListenerActif = true;
+                window.parent.document.addEventListener('click', function(e) {
+                    var el = e.target;
+                    if (!el) return;
+                    // Détection des onglets Streamlit st.tabs ou navigation
+                    if (el.closest('[role="tab"]') ||
+                        el.closest('[data-baseweb="tab"]') ||
+                        el.closest('.stTabs [role="tab"]') ||
+                        el.closest('[data-testid="stSidebarNav"] button') ||
+                        el.closest('.stTabs button')) {
+                        remonterToutEnHaut();
+                        setTimeout(remonterToutEnHaut, 20);
+                        setTimeout(remonterToutEnHaut, 80);
+                        setTimeout(remonterToutEnHaut, 250);
+                    }
+                }, true);
+
+                // MutationObserver pour détecter le changement d'onglet actif (aria-selected="true")
+                var observer = new MutationObserver(function(mutations) {
+                    for (var i = 0; i < mutations.length; i++) {
+                        var m = mutations[i];
+                        if (m.type === 'attributes' && m.attributeName === 'aria-selected') {
+                            if (m.target && m.target.getAttribute('aria-selected') === 'true') {
+                                remonterToutEnHaut();
+                                setTimeout(remonterToutEnHaut, 50);
+                                break;
+                            }
+                        }
+                    }
+                });
+                observer.observe(window.parent.document.body, {
+                    attributes: true,
+                    subtree: true,
+                    attributeFilter: ['aria-selected']
+                });
+            }
+        } catch(e) {}
+    })();
+    </script>
+    """
+    st.components.v1.html(code_js, height=0)
+
 def charger_mot_de_passe_admin():
     """Charge le mot de passe d'administration (défaut: saphir2026)."""
     if os.path.exists(ADMIN_CONFIG_FILE):
@@ -3136,71 +3219,13 @@ def afficher_bandeau_verrou_tournoi():
                         ceder_la_main_avec_sauvegarde(my_session_id)
                     st.rerun()
     elif est_spectateur:
-        col_lk1, col_lk2 = st.columns([2.5, 1.7])
+        col_lk1, col_lk2 = st.columns([3.2, 1.2])
         texte_spec = "👁️ **Mode spectateur (Lecture seule) :** Consultation en direct du tournoi actif." if tournoi_actif else "👁️ **Mode spectateur (Lecture seule) :** Consultation des tournois. La saisie des scores est réservée au marqueur."
         col_lk1.info(texte_spec)
         col_lk1.caption("🔄 *Veille automatique active : dès que le marqueur met à jour le tournoi, les résultats sont actualisés systématiquement.*")
         with col_lk2:
-            col_b1, col_b2 = st.columns([1.1, 1.5])
-            with col_b1:
-                if st.button("🔄 Actualiser", key="btn_refresh_t_spec", type="primary" if tournoi_actif else "secondary", use_container_width=True, help="Recharge les derniers résultats et scores en direct du tournoi"):
-                    actualiser_resultats_tournoi()
-            with col_b2:
-                with st.popover("📜 Tournois", use_container_width=True, help="Sélectionner un tournoi et afficher son arborescence officielle"):
-                    st.markdown("##### 📜 Tournois sauvegardés")
-                    st.caption("Sélectionnez un tournoi dans la liste déroulante ci-dessous pour afficher immédiatement son arborescence :")
-                    hist_pop = charger_historique_tournois(inclure_actifs=True)
-                    if hist_pop:
-                        opts_pop = [(i, f"{'👤' if t.get('mode')=='simple' else '👥'} [{('Actif' if t.get('est_actif') else (t.get('statut') or 'archivé')).capitalize()}] {t.get('titre')} — {t.get('date_creation','')}") for i, t in enumerate(hist_pop)]
-                        sel_pop = st.selectbox(
-                            "🏆 Choisir un tournoi :",
-                            options=[i for i, _ in opts_pop],
-                            format_func=lambda x: dict(opts_pop).get(x, ""),
-                            key="sel_pop_tournois_spec"
-                        )
-                        t_pop = hist_pop[sel_pop]
-                        mode_pop = t_pop.get("mode", "simple")
-
-                        fmt_lbl = "Élimination directe" if t_pop.get("format") == "elimination" else "Round-Robin"
-                        v_champ = t_pop.get("vainqueur_final")
-                        champ_txt = f" &nbsp;|&nbsp; 🥇 <strong>Champion :</strong> {v_champ}" if v_champ else ""
-                        st.caption(f"Modalité : **{'Simple' if mode_pop == 'simple' else 'Double'}** &nbsp;|&nbsp; Format : `{fmt_lbl}`{champ_txt}", unsafe_allow_html=True)
-
-                        # Sur sélection du tournoi : afficher immédiatement son arborescence officielle
-                        st.markdown("###### 🌳 Arborescence officielle du tournoi")
-                        html_pop = generer_html_tournoi(t_pop, mode=mode_pop)
-                        st.components.v1.html(html_pop, height=480, scrolling=True)
-
-                        col_p_btn1, col_p_btn2 = st.columns([1.4, 1.2])
-                        with col_p_btn1:
-                            html_pop_json = json.dumps(html_pop)
-                            st.components.v1.html(
-                                f"""
-                                <button onclick="imprimerTournoiPop()" style="width:100%; height:36px; background-color:#0b3c5d; color:white; border:none; border-radius:6px; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif; font-size:12px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;">
-                                    🖨️ Imprimer (A4)
-                                </button>
-                                <script>
-                                function imprimerTournoiPop() {{
-                                    var win = window.open('', '_blank');
-                                    win.document.open();
-                                    win.document.write({html_pop_json});
-                                    win.document.close();
-                                    win.focus();
-                                    win.document.title = "Arborescence Tournoi";
-                                    setTimeout(function() {{
-                                        win.print();
-                                    }}, 350);
-                                }}
-                                </script>
-                                """,
-                                height=40
-                            )
-                        with col_p_btn2:
-                            if st.button("👁️ Voir détails", key="btn_open_pop_t_spec", use_container_width=True, help="Ouvrir la fiche complète dans l'onglet des tournois sauvegardés"):
-                                st.session_state["select_tournoi_detail_hist"] = sel_pop
-                                st.rerun()
-                    else:
-                        st.info("Aucun tournoi sauvegardé.")
+            if st.button("🔄 Actualiser", key="btn_refresh_t_spec", type="primary" if tournoi_actif else "secondary", use_container_width=True, help="Recharge les derniers résultats et scores en direct du tournoi"):
+                actualiser_resultats_tournoi()
     else:
         col_lk1, col_lk2 = st.columns([2.8, 1.4])
         if autre_editeur_actif:
@@ -4652,6 +4677,8 @@ def afficher_tableau_de_bord_progression(historique):
 # ==============================================================================
 # Injection des balises d'icône pour écran d'accueil mobile et tablette (iOS & Android)
 injecter_meta_icones_mobiles()
+# S'assurer d'être toujours en haut de page lors des changements de page et d'onglets
+injecter_script_remonter_haut_de_page()
 
 est_connecte = st.session_state.get("authentifie", False)
 est_spectateur = st.session_state.get("est_spectateur", False)
