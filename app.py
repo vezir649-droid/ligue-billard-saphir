@@ -4014,9 +4014,6 @@ def afficher_section_tournoi(mode="simple"):
                         height=0
                     )
 
-        with st.expander("🌳 Consulter l'arborescence graphique et tous les matchs", expanded=False):
-            st.components.v1.html(html_tournoi, height=520, scrolling=True)
-
         # Podium si terminé
         if statut == "termine" and tournoi.get("vainqueur_final"):
             with st.container(border=True):
@@ -4031,11 +4028,15 @@ def afficher_section_tournoi(mode="simple"):
                     unsafe_allow_html=True
                 )
 
+        # Arborescence graphique complète et toujours à jour (ouverte en permanence)
+        st.markdown("##### 🌳 Arborescence officielle du tournoi")
+        st.components.v1.html(html_tournoi, height=560, scrolling=True)
+
         st.divider()
 
         # DÉROULEMENT SELON LE FORMAT
         if format_type == "elimination":
-            st.markdown("##### 🌳 Tableau des rencontres (Arbre de tournoi)")
+            st.markdown("##### 🎯 Saisie des scores & Déroulement des rencontres")
             if tournoi.get("promus_second_tour"):
                 promus_str_view = ", ".join(tournoi["promus_second_tour"])
                 st.info(f"🎟️ **Participants promus d'office au 2ᵉ tour (Passe-droit) :** {promus_str_view}")
@@ -4489,30 +4490,63 @@ def afficher_onglet_tournois():
     afficher_bandeau_verrou_tournoi()
 
     td = charger_tournois_data()
-    simple_actif = bool(td.get("simple"))
-    double_actif = bool(td.get("double"))
+    t_simple = td.get("simple")
+    t_double = td.get("double")
+    simple_actif = bool(t_simple and isinstance(t_simple, dict) and (t_simple.get("tours") or t_simple.get("matchs")))
+    double_actif = bool(t_double and isinstance(t_double, dict) and (t_double.get("tours") or t_double.get("matchs")))
 
-    lbl_simple = "👤 Tournoi Simple 🟢" if simple_actif else "👤 Tournoi Simple"
-    lbl_double = "👥 Tournoi Double 🟢" if double_actif else "👥 Tournoi Double"
+    lbl_simple = "👤 Tournoi Simple 🟢 (Actif)" if simple_actif else "👤 Tournoi Simple"
+    lbl_double = "👥 Tournoi Double 🟢 (Actif)" if double_actif else "👥 Tournoi Double"
 
-    subtab_creer, subtab_simple, subtab_double, subtab_hist = st.tabs([
-        "➕ Créer un nouveau tournoi",
-        lbl_simple,
-        lbl_double,
-        "📜 Liste des tournois sauvegardés & Historique"
-    ])
+    # Si un tournoi est actif, son onglet est positionné en premier pour afficher immédiatement son arborescence à jour
+    if double_actif and not simple_actif:
+        tabs = st.tabs([
+            lbl_double,
+            lbl_simple,
+            "➕ Créer un nouveau tournoi",
+            "📜 Liste des tournois sauvegardés & Historique"
+        ])
+        with tabs[0]:
+            afficher_section_tournoi(mode="double")
+        with tabs[1]:
+            afficher_section_tournoi(mode="simple")
+        with tabs[2]:
+            afficher_onglet_nouveau_tournoi()
+        with tabs[3]:
+            afficher_section_historique_tournois()
 
-    with subtab_creer:
-        afficher_onglet_nouveau_tournoi()
+    elif simple_actif:
+        tabs = st.tabs([
+            lbl_simple,
+            lbl_double,
+            "➕ Créer un nouveau tournoi",
+            "📜 Liste des tournois sauvegardés & Historique"
+        ])
+        with tabs[0]:
+            afficher_section_tournoi(mode="simple")
+        with tabs[1]:
+            afficher_section_tournoi(mode="double")
+        with tabs[2]:
+            afficher_onglet_nouveau_tournoi()
+        with tabs[3]:
+            afficher_section_historique_tournois()
 
-    with subtab_simple:
-        afficher_section_tournoi(mode="simple")
-
-    with subtab_double:
-        afficher_section_tournoi(mode="double")
-
-    with subtab_hist:
-        afficher_section_historique_tournois()
+    else:
+        # Aucun tournoi actif : affichage du formulaire de création au premier plan
+        tabs = st.tabs([
+            "➕ Créer un nouveau tournoi",
+            lbl_simple,
+            lbl_double,
+            "📜 Liste des tournois sauvegardés & Historique"
+        ])
+        with tabs[0]:
+            afficher_onglet_nouveau_tournoi()
+        with tabs[1]:
+            afficher_section_tournoi(mode="simple")
+        with tabs[2]:
+            afficher_section_tournoi(mode="double")
+        with tabs[3]:
+            afficher_section_historique_tournois()
 
 
 # ==============================================================================
