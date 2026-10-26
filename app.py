@@ -1721,7 +1721,12 @@ def envoyer_courriel_sauvegarde_tournoi(tournoi_obj=None, mode="simple", destina
         titre_t = tournoi_obj.get("titre", "Tournoi officiel")
         statut_t = tournoi_obj.get("statut", "en_cours")
         fmt = tournoi_obj.get("format", "elimination")
-        fmt_label = "Élimination directe (Préliminaires 2 de 3 • Finale 3 de 5)" if fmt == "elimination" else "Championnat Round-Robin (2 de 3)"
+        if fmt == "double_elimination":
+            fmt_label = "Double élimination (Winner & Loser Bracket — Seconde chance)"
+        elif fmt == "elimination":
+            fmt_label = "Élimination directe (Préliminaires 2 de 3 • Finale 3 de 5)"
+        else:
+            fmt_label = "Championnat Round-Robin (2 de 3)"
         champion = tournoi_obj.get("vainqueur_final") or tournoi_obj.get("champion") or ""
         finaliste = tournoi_obj.get("finaliste") or ""
         nb_tables = tournoi_obj.get("nb_tables", 2)
@@ -2377,18 +2382,449 @@ def generer_arbre_elimination(participants, race_prelim=2, race_finale=3, titre=
         "finaliste": None
     }
 
-def actualiser_score_elimination(tournoi, tour_num, match_id, score_a, score_b):
-    """Enregistre le score et qualifie automatiquement le vainqueur pour le tour suivant."""
-    t_idx = tour_num - 1
-    if t_idx < 0 or t_idx >= len(tournoi["tours"]):
-        return False
-    tour_courant = tournoi["tours"][t_idx]
+def planifier_horaires_double_elimination(tours, heure_debut="09:00", duree_min=30, nb_tables=2):
+    """
+    Planifie les horaires pour un tournoi en double élimination (Winner & Loser Bracket).
+    Ordonne les rencontres selon les étapes logiques (W1 -> W2/L1 -> L2 -> W3/L3...)
+    sans aucun match entre 12:00 et 13:00 (pause dîner).
+    """
+    try:
+        cur_dt = datetime.strptime(heure_debut.strip(), "%H:%M")
+    except Exception:
+        cur_dt = datetime.strptime("09:00", "%H:%M")
 
+    duree = timedelta(minutes=int(duree_min))
+
+    etapes_map = {}
+    for t in tours:
+        for m in t.get("matchs", []):
+            et = m.get("etape", 1)
+            if et not in etapes_map:
+                etapes_map[et] = []
+            etapes_map[et].append(m)
+
+    for et in sorted(etapes_map.keys()):
+        m_list = [m for m in etapes_map[et] if not m.get("passe_droit")]
+        if not m_list:
+            continue
+
+        cur_dt = ajuster_pause_diner(cur_dt, duree)
+        nb_m = len(m_list)
+
+        if int(nb_tables) >= 2:
+            nb_vagues = (nb_m + 1) // 2
+            for v in range(nb_vagues):
+                v_dt = ajuster_pause_diner(cur_dt, duree)
+                m1_idx = v * 2
+                m2_idx = v * 2 + 1
+
+                if m1_idx < nb_m:
+                    m_list[m1_idx]["heure_estimee"] = v_dt.strftime("%Hh%M")
+                    m_list[m1_idx]["table"] = "Table 1"
+                    m_list[m1_idx]["table_courte"] = "T1"
+
+                if m2_idx < nb_m:
+                    m_list[m2_idx]["heure_estimee"] = v_dt.strftime("%Hh%M")
+                    m_list[m2_idx]["table"] = "Table 2"
+                    m_list[m2_idx]["table_courte"] = "T2"
+
+                cur_dt = ajuster_pause_diner(v_dt + duree, duree)
+        else:
+            for m in m_list:
+                cur_dt = ajuster_pause_diner(cur_dt, duree)
+                m["heure_estimee"] = cur_dt.strftime("%Hh%M")
+                m["table"] = "Table 1"
+                m["table_courte"] = "T1"
+                cur_dt = ajuster_pause_diner(cur_dt + duree, duree)
+
+    heure_fin = cur_dt.strftime("%Hh%M")
+    return heure_fin
+
+def generer_arbre_double_elimination(participants, race_prelim=2, race_finale=3, titre="Tournoi Double Élimination", heure_debut="09:00", duree_min=30, nb_tables=2, passes_droits=None):
+    """
+    Génère un tableau complet en Double Élimination (Tableau des Gagnants, Tableau de Seconde Chance et Grande Finale).
+    Chaque participant dispose d'une seconde chance après une première défaite.
+    Supporte 4, 8 ou 16 participants (avec attribution de passe-droits au 1er tour si N n'est pas une puissance de 2).
+    """
+    p_liste = list(participants)
+    n = len(p_liste)
+    if n < 4:
+        return None
+
+    if n <= 4:
+        b = 4
+    elif n <= 8:
+        b = 8
+    else:
+        b = 16
+
+    nb_promus = b - n
+    promus = []
+    if passes_droits:
+        if isinstance(passes_droits, str):
+            passes_droits = [passes_droits]
+        for p in passes_droits:
+            if p in p_liste and p not in promus and len(promus) < nb_promus:
+                promus.append(p)
+
+    candidats_restants = [p for p in p_liste if p not in promus]
+    random.shuffle(candidats_restants)
+    manquants = nb_promus - len(promus)
+    if manquants > 0:
+        promus.extend(candidats_restants[:manquants])
+        candidats_restants = candidats_restants[manquants:]
+
+    nb_m_w1 = b // 2
+    if b == 4:
+        seed_order = [0, 1]
+    elif b == 8:
+        seed_order = [0, 2, 3, 1]
+    else:
+        seed_order = [0, 4, 6, 2, 7, 3, 5, 1]
+
+    matchs_avec_promus = set(seed_order[:len(promus)])
+    promus_places = list(promus)
+    p_sans_pd = list(candidats_restants)
+    random.shuffle(p_sans_pd)
+
+    w1_matchs = []
+    for m_i in range(nb_m_w1):
+        mid = f"W1_M{m_i+1}"
+        if m_i in matchs_avec_promus:
+            p_benef = promus_places.pop(0)
+            w1_matchs.append({
+                "id": mid,
+                "bracket": "winner",
+                "etape": 1,
+                "equipe_a": p_benef,
+                "equipe_b": "Exempt (Passe-droit)",
+                "score_a": race_prelim,
+                "score_b": 0,
+                "termine": True,
+                "passe_droit": True,
+                "vainqueur": p_benef,
+                "perdant": "Exempt (Passe-droit)",
+                "source_a": None, "source_b": None,
+                "type_source_a": "vainqueur", "type_source_b": "vainqueur",
+                "heure_estimee": "—", "table": "—", "table_courte": "—"
+            })
+        else:
+            eq_a = p_sans_pd.pop(0)
+            eq_b = p_sans_pd.pop(0)
+            w1_matchs.append({
+                "id": mid,
+                "bracket": "winner",
+                "etape": 1,
+                "equipe_a": eq_a,
+                "equipe_b": eq_b,
+                "score_a": 0, "score_b": 0,
+                "termine": False,
+                "passe_droit": False,
+                "vainqueur": None,
+                "perdant": None,
+                "source_a": None, "source_b": None,
+                "type_source_a": "vainqueur", "type_source_b": "vainqueur"
+            })
+
+    tours = []
+    w1_nom = "Gagnants — 8ᵉ de finale" if b == 16 else ("Gagnants — Quarts de finale" if b == 8 else "Gagnants — Demi-finales")
+    tours.append({
+        "numero": 1,
+        "nom": w1_nom,
+        "section": "winner",
+        "bracket": "winner",
+        "race_to": race_prelim,
+        "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+        "matchs": w1_matchs
+    })
+
+    if b == 4:
+        tours.append({
+            "numero": 2, "nom": "Gagnants — Finale", "section": "winner", "bracket": "winner",
+            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "matchs": [{
+                "id": "W2_M1", "bracket": "winner", "etape": 2,
+                "equipe_a": w1_matchs[0]["vainqueur"] or "À déterminer",
+                "equipe_b": w1_matchs[1]["vainqueur"] or "À déterminer",
+                "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None,
+                "source_a": "W1_M1", "source_b": "W1_M2",
+                "type_source_a": "vainqueur", "type_source_b": "vainqueur"
+            }]
+        })
+        tours.append({
+            "numero": 3, "nom": "Seconde Chance — Demi-finale", "section": "loser", "bracket": "loser",
+            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "matchs": [{
+                "id": "L1_M1", "bracket": "loser", "etape": 2,
+                "equipe_a": "À déterminer", "equipe_b": "À déterminer",
+                "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None,
+                "source_a": "W1_M1", "source_b": "W1_M2",
+                "type_source_a": "perdant", "type_source_b": "perdant"
+            }]
+        })
+        tours.append({
+            "numero": 4, "nom": "Seconde Chance — Finale", "section": "loser", "bracket": "loser",
+            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "matchs": [{
+                "id": "L2_M1", "bracket": "loser", "etape": 3,
+                "equipe_a": "À déterminer", "equipe_b": "À déterminer",
+                "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None,
+                "source_a": "L1_M1", "source_b": "W2_M1",
+                "type_source_a": "vainqueur", "type_source_b": "perdant"
+            }]
+        })
+        tours.append({
+            "numero": 5, "nom": "🏆 Grande Finale Officielle", "section": "finale", "bracket": "finale",
+            "race_to": race_finale, "format_label": f"{race_finale} de {2*race_finale - 1}",
+            "matchs": [{
+                "id": "GF_M1", "bracket": "finale", "etape": 4, "race_to": race_finale,
+                "equipe_a": "À déterminer", "equipe_b": "À déterminer",
+                "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None,
+                "source_a": "W2_M1", "source_b": "L2_M1",
+                "type_source_a": "vainqueur", "type_source_b": "vainqueur"
+            }]
+        })
+
+    elif b == 8:
+        tours.append({
+            "numero": 2, "nom": "Gagnants — Demi-finales", "section": "winner", "bracket": "winner",
+            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "matchs": [
+                {
+                    "id": "W2_M1", "bracket": "winner", "etape": 2,
+                    "equipe_a": w1_matchs[0]["vainqueur"] or "À déterminer",
+                    "equipe_b": w1_matchs[1]["vainqueur"] or "À déterminer",
+                    "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None,
+                    "source_a": "W1_M1", "source_b": "W1_M2",
+                    "type_source_a": "vainqueur", "type_source_b": "vainqueur"
+                },
+                {
+                    "id": "W2_M2", "bracket": "winner", "etape": 2,
+                    "equipe_a": w1_matchs[2]["vainqueur"] or "À déterminer",
+                    "equipe_b": w1_matchs[3]["vainqueur"] or "À déterminer",
+                    "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None,
+                    "source_a": "W1_M3", "source_b": "W1_M4",
+                    "type_source_a": "vainqueur", "type_source_b": "vainqueur"
+                }
+            ]
+        })
+        tours.append({
+            "numero": 3, "nom": "Gagnants — Finale", "section": "winner", "bracket": "winner",
+            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "matchs": [{
+                "id": "W3_M1", "bracket": "winner", "etape": 4,
+                "equipe_a": "À déterminer", "equipe_b": "À déterminer",
+                "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None,
+                "source_a": "W2_M1", "source_b": "W2_M2",
+                "type_source_a": "vainqueur", "type_source_b": "vainqueur"
+            }]
+        })
+        tours.append({
+            "numero": 4, "nom": "Seconde Chance — Tour 1", "section": "loser", "bracket": "loser",
+            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "matchs": [
+                {
+                    "id": "L1_M1", "bracket": "loser", "etape": 2,
+                    "equipe_a": "À déterminer", "equipe_b": "À déterminer",
+                    "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None,
+                    "source_a": "W1_M1", "source_b": "W1_M2",
+                    "type_source_a": "perdant", "type_source_b": "perdant"
+                },
+                {
+                    "id": "L1_M2", "bracket": "loser", "etape": 2,
+                    "equipe_a": "À déterminer", "equipe_b": "À déterminer",
+                    "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None,
+                    "source_a": "W1_M3", "source_b": "W1_M4",
+                    "type_source_a": "perdant", "type_source_b": "perdant"
+                }
+            ]
+        })
+        tours.append({
+            "numero": 5, "nom": "Seconde Chance — Quarts de finale", "section": "loser", "bracket": "loser",
+            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "matchs": [
+                {
+                    "id": "L2_M1", "bracket": "loser", "etape": 3,
+                    "equipe_a": "À déterminer", "equipe_b": "À déterminer",
+                    "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None,
+                    "source_a": "L1_M1", "source_b": "W2_M2",
+                    "type_source_a": "vainqueur", "type_source_b": "perdant"
+                },
+                {
+                    "id": "L2_M2", "bracket": "loser", "etape": 3,
+                    "equipe_a": "À déterminer", "equipe_b": "À déterminer",
+                    "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None,
+                    "source_a": "L1_M2", "source_b": "W2_M1",
+                    "type_source_a": "vainqueur", "type_source_b": "perdant"
+                }
+            ]
+        })
+        tours.append({
+            "numero": 6, "nom": "Seconde Chance — Demi-finale", "section": "loser", "bracket": "loser",
+            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "matchs": [{
+                "id": "L3_M1", "bracket": "loser", "etape": 4,
+                "equipe_a": "À déterminer", "equipe_b": "À déterminer",
+                "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None,
+                "source_a": "L2_M1", "source_b": "L2_M2",
+                "type_source_a": "vainqueur", "type_source_b": "vainqueur"
+            }]
+        })
+        tours.append({
+            "numero": 7, "nom": "Seconde Chance — Finale", "section": "loser", "bracket": "loser",
+            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "matchs": [{
+                "id": "L4_M1", "bracket": "loser", "etape": 5,
+                "equipe_a": "À déterminer", "equipe_b": "À déterminer",
+                "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None,
+                "source_a": "L3_M1", "source_b": "W3_M1",
+                "type_source_a": "vainqueur", "type_source_b": "perdant"
+            }]
+        })
+        tours.append({
+            "numero": 8, "nom": "🏆 Grande Finale Officielle", "section": "finale", "bracket": "finale",
+            "race_to": race_finale, "format_label": f"{race_finale} de {2*race_finale - 1}",
+            "matchs": [{
+                "id": "GF_M1", "bracket": "finale", "etape": 6, "race_to": race_finale,
+                "equipe_a": "À déterminer", "equipe_b": "À déterminer",
+                "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None,
+                "source_a": "W3_M1", "source_b": "L4_M1",
+                "type_source_a": "vainqueur", "type_source_b": "vainqueur"
+            }]
+        })
+
+    elif b == 16:
+        tours.append({
+            "numero": 2, "nom": "Gagnants — Quarts de finale", "section": "winner", "bracket": "winner",
+            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "matchs": [
+                {"id": f"W2_M{i+1}", "bracket": "winner", "etape": 2, "equipe_a": w1_matchs[2*i]["vainqueur"] or "À déterminer", "equipe_b": w1_matchs[2*i+1]["vainqueur"] or "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": f"W1_M{2*i+1}", "source_b": f"W1_M{2*i+2}", "type_source_a": "vainqueur", "type_source_b": "vainqueur"} for i in range(4)
+            ]
+        })
+        tours.append({
+            "numero": 3, "nom": "Gagnants — Demi-finales", "section": "winner", "bracket": "winner",
+            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "matchs": [
+                {"id": "W3_M1", "bracket": "winner", "etape": 4, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": "W2_M1", "source_b": "W2_M2", "type_source_a": "vainqueur", "type_source_b": "vainqueur"},
+                {"id": "W3_M2", "bracket": "winner", "etape": 4, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": "W2_M3", "source_b": "W2_M4", "type_source_a": "vainqueur", "type_source_b": "vainqueur"}
+            ]
+        })
+        tours.append({
+            "numero": 4, "nom": "Gagnants — Finale", "section": "winner", "bracket": "winner",
+            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "matchs": [{
+                "id": "W4_M1", "bracket": "winner", "etape": 6, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": "W3_M1", "source_b": "W3_M2", "type_source_a": "vainqueur", "type_source_b": "vainqueur"
+            }]
+        })
+        tours.append({
+            "numero": 5, "nom": "Seconde Chance — Tour 1", "section": "loser", "bracket": "loser",
+            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "matchs": [
+                {"id": f"L1_M{i+1}", "bracket": "loser", "etape": 2, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": f"W1_M{2*i+1}", "source_b": f"W1_M{2*i+2}", "type_source_a": "perdant", "type_source_b": "perdant"} for i in range(4)
+            ]
+        })
+        w2_losers = ["W2_M4", "W2_M3", "W2_M2", "W2_M1"]
+        tours.append({
+            "numero": 6, "nom": "Seconde Chance — Tour 2", "section": "loser", "bracket": "loser",
+            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "matchs": [
+                {"id": f"L2_M{i+1}", "bracket": "loser", "etape": 3, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": f"L1_M{i+1}", "source_b": w2_losers[i], "type_source_a": "vainqueur", "type_source_b": "perdant"} for i in range(4)
+            ]
+        })
+        tours.append({
+            "numero": 7, "nom": "Seconde Chance — Quarts de finale", "section": "loser", "bracket": "loser",
+            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "matchs": [
+                {"id": "L3_M1", "bracket": "loser", "etape": 4, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": "L2_M1", "source_b": "L2_M2", "type_source_a": "vainqueur", "type_source_b": "vainqueur"},
+                {"id": "L3_M2", "bracket": "loser", "etape": 4, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": "L2_M3", "source_b": "L2_M4", "type_source_a": "vainqueur", "type_source_b": "vainqueur"}
+            ]
+        })
+        tours.append({
+            "numero": 8, "nom": "Seconde Chance — Repêchage Demi-finales", "section": "loser", "bracket": "loser",
+            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "matchs": [
+                {"id": "L4_M1", "bracket": "loser", "etape": 5, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": "L3_M1", "source_b": "W3_M2", "type_source_a": "vainqueur", "type_source_b": "perdant"},
+                {"id": "L4_M2", "bracket": "loser", "etape": 5, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": "L3_M2", "source_b": "W3_M1", "type_source_a": "vainqueur", "type_source_b": "perdant"}
+            ]
+        })
+        tours.append({
+            "numero": 9, "nom": "Seconde Chance — Demi-finale", "section": "loser", "bracket": "loser",
+            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "matchs": [{
+                "id": "L5_M1", "bracket": "loser", "etape": 6, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": "L4_M1", "source_b": "L4_M2", "type_source_a": "vainqueur", "type_source_b": "vainqueur"
+            }]
+        })
+        tours.append({
+            "numero": 10, "nom": "Seconde Chance — Finale", "section": "loser", "bracket": "loser",
+            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "matchs": [{
+                "id": "L6_M1", "bracket": "loser", "etape": 7, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": "L5_M1", "source_b": "W4_M1", "type_source_a": "vainqueur", "type_source_b": "perdant"
+            }]
+        })
+        tours.append({
+            "numero": 11, "nom": "🏆 Grande Finale Officielle", "section": "finale", "bracket": "finale",
+            "race_to": race_finale, "format_label": f"{race_finale} de {2*race_finale - 1}",
+            "matchs": [{
+                "id": "GF_M1", "bracket": "finale", "etape": 8, "race_to": race_finale, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": "W4_M1", "source_b": "L6_M1", "type_source_a": "vainqueur", "type_source_b": "vainqueur"
+            }]
+        })
+
+    # Propager les exemptions initiales de W1 vers les matchs correspondants
+    for m in w1_matchs:
+        if m.get("termine") and m.get("passe_droit"):
+            mid = m["id"]
+            for t in tours:
+                for mf in t.get("matchs", []):
+                    if mf.get("source_a") == mid:
+                        mf["equipe_a"] = m["vainqueur"] if mf.get("type_source_a") == "vainqueur" else m["perdant"]
+                    if mf.get("source_b") == mid:
+                        mf["equipe_b"] = m["vainqueur"] if mf.get("type_source_b") == "vainqueur" else m["perdant"]
+
+    heure_fin = planifier_horaires_double_elimination(tours, heure_debut=heure_debut, duree_min=duree_min, nb_tables=nb_tables)
+
+    tournoi_obj = {
+        "titre": titre,
+        "date_creation": datetime.now().strftime("%d/%m/%Y à %H:%M"),
+        "format": "double_elimination",
+        "format_label": "Double élimination (Winner & Loser Bracket)",
+        "race_prelim": race_prelim,
+        "race_finale": race_finale,
+        "participants": p_liste,
+        "promus_second_tour": promus,
+        "total_tours": len(tours),
+        "tours": tours,
+        "heure_debut": heure_debut,
+        "duree_match_min": duree_min,
+        "nb_tables": nb_tables,
+        "heure_fin_estimee": heure_fin,
+        "statut": "en_cours",
+        "vainqueur_final": None,
+        "finaliste": None
+    }
+    return tournoi_obj
+
+def actualiser_score_elimination(tournoi, tour_num, match_id, score_a, score_b):
+    """Enregistre le score et qualifie automatiquement le vainqueur (et perdant en double élimination)."""
+    t_idx = tour_num - 1
     m_trouve = None
-    for m in tour_courant["matchs"]:
-        if m["id"] == match_id:
-            m_trouve = m
-            break
+    tour_courant = None
+    if 0 <= t_idx < len(tournoi.get("tours", [])):
+        tour_courant = tournoi["tours"][t_idx]
+        for m in tour_courant.get("matchs", []):
+            if m["id"] == match_id:
+                m_trouve = m
+                break
+
+    if not m_trouve:
+        for idx, t in enumerate(tournoi.get("tours", [])):
+            for m in t.get("matchs", []):
+                if m["id"] == match_id:
+                    m_trouve = m
+                    tour_courant = t
+                    tour_num = idx + 1
+                    break
+            if m_trouve:
+                break
 
     if not m_trouve:
         return False
@@ -2405,21 +2841,69 @@ def actualiser_score_elimination(tournoi, tour_num, match_id, score_a, score_b):
     vainqueur = m_trouve["equipe_a"] if score_a > score_b else m_trouve["equipe_b"]
     perdant = m_trouve["equipe_b"] if score_a > score_b else m_trouve["equipe_a"]
     m_trouve["vainqueur"] = vainqueur
+    m_trouve["perdant"] = perdant
     m_trouve["termine"] = True
 
-    # Propager aux matchs futurs selon source_a / source_b
+    # Propagation directe selon source_a / source_b et type_source_a / type_source_b
     propage = False
-    for t in tournoi["tours"][tour_num:]:
-        for m_futur in t["matchs"]:
+    cascade_termines = []
+    for t in tournoi.get("tours", []):
+        for m_futur in t.get("matchs", []):
             if m_futur.get("source_a") == match_id:
-                m_futur["equipe_a"] = vainqueur
+                type_a = m_futur.get("type_source_a", "vainqueur")
+                m_futur["equipe_a"] = vainqueur if type_a == "vainqueur" else perdant
                 propage = True
             if m_futur.get("source_b") == match_id:
-                m_futur["equipe_b"] = vainqueur
+                type_b = m_futur.get("type_source_b", "vainqueur")
+                m_futur["equipe_b"] = vainqueur if type_b == "vainqueur" else perdant
                 propage = True
 
-    # Fallback pour compatibilité
-    if not propage and tour_num < tournoi["total_tours"]:
+            # Traitement des exemptions si un slot devient "Exempt (Passe-droit)"
+            if not m_futur.get("termine"):
+                ea_f = m_futur.get("equipe_a")
+                eb_f = m_futur.get("equipe_b")
+                race_f = m_futur.get("race_to", 2)
+                if ea_f and ea_f not in ["À déterminer", "Exempt (Passe-droit)"] and eb_f == "Exempt (Passe-droit)":
+                    m_futur["score_a"] = race_f
+                    m_futur["score_b"] = 0
+                    m_futur["vainqueur"] = ea_f
+                    m_futur["perdant"] = "Exempt (Passe-droit)"
+                    m_futur["termine"] = True
+                    m_futur["passe_droit"] = True
+                    cascade_termines.append(m_futur["id"])
+                elif eb_f and eb_f not in ["À déterminer", "Exempt (Passe-droit)"] and ea_f == "Exempt (Passe-droit)":
+                    m_futur["score_a"] = 0
+                    m_futur["score_b"] = race_f
+                    m_futur["vainqueur"] = eb_f
+                    m_futur["perdant"] = "Exempt (Passe-droit)"
+                    m_futur["termine"] = True
+                    m_futur["passe_droit"] = True
+                    cascade_termines.append(m_futur["id"])
+                elif ea_f == "Exempt (Passe-droit)" and eb_f == "Exempt (Passe-droit)":
+                    m_futur["score_a"] = 0
+                    m_futur["score_b"] = 0
+                    m_futur["vainqueur"] = "Exempt (Passe-droit)"
+                    m_futur["perdant"] = "Exempt (Passe-droit)"
+                    m_futur["termine"] = True
+                    m_futur["passe_droit"] = True
+                    cascade_termines.append(m_futur["id"])
+
+    # Traiter cascades de byes
+    for casc_id in cascade_termines:
+        for t in tournoi.get("tours", []):
+            for m_futur in t.get("matchs", []):
+                for t_src in tournoi.get("tours", []):
+                    for mc in t_src.get("matchs", []):
+                        if mc["id"] == casc_id:
+                            cv = mc["vainqueur"]
+                            cp = mc["perdant"]
+                            if m_futur.get("source_a") == casc_id:
+                                m_futur["equipe_a"] = cv if m_futur.get("type_source_a", "vainqueur") == "vainqueur" else cp
+                            if m_futur.get("source_b") == casc_id:
+                                m_futur["equipe_b"] = cv if m_futur.get("type_source_b", "vainqueur") == "vainqueur" else cp
+
+    # Fallback pour élimination simple historique
+    if not propage and tournoi.get("format") != "double_elimination" and tour_num < tournoi.get("total_tours", 1):
         try:
             m_idx_in_tour = tour_courant["matchs"].index(m_trouve)
             prochain_tour = tournoi["tours"][tour_num]
@@ -2433,7 +2917,8 @@ def actualiser_score_elimination(tournoi, tour_num, match_id, score_a, score_b):
         except Exception:
             pass
 
-    if tour_num == tournoi["total_tours"]:
+    est_finale = (tour_num == tournoi.get("total_tours")) or (match_id == "GF_M1")
+    if est_finale:
         tournoi["vainqueur_final"] = vainqueur
         tournoi["finaliste"] = perdant
         tournoi["statut"] = "termine"
@@ -2441,23 +2926,23 @@ def actualiser_score_elimination(tournoi, tour_num, match_id, score_a, score_b):
     return True
 
 def attribuer_passe_droit_elimination(tournoi, tour_num, match_id, beneficiaire):
-    """Accorde un passe-droit à un joueur ou duo dans un match à élimination directe et le promeut immédiatement au tour suivant."""
-    t_idx = tour_num - 1
-    if t_idx < 0 or t_idx >= len(tournoi.get("tours", [])):
-        return False
-    tour_courant = tournoi["tours"][t_idx]
-
+    """Accorde un passe-droit à un joueur ou duo dans un match et le promeut immédiatement."""
     m_trouve = None
-    for m in tour_courant.get("matchs", []):
-        if m["id"] == match_id:
-            m_trouve = m
+    tour_courant = None
+    for idx, t in enumerate(tournoi.get("tours", [])):
+        for m in t.get("matchs", []):
+            if m["id"] == match_id:
+                m_trouve = m
+                tour_courant = t
+                tour_num = idx + 1
+                break
+        if m_trouve:
             break
 
     if not m_trouve:
         return False
 
     race_to = m_trouve.get("race_to", tour_courant.get("race_to", 3 if tour_num == tournoi.get("total_tours") else 2))
-
     ea = m_trouve.get("equipe_a")
     eb = m_trouve.get("equipe_b")
 
@@ -2473,20 +2958,23 @@ def attribuer_passe_droit_elimination(tournoi, tour_num, match_id, beneficiaire)
         m_trouve["score_a"] = 0
         m_trouve["score_b"] = race_to
         perdant = ea
+    m_trouve["perdant"] = perdant
 
-    # Propagation directe aux matchs des tours suivants
+    # Propagation directe
     propage = False
-    for t in tournoi["tours"][tour_num:]:
+    for t in tournoi.get("tours", []):
         for m_futur in t.get("matchs", []):
             if m_futur.get("source_a") == match_id:
-                m_futur["equipe_a"] = beneficiaire
+                type_a = m_futur.get("type_source_a", "vainqueur")
+                m_futur["equipe_a"] = beneficiaire if type_a == "vainqueur" else perdant
                 propage = True
             if m_futur.get("source_b") == match_id:
-                m_futur["equipe_b"] = beneficiaire
+                type_b = m_futur.get("type_source_b", "vainqueur")
+                m_futur["equipe_b"] = beneficiaire if type_b == "vainqueur" else perdant
                 propage = True
 
-    # Fallback pour compatibilité arborescence
-    if not propage and tour_num < tournoi.get("total_tours", 1):
+    # Fallback pour élimination simple historique
+    if not propage and tournoi.get("format") != "double_elimination" and tour_num < tournoi.get("total_tours", 1):
         try:
             m_idx_in_tour = tour_courant["matchs"].index(m_trouve)
             prochain_tour = tournoi["tours"][tour_num]
@@ -2500,8 +2988,8 @@ def attribuer_passe_droit_elimination(tournoi, tour_num, match_id, beneficiaire)
         except Exception:
             pass
 
-    # Si c'était la finale
-    if tour_num == tournoi.get("total_tours"):
+    est_finale = (tour_num == tournoi.get("total_tours")) or (match_id == "GF_M1")
+    if est_finale:
         tournoi["vainqueur_final"] = beneficiaire
         tournoi["finaliste"] = perdant
         tournoi["statut"] = "termine"
@@ -2654,9 +3142,14 @@ def generer_html_tournoi(tournoi, mode="simple"):
     titre_t = tournoi.get("titre", "Tournoi officiel")
     date_t = tournoi.get("date_creation", "")
     mode_str = "Simple (1 contre 1)" if mode == "simple" else "Double / Équipes (2 contre 2)"
+    is_double_elim = (tournoi.get("format") == "double_elimination")
     is_elim = (tournoi.get("format") == "elimination")
 
-    if is_elim:
+    if is_double_elim:
+        race_p = tournoi.get("race_prelim", 2)
+        race_f = tournoi.get("race_finale", 3)
+        format_str = f"Double élimination (Gagnants & Seconde chance {race_p} de {2*race_p-1} • Grande Finale {race_f} de {2*race_f-1})"
+    elif is_elim:
         race_p = tournoi.get("race_prelim", 2)
         race_f = tournoi.get("race_finale", 3)
         format_str = f"Élimination directe (Préliminaires {race_p} de {2*race_p-1} • Finale {race_f} de {2*race_f-1})"
@@ -2683,7 +3176,7 @@ def generer_html_tournoi(tournoi, mode="simple"):
 
     # BANNIÈRE PARTICIPANTS PROMUS AU SECOND TOUR
     promus_html = ""
-    if is_elim and tournoi.get("promus_second_tour"):
+    if (is_elim or is_double_elim) and tournoi.get("promus_second_tour"):
         promus_str = ", ".join([formater_nom_abrege_joueur(p) for p in tournoi["promus_second_tour"]])
         promus_html = f"""
         <div style="background: #eef7ff; border: 1px solid #90caf9; border-radius: 4px; padding: 5px 10px; margin-bottom: 8px; font-size: 11px; color: #0b3c5d;">
@@ -2693,7 +3186,139 @@ def generer_html_tournoi(tournoi, mode="simple"):
 
     # CONSTRUCTION DE L'ARBORESCENCE GRAPHIQUE (BRACKET OU MATRICE)
     arborescence_html = ""
-    if is_elim:
+    if is_double_elim:
+        tours = tournoi.get("tours", [])
+        promus_set = set(tournoi.get("promus_second_tour", []))
+
+        def generer_carte_html_match(m, r_fmt):
+            m_id = m.get("id", "")
+            m_fmt = m.get("format_label", r_fmt)
+            ea = m.get("equipe_a", "À déterminer")
+            eb = m.get("equipe_b", "À déterminer")
+            sa = m.get("score_a", 0)
+            sb = m.get("score_b", 0)
+            termine = m.get("termine", False)
+            vainq = m.get("vainqueur")
+
+            m_pd = m.get("passe_droit", False)
+            if m_pd and termine:
+                sc_a_disp = "BYE" if vainq == ea else "-"
+                sc_b_disp = "BYE" if vainq == eb else "-"
+            else:
+                sc_a_disp = str(sa) if termine else "-"
+                sc_b_disp = str(sb) if termine else "-"
+
+            win_a = "winner" if (termine and vainq == ea) else ""
+            win_b = "winner" if (termine and vainq == eb) else ""
+            card_done = "is-done" if termine else ""
+
+            m_h = m.get("heure_estimee", "")
+            m_t_court = m.get("table_courte", "")
+            if m_pd:
+                h_badge = '<span style="color: #2e7d32; font-weight: bold;">🎟️ Passe-droit</span>'
+            elif m_h and m_h != "—":
+                h_badge = f'<span style="color: #0b3c5d; font-weight: bold;">⏰ {m_h} [{m_t_court}]</span>'
+            else:
+                h_badge = f'<span>{m_fmt}</span>'
+
+            if ea == "À déterminer" and m.get("source_a"):
+                type_a = m.get("type_source_a", "vainqueur")
+                pfx_a = "Vainq." if type_a == "vainqueur" else "Perd."
+                ea_disp = f"{pfx_a} {m['source_a']}"
+            else:
+                ea_disp = formater_nom_abrege_joueur(ea)
+                if not m.get("source_a") and ea in promus_set:
+                    ea_disp += " 🎟️"
+
+            if eb == "À déterminer" and m.get("source_b"):
+                type_b = m.get("type_source_b", "vainqueur")
+                pfx_b = "Vainq." if type_b == "vainqueur" else "Perd."
+                eb_disp = f"{pfx_b} {m['source_b']}"
+            else:
+                eb_disp = formater_nom_abrege_joueur(eb)
+                if not m.get("source_b") and eb in promus_set:
+                    eb_disp += " 🎟️"
+
+            return f"""
+            <div class="bracket-card {card_done}">
+                <div class="card-header">
+                    <span>{m_id} • {m_fmt}</span>
+                    {h_badge}
+                </div>
+                <div class="card-body">
+                    <div class="player-row {win_a}">
+                        <span class="p-name" title="{ea}">{ea_disp}</span>
+                        <span class="p-score">{sc_a_disp}</span>
+                    </div>
+                    <div class="player-row {win_b}">
+                        <span class="p-name" title="{eb}">{eb_disp}</span>
+                        <span class="p-score">{sc_b_disp}</span>
+                    </div>
+                </div>
+            </div>
+            """
+
+        def generer_colonnes_section(liste_tours, classe_col=""):
+            res = []
+            for t in liste_tours:
+                r_name = t.get("nom", f"Tour {t.get('numero', 1)}")
+                r_fmt = t.get("format_label", "")
+                cards = [generer_carte_html_match(m, r_fmt) for m in t.get("matchs", [])]
+                res.append(f"""
+                <div class="bracket-col {classe_col}">
+                    <div class="bracket-round-title">
+                        <div class="r-name">{r_name}</div>
+                        <div class="r-fmt">{r_fmt}</div>
+                    </div>
+                    <div class="bracket-round-matches">
+                        {''.join(cards)}
+                    </div>
+                </div>
+                """)
+            return res
+
+        cols_winner = generer_colonnes_section([t for t in tours if t.get("bracket") == "winner"], "")
+        cols_loser = generer_colonnes_section([t for t in tours if t.get("bracket") == "loser"], "loser-col")
+        cols_finale = generer_colonnes_section([t for t in tours if t.get("bracket") == "finale"], "finale-col")
+
+        vainq_final = tournoi.get("vainqueur_final") or "À déterminer"
+        vainq_final_disp = formater_nom_abrege_joueur(vainq_final)
+        champ_col_html = f"""
+        <div class="bracket-col champion-col">
+            <div class="bracket-round-title" style="background: #f57f17;">
+                <div class="r-name">🏆 Champion</div>
+                <div class="r-fmt">Titre officiel</div>
+            </div>
+            <div class="bracket-round-matches" style="justify-content: center;">
+                <div class="champion-box">
+                    <div class="champ-trophy">🥇</div>
+                    <div class="champ-title">CHAMPION DU TOURNOI</div>
+                    <div class="champ-name">{vainq_final_disp}</div>
+                </div>
+            </div>
+        </div>
+        """
+
+        arborescence_html = f"""
+        <div class="bracket-section">
+            <div class="bracket-section-header winner">🟦 TABLEAU DES GAGNANTS (WINNER BRACKET)</div>
+            <div class="bracket-wrapper">
+                {''.join(cols_winner)}
+            </div>
+
+            <div class="bracket-section-header loser">🟧 TABLEAU DE SECONDE CHANCE (LOSER BRACKET — REPÊCHAGE)</div>
+            <div class="bracket-wrapper">
+                {''.join(cols_loser)}
+            </div>
+
+            <div class="bracket-section-header finale">🏆 GRANDE FINALE OFFICIELLE & PODIUM</div>
+            <div class="bracket-wrapper" style="justify-content: flex-start; max-width: 620px;">
+                {''.join(cols_finale)}
+                {champ_col_html}
+            </div>
+        </div>
+        """
+    elif is_elim:
         cols_html = []
         tours = tournoi.get("tours", [])
         for t in tours:
@@ -2920,6 +3545,35 @@ def generer_html_tournoi(tournoi, mode="simple"):
         }}
         .bracket-section {{
             margin: 8px 0 10px 0;
+        }}
+        .bracket-section-header {{
+            font-size: 11px;
+            font-weight: bold;
+            padding: 4px 8px;
+            margin: 12px 0 6px 0;
+            border-radius: 4px;
+            letter-spacing: 0.5px;
+        }}
+        .bracket-section-header.winner {{
+            background: #e8f0fe;
+            color: #0b3c5d;
+            border-left: 4px solid #0b3c5d;
+        }}
+        .bracket-section-header.loser {{
+            background: #fef3c7;
+            color: #92400e;
+            border-left: 4px solid #d97706;
+        }}
+        .bracket-section-header.finale {{
+            background: #fef9c3;
+            color: #854d0e;
+            border-left: 4px solid #f59e0b;
+        }}
+        .bracket-col.loser-col .bracket-round-title {{
+            background: #d97706 !important;
+        }}
+        .bracket-col.finale-col .bracket-round-title {{
+            background: #b45309 !important;
         }}
         .bracket-wrapper {{
             display: flex;
@@ -3389,16 +4043,32 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
             titre_saisi = st.text_input("Nom du tournoi :", value=titre_defaut, key=f"tournoi_titre_{mode}{key_suffix}")
             type_format = st.radio(
                 "Format de compétition :",
-                ["🏆 Élimination directe (Arbre de tournoi)", "🔄 Championnat toutes rondes (Round-Robin)"],
+                [
+                    "🏆 Élimination directe (Arbre de tournoi)",
+                    "🛡️ Double élimination (Winner & Loser Bracket — Seconde chance)",
+                    "🔄 Championnat toutes rondes (Round-Robin)"
+                ],
                 key=f"tournoi_format_{mode}{key_suffix}"
             )
         with col_cfg2:
             st.markdown("**Formule officielle des matchs :**")
-            st.info(
-                "🔹 **Préliminaires :** 2 de 3 *(premier à 2)*\n\n"
-                "🏆 **Grande Finale :** 3 de 5 *(premier à 3)*\n\n"
-                "🔄 **Round-Robin :** 2 de 3"
-            )
+            if "Double élimination" in type_format:
+                st.info(
+                    "🛡️ **Double élimination :** Seconde chance garantie en cas de 1ʳᵉ défaite !\n\n"
+                    "🔹 **Gagnants :** 2 de 3 *(premier à 2)*\n\n"
+                    "🔸 **Seconde chance :** 2 de 3 *(premier à 2)*\n\n"
+                    "🏆 **Grande Finale :** 3 de 5 *(premier à 3)*"
+                )
+            elif "Élimination" in type_format:
+                st.info(
+                    "🔹 **Préliminaires :** 2 de 3 *(premier à 2)*\n\n"
+                    "🏆 **Grande Finale :** 3 de 5 *(premier à 3)*"
+                )
+            else:
+                st.info(
+                    "🔄 **Round-Robin :** 2 de 3 *(premier à 2)*\n\n"
+                    "Chaque participant rencontre tous les autres."
+                )
 
         st.markdown("##### 📅 Organisation, Disponibilité des tables & Horaires (1 seule journée)")
         st.caption("ℹ️ *Une pause dîner est automatiquement intégrée de 12:00 à 13:00 : aucun match n'est cédulé durant cette période.*")
@@ -3570,7 +4240,9 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
         st.divider()
 
         nb_p = len(participants_finaux)
-        is_elim = "Élimination" in type_format
+        is_double_elim = "Double élimination" in type_format
+        is_simple_elim = "Élimination directe" in type_format
+        is_elim = is_simple_elim or is_double_elim
         bloquer_lancement = bool(doublons) if (mode == "double" and 'doublons' in locals()) else False
         if not est_editeur:
             bloquer_lancement = True
@@ -3579,8 +4251,22 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
         if nb_p < 2:
             bloquer_lancement = True
             st.info(f"ℹ️ Sélectionnez au moins 2 {'équipes' if mode == 'double' else 'joueurs'} pour configurer le tournoi.")
+        elif is_double_elim and nb_p < 4:
+            bloquer_lancement = True
+            st.warning("⚠️ **Double élimination :** Un minimum de **4 participants** est requis pour déployer la formule avec tableau des gagnants et tableau de repêchage (seconde chance).")
         elif is_elim:
-            nb_promus, nb_m_t1, nb_m_t2, b_pow = calculer_structure_arbre(nb_p)
+            if is_double_elim:
+                if nb_p <= 4:
+                    b_pow = 4
+                elif nb_p <= 8:
+                    b_pow = 8
+                else:
+                    b_pow = 16
+                nb_promus = b_pow - nb_p
+                nb_m_t1 = (nb_p - nb_promus) // 2
+                nb_m_t2 = b_pow // 4
+            else:
+                nb_promus, nb_m_t1, nb_m_t2, b_pow = calculer_structure_arbre(nb_p)
 
             if nb_promus > 0:
                 st.markdown(
@@ -3714,8 +4400,18 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
             if tournois_data.get(mode):
                 sauvegarder_tournoi_dans_historique(mode, notifier_admin=True)
 
-            format_slug = "elimination" if is_elim else "round_robin"
-            if format_slug == "elimination":
+            if is_double_elim:
+                t_cree = generer_arbre_double_elimination(
+                    participants_finaux,
+                    race_prelim=2,
+                    race_finale=3,
+                    titre=titre_saisi,
+                    heure_debut=heure_debut_str,
+                    duree_min=duree_min_saisie,
+                    nb_tables=nb_tables_saisi,
+                    passes_droits=(promus_selectionnes if (promus_selectionnes and len(promus_selectionnes) == nb_promus) else None)
+                )
+            elif is_simple_elim:
                 t_cree = generer_arbre_elimination(
                     participants_finaux,
                     race_prelim=2,
@@ -3887,7 +4583,9 @@ def afficher_section_tournoi(mode="simple"):
         with col_top1:
             st.markdown(f"#### 🏆 **{titre_t}**")
             badge_statut = "🟢 **En cours**" if statut == "en_cours" else "🏆 **Tournoi Terminé**"
-            if format_type == "elimination":
+            if format_type == "double_elimination":
+                format_nom = "Double élimination (Gagnants & Seconde chance 2 de 3 • Grande Finale 3 de 5)"
+            elif format_type == "elimination":
                 format_nom = "Élimination directe (Préliminaires 2 de 3 • Finale 3 de 5)"
             else:
                 format_nom = "Championnat Round-Robin (2 de 3)"
@@ -4035,97 +4733,139 @@ def afficher_section_tournoi(mode="simple"):
         st.divider()
 
         # DÉROULEMENT SELON LE FORMAT
-        if format_type == "elimination":
+        if format_type in ["elimination", "double_elimination"]:
             st.markdown("##### 🎯 Saisie des scores & Déroulement des rencontres")
             if tournoi.get("promus_second_tour"):
                 promus_str_view = ", ".join(tournoi["promus_second_tour"])
-                st.info(f"🎟️ **Participants promus d'office au 2ᵉ tour (Passe-droit) :** {promus_str_view}")
+                st.info(f"🎟️ **Participants promus d'office (Passe-droit) :** {promus_str_view}")
+
+            def afficher_carte_rencontre(m, tour_courant, tour_num, tour_race, tour_fmt):
+                m_id = m["id"]
+                ea = m["equipe_a"]
+                eb = m["equipe_b"]
+                termine = m.get("termine", False)
+                vainq = m.get("vainqueur")
+                sa = m.get("score_a", 0)
+                sb = m.get("score_b", 0)
+                m_race = m.get("race_to", tour_race)
+                m_fmt = m.get("format_label", tour_fmt)
+
+                m_h = m.get("heure_estimee", "")
+                m_tbl = m.get("table", "Table 1")
+                badge_horaire = f"<span style='background:#e8f0fe; color:#0b3c5d; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600;'>⏰ {m_h} • {m_tbl}</span>" if (m_h and m_h != "—") else ""
+
+                with st.container(border=True):
+                    col_m1, col_m2 = st.columns([3, 2])
+                    with col_m1:
+                        if termine:
+                            st.markdown(f"**{m_id}** : **{ea}** ({sa}) vs ({sb}) **{eb}** &nbsp; {badge_horaire}", unsafe_allow_html=True)
+                            if m.get("passe_droit"):
+                                st.success(f"🎟️ **Passe-droit accordé :** {vainq} est promu au tour suivant !")
+                            else:
+                                st.success(f"🏆 **Qualifié :** {vainq} *(score final {sa}-{sb})*")
+                        else:
+                            if ea == "À déterminer" or eb == "À déterminer":
+                                st.markdown(f"**{m_id}** : `{ea}` vs `{eb}` &nbsp; {badge_horaire}", unsafe_allow_html=True)
+                                st.caption("⏳ En attente des vainqueurs / perdants des tours précédents...")
+                            else:
+                                st.markdown(f"**{m_id}** : 🎯 **{ea}** vs **{eb}** &nbsp; {badge_horaire}", unsafe_allow_html=True)
+                                st.caption(f"Format officiel : **{m_fmt}** (premier à {m_race} victoires)")
+
+                    with col_m2:
+                        if not termine:
+                            if est_editeur:
+                                col_s1, col_s2, col_s3, col_s4 = st.columns([1, 1, 1.2, 1.4])
+                                with col_s1:
+                                    sc_a_in = st.number_input(f"{formater_nom_abrege_joueur(ea)}", min_value=0, max_value=m_race, value=0, key=f"sc_a_{mode}_{m_id}")
+                                with col_s2:
+                                    sc_b_in = st.number_input(f"{formater_nom_abrege_joueur(eb)}", min_value=0, max_value=m_race, value=0, key=f"sc_b_{mode}_{m_id}")
+                                with col_s3:
+                                    st.write("")
+                                    peut_valider = (ea != "À déterminer" and eb != "À déterminer")
+                                    if st.button("✅ Valider", key=f"btn_v_{mode}_{m_id}", use_container_width=True, disabled=not peut_valider):
+                                        if sc_a_in == sc_b_in:
+                                            st.error("Match nul impossible.")
+                                        elif sc_a_in < m_race and sc_b_in < m_race:
+                                            st.warning(f"Un joueur/duo doit remporter {m_race} manches ({m_fmt}).")
+                                        else:
+                                            actualiser_score_elimination(tournoi, tour_num, m_id, sc_a_in, sc_b_in)
+                                            sauvegarder_tournois_data(tournois_data)
+                                            st.rerun()
+                                with col_s4:
+                                    st.write("")
+                                    candidats_pd = [p for p in [ea, eb] if p and p not in ["À déterminer", "Exempt (Passe-droit)"]]
+                                    if candidats_pd:
+                                        with st.popover("🎟️ Passe-droit", use_container_width=True, help="Promouvoir directement un participant au tour suivant"):
+                                            st.markdown(f"##### 🎟️ Accorder un passe-droit")
+                                            st.caption(f"Promouvoir au tour suivant pour la rencontre **{m_id}** :")
+                                            choix_promo = st.radio(
+                                                "Bénéficiaire du passe-droit :",
+                                                options=candidats_pd,
+                                                format_func=lambda x: f"🚀 {x}",
+                                                key=f"rad_pd_{mode}_{m_id}"
+                                            )
+                                            if st.button("🚀 Promouvoir au tour suivant", type="primary", use_container_width=True, key=f"btn_apply_pd_{mode}_{m_id}"):
+                                                attribuer_passe_droit_elimination(tournoi, tour_num, m_id, choix_promo)
+                                                sauvegarder_tournois_data(tournois_data)
+                                                st.success(f"🎟️ Passe-droit accordé ! {choix_promo} est promu au tour suivant.")
+                                                st.rerun()
+                            else:
+                                st.caption("⏳ *Rencontre en attente de score (saisie réservée au marqueur)*")
+
             tours = tournoi.get("tours", [])
-            tours_onglets = [t["nom"] for t in tours]
 
-            if tours_onglets:
-                tabs_t = st.tabs(tours_onglets)
-                for t_idx, tab_tour in enumerate(tabs_t):
-                    tour_courant = tours[t_idx]
-                    tour_num = tour_courant["numero"]
-                    tour_race = tour_courant.get("race_to", 3 if tour_num == tournoi.get("total_tours") else 2)
-                    tour_fmt = tour_courant.get("format_label", "3 de 5" if tour_race == 3 else "2 de 3")
-                    with tab_tour:
-                        st.markdown(f"###### **{tour_courant['nom']}** — Format `{tour_fmt}` (premier à {tour_race} manches gagnantes)")
-                        matchs = tour_courant.get("matchs", [])
+            if format_type == "double_elimination":
+                tours_winner = [t for t in tours if t.get("bracket") == "winner"]
+                tours_loser = [t for t in tours if t.get("bracket") == "loser"]
+                tours_finale = [t for t in tours if t.get("bracket") == "finale"]
 
-                        for m in matchs:
-                            m_id = m["id"]
-                            ea = m["equipe_a"]
-                            eb = m["equipe_b"]
-                            termine = m.get("termine", False)
-                            vainq = m.get("vainqueur")
-                            sa = m.get("score_a", 0)
-                            sb = m.get("score_b", 0)
-                            m_race = m.get("race_to", tour_race)
-                            m_fmt = m.get("format_label", tour_fmt)
+                tab_w, tab_l, tab_f = st.tabs([
+                    f"🟦 Tableau des Gagnants ({len(tours_winner)} tours)",
+                    f"🟧 Seconde Chance — Repêchage ({len(tours_loser)} tours)",
+                    "🏆 Grande Finale"
+                ])
 
-                            m_h = m.get("heure_estimee", "")
-                            m_tbl = m.get("table", "Table 1")
-                            badge_horaire = f"<span style='background:#e8f0fe; color:#0b3c5d; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600;'>⏰ {m_h} • {m_tbl}</span>" if m_h else ""
+                with tab_w:
+                    for tour_courant in tours_winner:
+                        tour_num = tour_courant["numero"]
+                        tour_race = tour_courant.get("race_to", 2)
+                        tour_fmt = tour_courant.get("format_label", "2 de 3")
+                        st.markdown(f"###### **{tour_courant['nom']}** — Format `{tour_fmt}` (premier à {tour_race} victoires)")
+                        for m in tour_courant.get("matchs", []):
+                            afficher_carte_rencontre(m, tour_courant, tour_num, tour_race, tour_fmt)
 
-                            with st.container(border=True):
-                                col_m1, col_m2 = st.columns([3, 2])
-                                with col_m1:
-                                    if termine:
-                                        st.markdown(f"**{m_id}** : **{ea}** ({sa}) vs ({sb}) **{eb}** &nbsp; {badge_horaire}", unsafe_allow_html=True)
-                                        if m.get("passe_droit"):
-                                            st.success(f"🎟️ **Passe-droit accordé :** {vainq} est promu au tour suivant !")
-                                        else:
-                                            st.success(f"🏆 **Qualifié :** {vainq} *(score final {sa}-{sb})*")
-                                    else:
-                                        if ea == "À déterminer" or eb == "À déterminer":
-                                            st.markdown(f"**{m_id}** : `{ea}` vs `{eb}` &nbsp; {badge_horaire}", unsafe_allow_html=True)
-                                            st.caption("⏳ En attente des vainqueurs du tour précédent...")
-                                        else:
-                                            st.markdown(f"**{m_id}** : 🎯 **{ea}** vs **{eb}** &nbsp; {badge_horaire}", unsafe_allow_html=True)
-                                            st.caption(f"Format officiel : **{m_fmt}** (premier à {m_race} victoires)")
+                with tab_l:
+                    for tour_courant in tours_loser:
+                        tour_num = tour_courant["numero"]
+                        tour_race = tour_courant.get("race_to", 2)
+                        tour_fmt = tour_courant.get("format_label", "2 de 3")
+                        st.markdown(f"###### **{tour_courant['nom']}** — Format `{tour_fmt}` (premier à {tour_race} victoires)")
+                        for m in tour_courant.get("matchs", []):
+                            afficher_carte_rencontre(m, tour_courant, tour_num, tour_race, tour_fmt)
 
-                                with col_m2:
-                                    if not termine:
-                                        if est_editeur:
-                                            col_s1, col_s2, col_s3, col_s4 = st.columns([1, 1, 1.2, 1.4])
-                                            with col_s1:
-                                                sc_a_in = st.number_input(f"{formater_nom_abrege_joueur(ea)}", min_value=0, max_value=m_race, value=0, key=f"sc_a_{mode}_{m_id}")
-                                            with col_s2:
-                                                sc_b_in = st.number_input(f"{formater_nom_abrege_joueur(eb)}", min_value=0, max_value=m_race, value=0, key=f"sc_b_{mode}_{m_id}")
-                                            with col_s3:
-                                                st.write("")
-                                                peut_valider = (ea != "À déterminer" and eb != "À déterminer")
-                                                if st.button("✅ Valider", key=f"btn_v_{mode}_{m_id}", use_container_width=True, disabled=not peut_valider):
-                                                    if sc_a_in == sc_b_in:
-                                                        st.error("Match nul impossible.")
-                                                    elif sc_a_in < m_race and sc_b_in < m_race:
-                                                        st.warning(f"Un joueur/duo doit remporter {m_race} manches ({m_fmt}).")
-                                                    else:
-                                                        actualiser_score_elimination(tournoi, tour_num, m_id, sc_a_in, sc_b_in)
-                                                        sauvegarder_tournois_data(tournois_data)
-                                                        st.rerun()
-                                            with col_s4:
-                                                st.write("")
-                                                candidats_pd = [p for p in [ea, eb] if p and p != "À déterminer"]
-                                                if candidats_pd:
-                                                    with st.popover("🎟️ Passe-droit", use_container_width=True, help="Promouvoir directement un joueur ou duo au tour suivant sans jouer le match"):
-                                                        st.markdown(f"##### 🎟️ Accorder un passe-droit")
-                                                        st.caption(f"Promouvoir au tour suivant pour la rencontre **{m_id}** :")
-                                                        choix_promo = st.radio(
-                                                            "Bénéficiaire du passe-droit :",
-                                                            options=candidats_pd,
-                                                            format_func=lambda x: f"🚀 {x}",
-                                                            key=f"rad_pd_{mode}_{m_id}"
-                                                        )
-                                                        if st.button("🚀 Promouvoir au tour suivant", type="primary", use_container_width=True, key=f"btn_apply_pd_{mode}_{m_id}"):
-                                                            attribuer_passe_droit_elimination(tournoi, tour_num, m_id, choix_promo)
-                                                            sauvegarder_tournois_data(tournois_data)
-                                                            st.success(f"🎟️ Passe-droit accordé ! {choix_promo} est promu au tour suivant.")
-                                                            st.rerun()
-                                        else:
-                                            st.caption("⏳ *Rencontre en attente de score (saisie réservée au marqueur)*")
+                with tab_f:
+                    for tour_courant in tours_finale:
+                        tour_num = tour_courant["numero"]
+                        tour_race = tour_courant.get("race_to", 3)
+                        tour_fmt = tour_courant.get("format_label", "3 de 5")
+                        st.markdown(f"###### **{tour_courant['nom']}** — Format `{tour_fmt}` (premier à {tour_race} victoires)")
+                        for m in tour_courant.get("matchs", []):
+                            afficher_carte_rencontre(m, tour_courant, tour_num, tour_race, tour_fmt)
+
+            else:
+                # Elimination directe simple
+                tours_onglets = [t["nom"] for t in tours]
+                if tours_onglets:
+                    tabs_t = st.tabs(tours_onglets)
+                    for t_idx, tab_tour in enumerate(tabs_t):
+                        tour_courant = tours[t_idx]
+                        tour_num = tour_courant["numero"]
+                        tour_race = tour_courant.get("race_to", 3 if tour_num == tournoi.get("total_tours") else 2)
+                        tour_fmt = tour_courant.get("format_label", "3 de 5" if tour_race == 3 else "2 de 3")
+                        with tab_tour:
+                            st.markdown(f"###### **{tour_courant['nom']}** — Format `{tour_fmt}` (premier à {tour_race} manches gagnantes)")
+                            for m in tour_courant.get("matchs", []):
+                                afficher_carte_rencontre(m, tour_courant, tour_num, tour_race, tour_fmt)
 
         else:
             # FORMAT ROUND-ROBIN
@@ -4345,7 +5085,7 @@ def afficher_section_historique_tournois():
         with col_dt1:
             st.markdown(f"#### 🏆 **{tournoi_choisi.get('titre', 'Tournoi')}**")
             mode_lbl = "Simple (1 contre 1)" if mode_choisi == "simple" else "Double / Équipes (2 contre 2)"
-            fmt_lbl = "Élimination directe" if tournoi_choisi.get("format") == "elimination" else "Round-Robin"
+            fmt_lbl = "Double élimination" if tournoi_choisi.get("format") == "double_elimination" else ("Élimination directe" if tournoi_choisi.get("format") == "elimination" else "Round-Robin")
             h_deb = tournoi_choisi.get("heure_debut", "09:00")
             h_fin = tournoi_choisi.get("heure_fin_estimee", "")
             nb_tab = tournoi_choisi.get("nb_tables", 2)
@@ -4456,7 +5196,7 @@ def afficher_section_historique_tournois():
         lignes_recap = []
         for h in liste_filtree:
             mode_label = "👤 Simple" if h.get("mode") == "simple" else "👥 Double"
-            fmt_label = "Élimination" if h.get("format") == "elimination" else "Round-Robin"
+            fmt_label = "Double élimination" if h.get("format") == "double_elimination" else ("Élimination" if h.get("format") == "elimination" else "Round-Robin")
             nb_part = len(h.get("participants", []))
             champ = h.get("vainqueur_final") or ("En cours" if h.get("statut") == "en_cours" or h.get("est_actif") else "Non déterminé")
             finaliste = h.get("finaliste") or ("En cours" if h.get("statut") == "en_cours" or h.get("est_actif") else "-")
