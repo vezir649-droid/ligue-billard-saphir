@@ -2069,10 +2069,30 @@ def obtenir_toutes_les_equipes_tournoi():
         return sorted(list(eq_data.keys()))
     return ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel"]
 
+def ajuster_pause_diner(dt, duree):
+    """
+    S'assure qu'aucun match n'est cédulé ni joué entre 12:00 et 13:00 (pause dîner).
+    Si un match débute entre 12:00 et 13:00 ou empiète sur cette tranche horaire,
+    il est automatiquement décalé à 13:00.
+    """
+    pause_deb = dt.replace(hour=12, minute=0, second=0, microsecond=0)
+    pause_fin = dt.replace(hour=13, minute=0, second=0, microsecond=0)
+
+    # Si l'heure courante tombe pendant la pause (entre 12h00 et 12h59)
+    if pause_deb <= dt < pause_fin:
+        return pause_fin
+
+    # Si le match commence avant 12h00 mais se terminerait après 12h00
+    if dt < pause_deb and (dt + duree) > pause_deb:
+        return pause_fin
+
+    return dt
+
 def planifier_horaires_elimination(tours, heure_debut="09:00", duree_min=30, nb_tables=2):
     """
     Planifie les heures approximatives de début de chaque match et attribue les tables (1 ou 2).
     Déroulement en une seule journée débutant à l'heure spécifiée (par défaut 9h00 a.m.).
+    Aucun match n'est cédulé entre 12:00 et 13:00 tant en Simple qu'en Double (pause dîner).
     """
     try:
         cur_dt = datetime.strptime(heure_debut.strip(), "%H:%M")
@@ -2086,57 +2106,83 @@ def planifier_horaires_elimination(tours, heure_debut="09:00", duree_min=30, nb_
         if not matchs:
             continue
 
-        round_start_dt = cur_dt
+        # S'assurer que le début du tour ne commence pas pendant la pause dîner
+        cur_dt = ajuster_pause_diner(cur_dt, duree)
+
         if int(nb_tables) >= 2:
-            # 2 tables : 2 matchs en parallèle à chaque créneau
-            for i, m in enumerate(matchs):
-                vague = i // 2
-                table_num = 1 if (i % 2 == 0) else 2
-                m_dt = round_start_dt + vague * duree
-                m["heure_estimee"] = m_dt.strftime("%Hh%M")
-                m["table"] = f"Table {table_num}"
-                m["table_courte"] = f"T{table_num}"
-            nb_vagues = (len(matchs) + 1) // 2
-            cur_dt = round_start_dt + nb_vagues * duree
+            # 2 tables : 2 matchs en parallèle par vague
+            nb_matchs = len(matchs)
+            nb_vagues = (nb_matchs + 1) // 2
+
+            for v in range(nb_vagues):
+                v_dt = ajuster_pause_diner(cur_dt, duree)
+                m1_idx = v * 2
+                m2_idx = v * 2 + 1
+
+                if m1_idx < nb_matchs:
+                    matchs[m1_idx]["heure_estimee"] = v_dt.strftime("%Hh%M")
+                    matchs[m1_idx]["table"] = "Table 1"
+                    matchs[m1_idx]["table_courte"] = "T1"
+
+                if m2_idx < nb_matchs:
+                    matchs[m2_idx]["heure_estimee"] = v_dt.strftime("%Hh%M")
+                    matchs[m2_idx]["table"] = "Table 2"
+                    matchs[m2_idx]["table_courte"] = "T2"
+
+                # L'heure courante avance après la fin de la vague et s'ajuste si pause dîner
+                cur_dt = ajuster_pause_diner(v_dt + duree, duree)
         else:
             # 1 seule table disponible : matchs les uns après les autres
-            for i, m in enumerate(matchs):
-                m_dt = round_start_dt + i * duree
-                m["heure_estimee"] = m_dt.strftime("%Hh%M")
+            for m in matchs:
+                cur_dt = ajuster_pause_diner(cur_dt, duree)
+                m["heure_estimee"] = cur_dt.strftime("%Hh%M")
                 m["table"] = "Table 1"
                 m["table_courte"] = "T1"
-            cur_dt = round_start_dt + len(matchs) * duree
+                cur_dt = ajuster_pause_diner(cur_dt + duree, duree)
 
     heure_fin = cur_dt.strftime("%Hh%M")
     return heure_fin
 
 def planifier_horaires_round_robin(matchs, heure_debut="09:00", duree_min=30, nb_tables=2):
-    """Planifie les horaires pour un championnat round-robin sur 1 ou 2 tables."""
+    """
+    Planifie les horaires pour un championnat round-robin sur 1 ou 2 tables.
+    Aucun match n'est cédulé entre 12:00 et 13:00 tant en Simple qu'en Double (pause dîner).
+    """
     try:
         cur_dt = datetime.strptime(heure_debut.strip(), "%H:%M")
     except Exception:
         cur_dt = datetime.strptime("09:00", "%H:%M")
 
     duree = timedelta(minutes=int(duree_min))
+    nb_matchs = len(matchs)
 
     if int(nb_tables) >= 2:
-        for i, m in enumerate(matchs):
-            vague = i // 2
-            table_num = 1 if (i % 2 == 0) else 2
-            m_dt = cur_dt + vague * duree
-            m["heure_estimee"] = m_dt.strftime("%Hh%M")
-            m["table"] = f"Table {table_num}"
-            m["table_courte"] = f"T{table_num}"
-        nb_vagues = (len(matchs) + 1) // 2
-        heure_fin = (cur_dt + nb_vagues * duree).strftime("%Hh%M")
+        nb_vagues = (nb_matchs + 1) // 2
+        for v in range(nb_vagues):
+            v_dt = ajuster_pause_diner(cur_dt, duree)
+            m1_idx = v * 2
+            m2_idx = v * 2 + 1
+
+            if m1_idx < nb_matchs:
+                matchs[m1_idx]["heure_estimee"] = v_dt.strftime("%Hh%M")
+                matchs[m1_idx]["table"] = "Table 1"
+                matchs[m1_idx]["table_courte"] = "T1"
+
+            if m2_idx < nb_matchs:
+                matchs[m2_idx]["heure_estimee"] = v_dt.strftime("%Hh%M")
+                matchs[m2_idx]["table"] = "Table 2"
+                matchs[m2_idx]["table_courte"] = "T2"
+
+            cur_dt = ajuster_pause_diner(v_dt + duree, duree)
     else:
-        for i, m in enumerate(matchs):
-            m_dt = cur_dt + i * duree
-            m["heure_estimee"] = m_dt.strftime("%Hh%M")
+        for m in matchs:
+            cur_dt = ajuster_pause_diner(cur_dt, duree)
+            m["heure_estimee"] = cur_dt.strftime("%Hh%M")
             m["table"] = "Table 1"
             m["table_courte"] = "T1"
-        heure_fin = (cur_dt + len(matchs) * duree).strftime("%Hh%M")
+            cur_dt = ajuster_pause_diner(cur_dt + duree, duree)
 
+    heure_fin = cur_dt.strftime("%Hh%M")
     return heure_fin
 
 def generer_arbre_elimination(participants, race_prelim=2, race_finale=3, titre="Tournoi", heure_debut="09:00", duree_min=30, nb_tables=2, passe_droit_participant=None):
@@ -3346,6 +3392,7 @@ def afficher_section_tournoi(mode="simple"):
                 )
 
             st.markdown("##### 📅 Organisation, Disponibilité des tables & Horaires (1 seule journée)")
+            st.caption("ℹ️ *Une pause dîner est automatiquement intégrée de 12:00 à 13:00 : aucun match n'est cédulé durant cette période.*")
             col_hor1, col_hor2, col_hor3 = st.columns([1.5, 1.2, 1.3])
             with col_hor1:
                 choix_tables = st.radio(
@@ -3629,7 +3676,8 @@ def afficher_section_tournoi(mode="simple"):
             nb_t = tournoi.get("nb_tables", 2)
             duree_m = tournoi.get("duree_match_min", 30)
             tables_txt = f"{nb_t} table{'s' if nb_t > 1 else ''}"
-            horaire_txt = f" &nbsp;|&nbsp; ⏰ <strong>Horaire (1 journée) :</strong> {h_deb} à ~{h_fin}" if h_fin else f" &nbsp;|&nbsp; ⏰ <strong>Début :</strong> {h_deb}"
+            mention_pause = " *(Pause 12h-13h)*" if (h_fin and (h_deb < "12:00" and h_fin > "12h00")) else ""
+            horaire_txt = f" &nbsp;|&nbsp; ⏰ <strong>Horaire :</strong> {h_deb} à ~{h_fin}{mention_pause}" if h_fin else f" &nbsp;|&nbsp; ⏰ <strong>Début :</strong> {h_deb}"
             tables_info = f" &nbsp;|&nbsp; 🎱 <strong>{tables_txt}</strong> (~{duree_m} min/match)"
 
             st.caption(f"Statut : {badge_statut} &nbsp;|&nbsp; Formule : `{format_nom}`{horaire_txt}{tables_info}", unsafe_allow_html=True)
