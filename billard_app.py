@@ -3595,29 +3595,100 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
                     unsafe_allow_html=True
                 )
 
-                col_pd1, col_pd2 = st.columns([1.6, 2.4])
-                with col_pd1:
-                    mode_attribution = st.radio(
-                        "Attribution des passe-droits :",
-                        options=["🎲 Tirage au sort automatique", "✋ Sélection manuelle"],
-                        key=f"rad_mode_pd_{mode}{key_suffix}",
-                        help="Par tirage au sort automatique équitable (recommandé) ou par sélection manuelle selon vos têtes de série."
+                key_promus = f"liste_promus_{mode}{key_suffix}"
+                key_add = f"sel_add_promu_{mode}{key_suffix}"
+                key_del = f"sel_del_promu_{mode}{key_suffix}"
+
+                # Initialisation de la liste des promus si non présente
+                if key_promus not in st.session_state:
+                    st.session_state[key_promus] = list(participants_finaux[:nb_promus])
+                else:
+                    # Ne conserver que les participants encore présents dans la liste finale
+                    st.session_state[key_promus] = [p for p in st.session_state[key_promus] if p in participants_finaux]
+
+                candidats = [p for p in participants_finaux if p not in st.session_state[key_promus]]
+                promus = list(st.session_state[key_promus])
+
+                placeholder_add = "➕ Choisir un participant à promouvoir..."
+                placeholder_del = "➖ Choisir un promu à replacer..."
+
+                def _cb_add_promu():
+                    val = st.session_state.get(key_add)
+                    if val and val != placeholder_add:
+                        if val not in st.session_state[key_promus]:
+                            st.session_state[key_promus].append(val)
+                        st.session_state[key_add] = placeholder_add
+
+                def _cb_del_promu():
+                    val = st.session_state.get(key_del)
+                    if val and val != placeholder_del:
+                        if val in st.session_state[key_promus]:
+                            st.session_state[key_promus].remove(val)
+                        st.session_state[key_del] = placeholder_del
+
+                options_add = [placeholder_add] + candidats
+                options_del = [placeholder_del] + promus
+
+                if key_add not in st.session_state or st.session_state[key_add] not in options_add:
+                    st.session_state[key_add] = placeholder_add
+                if key_del not in st.session_state or st.session_state[key_del] not in options_del:
+                    st.session_state[key_del] = placeholder_del
+
+                st.markdown(f"###### 🔄 Sélection et transfert des participants promus ({len(promus)} / {nb_promus}) :")
+                col_p1, col_p2 = st.columns(2)
+                with col_p1:
+                    st.markdown(f"**📋 Participants à sélectionner ({len(candidats)}) :**")
+                    st.selectbox(
+                        "Déplacer vers la liste des promus :",
+                        options=options_add,
+                        key=key_add,
+                        on_change=_cb_add_promu,
+                        label_visibility="collapsed",
+                        help="Sélectionnez un participant dans cette liste pour le promouvoir au 2ᵉ tour (le déplace vers la liste des promus)."
                     )
-                with col_pd2:
-                    if mode_attribution == "✋ Sélection manuelle":
-                        promus_selectionnes = st.multiselect(
-                            f"Sélectionnez les {nb_promus} participant(s) promus au 2ᵉ tour :",
-                            options=participants_finaux,
-                            default=participants_finaux[:nb_promus],
-                            max_selections=nb_promus,
-                            key=f"sel_multi_promus_{mode}{key_suffix}",
-                            help=f"Exactement {nb_promus} participant(s) doivent être choisis pour garantir l'équilibre de l'arbre."
-                        )
-                        if len(promus_selectionnes) != nb_promus:
-                            bloquer_lancement = True
-                            st.warning(f"⚠️ Veuillez sélectionner exactement **{nb_promus} participant(s)** (actuellement {len(promus_selectionnes)}/{nb_promus}).")
-                    else:
-                        st.caption(f"🎲 *{nb_promus} participant(s) seront tirés au sort équitablement lors de la création pour être promus d'office au second tour.*")
+                    if not candidats:
+                        st.caption("ℹ️ Tous les participants sont actuellement promus.")
+
+                with col_p2:
+                    st.markdown(f"**🎟️ Participants promus au 2ᵉ tour ({len(promus)} / {nb_promus}) :**")
+                    st.selectbox(
+                        "Replacer dans la liste à sélectionner :",
+                        options=options_del,
+                        key=key_del,
+                        on_change=_cb_del_promu,
+                        label_visibility="collapsed",
+                        help="Sélectionnez un promu dans cette liste pour le retirer et le replacer dans la liste à sélectionner."
+                    )
+                    if not promus:
+                        st.caption("ℹ️ Aucun participant n'est encore promu.")
+
+                col_b1, col_b2 = st.columns([1, 1])
+                with col_b1:
+                    if st.button("🎲 Tirage au sort des promus", key=f"btn_pige_promus_{mode}{key_suffix}", use_container_width=True, help="Tire au sort exactement le nombre requis de promus parmi les participants"):
+                        st.session_state[key_promus] = random.sample(participants_finaux, min(nb_promus, len(participants_finaux)))
+                        st.session_state[key_add] = placeholder_add
+                        st.session_state[key_del] = placeholder_del
+                        st.rerun()
+                with col_b2:
+                    if st.button("🔄 Réinitialiser la liste des promus", key=f"btn_reset_promus_{mode}{key_suffix}", use_container_width=True, help="Remet tous les promus dans la liste des participants à sélectionner"):
+                        st.session_state[key_promus] = []
+                        st.session_state[key_add] = placeholder_add
+                        st.session_state[key_del] = placeholder_del
+                        st.rerun()
+
+                promus_selectionnes = list(st.session_state[key_promus])
+                nb_actuel = len(promus_selectionnes)
+
+                if nb_actuel == nb_promus:
+                    p_pills = " &nbsp;|&nbsp; ".join([f"<code>🎟️ {p}</code>" for p in promus_selectionnes])
+                    st.success(f"🟢 **Quota atteint ({nb_actuel}/{nb_promus}) :** {p_pills}", unsafe_allow_html=True)
+                elif nb_actuel < nb_promus:
+                    bloquer_lancement = True
+                    p_pills = " &nbsp;|&nbsp; ".join([f"<code>🎟️ {p}</code>" for p in promus_selectionnes]) if promus_selectionnes else "*(aucun)*"
+                    st.warning(f"⚠️ **Sélection incomplète :** Veuillez encore promouvoir **{nb_promus - nb_actuel} participant(s)** via la liste déroulante ci-dessus (actuellement {nb_actuel}/{nb_promus} promus : {p_pills}).", unsafe_allow_html=True)
+                else:
+                    bloquer_lancement = True
+                    st.error(f"⚠️ **Trop de promus :** Veuillez replacer **{nb_actuel - nb_promus} participant(s)** dans la liste à sélectionner via la liste déroulante de droite ({nb_actuel}/{nb_promus}).")
             else:
                 st.success(
                     f"🟢 **Effectif équilibré ({nb_p} participants) :** "
