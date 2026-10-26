@@ -181,87 +181,8 @@ def injecter_meta_icones_mobiles():
     st.components.v1.html(code_js, height=0)
 
 def injecter_script_remonter_haut_de_page():
-    """Injecte un gestionnaire universel qui s'assure d'être toujours en haut de page lors des changements de page, d'onglets ou de navigation."""
-    code_js = """
-    <script>
-    (function() {
-        function remonterToutEnHaut() {
-            try {
-                if (window.parent) {
-                    window.parent.scrollTo({ top: 0, left: 0, behavior: 'instant' });
-                    var pDoc = window.parent.document;
-                    if (pDoc) {
-                        pDoc.documentElement.scrollTop = 0;
-                        pDoc.body.scrollTop = 0;
-                        var scrollSelectors = [
-                            'section.main',
-                            '[data-testid="stMain"]',
-                            '[data-testid="stAppViewContainer"]',
-                            '[data-testid="stAppViewBlockContainer"]',
-                            '.main .block-container',
-                            '#root'
-                        ];
-                        scrollSelectors.forEach(function(sel) {
-                            var els = pDoc.querySelectorAll(sel);
-                            for (var i = 0; i < els.length; i++) {
-                                els[i].scrollTop = 0;
-                            }
-                        });
-                    }
-                }
-            } catch(e) {}
-        }
-
-        // Remontée immédiate et décalée lors de l'exécution
-        remonterToutEnHaut();
-        setTimeout(remonterToutEnHaut, 30);
-        setTimeout(remonterToutEnHaut, 120);
-        setTimeout(remonterToutEnHaut, 300);
-
-        // Écouteur global sur le document parent pour tous les clics d'onglets (tabs) et de navigation
-        try {
-            if (window.parent && window.parent.document && !window.parent.__scrollListenerActif) {
-                window.parent.__scrollListenerActif = true;
-                window.parent.document.addEventListener('click', function(e) {
-                    var el = e.target;
-                    if (!el) return;
-                    // Détection des onglets Streamlit st.tabs ou navigation
-                    if (el.closest('[role="tab"]') ||
-                        el.closest('[data-baseweb="tab"]') ||
-                        el.closest('.stTabs [role="tab"]') ||
-                        el.closest('[data-testid="stSidebarNav"] button') ||
-                        el.closest('.stTabs button')) {
-                        remonterToutEnHaut();
-                        setTimeout(remonterToutEnHaut, 20);
-                        setTimeout(remonterToutEnHaut, 80);
-                        setTimeout(remonterToutEnHaut, 250);
-                    }
-                }, true);
-
-                // MutationObserver pour détecter le changement d'onglet actif (aria-selected="true")
-                var observer = new MutationObserver(function(mutations) {
-                    for (var i = 0; i < mutations.length; i++) {
-                        var m = mutations[i];
-                        if (m.type === 'attributes' && m.attributeName === 'aria-selected') {
-                            if (m.target && m.target.getAttribute('aria-selected') === 'true') {
-                                remonterToutEnHaut();
-                                setTimeout(remonterToutEnHaut, 50);
-                                break;
-                            }
-                        }
-                    }
-                });
-                observer.observe(window.parent.document.body, {
-                    attributes: true,
-                    subtree: true,
-                    attributeFilter: ['aria-selected']
-                });
-            }
-        } catch(e) {}
-    })();
-    </script>
-    """
-    st.components.v1.html(code_js, height=0)
+    """Désactivé : ne force plus la remontée automatique en haut de page."""
+    pass
 
 def charger_mot_de_passe_admin():
     """Charge le mot de passe d'administration (défaut: saphir2026)."""
@@ -4982,8 +4903,7 @@ def afficher_tableau_de_bord_progression(historique):
 # ==============================================================================
 # Injection des balises d'icône pour écran d'accueil mobile et tablette (iOS & Android)
 injecter_meta_icones_mobiles()
-# S'assurer d'être toujours en haut de page lors des changements de page et d'onglets
-injecter_script_remonter_haut_de_page()
+# Remontée forcée en haut de page désactivée
 
 est_connecte = st.session_state.get("authentifie", False)
 est_spectateur = st.session_state.get("est_spectateur", False)
