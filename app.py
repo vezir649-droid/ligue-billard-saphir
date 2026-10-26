@@ -231,6 +231,61 @@ def charger_equipes_csv():
             st.error(f"Erreur lors de la lecture du fichier {EQUIPES_CSV_FILE} : {e}")
     return equipes
 
+def sauvegarder_equipes_csv(equipes_df_ou_dict):
+    """Sauvegarde les équipes et leurs 3 joueurs dans le fichier equipes-saphir.csv.
+    Format par ligne : Equipe,Joueur 1,Joueur 2,Joueur 3
+    """
+    try:
+        lignes = []
+        if isinstance(equipes_df_ou_dict, pd.DataFrame):
+            for _, row in equipes_df_ou_dict.iterrows():
+                eq = str(row.get("Equipe", "")).strip()
+                if not eq:
+                    continue
+                j1 = str(row.get("Joueur 1", "")).strip()
+                j2 = str(row.get("Joueur 2", "")).strip()
+                j3 = str(row.get("Joueur 3", "")).strip()
+                lignes.append(f"{eq},{j1},{j2},{j3}\n")
+        elif isinstance(equipes_df_ou_dict, dict):
+            for eq, joueurs in equipes_df_ou_dict.items():
+                eq_clean = str(eq).strip()
+                if not eq_clean:
+                    continue
+                j1 = str(joueurs[0]).strip() if len(joueurs) > 0 else ""
+                j2 = str(joueurs[1]).strip() if len(joueurs) > 1 else ""
+                j3 = str(joueurs[2]).strip() if len(joueurs) > 2 else ""
+                lignes.append(f"{eq_clean},{j1},{j2},{j3}\n")
+        elif isinstance(equipes_df_ou_dict, list):
+            for row in equipes_df_ou_dict:
+                if isinstance(row, dict):
+                    eq = str(row.get("Equipe", "")).strip()
+                    if not eq:
+                        continue
+                    j1 = str(row.get("Joueur 1", "")).strip()
+                    j2 = str(row.get("Joueur 2", "")).strip()
+                    j3 = str(row.get("Joueur 3", "")).strip()
+                    lignes.append(f"{eq},{j1},{j2},{j3}\n")
+                elif isinstance(row, (list, tuple)) and len(row) >= 4:
+                    eq = str(row[0]).strip()
+                    if not eq:
+                        continue
+                    lignes.append(f"{eq},{str(row[1]).strip()},{str(row[2]).strip()},{str(row[3]).strip()}\n")
+
+        # Sauvegarde d'une copie de secours .bak
+        if os.path.exists(EQUIPES_CSV_FILE):
+            try:
+                import shutil
+                shutil.copyfile(EQUIPES_CSV_FILE, EQUIPES_CSV_FILE + ".bak")
+            except Exception:
+                pass
+
+        with open(EQUIPES_CSV_FILE, "w", encoding="utf-8") as f:
+            f.writelines(lignes)
+
+        return True, f"{len(lignes)} équipe(s) enregistrée(s) avec succès dans equipes-saphir.csv."
+    except Exception as e:
+        return False, f"Erreur lors de la sauvegarde du fichier equipes-saphir.csv : {e}"
+
 def charger_sauvegarde():
     """Lit le fichier de sauvegarde de secours sans jamais lever d'erreur."""
     if os.path.exists(BACKUP_FILE):
@@ -6050,14 +6105,162 @@ with tab_feuille:
     if not est_spectateur:
         st.markdown("### ⚙️ Espace Administration")
 
-        with st.expander("🛠️ Ouvrir le panneau d'administration (Saison, SMTP et Sécurité)", expanded=False):
-            tab_saison, tab_rectif, tab_export, tab_smtp, tab_secu = st.tabs([
+        with st.expander("🛠️ Ouvrir le panneau d'administration (Équipes, Saison, SMTP et Sécurité)", expanded=False):
+            tab_equipes, tab_saison, tab_rectif, tab_export, tab_smtp, tab_secu = st.tabs([
+                "👥 Édition des équipes & joueurs",
                 "🗓️ Démarrer une nouvelle saison",
                 "✏️ Rectifier un match archivé",
                 "📤 Envoyer l'historique complet",
                 "📧 Configuration SMTP",
                 "🔑 Mot de passe d'accès"
             ])
+
+            with tab_equipes:
+                st.markdown("#### 👥 Édition des équipes et des joueurs (`equipes-saphir.csv`)")
+                st.caption(
+                    "Gérez la composition officielle des équipes et de leurs joueurs. "
+                    "Conformément au format officiel, **le premier champ est l'équipe, et les trois suivants sont les noms des joueurs de cette équipe**."
+                )
+
+                eq_actuelles = charger_equipes_csv()
+                lignes_df = []
+                for eq_nom, j_liste in eq_actuelles.items():
+                    lignes_df.append({
+                        "Equipe": eq_nom,
+                        "Joueur 1": j_liste[0] if len(j_liste) > 0 else "",
+                        "Joueur 2": j_liste[1] if len(j_liste) > 1 else "",
+                        "Joueur 3": j_liste[2] if len(j_liste) > 2 else ""
+                    })
+
+                df_initial = pd.DataFrame(lignes_df)
+
+                st.markdown("##### 📝 Tableau modifiable des équipes et joueurs")
+                st.info("💡 **Instructions :** Vous pouvez modifier directement n'importe quelle cellule ci-dessous. Vous pouvez ajouter une équipe avec la ligne `+` ou en supprimer en sélectionnant la ligne et en appuyant sur `Suppr`.")
+
+                df_modifie = st.data_editor(
+                    df_initial,
+                    num_rows="dynamic",
+                    use_container_width=True,
+                    column_config={
+                        "Equipe": st.column_config.TextColumn(
+                            "Équipe (1er champ)",
+                            help="Nom officiel de l'équipe (premier champ dans equipes-saphir.csv)",
+                            required=True,
+                            width="medium"
+                        ),
+                        "Joueur 1": st.column_config.TextColumn(
+                            "Joueur 1",
+                            help="Nom du premier joueur de l'équipe",
+                            required=True,
+                            width="medium"
+                        ),
+                        "Joueur 2": st.column_config.TextColumn(
+                            "Joueur 2",
+                            help="Nom du deuxième joueur de l'équipe",
+                            required=True,
+                            width="medium"
+                        ),
+                        "Joueur 3": st.column_config.TextColumn(
+                            "Joueur 3",
+                            help="Nom du troisième joueur de l'équipe",
+                            required=True,
+                            width="medium"
+                        )
+                    },
+                    key="data_editor_equipes_saphir"
+                )
+
+                col_sv1, col_sv2, col_sv3 = st.columns([1.6, 1.2, 1.2])
+                with col_sv1:
+                    if st.button("💾 Enregistrer dans equipes-saphir.csv", type="primary", use_container_width=True, key="btn_save_equipes_csv"):
+                        noms_vides = df_modifie["Equipe"].astype(str).str.strip() == ""
+                        if noms_vides.any():
+                            st.error("❌ Certaines lignes ont un nom d'équipe vide. Veuillez renseigner le nom de chaque équipe avant de sauvegarder.")
+                        else:
+                            succes_eq, msg_eq = sauvegarder_equipes_csv(df_modifie)
+                            if succes_eq:
+                                st.success(f"✅ {msg_eq}")
+                                time.sleep(1.0)
+                                st.rerun()
+                            else:
+                                st.error(f"❌ {msg_eq}")
+
+                with col_sv2:
+                    csv_bytes = ""
+                    if os.path.exists(EQUIPES_CSV_FILE):
+                        try:
+                            with open(EQUIPES_CSV_FILE, "r", encoding="utf-8") as f_dl:
+                                csv_bytes = f_dl.read()
+                        except Exception:
+                            pass
+                    st.download_button(
+                        label="📥 Télécharger equipes-saphir.csv",
+                        data=csv_bytes,
+                        file_name="equipes-saphir.csv",
+                        mime="text/csv",
+                        use_container_width=True,
+                        key="btn_dl_equipes_csv"
+                    )
+
+                with col_sv3:
+                    with st.popover("📤 Importer un fichier CSV", use_container_width=True):
+                        st.markdown("###### Importer un fichier `equipes-saphir.csv`")
+                        st.caption("Format par ligne : Équipe, Joueur 1, Joueur 2, Joueur 3.")
+                        fichier_importe = st.file_uploader("Choisir un fichier CSV", type=["csv"], key="upload_equipes_csv")
+                        if fichier_importe is not None:
+                            if st.button("Confirmer le remplacement du fichier", type="primary", use_container_width=True, key="btn_confirm_upload_csv"):
+                                try:
+                                    contenu_str = fichier_importe.getvalue().decode("utf-8")
+                                    lignes_valides = []
+                                    for l_imp in contenu_str.strip().splitlines():
+                                        pts = [p.strip() for p in l_imp.split(",") if p.strip()]
+                                        if len(pts) >= 2:
+                                            eq_imp = pts[0]
+                                            j_imp = pts[1:]
+                                            while len(j_imp) < 3:
+                                                j_imp.append(f"Joueur {len(j_imp)+1}")
+                                            lignes_valides.append(f"{eq_imp},{j_imp[0]},{j_imp[1]},{j_imp[2]}\n")
+                                    if lignes_valides:
+                                        with open(EQUIPES_CSV_FILE, "w", encoding="utf-8") as f_w:
+                                            f_w.writelines(lignes_valides)
+                                        st.success(f"✅ {len(lignes_valides)} équipe(s) importée(s) avec succès !")
+                                        time.sleep(1.0)
+                                        st.rerun()
+                                    else:
+                                        st.error("Aucune ligne d'équipe valide trouvée dans le fichier.")
+                                except Exception as e_imp:
+                                    st.error(f"Erreur lors de l'importation : {e_imp}")
+
+                with st.expander("➕ Formulaire d'ajout rapide d'une équipe", expanded=False):
+                    with st.form("form_ajout_equipe_rapide", clear_on_submit=True):
+                        col_add1, col_add2, col_add3, col_add4 = st.columns(4)
+                        with col_add1:
+                            nouveau_nom_eq = st.text_input("Nom de l'équipe :", placeholder="Ex: India")
+                        with col_add2:
+                            nouveau_j1 = st.text_input("Joueur 1 :", placeholder="Nom du joueur 1")
+                        with col_add3:
+                            nouveau_j2 = st.text_input("Joueur 2 :", placeholder="Nom du joueur 2")
+                        with col_add4:
+                            nouveau_j3 = st.text_input("Joueur 3 :", placeholder="Nom du joueur 3")
+
+                        btn_creer_eq = st.form_submit_button("➕ Ajouter l'équipe à equipes-saphir.csv", type="primary")
+                        if btn_creer_eq:
+                            if not nouveau_nom_eq.strip():
+                                st.error("❌ Le nom de l'équipe ne peut pas être vide.")
+                            elif nouveau_nom_eq.strip() in eq_actuelles:
+                                st.error(f"❌ L'équipe '{nouveau_nom_eq.strip()}' existe déjà dans la liste.")
+                            else:
+                                j1_final = nouveau_j1.strip() or "Joueur 1"
+                                j2_final = nouveau_j2.strip() or "Joueur 2"
+                                j3_final = nouveau_j3.strip() or "Joueur 3"
+                                eq_actuelles[nouveau_nom_eq.strip()] = [j1_final, j2_final, j3_final]
+                                succes_add, msg_add = sauvegarder_equipes_csv(eq_actuelles)
+                                if succes_add:
+                                    st.success(f"✅ L'équipe '{nouveau_nom_eq.strip()}' a été ajoutée avec succès !")
+                                    time.sleep(1.0)
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ {msg_add}")
 
             with tab_saison:
                 st.markdown("#### 🗓️ Démarrer une nouvelle saison")
