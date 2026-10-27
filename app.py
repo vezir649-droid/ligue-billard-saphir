@@ -6745,7 +6745,7 @@ with tab_feuille:
         if est_spectateur:
             @st.fragment(run_every="5s")
             def fragment_tableau_spectateur():
-                # 1. Vérification des mises à jour faites par le marqueur
+                # 1. Lecture directe et systématique de la sauvegarde en temps réel
                 sauv = charger_sauvegarde()
                 mtime_actuel = 0
                 if os.path.exists(BACKUP_FILE):
@@ -6758,17 +6758,59 @@ with tab_feuille:
                     st.session_state["dernier_mtime_vu"] = mtime_actuel
                 elif mtime_actuel > st.session_state.get("dernier_mtime_vu", 0):
                     st.session_state["dernier_mtime_vu"] = mtime_actuel
-                    if sauv and "matchs" in sauv:
-                        restaurer_session(sauv)
                     st.toast("🔔 Le marqueur a mis à jour les résultats du match !", icon="🎱")
 
-                heure_maj = sauv.get("derniere_mise_a_jour", datetime.now().strftime("%H:%M:%S"))
-                tot_rec_c, tot_vis_c, pts_j_c, details_c = calculer_totaux_actuels(dict_joueurs, matchs_pairs)
+                heure_maj = sauv.get("derniere_mise_a_jour", datetime.now().strftime("%H:%M:%S")) if sauv else datetime.now().strftime("%H:%M:%S")
+
+                # Extraction directe depuis le fichier sauvegardé par le marqueur (garantit la mise à jour immédiate)
+                if sauv and isinstance(sauv.get("matchs"), dict) and sauv.get("matchs"):
+                    eq_rec_aff = sauv.get("receveur", equipe_receveur)
+                    eq_vis_aff = sauv.get("visiteur", equipe_visiteur)
+                    joueurs_sauv = sauv.get("joueurs", {})
+                    matchs_sauv = sauv.get("matchs", {})
+
+                    dict_j_aff = {}
+                    for p_id in ["j1_rec", "j2_rec", "j3_rec", "j1_vis", "j2_vis", "j3_vis"]:
+                        base_j = dict_joueurs.get(p_id, {"nom": p_id, "present": True, "pts_absent": 0})
+                        j_s = joueurs_sauv.get(p_id, {})
+                        dict_j_aff[p_id] = {
+                            "nom": j_s.get("nom", base_j.get("nom", p_id)),
+                            "present": j_s.get("present", base_j.get("present", True)),
+                            "pts_absent": int(j_s.get("pts_absent", base_j.get("pts_absent", 0)))
+                        }
+
+                    tot_rec_c = 0
+                    tot_vis_c = 0
+                    pts_j_c = {p_id: 0 for p_id in dict_j_aff}
+                    details_c = []
+
+                    for num_m, id_a, id_b in matchs_pairs:
+                        m_d = matchs_sauv.get(str(num_m), {})
+                        sa = int(m_d.get("score_a", 0))
+                        sb = int(m_d.get("score_b", 0))
+                        tot_rec_c += sa
+                        tot_vis_c += sb
+                        pts_j_c[id_a] += sa
+                        pts_j_c[id_b] += sb
+                        details_c.append({
+                            "manche": num_m,
+                            "ja": m_d.get("joueur_a", dict_j_aff[id_a]["nom"]),
+                            "sa": sa,
+                            "sb": sb,
+                            "jb": m_d.get("joueur_b", dict_j_aff[id_b]["nom"]),
+                            "abs_a": bool(m_d.get("joueur_a_absent", not dict_j_aff[id_a]["present"])),
+                            "abs_b": bool(m_d.get("joueur_b_absent", not dict_j_aff[id_b]["present"]))
+                        })
+                else:
+                    eq_rec_aff = equipe_receveur
+                    eq_vis_aff = equipe_visiteur
+                    dict_j_aff = dict_joueurs
+                    tot_rec_c, tot_vis_c, pts_j_c, details_c = calculer_totaux_actuels(dict_joueurs, matchs_pairs)
 
                 with st.container(border=True):
                     col_t_titre, col_t_badge = st.columns([2.5, 1.5])
                     with col_t_titre:
-                        st.markdown(f"#### 🎱 Résultats courants : **{equipe_receveur}** ({tot_rec_c} pts) vs **{equipe_visiteur}** ({tot_vis_c} pts)")
+                        st.markdown(f"#### 🎱 Résultats courants : **{eq_rec_aff}** ({tot_rec_c} pts) vs **{eq_vis_aff}** ({tot_vis_c} pts)")
                     with col_t_badge:
                         st.markdown(
                             f"<div style='text-align: right; font-size: 13px; color: #2e7d32; font-weight: bold; padding-top: 5px;'>"
@@ -6778,36 +6820,36 @@ with tab_feuille:
                         )
 
                     if tot_rec_c > tot_vis_c:
-                        st.success(f"🏆 **{equipe_receveur}** mène par **{tot_rec_c - tot_vis_c} point(s)** ({tot_rec_c} à {tot_vis_c}).")
+                        st.success(f"🏆 **{eq_rec_aff}** mène par **{tot_rec_c - tot_vis_c} point(s)** ({tot_rec_c} à {tot_vis_c}).")
                     elif tot_vis_c > tot_rec_c:
-                        st.success(f"🏆 **{equipe_visiteur}** mène par **{tot_vis_c - tot_rec_c} point(s)** ({tot_vis_c} à {tot_rec_c}).")
+                        st.success(f"🏆 **{eq_vis_aff}** mène par **{tot_vis_c - tot_rec_c} point(s)** ({tot_vis_c} à {tot_rec_c}).")
                     else:
                         st.info(f"🤝 **Égalité provisoire** : {tot_rec_c} à {tot_vis_c}.")
 
                     # Scores par équipe
                     c_sc1, c_sc2 = st.columns(2)
-                    c_sc1.metric(f"Total {equipe_receveur}", f"{tot_rec_c} pts")
-                    c_sc2.metric(f"Total {equipe_visiteur}", f"{tot_vis_c} pts")
+                    c_sc1.metric(f"Total {eq_rec_aff}", f"{tot_rec_c} pts")
+                    c_sc2.metric(f"Total {eq_vis_aff}", f"{tot_vis_c} pts")
 
                     # Points des joueurs
                     st.markdown("##### 👤 Points individuels cumulés")
                     col_pj1, col_pj2 = st.columns(2)
                     with col_pj1:
-                        st.markdown(f"**🏠 {equipe_receveur}**")
+                        st.markdown(f"**🏠 {eq_rec_aff}**")
                         cr1, cr2, cr3 = st.columns(3)
-                        p1 = dict_joueurs["j1_rec"]
-                        p2 = dict_joueurs["j2_rec"]
-                        p3 = dict_joueurs["j3_rec"]
+                        p1 = dict_j_aff["j1_rec"]
+                        p2 = dict_j_aff["j2_rec"]
+                        p3 = dict_j_aff["j3_rec"]
                         cr1.metric(p1["nom"] + (" (Abs.)" if not p1["present"] else ""), f"{pts_j_c['j1_rec']} pts")
                         cr2.metric(p2["nom"] + (" (Abs.)" if not p2["present"] else ""), f"{pts_j_c['j2_rec']} pts")
                         cr3.metric(p3["nom"] + (" (Abs.)" if not p3["present"] else ""), f"{pts_j_c['j3_rec']} pts")
 
                     with col_pj2:
-                        st.markdown(f"**🚗 {equipe_visiteur}**")
+                        st.markdown(f"**🚗 {eq_vis_aff}**")
                         cv1, cv2, cv3 = st.columns(3)
-                        pv1 = dict_joueurs["j1_vis"]
-                        pv2 = dict_joueurs["j2_vis"]
-                        pv3 = dict_joueurs["j3_vis"]
+                        pv1 = dict_j_aff["j1_vis"]
+                        pv2 = dict_j_aff["j2_vis"]
+                        pv3 = dict_j_aff["j3_vis"]
                         cv1.metric(pv1["nom"] + (" (Abs.)" if not pv1["present"] else ""), f"{pts_j_c['j1_vis']} pts")
                         cv2.metric(pv2["nom"] + (" (Abs.)" if not pv2["present"] else ""), f"{pts_j_c['j2_vis']} pts")
                         cv3.metric(pv3["nom"] + (" (Abs.)" if not pv3["present"] else ""), f"{pts_j_c['j3_vis']} pts")
@@ -6815,7 +6857,7 @@ with tab_feuille:
                     # Tableau récapitulatif des 9 manches
                     st.markdown("##### 📋 État des 9 manches")
                     lignes_md = [
-                        f"| Manche | Joueur ({equipe_receveur}) | Pts {equipe_receveur} | Pts {equipe_visiteur} | Joueur ({equipe_visiteur}) | Statut |",
+                        f"| Manche | Joueur ({eq_rec_aff}) | Pts {eq_rec_aff} | Pts {eq_vis_aff} | Joueur ({eq_vis_aff}) | Statut |",
                         "| :---: | :--- | :---: | :---: | :--- | :--- |"
                     ]
                     for row in details_c:
@@ -6849,81 +6891,14 @@ with tab_feuille:
             fragment_tableau_spectateur()
 
         else:
-            # Bandeau Scoreboard Live permanent pour le marqueur / éditeur
-            tot_rec_c, tot_vis_c, pts_j_c, details_c = calculer_totaux_actuels(dict_joueurs, matchs_pairs)
-            nb_manches_term = sum(1 for r_m in details_c if (r_m["sa"] == 8 or r_m["sb"] == 8) and not (r_m["sa"] == 8 and r_m["sb"] == 8))
-            pct_manches = int(round((nb_manches_term / 9.0) * 100))
-
-            if tot_rec_c > tot_vis_c:
-                statut_live_html = f"🏆 <strong>{equipe_receveur}</strong> mène par <strong>+{tot_rec_c - tot_vis_c} pt(s)</strong>"
-            elif tot_vis_c > tot_rec_c:
-                statut_live_html = f"🏆 <strong>{equipe_visiteur}</strong> mène par <strong>+{tot_vis_c - tot_rec_c} pt(s)</strong>"
-            else:
-                statut_live_html = f"🤝 <strong>Égalité parfaite</strong> ({tot_rec_c} - {tot_vis_c})"
-
-            st.markdown(
-                f"""
-                <div style="background: linear-gradient(135deg, #0b3c5d 0%, #16527a 100%); color: white; border-radius: 12px; padding: 14px 20px; margin: 8px 0 12px 0; box-shadow: 0 4px 12px rgba(11, 60, 93, 0.2); border-bottom: 4px solid #f59e0b;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                        <div style="flex: 1; min-width: 160px;">
-                            <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: #93c5fd; font-weight: 700;">🔵 Équipe Receveuse (🏠)</div>
-                            <div style="font-size: 18px; font-weight: 800; color: #ffffff;">{equipe_receveur}</div>
-                        </div>
-                        <div style="text-align: center; padding: 4px 18px; background: rgba(255,255,255,0.12); border-radius: 10px; border: 1px solid rgba(255,255,255,0.22);">
-                            <div style="font-size: 26px; font-weight: 900; letter-spacing: 1px; color: #fbbf24;">
-                                {tot_rec_c} <span style="font-size: 15px; color: #e2e8f0; font-weight: 600;">pts</span>
-                                &nbsp;—&nbsp;
-                                {tot_vis_c} <span style="font-size: 15px; color: #e2e8f0; font-weight: 600;">pts</span>
-                            </div>
-                            <div style="font-size: 12px; color: #f8fafc; margin-top: 2px;">{statut_live_html} &nbsp;•&nbsp; ✅ {nb_manches_term}/9 manches ({pct_manches}%)</div>
-                        </div>
-                        <div style="flex: 1; min-width: 160px; text-align: right;">
-                            <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: #fdba74; font-weight: 700;">🟠 Équipe Visiteuse (🚗)</div>
-                            <div style="font-size: 18px; font-weight: 800; color: #ffffff;">{equipe_visiteur}</div>
-                        </div>
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True
+            # Conteneur pour le Bandeau Scoreboard Live (rempli après la lecture des 9 manches pour garantir des totaux 100% synchronisés)
+            conteneur_scoreboard_live = st.container()
+            afficher_dashboard = st.toggle(
+                "📊 **Afficher le détail des points individuels en direct**",
+                value=st.session_state.get("toggle_voir_resultats_editeur", False),
+                key="toggle_voir_resultats_editeur"
             )
-
-            col_t1, col_t2 = st.columns([2, 2])
-            with col_t1:
-                afficher_dashboard = st.toggle(
-                    "📊 **Afficher le détail des points individuels en direct**",
-                    value=st.session_state.get("toggle_voir_resultats_editeur", False),
-                    key="toggle_voir_resultats_editeur"
-                )
-            with col_t2:
-                replier_manches_terminees = st.toggle(
-                    "🔽 **Replier automatiquement les manches terminées (8 pts)**",
-                    value=st.session_state.get("toggle_replier_manches_term", False),
-                    key="toggle_replier_manches_term"
-                )
-
-            if afficher_dashboard:
-                with st.container(border=True):
-                    st.markdown("##### 👤 Points individuels cumulés en direct")
-                    col_pj1, col_pj2 = st.columns(2)
-                    with col_pj1:
-                        st.markdown(f"**🏠 {equipe_receveur}**")
-                        cr1, cr2, cr3 = st.columns(3)
-                        p1 = dict_joueurs["j1_rec"]
-                        p2 = dict_joueurs["j2_rec"]
-                        p3 = dict_joueurs["j3_rec"]
-                        cr1.metric(p1["nom"] + (" (Abs.)" if not p1["present"] else ""), f"{pts_j_c['j1_rec']} pts")
-                        cr2.metric(p2["nom"] + (" (Abs.)" if not p2["present"] else ""), f"{pts_j_c['j2_rec']} pts")
-                        cr3.metric(p3["nom"] + (" (Abs.)" if not p3["present"] else ""), f"{pts_j_c['j3_rec']} pts")
-
-                    with col_pj2:
-                        st.markdown(f"**🚗 {equipe_visiteur}**")
-                        cv1, cv2, cv3 = st.columns(3)
-                        pv1 = dict_joueurs["j1_vis"]
-                        pv2 = dict_joueurs["j2_vis"]
-                        pv3 = dict_joueurs["j3_vis"]
-                        cv1.metric(pv1["nom"] + (" (Abs.)" if not pv1["present"] else ""), f"{pts_j_c['j1_vis']} pts")
-                        cv2.metric(pv2["nom"] + (" (Abs.)" if not pv2["present"] else ""), f"{pts_j_c['j2_vis']} pts")
-                        cv3.metric(pv3["nom"] + (" (Abs.)" if not pv3["present"] else ""), f"{pts_j_c['j3_vis']} pts")
+            conteneur_detail_individuel_live = st.container()
 
     if not est_spectateur and choix_vue != label_direct:
         col_av1, col_av2 = st.columns([3, 1])
@@ -6956,7 +6931,6 @@ with tab_feuille:
         }
 
         manches_invalides = []
-        replier_auto = st.session_state.get("toggle_replier_manches_term", False)
 
         for num_manche, id_a, id_b in matchs_pairs:
             info_a = dict_joueurs[id_a]
@@ -6966,85 +6940,68 @@ with tab_feuille:
             a_pres = info_a["present"]
             b_pres = info_b["present"]
 
-            # Valeur par défaut si non encore définie dans session_state
-            if not a_pres and b_pres:
-                init_val_a = info_a["pts_absent"]
-                init_val_b = 8
-            elif not b_pres and a_pres:
-                init_val_a = 8
-                init_val_b = info_b["pts_absent"]
-            elif not a_pres and not b_pres:
-                init_val_a = info_a["pts_absent"]
-                init_val_b = info_b["pts_absent"]
-            else:
-                init_val_a = 0
-                init_val_b = 0
-
-            if f"s_a_{num_manche}" not in st.session_state:
-                st.session_state[f"s_a_{num_manche}"] = max(0, min(8, int(init_val_a)))
-            if f"s_b_{num_manche}" not in st.session_state:
-                st.session_state[f"s_b_{num_manche}"] = max(0, min(8, int(init_val_b)))
-
-            cur_sa = int(st.session_state.get(f"s_a_{num_manche}", 0))
-            cur_sb = int(st.session_state.get(f"s_b_{num_manche}", 0))
-            manche_terminee = ((cur_sa == 8 and cur_sb < 8) or (cur_sb == 8 and cur_sa < 8))
-
             status_label = ""
             if not a_pres and not b_pres:
-                status_label = " • ❌ Forfait double (2 absents)"
+                status_label = " ❌ (Forfait double : 2 absents)"
             elif not a_pres:
-                status_label = f" • ❌ {joueur_a} absent ({info_a['pts_absent']} pts)"
+                status_label = f" ❌ ({joueur_a} absent : {info_a['pts_absent']} pts)"
             elif not b_pres:
-                status_label = f" • ❌ {joueur_b} absent ({info_b['pts_absent']} pts)"
+                status_label = f" ❌ ({joueur_b} absent : {info_b['pts_absent']} pts)"
 
-            if cur_sa == 8 and cur_sb == 8:
-                icone_manche = "⚠️"
-                resume_score_hdr = f"({cur_sa} - {cur_sb}) — Erreur 8-8"
-            elif manche_terminee:
-                icone_manche = "✅"
-                gagnant_m = joueur_a if cur_sa == 8 else joueur_b
-                resume_score_hdr = f"[{cur_sa} - {cur_sb}] 🏆 {gagnant_m}"
-            elif cur_sa > 0 or cur_sb > 0:
-                icone_manche = "⏳"
-                resume_score_hdr = f"[{cur_sa} - {cur_sb}] — En cours"
-            else:
-                icone_manche = "⚪"
-                resume_score_hdr = "À jouer"
-
-            ouvrir_manche = not (replier_auto and manche_terminee)
-
-            with st.expander(f"{icone_manche} Manche {num_manche} : {joueur_a} ({equipe_receveur}) vs {joueur_b} ({equipe_visiteur}) — {resume_score_hdr}{status_label}", expanded=ouvrir_manche):
+            # IMPORTANT : Le titre du st.expander doit rester statique vis-à-vis des scores pour que Streamlit conserve l'état des champs numériques
+            with st.expander(f"Manche {num_manche} : {joueur_a} ({equipe_receveur}) vs {joueur_b} ({equipe_visiteur}){status_label}", expanded=True):
                 c1, c2 = st.columns(2)
+
+                # Valeur par défaut si non encore définie dans session_state
+                if not a_pres and b_pres:
+                    init_val_a = info_a["pts_absent"]
+                    init_val_b = 8
+                elif not b_pres and a_pres:
+                    init_val_a = 8
+                    init_val_b = info_b["pts_absent"]
+                elif not a_pres and not b_pres:
+                    init_val_a = info_a["pts_absent"]
+                    init_val_b = info_b["pts_absent"]
+                else:
+                    init_val_a = 0
+                    init_val_b = 0
+
+                if f"s_a_{num_manche}" not in st.session_state:
+                    st.session_state[f"s_a_{num_manche}"] = max(0, min(8, int(init_val_a)))
+                if f"s_b_{num_manche}" not in st.session_state:
+                    st.session_state[f"s_b_{num_manche}"] = max(0, min(8, int(init_val_b)))
 
                 with c1:
                     label_champ_a = f"🔵 Points de {joueur_a} ({equipe_receveur})" + (f" [Absent : {info_a['pts_absent']} pts]" if not a_pres else "")
-                    score_a = st.number_input(
+                    score_a = int(st.number_input(
                         label_champ_a, 
                         0, 8, 
                         key=f"s_a_{num_manche}",
                         disabled=not est_editeur
-                    )
+                    ))
                 with c2:
                     label_champ_b = f"🟠 Points de {joueur_b} ({equipe_visiteur})" + (f" [Absent : {info_b['pts_absent']} pts]" if not b_pres else "")
-                    score_b = st.number_input(
+                    score_b = int(st.number_input(
                         label_champ_b, 
                         0, 8, 
                         key=f"s_b_{num_manche}",
                         disabled=not est_editeur
-                    )
+                    ))
             
                 # Validation logique du billard au 8 et retour visuel immédiat
                 if score_a == 8 and score_b == 8:
                     st.warning("⚠️ Les deux joueurs ne peuvent pas avoir 8 points.")
                     manches_invalides.append(num_manche)
                 elif score_a == 8:
-                    st.caption(f"🏆 **Manche {num_manche} remportée par {joueur_a}** ({score_a} à {score_b})")
+                    st.caption(f"✅ **Manche {num_manche} terminée — 🏆 Victoire de {joueur_a}** ({score_a} à {score_b})")
                 elif score_b == 8:
-                    st.caption(f"🏆 **Manche {num_manche} remportée par {joueur_b}** ({score_b} à {score_a})")
+                    st.caption(f"✅ **Manche {num_manche} terminée — 🏆 Victoire de {joueur_b}** ({score_b} à {score_a})")
+                elif score_a > 0 or score_b > 0:
+                    st.caption(f"⏳ *Manche {num_manche} en cours : {joueur_a} ({score_a}) - ({score_b}) {joueur_b}*")
 
                 donnees_a_sauvegarder["matchs"][str(num_manche)] = {
-                    "score_a": score_a,
-                    "score_b": score_b,
+                    "score_a": int(score_a),
+                    "score_b": int(score_b),
                     "joueur_a": joueur_a,
                     "joueur_b": joueur_b,
                     "joueur_a_absent": not a_pres,
@@ -7052,15 +7009,88 @@ with tab_feuille:
                 }
 
         # --- CALCULS FINAUX ET TOTAUX (PAR ÉQUIPE ET PAR JOUEUR) ---
-        total_pts_receveur = sum(m["score_a"] for m in donnees_a_sauvegarder["matchs"].values())
-        total_pts_visiteur = sum(m["score_b"] for m in donnees_a_sauvegarder["matchs"].values())
+        total_pts_receveur = sum(int(m["score_a"]) for m in donnees_a_sauvegarder["matchs"].values())
+        total_pts_visiteur = sum(int(m["score_b"]) for m in donnees_a_sauvegarder["matchs"].values())
 
         # Calcul des points individuels par joueur (3 manches par joueur = max 24 pts)
         pts_joueurs = {p_id: 0 for p_id in dict_joueurs}
         for num_m, id_a, id_b in matchs_pairs:
             m = donnees_a_sauvegarder["matchs"].get(str(num_m), {})
-            pts_joueurs[id_a] += m.get("score_a", 0)
-            pts_joueurs[id_b] += m.get("score_b", 0)
+            pts_joueurs[id_a] += int(m.get("score_a", 0))
+            pts_joueurs[id_b] += int(m.get("score_b", 0))
+
+        donnees_a_sauvegarder["total_receveur"] = total_pts_receveur
+        donnees_a_sauvegarder["total_visiteur"] = total_pts_visiteur
+
+        # Mise à jour du Bandeau Scoreboard Live en haut de page avec les totaux exacts calculés ci-dessus
+        nb_manches_term = sum(
+            1 for m_v in donnees_a_sauvegarder["matchs"].values()
+            if (m_v["score_a"] == 8 or m_v["score_b"] == 8) and not (m_v["score_a"] == 8 and m_v["score_b"] == 8)
+        )
+        pct_manches = int(round((nb_manches_term / 9.0) * 100))
+
+        if total_pts_receveur > total_pts_visiteur:
+            statut_live_html = f"🏆 <strong>{equipe_receveur}</strong> mène par <strong>+{total_pts_receveur - total_pts_visiteur} pt(s)</strong>"
+        elif total_pts_visiteur > total_pts_receveur:
+            statut_live_html = f"🏆 <strong>{equipe_visiteur}</strong> mène par <strong>+{total_pts_visiteur - total_pts_receveur} pt(s)</strong>"
+        else:
+            statut_live_html = f"🤝 <strong>Égalité parfaite</strong> ({total_pts_receveur} - {total_pts_visiteur})"
+
+        with conteneur_scoreboard_live:
+            st.markdown(
+                f"""
+                <div style="background: linear-gradient(135deg, #0b3c5d 0%, #16527a 100%); color: white; border-radius: 12px; padding: 14px 20px; margin: 8px 0 12px 0; box-shadow: 0 4px 12px rgba(11, 60, 93, 0.2); border-bottom: 4px solid #f59e0b;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                        <div style="flex: 1; min-width: 160px;">
+                            <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: #93c5fd; font-weight: 700;">🔵 Équipe Receveuse (🏠)</div>
+                            <div style="font-size: 18px; font-weight: 800; color: #ffffff;">{equipe_receveur}</div>
+                        </div>
+                        <div style="text-align: center; padding: 4px 18px; background: rgba(255,255,255,0.12); border-radius: 10px; border: 1px solid rgba(255,255,255,0.22);">
+                            <div style="font-size: 26px; font-weight: 900; letter-spacing: 1px; color: #fbbf24;">
+                                {total_pts_receveur} <span style="font-size: 15px; color: #e2e8f0; font-weight: 600;">pts</span>
+                                &nbsp;—&nbsp;
+                                {total_pts_visiteur} <span style="font-size: 15px; color: #e2e8f0; font-weight: 600;">pts</span>
+                            </div>
+                            <div style="font-size: 12px; color: #f8fafc; margin-top: 2px;">{statut_live_html} &nbsp;•&nbsp; ✅ {nb_manches_term}/9 manches ({pct_manches}%)</div>
+                        </div>
+                        <div style="flex: 1; min-width: 160px; text-align: right;">
+                            <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: #fdba74; font-weight: 700;">🟠 Équipe Visiteuse (🚗)</div>
+                            <div style="font-size: 18px; font-weight: 800; color: #ffffff;">{equipe_visiteur}</div>
+                        </div>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        if afficher_dashboard:
+            with conteneur_detail_individuel_live:
+                with st.container(border=True):
+                    st.markdown("##### 👤 Points individuels cumulés en direct")
+                    c_sc1, c_sc2 = st.columns(2)
+                    c_sc1.metric(f"Total {equipe_receveur}", f"{total_pts_receveur} pts")
+                    c_sc2.metric(f"Total {equipe_visiteur}", f"{total_pts_visiteur} pts")
+
+                    col_pj1, col_pj2 = st.columns(2)
+                    with col_pj1:
+                        st.markdown(f"**🏠 {equipe_receveur}**")
+                        cr1, cr2, cr3 = st.columns(3)
+                        p1 = dict_joueurs["j1_rec"]
+                        p2 = dict_joueurs["j2_rec"]
+                        p3 = dict_joueurs["j3_rec"]
+                        cr1.metric(p1["nom"] + (" (Abs.)" if not p1["present"] else ""), f"{pts_joueurs['j1_rec']} pts")
+                        cr2.metric(p2["nom"] + (" (Abs.)" if not p2["present"] else ""), f"{pts_joueurs['j2_rec']} pts")
+                        cr3.metric(p3["nom"] + (" (Abs.)" if not p3["present"] else ""), f"{pts_joueurs['j3_rec']} pts")
+
+                    with col_pj2:
+                        st.markdown(f"**🚗 {equipe_visiteur}**")
+                        cv1, cv2, cv3 = st.columns(3)
+                        pv1 = dict_joueurs["j1_vis"]
+                        pv2 = dict_joueurs["j2_vis"]
+                        pv3 = dict_joueurs["j3_vis"]
+                        cv1.metric(pv1["nom"] + (" (Abs.)" if not pv1["present"] else ""), f"{pts_joueurs['j1_vis']} pts")
+                        cv2.metric(pv2["nom"] + (" (Abs.)" if not pv2["present"] else ""), f"{pts_joueurs['j2_vis']} pts")
+                        cv3.metric(pv3["nom"] + (" (Abs.)" if not pv3["present"] else ""), f"{pts_joueurs['j3_vis']} pts")
 
         st.divider()
         st.markdown("### 📊 Résultats et Totaux")
