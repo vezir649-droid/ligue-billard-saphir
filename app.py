@@ -975,16 +975,44 @@ def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_j
     return texte, html
 
 def charger_historique_matchs():
-    """Charge la liste des matchs archivés depuis le fichier d'historique."""
-    if os.path.exists(HISTORIQUE_FILE):
-        try:
-            with open(HISTORIQUE_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if isinstance(data, list):
-                    return data
-        except Exception:
-            return []
+    """Charge la liste des matchs archivés depuis le fichier d'historique (avec repli sur la sauvegarde .bak si nécessaire)."""
+    for chemin in [HISTORIQUE_FILE, f"{HISTORIQUE_FILE}.bak"]:
+        if os.path.exists(chemin):
+            try:
+                with open(chemin, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, list):
+                        return data
+            except Exception:
+                continue
     return []
+
+def sauvegarder_historique_matchs(historique_list):
+    """Sauvegarde de façon atomique et sécurisée la liste des matchs dans historique_matchs.json avec copie .bak."""
+    if not isinstance(historique_list, list):
+        return False
+    try:
+        if os.path.exists(HISTORIQUE_FILE) and os.path.getsize(HISTORIQUE_FILE) > 2:
+            try:
+                with open(HISTORIQUE_FILE, "r", encoding="utf-8") as f_src:
+                    ancien_contenu = f_src.read()
+                with open(f"{HISTORIQUE_FILE}.bak", "w", encoding="utf-8") as f_bak:
+                    f_bak.write(ancien_contenu)
+            except Exception:
+                pass
+        tmp_file = f"{HISTORIQUE_FILE}.tmp"
+        with open(tmp_file, "w", encoding="utf-8") as f_tmp:
+            json.dump(historique_list, f_tmp, ensure_ascii=False, indent=4)
+        os.replace(tmp_file, HISTORIQUE_FILE)
+        return True
+    except Exception as e:
+        try:
+            with open(HISTORIQUE_FILE, "w", encoding="utf-8") as f_direct:
+                json.dump(historique_list, f_direct, ensure_ascii=False, indent=4)
+            return True
+        except Exception:
+            st.error(f"Erreur lors de la sauvegarde de l'historique des matchs : {e}")
+            return False
 
 def verifier_match_deja_valide(equipe_rec, equipe_vis, matchs_actuels, historique):
     """Vérifie si le match actuellement affiché a déjà été validé et archivé."""
@@ -1612,34 +1640,93 @@ def envoyer_courriel(destinataires_str, sujet, texte_brut, html_contenu, config,
 # MODULE DE GESTION DES TOURNOIS (SIMPLE & DOUBLE)
 # ==============================================================================
 def charger_tournois_data():
-    """Charge les données des tournois depuis le fichier JSON."""
-    if os.path.exists(TOURNOIS_FILE):
-        try:
-            with open(TOURNOIS_FILE, "r", encoding="utf-8") as f:
-                d = json.load(f)
-                if isinstance(d, dict):
-                    return d
-        except Exception:
-            return {}
+    """Charge les données des tournois depuis le fichier JSON (avec repli sur .bak si nécessaire)."""
+    for chemin in [TOURNOIS_FILE, f"{TOURNOIS_FILE}.bak"]:
+        if os.path.exists(chemin):
+            try:
+                with open(chemin, "r", encoding="utf-8") as f:
+                    d = json.load(f)
+                    if isinstance(d, dict):
+                        return d
+            except Exception:
+                continue
     return {}
 
-def sauvegarder_tournois_data(data, marqueur_session=None, action="sauvegarde"):
-    """Enregistre les données des tournois dans le fichier JSON avec horodatage et traçabilité du marqueur."""
+def _ecrire_json_atomique(filepath, payload):
+    """Écrit un objet JSON sur le disque de manière atomique avec copie de secours .bak."""
+    if os.path.exists(filepath) and os.path.getsize(filepath) > 2:
+        try:
+            with open(filepath, "r", encoding="utf-8") as f_src:
+                ancien = f_src.read()
+            with open(f"{filepath}.bak", "w", encoding="utf-8") as f_bak:
+                f_bak.write(ancien)
+        except Exception:
+            pass
+    tmp_path = f"{filepath}.tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f_tmp:
+        json.dump(payload, f_tmp, ensure_ascii=False, indent=4)
+    os.replace(tmp_path, filepath)
+
+def sauvegarder_tournois_data(data, marqueur_session=None, action="sauvegarde", synchroniser_historique=True):
+    """Enregistre les données des tournois dans tournois_data.json et synchronise automatiquement historique_tournois.json."""
     if not isinstance(data, dict):
         return False
     try:
+        import copy
         now_str = datetime.now().strftime("%d/%m/%Y à %H:%M:%S")
+        now_short = datetime.now().strftime("%d/%m/%Y à %H:%M")
         data["derniere_sauvegarde"] = {
             "date": now_str,
             "session_id": marqueur_session or "marqueur_actif",
             "action": action
         }
+
+        # Toujours récupérer l'historique le plus récent sur disque pour éviter tout écrasement par une copie en mémoire obsolète
+        hist_disque = []
+        for ch_h in [HISTORIQUE_TOURNOIS_FILE, f"{HISTORIQUE_TOURNOIS_FILE}.bak"]:
+            if os.path.exists(ch_h):
+                try:
+                    with open(ch_h, "r", encoding="utf-8") as f_h:
+                        lu = json.load(f_h)
+                        if isinstance(lu, list):
+                            hist_disque = [h for h in lu if isinstance(h, dict) and not h.get("est_actif")]
+                            break
+                except Exception:
+                    continue
+
+        if not hist_disque and isinstance(data.get("historique"), list):
+            hist_disque = [h for h in data["historique"] if isinstance(h, dict) and not h.get("est_actif")]
+
         for m in ["simple", "double"]:
             if m in data and isinstance(data[m], dict):
-                data[m]["date_derniere_sauvegarde"] = now_str
+                t_obj = data[m]
+                t_obj["mode"] = m
+                t_obj["date_derniere_sauvegarde"] = now_str
+                if not t_obj.get("id_archive"):
+                    t_obj["id_archive"] = f"TOURNOI_{m.upper()}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{random.randint(100, 999)}"
+                if synchroniser_historique:
+                    snap = copy.deepcopy(t_obj)
+                    snap.pop("est_actif", None)
+                    snap["mode"] = m
+                    snap["date_archivage"] = now_short
+                    id_a = snap["id_archive"]
+                    idx_ex = -1
+                    for i, h_it in enumerate(hist_disque):
+                        if h_it.get("id_archive") == id_a or (
+                            h_it.get("titre") == snap.get("titre") and
+                            h_it.get("date_creation") == snap.get("date_creation") and
+                            h_it.get("mode") == m
+                        ):
+                            idx_ex = i
+                            break
+                    if idx_ex >= 0:
+                        hist_disque[idx_ex] = snap
+                    else:
+                        hist_disque.insert(0, snap)
 
-        with open(TOURNOIS_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=4)
+        data["historique"] = hist_disque
+        _ecrire_json_atomique(HISTORIQUE_TOURNOIS_FILE, hist_disque)
+        _ecrire_json_atomique(TOURNOIS_FILE, data)
         return True
     except Exception as e:
         st.error(f"Erreur lors de l'enregistrement du tournoi : {e}")
@@ -1647,7 +1734,7 @@ def sauvegarder_tournois_data(data, marqueur_session=None, action="sauvegarde"):
 
 def ceder_la_main_avec_sauvegarde(session_id):
     """
-    Sauvegarde automatiquement le tournoi sur le disque avant de céder la main,
+    Sauvegarde automatiquement le tournoi et le match en cours sur le disque avant de céder la main,
     puis libère le verrou exclusif.
     """
     now_str = datetime.now().strftime("%d/%m/%Y à %H:%M:%S")
@@ -1663,10 +1750,9 @@ def ceder_la_main_avec_sauvegarde(session_id):
     sauvegarder_tournois_data(td, marqueur_session=session_id, action="cession_de_main")
 
     try:
-        if "recuperer_donnees_actuelles" in globals():
-            donnees_feuille = recuperer_donnees_actuelles()
-            if donnees_feuille and isinstance(donnees_feuille, dict):
-                sauvegarder_donnees(donnees_feuille)
+        donnees_feuille = st.session_state.get("donnees_match_courant")
+        if donnees_feuille and isinstance(donnees_feuille, dict):
+            sauvegarder_donnees(donnees_feuille)
     except Exception:
         pass
 
@@ -1722,24 +1808,33 @@ def prendre_la_main_avec_rechargement(session_id):
 
 def charger_historique_tournois(inclure_actifs=False):
     """Charge l'ensemble des tournois archivés (Simples et Doubles).
-    Si inclure_actifs est True, inclut également les tournois actifs sauvegardés dans tournois_data.json."""
+    Si inclure_actifs est True, inclut et marque également les tournois actifs sauvegardés dans tournois_data.json."""
+    import copy
     historique = []
-    if os.path.exists(HISTORIQUE_TOURNOIS_FILE):
-        try:
-            with open(HISTORIQUE_TOURNOIS_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if isinstance(data, list):
-                    historique = data
-        except Exception:
-            pass
-    if not historique:
-        td = charger_tournois_data()
-        if isinstance(td, dict) and "historique" in td and isinstance(td["historique"], list):
-            historique = td["historique"]
+    for ch_h in [HISTORIQUE_TOURNOIS_FILE, f"{HISTORIQUE_TOURNOIS_FILE}.bak"]:
+        if os.path.exists(ch_h):
+            try:
+                with open(ch_h, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, list):
+                        historique = data
+                        break
+            except Exception:
+                continue
 
-    if inclure_actifs:
+    td = charger_tournois_data()
+    if isinstance(td, dict) and isinstance(td.get("historique"), list):
+        if not historique:
+            historique = copy.deepcopy(td["historique"])
+        else:
+            # Fusionner tout tournoi présent dans td["historique"] qui manquerait dans historique
+            ids_connus = {h.get("id_archive") for h in historique if isinstance(h, dict) and h.get("id_archive")}
+            for h_td in td["historique"]:
+                if isinstance(h_td, dict) and h_td.get("id_archive") and h_td.get("id_archive") not in ids_connus:
+                    historique.append(copy.deepcopy(h_td))
+
+    if inclure_actifs and isinstance(td, dict):
         try:
-            td = charger_tournois_data()
             actifs = []
             for m in ["simple", "double"]:
                 t_act = td.get(m)
@@ -1748,18 +1843,26 @@ def charger_historique_tournois(inclure_actifs=False):
                     titre_a = t_act.get("titre")
                     date_c = t_act.get("date_creation")
                     deja_present = False
-                    for h in historique:
-                        if id_a and h.get("id_archive") == id_a:
-                            deja_present = True
-                            break
-                        if h.get("titre") == titre_a and h.get("date_creation") == date_c and h.get("mode") == m:
+                    for idx_h, h in enumerate(historique):
+                        if (id_a and h.get("id_archive") == id_a) or (
+                            h.get("titre") == titre_a and h.get("date_creation") == date_c and h.get("mode") == m
+                        ):
+                            t_cop = copy.deepcopy(t_act)
+                            t_cop["mode"] = m
+                            if t_cop.get("statut") != "termine":
+                                t_cop["est_actif"] = True
+                            if id_a:
+                                t_cop["id_archive"] = id_a
+                            elif h.get("id_archive"):
+                                t_cop["id_archive"] = h["id_archive"]
+                            historique[idx_h] = t_cop
                             deja_present = True
                             break
                     if not deja_present:
-                        import copy
                         t_cop = copy.deepcopy(t_act)
                         t_cop["mode"] = m
-                        t_cop["est_actif"] = True
+                        if t_cop.get("statut") != "termine":
+                            t_cop["est_actif"] = True
                         if not t_cop.get("id_archive"):
                             t_cop["id_archive"] = f"ACTIF_{m.upper()}"
                         actifs.append(t_cop)
@@ -1771,17 +1874,21 @@ def charger_historique_tournois(inclure_actifs=False):
     return historique
 
 def sauvegarder_historique_tournois(historique_list):
-    """Sauvegarde l'historique des tournois dans le fichier JSON."""
+    """Sauvegarde l'historique des tournois dans historique_tournois.json et synchronise tournois_data.json."""
     try:
-        # Ne sauvegarder que les tournois archivés (exclure d'éventuels items temporairement marqués comme actifs)
-        liste_a_sauver = [h for h in historique_list if not h.get("est_actif")] if isinstance(historique_list, list) else []
-        with open(HISTORIQUE_TOURNOIS_FILE, "w", encoding="utf-8") as f:
-            json.dump(liste_a_sauver, f, ensure_ascii=False, indent=4)
+        import copy
+        liste_a_sauver = []
+        if isinstance(historique_list, list):
+            for h in historique_list:
+                if isinstance(h, dict):
+                    h_clean = copy.deepcopy(h)
+                    h_clean.pop("est_actif", None)
+                    liste_a_sauver.append(h_clean)
+        _ecrire_json_atomique(HISTORIQUE_TOURNOIS_FILE, liste_a_sauver)
         td = charger_tournois_data()
         td["historique"] = liste_a_sauver
         try:
-            with open(TOURNOIS_FILE, "w", encoding="utf-8") as f:
-                json.dump(td, f, ensure_ascii=False, indent=4)
+            _ecrire_json_atomique(TOURNOIS_FILE, td)
         except Exception:
             pass
         return True
@@ -1965,6 +2072,9 @@ def archiver_tournoi(tournoi_obj, mode="simple", notifier_admin=True):
     if not id_archive:
         id_archive = f"TOURNOI_{mode.upper()}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{random.randint(100, 999)}"
         archive_item["id_archive"] = id_archive
+    tournoi_obj["id_archive"] = id_archive
+    tournoi_obj["mode"] = mode
+    archive_item.pop("est_actif", None)
 
     historique = charger_historique_tournois()
 
@@ -2001,12 +2111,23 @@ def archiver_tournoi(tournoi_obj, mode="simple", notifier_admin=True):
     return True
 
 def supprimer_tournoi_historique(id_archive):
-    """Supprime un tournoi spécifique de l'historique."""
+    """Supprime un tournoi spécifique de l'historique (et le retire de la grille active s'il y figurait encore)."""
     if not id_archive:
         return False
     historique = charger_historique_tournois()
     nouveau_h = [h for h in historique if h.get("id_archive") != id_archive]
-    sauvegarder_historique_tournois(nouveau_h)
+    td = charger_tournois_data()
+    modif_td = False
+    for m in ["simple", "double"]:
+        if isinstance(td.get(m), dict) and td[m].get("id_archive") == id_archive:
+            td[m] = None
+            modif_td = True
+    if modif_td:
+        td["historique"] = nouveau_h
+        _ecrire_json_atomique(HISTORIQUE_TOURNOIS_FILE, nouveau_h)
+        _ecrire_json_atomique(TOURNOIS_FILE, td)
+    else:
+        sauvegarder_historique_tournois(nouveau_h)
     return True
 
 def sauvegarder_tournoi_dans_historique(mode, notifier_admin=True):
@@ -7309,13 +7430,7 @@ with tab_feuille:
 
             with col_btn_app:
                 if st.button("✅ Approuver et enregistrer", type="primary", use_container_width=True, key="dlg_btn_approuver"):
-                    historique = []
-                    if os.path.exists(HISTORIQUE_FILE):
-                        try:
-                            with open(HISTORIQUE_FILE, "r", encoding="utf-8") as f:
-                                historique = json.load(f)
-                        except Exception:
-                            historique = []
+                    historique = charger_historique_matchs()
 
                     # Régénération des résumés texte et HTML avec les approbateurs sélectionnés
                     txt_res_final, html_res_final = generer_resume_match(
@@ -7351,8 +7466,7 @@ with tab_feuille:
                     donnees_finales["html_officiel"] = html_res_final
                     historique.append(donnees_finales)
 
-                    with open(HISTORIQUE_FILE, "w", encoding="utf-8") as f:
-                        json.dump(historique, f, ensure_ascii=False, indent=4)
+                    sauvegarder_historique_matchs(historique)
 
                     st.session_state["match_en_cours_deja_valide"] = True
 
@@ -7472,6 +7586,7 @@ with tab_feuille:
 
         # Sauvegarde automatique en arrière-plan (uniquement par l'éditeur actif et si le match n'est pas validé)
         if est_editeur and not match_valide:
+            st.session_state["donnees_match_courant"] = donnees_a_sauvegarder
             sauvegarder_donnees(donnees_a_sauvegarder)
             st.session_state["scores_en_cours_backup"] = {
                 f"s_a_{n}": st.session_state.get(f"s_a_{n}", 0) for n in range(1, 10)
@@ -7808,9 +7923,8 @@ if tab_admin is not None:
 
                             historique_complet[idx_sel] = m_sel
 
-                            # 3. Enregistrement sur le disque
-                            with open(HISTORIQUE_FILE, "w", encoding="utf-8") as f_h:
-                                json.dump(historique_complet, f_h, ensure_ascii=False, indent=4)
+                            # 3. Enregistrement atomique sur le disque
+                            sauvegarder_historique_matchs(historique_complet)
 
                             st.success(f"✅ Match #{idx_sel+1} rectifié avec succès et sauvegardé dans l'historique !")
 
@@ -7958,6 +8072,67 @@ if tab_admin is not None:
                         st.success(f"✅ {msg_exp_t} (Envoyé à : `{dest_t_input.strip()}` avec `{os.path.basename(HISTORIQUE_TOURNOIS_FILE)}`)")
                     else:
                         st.error(f"❌ {msg_exp_t}")
+
+                st.divider()
+                st.markdown("#### 💾 Sauvegarde locale & Restauration des fichiers JSON officiels")
+                st.caption("Téléchargez ou restaurez directement les fichiers d'historique officiels (`historique_matchs.json` et `historique_tournois.json`).")
+                col_json_m, col_json_t = st.columns(2)
+                with col_json_m:
+                    with st.container(border=True):
+                        st.markdown("###### 🎱 Historique des matchs (`historique_matchs.json`)")
+                        hist_m_actuel = charger_historique_matchs()
+                        st.caption(f"{len(hist_m_actuel)} match(s) actuellement enregistré(s) sur le disque.")
+                        st.download_button(
+                            label="📥 Télécharger historique_matchs.json",
+                            data=json.dumps(hist_m_actuel, ensure_ascii=False, indent=4),
+                            file_name="historique_matchs.json",
+                            mime="application/json",
+                            use_container_width=True,
+                            key="btn_dl_json_matchs"
+                        )
+                        with st.popover("📤 Restaurer / Importer historique_matchs.json", use_container_width=True):
+                            up_m = st.file_uploader("Fichier historique_matchs.json", type=["json"], key="up_json_matchs")
+                            if up_m is not None:
+                                if st.button("Confirmer l'importation des matchs", type="primary", use_container_width=True, key="btn_conf_up_m"):
+                                    try:
+                                        data_m_up = json.loads(up_m.getvalue().decode("utf-8"))
+                                        if isinstance(data_m_up, list):
+                                            sauvegarder_historique_matchs(data_m_up)
+                                            st.success(f"✅ {len(data_m_up)} match(s) restauré(s) avec succès !")
+                                            time.sleep(0.8)
+                                            st.rerun()
+                                        else:
+                                            st.error("Format JSON invalide (liste attendue).")
+                                    except Exception as e_up_m:
+                                        st.error(f"Erreur d'importation : {e_up_m}")
+                with col_json_t:
+                    with st.container(border=True):
+                        st.markdown("###### 🏆 Historique des tournois (`historique_tournois.json`)")
+                        hist_t_actuel = charger_historique_tournois()
+                        st.caption(f"{len(hist_t_actuel)} tournoi(s) actuellement enregistré(s) sur le disque.")
+                        st.download_button(
+                            label="📥 Télécharger historique_tournois.json",
+                            data=json.dumps(hist_t_actuel, ensure_ascii=False, indent=4),
+                            file_name="historique_tournois.json",
+                            mime="application/json",
+                            use_container_width=True,
+                            key="btn_dl_json_tournois"
+                        )
+                        with st.popover("📤 Restaurer / Importer historique_tournois.json", use_container_width=True):
+                            up_t = st.file_uploader("Fichier historique_tournois.json", type=["json"], key="up_json_tournois")
+                            if up_t is not None:
+                                if st.button("Confirmer l'importation des tournois", type="primary", use_container_width=True, key="btn_conf_up_t"):
+                                    try:
+                                        data_t_up = json.loads(up_t.getvalue().decode("utf-8"))
+                                        if isinstance(data_t_up, list):
+                                            sauvegarder_historique_tournois(data_t_up)
+                                            st.success(f"✅ {len(data_t_up)} tournoi(s) restauré(s) avec succès !")
+                                            time.sleep(0.8)
+                                            st.rerun()
+                                        else:
+                                            st.error("Format JSON invalide (liste attendue).")
+                                    except Exception as e_up_t:
+                                        st.error(f"Erreur d'importation : {e_up_t}")
 
             with tab_smtp:
                 st.markdown("#### ⚙️ Configuration du serveur de messagerie (SMTP)")
