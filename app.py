@@ -6129,6 +6129,234 @@ injecter_meta_icones_mobiles()
 injecter_theme_css_saphir()
 # Remontée forcée en haut de page désactivée
 
+def charger_readme_documentation():
+    """Charge le contenu du fichier README.md depuis le répertoire de l'application."""
+    chemin_readme = get_data_path("README.md")
+    if os.path.exists(chemin_readme):
+        try:
+            with open(chemin_readme, "r", encoding="utf-8") as f:
+                return f.read()
+        except Exception:
+            pass
+    return "# 🎱 Ligue de billard Boule en main\n\nDocumentation introuvable."
+
+def generer_html_imprimable_readme(md_text):
+    """Convertit le contenu Markdown du README.md en document HTML officiel formaté pour l'impression A4."""
+    import html as html_lib
+    logo_b64 = charger_armoiries_base64((120, 120))
+    logo_html = f'<img src="{logo_b64}" alt="Armoiries" style="width:58px; height:58px; object-fit:contain; margin-right:14px;">' if logo_b64 else ""
+
+    def _fmt_inline(txt):
+        txt = html_lib.escape(txt)
+        if txt.startswith('$$') and txt.endswith('$$'):
+
+            return "<div style='background:#f0f7ff; border-left:4px solid #0b3c5d; padding:8px 12px; margin:6px 0; font-weight:bold; color:#0b3c5d;'>Score absent = min(7, arrondi((moyenne × 24) / 3))</div>"
+
+        txt = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", txt)
+        txt = re.sub(r"\*(.+?)\*", r"<em>\1</em>", txt)
+        txt = re.sub(r"`([^`]+)`", r"<code style='background:#f1f5f9; padding:1px 5px; border-radius:4px; font-family:Consolas,monospace; font-size:90%; color:#0f172a;'>\1</code>", txt)
+        txt = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r"<a href='\2' style='color:#0b3c5d; text-decoration:underline;'>\1</a>", txt)
+        return txt
+
+    lignes = md_text.splitlines()
+    corps_html = []
+    in_code = False
+    in_ul = False
+    in_table = False
+    table_rows = []
+
+    def _close_lists_and_tables():
+        nonlocal in_ul, in_table, table_rows
+        if in_ul:
+            corps_html.append("</ul>")
+            in_ul = False
+        if in_table and table_rows:
+            corps_html.append("<table style='width:100%; border-collapse:collapse; margin:10px 0; font-size:12.5px;'>")
+            for r_idx, r_cells in enumerate(table_rows):
+                if r_idx == 0:
+                    corps_html.append("<thead><tr style='background:#0b3c5d; color:#ffffff;'>")
+                    for c in r_cells:
+                        corps_html.append(f"<th style='padding:6px 10px; text-align:left; border:1px solid #cbd5e1;'>{_fmt_inline(c)}</th>")
+                    corps_html.append("</tr></thead><tbody>")
+                else:
+                    bg_r = "#f8fafc" if r_idx % 2 == 1 else "#ffffff"
+                    corps_html.append(f"<tr style='background:{bg_r}; color:#1e293b;'>")
+                    for c in r_cells:
+                        corps_html.append(f"<td style='padding:6px 10px; border:1px solid #cbd5e1;'>{_fmt_inline(c)}</td>")
+                    corps_html.append("</tr>")
+            corps_html.append("</tbody></table>")
+            in_table = False
+            table_rows = []
+
+    for raw_line in lignes:
+        s_line = raw_line.strip()
+        if s_line.startswith("```"):
+            _close_lists_and_tables()
+            if not in_code:
+                in_code = True
+                corps_html.append("<pre style='background:#f1f5f9; color:#0f172a; padding:8px 12px; border-radius:6px; border:1px solid #cbd5e1; font-family:Consolas,monospace; font-size:12px; overflow-x:auto;'>")
+            else:
+                in_code = False
+                corps_html.append("</pre>")
+            continue
+
+        if in_code:
+            corps_html.append(html_lib.escape(raw_line) + "\n")
+            continue
+
+        if not s_line:
+            _close_lists_and_tables()
+            continue
+
+        if s_line == "---":
+            _close_lists_and_tables()
+            corps_html.append("<hr style='border:none; border-top:1px solid #cbd5e1; margin:14px 0;'>")
+            continue
+
+        if s_line.startswith("|") and s_line.endswith("|"):
+            cells = [c.strip() for c in s_line.strip("|").split("|")]
+            if all(set(c) <= set(":- ") for c in cells):
+                continue
+            in_table = True
+            table_rows.append(cells)
+            continue
+        elif in_table:
+            _close_lists_and_tables()
+
+        if s_line.startswith("# "):
+            _close_lists_and_tables()
+            corps_html.append(f"<h1 style='color:#0b3c5d; font-size:20px; margin:14px 0 6px 0; border-bottom:2px solid #0b3c5d; padding-bottom:4px;'>{_fmt_inline(s_line[2:])}</h1>")
+        elif s_line.startswith("## "):
+            _close_lists_and_tables()
+            corps_html.append(f"<h2 style='color:#0b3c5d; font-size:16px; margin:14px 0 6px 0; background:#f0f4f8; padding:5px 10px; border-left:4px solid #0b3c5d; border-radius:4px;'>{_fmt_inline(s_line[3:])}</h2>")
+        elif s_line.startswith("### "):
+            _close_lists_and_tables()
+            corps_html.append(f"<h3 style='color:#16527a; font-size:14px; margin:10px 0 4px 0;'>{_fmt_inline(s_line[4:])}</h3>")
+        elif s_line.startswith("* ") or s_line.startswith("- ") or re.match(r"^\d+\.\s+", s_line):
+            if not in_ul:
+                corps_html.append("<ul style='margin:4px 0 8px 0; padding-left:22px; line-height:1.5;'>")
+                in_ul = True
+            item_txt = re.sub(r"^(\*|-|\d+\.)\s+", "", s_line)
+            corps_html.append(f"<li style='margin-bottom:3px;'>{_fmt_inline(item_txt)}</li>")
+        else:
+            _close_lists_and_tables()
+            corps_html.append(f"<p style='margin:5px 0; line-height:1.5;'>{_fmt_inline(s_line)}</p>")
+
+    _close_lists_and_tables()
+    date_imp = datetime.now().strftime("%d/%m/%Y")
+
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Documentation Officielle — Ligue de billard Boule en main</title>
+    <style>
+        @page {{
+            size: A4 portrait;
+            margin: 12mm 14mm;
+        }}
+        html, body {{
+            background-color: #ffffff !important;
+            color: #1e293b !important;
+            color-scheme: light !important;
+            font-family: Arial, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 13px;
+            line-height: 1.5;
+            margin: 0;
+            padding: 12px;
+        }}
+        .doc-container {{
+            max-width: 860px;
+            margin: 0 auto;
+        }}
+        h1, h2, h3 {{
+            page-break-after: avoid;
+            break-after: avoid;
+        }}
+        table, pre, ul {{
+            page-break-inside: avoid;
+            break-inside: avoid;
+        }}
+        @media print {{
+            .no-print {{
+                display: none !important;
+            }}
+            body {{
+                padding: 0 !important;
+                font-size: 10.5pt !important;
+            }}
+        }}
+    </style>
+</head>
+<body>
+    <div class="doc-container">
+        <div class="no-print" style="display:flex; justify-content:space-between; align-items:center; background:#eef4f8; padding:10px 14px; border-radius:8px; border:1px solid #c8d9e6; margin-bottom:14px;">
+            <div>
+                <strong style="color:#0b3c5d; font-size:14px;">📖 Documentation officielle de l'application (README.md)</strong>
+                <div style="font-size:11.5px; color:#475569;">Ligue de billard Boule en main — Salle Le Saphir</div>
+            </div>
+            <button onclick="window.print()" style="background:#0b3c5d; color:#ffffff; border:none; border-radius:6px; padding:8px 16px; font-size:13px; font-weight:bold; cursor:pointer;">
+                🖨️ Imprimer la documentation
+            </button>
+        </div>
+        <div style="display:flex; align-items:center; border-bottom:3px solid #0b3c5d; padding-bottom:10px; margin-bottom:14px;">
+            {logo_html}
+            <div>
+                <div style="font-size:18px; font-weight:bold; color:#0b3c5d;">🎱 Ligue de billard Boule en main — Salle Le Saphir</div>
+                <div style="font-size:12px; color:#475569;">Guide de référence & Documentation des fonctionnalités • Édition du {date_imp}</div>
+            </div>
+        </div>
+        {''.join(corps_html)}
+    </div>
+</body>
+</html>"""
+
+@st.dialog("📖 Documentation officielle de l'application (README.md)", width="large")
+def modal_documentation_readme():
+    contenu_md = charger_readme_documentation()
+    html_doc = generer_html_imprimable_readme(contenu_md)
+    html_doc_json = json.dumps(html_doc)
+
+    col_d1, col_d2, col_d3 = st.columns([1.5, 1.3, 1.0])
+    with col_d1:
+        st.components.v1.html(
+            f"""
+            <button onclick="imprimerDoc()" style="width:100%; height:40px; background:linear-gradient(135deg, #0b3c5d, #16527a); color:white; border:none; border-radius:8px; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif; font-size:13.5px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px; box-shadow:0 2px 5px rgba(11,60,93,0.25);">
+                🖨️ Imprimer la documentation (A4)
+            </button>
+            <script>
+            function imprimerDoc() {{
+                var win = window.open('', '_blank');
+                win.document.open();
+                win.document.write({html_doc_json});
+                win.document.close();
+                win.focus();
+                win.document.title = "Documentation - Ligue de billard Boule en main";
+                setTimeout(function() {{
+                    win.print();
+                }}, 350);
+            }}
+            </script>
+            """,
+            height=45
+        )
+    with col_d2:
+        st.download_button(
+            label="📥 Télécharger README.md",
+            data=contenu_md,
+            file_name="README.md",
+            mime="text/markdown",
+            use_container_width=True,
+            key="btn_dl_readme_modal"
+        )
+    with col_d3:
+        if st.button("✖️ Fermer", use_container_width=True, key="btn_close_doc_modal"):
+            st.rerun()
+
+    st.divider()
+    with st.container(border=True):
+        st.markdown(contenu_md)
+
 est_connecte = st.session_state.get("authentifie", False)
 est_spectateur = st.session_state.get("est_spectateur", False)
 
@@ -6182,6 +6410,45 @@ if not est_connecte and not est_spectateur:
                 st.session_state["authentifie"] = False
                 st.session_state["mode_consultation"] = True
                 st.rerun()
+
+        st.markdown("<div style='text-align:center; font-weight:bold; margin: 16px 0;'>OU</div>", unsafe_allow_html=True)
+
+        with st.container(border=True):
+            st.markdown("### 📖 Documentation de l'application")
+            st.caption("Consultez ou imprimez le guide complet de l'application (`README.md`) : règles de saisie 3 contre 3, paramètres du match, formules de tournois et administration.")
+            contenu_readme_accueil = charger_readme_documentation()
+            html_readme_accueil = generer_html_imprimable_readme(contenu_readme_accueil)
+            html_readme_accueil_json = json.dumps(html_readme_accueil)
+
+            col_doc_btn1, col_doc_btn2 = st.columns(2)
+            with col_doc_btn1:
+                if st.button("📖 Lire la documentation", use_container_width=True, key="btn_open_doc_accueil"):
+                    modal_documentation_readme()
+            with col_doc_btn2:
+                st.components.v1.html(
+                    f"""
+                    <button onclick="imprimerDocAccueil()" style="width:100%; height:40px; background-color:#0b3c5d; color:white; border:none; border-radius:8px; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif; font-size:13.5px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;">
+                        🖨️ Imprimer (A4)
+                    </button>
+                    <script>
+                    function imprimerDocAccueil() {{
+                        var win = window.open('', '_blank');
+                        win.document.open();
+                        win.document.write({html_readme_accueil_json});
+                        win.document.close();
+                        win.focus();
+                        win.document.title = "Documentation - Ligue de billard Boule en main";
+                        setTimeout(function() {{
+                            win.print();
+                        }}, 350);
+                    }}
+                    </script>
+                    """,
+                    height=44
+                )
+
+            with st.expander("👁️ Aperçu direct de la documentation (README.md)", expanded=False):
+                st.markdown(contenu_readme_accueil)
     st.stop()
 
 # ==============================================================================
