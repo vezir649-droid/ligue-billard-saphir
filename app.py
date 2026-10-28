@@ -7074,6 +7074,354 @@ with tab_feuille:
         st.session_state["mode_consultation"] = False
         st.rerun()
 
+    # --- JUKEBOX / MUSIQUE D'AMBIANCE (LECTEUR AUTONOME SANS COUPURE) ---
+    with st.sidebar.expander("🎵 Jukebox — Musique d'ambiance", expanded=True):
+        st.components.v1.html(
+            """
+            <!DOCTYPE html>
+            <html>
+            <head>
+            <meta charset="utf-8">
+            <style>
+                * { box-sizing: border-box; margin: 0; padding: 0; }
+                body {
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                    background: transparent;
+                    color: #f8fafc;
+                    overflow: hidden;
+                }
+                .jukebox-card {
+                    background: linear-gradient(135deg, #0b3c5d 0%, #164e63 100%);
+                    border: 1px solid rgba(251, 191, 36, 0.45);
+                    border-radius: 10px;
+                    padding: 10px 11px;
+                    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.22);
+                }
+                .jb-header {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    margin-bottom: 7px;
+                }
+                .jb-title {
+                    font-size: 12.5px;
+                    font-weight: 800;
+                    color: #fbbf24;
+                    letter-spacing: 0.3px;
+                    display: flex;
+                    align-items: center;
+                    gap: 5px;
+                }
+                .jb-status {
+                    font-size: 10.5px;
+                    font-weight: 700;
+                    padding: 2px 7px;
+                    border-radius: 99px;
+                    background: rgba(15, 23, 42, 0.55);
+                    color: #cbd5e1;
+                    border: 1px solid rgba(255,255,255,0.14);
+                }
+                .jb-status.playing {
+                    background: rgba(22, 163, 74, 0.32);
+                    color: #86efac;
+                    border-color: rgba(74, 222, 128, 0.5);
+                }
+                .jb-label {
+                    font-size: 11px;
+                    font-weight: 600;
+                    color: #e2e8f0;
+                    margin-bottom: 3px;
+                    display: block;
+                }
+                .jb-select {
+                    width: 100%;
+                    padding: 6px 8px;
+                    border-radius: 6px;
+                    border: 1px solid rgba(255, 255, 255, 0.25);
+                    background: #0f172a;
+                    color: #ffffff;
+                    font-size: 12.5px;
+                    font-weight: 600;
+                    outline: none;
+                    cursor: pointer;
+                    margin-bottom: 6px;
+                }
+                .jb-select:focus {
+                    border-color: #fbbf24;
+                }
+                .jb-station-row {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    font-size: 11px;
+                    color: #bae6fd;
+                    margin-bottom: 8px;
+                    gap: 6px;
+                }
+                .jb-station-name {
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    font-weight: 600;
+                }
+                .jb-next-btn {
+                    background: rgba(255, 255, 255, 0.14);
+                    color: #f8fafc;
+                    border: 1px solid rgba(255, 255, 255, 0.25);
+                    border-radius: 5px;
+                    padding: 2px 7px;
+                    font-size: 10.5px;
+                    font-weight: 700;
+                    cursor: pointer;
+                    white-space: nowrap;
+                    transition: background 0.15s;
+                }
+                .jb-next-btn:hover {
+                    background: rgba(251, 191, 36, 0.28);
+                    border-color: #fbbf24;
+                }
+                .jb-controls {
+                    display: flex;
+                    align-items: center;
+                    gap: 7px;
+                    margin-bottom: 7px;
+                }
+                .jb-play-btn {
+                    flex: 1;
+                    padding: 7px 10px;
+                    border-radius: 7px;
+                    border: none;
+                    font-size: 12.5px;
+                    font-weight: 800;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 5px;
+                    background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+                    color: #ffffff;
+                    box-shadow: 0 2px 6px rgba(22, 163, 74, 0.35);
+                    transition: transform 0.1s, opacity 0.15s;
+                }
+                .jb-play-btn.active {
+                    background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+                    box-shadow: 0 2px 6px rgba(220, 38, 38, 0.35);
+                }
+                .jb-play-btn:hover {
+                    opacity: 0.94;
+                }
+                .jb-vol-row {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    font-size: 11px;
+                    color: #e2e8f0;
+                }
+                .jb-mute-btn {
+                    background: rgba(255,255,255,0.12);
+                    border: 1px solid rgba(255,255,255,0.2);
+                    color: #fff;
+                    border-radius: 5px;
+                    padding: 2px 6px;
+                    font-size: 12px;
+                    cursor: pointer;
+                }
+                .jb-slider {
+                    flex: 1;
+                    accent-color: #fbbf24;
+                    cursor: pointer;
+                    height: 5px;
+                }
+                .jb-vol-val {
+                    min-width: 32px;
+                    text-align: right;
+                    font-weight: 700;
+                    color: #fbbf24;
+                }
+            </style>
+            </head>
+            <body>
+            <div class="jukebox-card">
+                <div class="jb-header">
+                    <div class="jb-title">📻 Radio Salle Le Saphir</div>
+                    <div id="jbStatus" class="jb-status">⏹️ À l'arrêt</div>
+                </div>
+
+                <label class="jb-label" for="jbGenre">🎶 Genre musical :</label>
+                <select id="jbGenre" class="jb-select" onchange="changerGenre()">
+                    <option value="rock">🎸 Rock Classique & Blues</option>
+                    <option value="retro">🕺 Hits Rétro 70s / 80s / 90s</option>
+                    <option value="jazz">🎷 Jazz, Blues & Lounge</option>
+                    <option value="lofi">🎧 Lo-Fi & Chill Beats</option>
+                    <option value="country">🤠 Country & Rock Sudiste</option>
+                    <option value="pop">⚡ Pop / Dance / Groove</option>
+                </select>
+
+                <div class="jb-station-row">
+                    <span id="jbStationName" class="jb-station-name">📡 Radio Paradise — Rock Mix</span>
+                    <button type="button" class="jb-next-btn" onclick="stationSuivante()" title="Passer à une autre station de ce genre">⏭️ Autre station</button>
+                </div>
+
+                <div class="jb-controls">
+                    <button type="button" id="jbPlayBtn" class="jb-play-btn" onclick="basculerLecture()">
+                        ▶️ Démarrer la musique
+                    </button>
+                </div>
+
+                <div class="jb-vol-row">
+                    <button type="button" id="jbMuteBtn" class="jb-mute-btn" onclick="basculerMuet()" title="Activer/Désactiver le son">🔊</button>
+                    <input type="range" id="jbVol" class="jb-slider" min="0" max="100" value="65" oninput="changerVolume(this.value)">
+                    <span id="jbVolTxt" class="jb-vol-val">65%</span>
+                </div>
+
+                <audio id="jbAudio" preload="none" crossorigin="anonymous"></audio>
+            </div>
+
+            <script>
+            const STATIONS = {
+                rock: [
+                    { nom: "Radio Paradise — Rock Mix", url: "https://stream.radioparadise.com/rock-128" },
+                    { nom: "Radio Paradise — Classic Mix", url: "https://stream.radioparadise.com/mp3-128" },
+                    { nom: "FIP Rock (Sans pub)", url: "https://icecast.radiofrance.fr/fiprock-midfi.mp3" }
+                ],
+                retro: [
+                    { nom: "SomaFM — Underground 80s", url: "https://ice1.somafm.com/u80s-128-mp3" },
+                    { nom: "SomaFM — Left Coast 70s", url: "https://ice1.somafm.com/seventies-128-mp3" },
+                    { nom: "FIP Groove Rétro", url: "https://icecast.radiofrance.fr/fipgroove-midfi.mp3" }
+                ],
+                jazz: [
+                    { nom: "SomaFM — Secret Agent Lounge", url: "https://ice1.somafm.com/secretagent-128-mp3" },
+                    { nom: "FIP Jazz (Sans pub)", url: "https://icecast.radiofrance.fr/fipjazz-midfi.mp3" },
+                    { nom: "SomaFM — Illinois Street Lounge", url: "https://ice1.somafm.com/illstreet-128-mp3" }
+                ],
+                lofi: [
+                    { nom: "SomaFM — Groove Salad Chill", url: "https://ice1.somafm.com/groovesalad-128-mp3" },
+                    { nom: "Radio Paradise — Mellow Mix", url: "https://stream.radioparadise.com/mellow-128" },
+                    { nom: "FIP Chill & Eclectic", url: "https://icecast.radiofrance.fr/fip-midfi.mp3" }
+                ],
+                country: [
+                    { nom: "SomaFM — Boot Liquor Country", url: "https://ice1.somafm.com/bootliquor-128-mp3" },
+                    { nom: "SomaFM — Folk Forward", url: "https://ice1.somafm.com/folkfwd-128-mp3" },
+                    { nom: "Radio Paradise — Americana Rock", url: "https://stream.radioparadise.com/rock-128" }
+                ],
+                pop: [
+                    { nom: "SomaFM — PopTron Electropop", url: "https://ice1.somafm.com/poptron-128-mp3" },
+                    { nom: "SomaFM — Lush Vocals & Groove", url: "https://ice1.somafm.com/lush-128-mp3" },
+                    { nom: "FIP Electro & Dance", url: "https://icecast.radiofrance.fr/fipelectro-midfi.mp3" }
+                ]
+            };
+
+            let genreActuel = "rock";
+            let indexStation = 0;
+            let enLecture = false;
+            const audio = document.getElementById("jbAudio");
+            const selGenre = document.getElementById("jbGenre");
+            const txtStation = document.getElementById("jbStationName");
+            const btnPlay = document.getElementById("jbPlayBtn");
+            const txtStatus = document.getElementById("jbStatus");
+            const sliderVol = document.getElementById("jbVol");
+            const txtVol = document.getElementById("jbVolTxt");
+            const btnMute = document.getElementById("jbMuteBtn");
+
+            audio.volume = 0.65;
+
+            function majAffichageStation() {
+                const liste = STATIONS[genreActuel] || STATIONS.rock;
+                const st = liste[indexStation % liste.length];
+                txtStation.textContent = "📡 " + st.nom;
+            }
+
+            function majEtatUI(playing, messageOptionnel) {
+                enLecture = playing;
+                if (playing) {
+                    btnPlay.innerHTML = "⏹️ Arrêter la musique";
+                    btnPlay.classList.add("active");
+                    txtStatus.textContent = messageOptionnel || "🟢 En direct";
+                    txtStatus.classList.add("playing");
+                } else {
+                    btnPlay.innerHTML = "▶️ Démarrer la musique";
+                    btnPlay.classList.remove("active");
+                    txtStatus.textContent = messageOptionnel || "⏹️ À l'arrêt";
+                    txtStatus.classList.remove("playing");
+                }
+            }
+
+            function lancerFluxActuel() {
+                const liste = STATIONS[genreActuel] || STATIONS.rock;
+                const st = liste[indexStation % liste.length];
+                majAffichageStation();
+                txtStatus.textContent = "⏳ Connexion...";
+                audio.src = st.url;
+                audio.play().then(() => {
+                    majEtatUI(true, "🟢 En direct");
+                }).catch((err) => {
+                    console.warn("Erreur flux radio, essai station suivante:", err);
+                    majEtatUI(false, "⚠️ Cliquez Démarrer");
+                });
+            }
+
+            function basculerLecture() {
+                if (enLecture) {
+                    audio.pause();
+                    audio.removeAttribute("src");
+                    audio.load();
+                    majEtatUI(false, "⏹️ À l'arrêt");
+                } else {
+                    lancerFluxActuel();
+                }
+            }
+
+            function changerGenre() {
+                genreActuel = selGenre.value;
+                indexStation = 0;
+                majAffichageStation();
+                if (enLecture) {
+                    lancerFluxActuel();
+                }
+            }
+
+            function stationSuivante() {
+                const liste = STATIONS[genreActuel] || STATIONS.rock;
+                indexStation = (indexStation + 1) % liste.length;
+                majAffichageStation();
+                if (enLecture) {
+                    lancerFluxActuel();
+                }
+            }
+
+            function changerVolume(val) {
+                const v = parseInt(val, 10) / 100;
+                audio.volume = v;
+                audio.muted = (v === 0);
+                txtVol.textContent = val + "%";
+                btnMute.textContent = (audio.muted || v === 0) ? "🔇" : (v < 0.4 ? "🔉" : "🔊");
+            }
+
+            function basculerMuet() {
+                audio.muted = !audio.muted;
+                btnMute.textContent = audio.muted ? "🔇" : "🔊";
+            }
+
+            audio.addEventListener("error", function() {
+                if (enLecture) {
+                    const liste = STATIONS[genreActuel] || STATIONS.rock;
+                    if (liste.length > 1) {
+                        indexStation = (indexStation + 1) % liste.length;
+                        majAffichageStation();
+                        audio.src = liste[indexStation].url;
+                        audio.play().catch(() => majEtatUI(false, "⚠️ Flux indisponible"));
+                    }
+                }
+            });
+
+            majAffichageStation();
+            </script>
+            </body>
+            </html>
+            """,
+            height=196
+        )
+
     with st.sidebar.container(border=True):
         st.markdown("#### 🔵 Équipe Receveuse (🏠)")
         if noms_equipes:
@@ -8943,13 +9291,20 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                 tok_actuel, repo_actuel, branch_actuelle = obtenir_parametres_github()
                 if tok_actuel:
                     st.success(f"🟢 **Synchronisation GitHub active** vers `{repo_actuel}` (branche `{branch_actuelle}`). Chaque sauvegarde de match ou de tournoi est automatiquement enregistrée sur GitHub.")
-                else:
-                    st.warning(
-                        "🟠 **Jeton GitHub (`GITHUB_TOKEN`) non configuré pour l'écriture distante.**\n\n"
-                        "Pour que Streamlit Cloud pousse automatiquement les nouveaux matchs et tournois sur GitHub avant toute mise en veille :\n"
-                        "1. Créez un jeton sur GitHub (*Settings → Developer settings → Personal access tokens → Tokens (classic)* avec la permission **`repo`**).\n"
-                        "2. Collez-le ci-dessous **OU** dans les paramètres de votre application Streamlit Cloud (*Settings → Secrets*) sous la forme : `GITHUB_TOKEN = 'ghp_...'`"
-                    )
+                else:
+
+                    st.warning(
+
+                        "🟠 **Jeton GitHub (`GITHUB_TOKEN`) non configuré pour l'écriture distante.**\n\n"
+
+                        "Pour que Streamlit Cloud pousse automatiquement les nouveaux matchs et tournois sur GitHub avant toute mise en veille :\n"
+
+                        "1. Créez un jeton sur GitHub (*Settings → Developer settings → Personal access tokens → Tokens (classic)* avec la permission **`repo`**).\n"
+
+                        "2. Collez-le ci-dessous **OU** dans les paramètres de votre application Streamlit Cloud (*Settings → Secrets*) sous la forme : `GITHUB_TOKEN = 'ghp_...'`"
+
+                    )
+
                 col_gh1, col_gh2 = st.columns([2, 1])
                 with col_gh1:
                     saisie_gh_token = st.text_input(

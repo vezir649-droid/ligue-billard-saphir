@@ -59,6 +59,16 @@ La barre latérale **« 📋 Paramètres du Match »** regroupe tous les réglag
     3. **Attribution automatique dans les manches concernées :**
        * **Un seul joueur absent :** le joueur absent reçoit son score calculé (maximum **7 points** par manche) et son adversaire présent reçoit automatiquement **8 points**.
        * **Forfait double (les 2 joueurs absents) :** chacun des deux joueurs absents reçoit le pointage correspondant à sa propre moyenne.
+* **🎵 Jukebox — Musique d'ambiance gratuite (Lecteur Radio Web autonome) :**
+  * Intégré en haut de la barre latérale et accessible en tout temps (quel que soit l'onglet ouvert) sans interrompre la musique lors de la saisie des pointages.
+  * **Sélection par genre musical (6 ambiances, 3 stations gratuites sans publicité par genre) :**
+    * 🎸 **Rock Classique & Blues** (*Radio Paradise Rock*, *Classic Mix*, *FIP Rock*)
+    * 🕺 **Hits Rétro 70s / 80s / 90s** (*Underground 80s*, *Left Coast 70s*, *FIP Groove*)
+    * 🎷 **Jazz, Blues & Lounge** (*Secret Agent Lounge*, *FIP Jazz*, *Illinois Street Lounge*)
+    * 🎧 **Lo-Fi & Chill Beats** (*Groove Salad Chill*, *Mellow Mix*, *FIP Chill*)
+    * 🤠 **Country & Rock Sudiste** (*Boot Liquor Country*, *Folk Forward*, *Americana Rock*)
+    * ⚡ **Pop / Dance / Groove actuel** (*PopTron Electropop*, *Lush Groove*, *FIP Electro*)
+  * **Contrôles instantanés :** Bouton **▶️ Démarrer / ⏹️ Arrêter la musique**, bouton **⏭️ Autre station**, curseur de **🔊 Volume (0 à 100 %)** et mode **🔇 Muet**.
 * **Sécurité de saisie & Contrôles de session :**
   * **🔄 Restaurer saisie :** Recharge à tout moment la dernière sauvegarde automatique (`sauvegarde_saisie_secours.json`) en cas de coupure ou de rafraîchissement navigateur.
   * **🗑️ Nouveau match & ↩️ Annuler effacement :** Réinitialise la feuille à `0 - 0` tout en conservant une copie de secours dans la corbeille (`sauvegarde_annulee_secours.json`) pour permettre d'annuler un effacement accidentel en un clic.
