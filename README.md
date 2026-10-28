@@ -1,12 +1,29 @@
 # 🎱 Ligue de billard Boule en main — Salle Le Saphir
 
-Application web officielle développée avec [Streamlit](https://streamlit.io/) pour la gestion complète de la **Ligue de billard Boule en main (Salle Le Saphir)** : saisie en direct des feuilles de matchs réguliers (**3 contre 3**), organisation de **tournois officiels** (Simple 1v1 & Double 2v2), suivi **Spectateur en temps réel**, **Statistiques & Classements** et **Administration**.
+Application web officielle développée avec [Streamlit](https://streamlit.io/) pour la gestion complète de la **Ligue de billard Boule en main (Salle Le Saphir)** : portail d'accueil multi-rôles (**Spectateur**, **Marqueur**, **Administrateur**), saisie en direct des feuilles de matchs réguliers (**3 contre 3**), organisation de **tournois officiels** (Simple 1v1 & Double 2v2), **Statistiques & Classements**, **Administration sécurisée** et **Synchronisation Cloud GitHub anti-veille**.
 
 ---
 
-## ✨ Nouveautés & Fonctionnalités principales
+## ✨ Fonctionnalités principales de l'application
 
-### 1. 📝 Feuille de Match Officielle (3 contre 3 — Jeu au 8)
+### 1. 🚪 Portail d'ouverture & Niveaux d'accès (3 rôles + Documentation intégrée)
+Dès l'ouverture de l'application, la page d'accueil présente trois modes d'accès distincts ainsi que la documentation officielle :
+
+1. **👁️ Accès Spectateur (affiché en premier — sans mot de passe) :**
+   * Accès immédiat en un clic (`👁️ Entrer en mode Spectateur`) en **lecture seule**.
+   * Permet de suivre en direct la feuille de match en cours, les classements de la saison, les statistiques des joueurs et l'arborescence des tournois.
+2. **🔒 Accès Marqueur / Éditeur (protégé par mot de passe — par défaut : `saphir2026`) :**
+   * Permet de saisir les pointages des 9 manches (3 contre 3), d'approuver et d'archiver les feuilles de match, et de créer/gérer les tournois (Simple et Double).
+   * **Restriction de sécurité :** le Marqueur n'a **pas** accès au volet `⚙️ Administration`.
+3. **🛡️ Accès Administrateur (protégé par identifiant/mot de passe — par défaut : `admin2026`) :**
+   * Donne accès à l'ensemble des fonctions de marqueur ainsi qu'**en exclusivité au volet `⚙️ Administration`** (édition des équipes, rectification de matchs archivés, nouvelle saison, configuration courriel SMTP, mots de passe et synchronisation GitHub).
+4. **📖 Documentation de l'application (`README.md`) & Impression A4 :**
+   * Consultable directement depuis la page d'ouverture sans connexion requise.
+   * Inclut un bouton **« 🖨️ Préparer et lancer l'impression de la documentation »** (mise en page A4 automatique) et un bouton **« ⬇️ Télécharger README.md »**.
+
+---
+
+### 2. 📝 Feuille de Match Officielle (3 contre 3 — Jeu au 8)
 * **Bandeau « Live Scoreboard » épinglé en haut de page :**
   * Affichage permanent en temps réel du score global (**Équipe Receveuse vs Équipe Visiteuse**), d'une jauge de progression des **9 manches** (`X / 9 manches complétées`) et du statut de verrouillage.
 * **Rotation optimisée des 9 duels :**
@@ -22,7 +39,7 @@ Application web officielle développée avec [Streamlit](https://streamlit.io/) 
 
 ---
 
-### 2. 📋 Paramètres du Match (Barre latérale & Contrôles de rencontre)
+### 3. 📋 Paramètres du Match (Barre latérale & Contrôles de rencontre)
 La barre latérale **« 📋 Paramètres du Match »** regroupe tous les réglages d'avant-match et de gestion en cours de rencontre :
 
 * **Sélection des équipes (`🔵 Équipe Receveuse 🏠` & `🟠 Équipe Visiteuse 🚗`) :**
@@ -49,7 +66,7 @@ La barre latérale **« 📋 Paramètres du Match »** regroupe tous les réglag
 
 ---
 
-### 3. 🏆 Module de Tournois Officiels (Simple 1v1 & Double 2v2)
+### 4. 🏆 Module de Tournois Officiels (Simple 1v1 & Double 2v2)
 * **Deux catégories indépendantes :**
   * **👤 Tournoi en Simple (1 contre 1)** — Joueurs individuels.
   * **👥 Tournoi en Double / Équipes (2 contre 2)** — Duos constitués aléatoirement ou manuellement.
@@ -68,17 +85,17 @@ La barre latérale **« 📋 Paramètres du Match »** regroupe tous les réglag
 
 ---
 
-### 4. 👁️ Mode Spectateur & Gestion de la Main (Verrouillage multi-utilisateurs)
+### 5. 👁️ Mode Spectateur & Gestion de la Main (Verrouillage multi-utilisateurs)
 * **Accès Spectateur sans mot de passe :**
   * Consultation en direct des scores de la feuille de match (par équipe, par joueur et manche par manche), des classements et de l'arborescence des tournois.
   * Rafraîchissement automatique (toutes les 5s / 15s / 30s) ou manuel en un clic.
-* **Contrôle exclusif du Marqueur Officiel :**
-  * Un seul marqueur détient la main active à la fois (`session_lock.json`) afin d'éviter tout conflit d'écriture.
+* **Contrôle exclusif du Marqueur / Administrateur :**
+  * Un seul éditeur détient la main active à la fois (`session_lock.json`) afin d'éviter tout conflit d'écriture.
   * Boutons **« 🤝 Céder la main »** (avec sauvegarde automatique préalable sur le disque) et **« ⚡ Prendre la main »** (avec rechargement automatique de la dernière sauvegarde).
 
 ---
 
-### 5. 📊 Statistiques, Podiums & Historiques
+### 6. 📊 Statistiques, Podiums & Historiques
 * **Podiums Visuels Top 3 (`🥇 1er`, `🥈 2e`, `🥉 3e`) :**
   * Cartes podium en haut des classements **Équipes** et **Joueurs** mettant en valeur les 3 meilleurs performeurs de la saison.
 * **Tableaux statistiques complets :**
@@ -88,17 +105,16 @@ La barre latérale **« 📋 Paramètres du Match »** regroupe tous les réglag
 
 ---
 
-### 6. ⚙️ Espace Administration & Persistance Sécurisée
-* **Accès exclusif Administrateur (`🛡️ Accès Administrateur` sur la page de démarrage) :**
-  * **🔒 Accès Marqueur / Éditeur** (mot de passe par défaut : `saphir2026`) : permet la saisie des manches 3v3, la validation officielle des matchs et la gestion des tournois, **sans accès au volet Administration**.
-  * **🛡️ Accès Administrateur** (mot de passe par défaut : `admin2026`) : donne accès à toutes les fonctionnalités de saisie ainsi qu'**en exclusivité à l'onglet `⚙️ Administration`**.
-* **Onglet dédié `⚙️ Administration` (réservé uniquement à l'Administrateur) :**
+### 7. ⚙️ Espace Administration & Persistance Cloud GitHub (Anti-veille Streamlit)
+* **Onglet dédié `⚙️ Administration` (accessible uniquement via `🛡️ Accès Administrateur`) :**
   * **👥 Édition des équipes & joueurs (`equipes-saphir.csv`) :** Tableau interactif modifiable, ajout rapide d'équipe, import et export CSV.
   * **✏️ Rectification officielle d'un match archivé :** Correction des scores ou joueurs avec motif obligatoire, bandeau de rectification sur la feuille officielle et sauvegarde de sécurité horodatée.
   * **📤 Export & Sauvegarde JSON :** Envoi du bilan complet par courriel SMTP (avec `historique_matchs.json` ou `historique_tournois.json` en pièce jointe) + **téléchargement et restauration directe des fichiers JSON** en un clic.
   * **🗓️ Nouvelle saison, 📧 Configuration SMTP & 🔑 Gestion séparée des mots de passe Marqueur et Administrateur.**
-* **Écriture atomique & Copies de secours (`.bak`) :**
-  * Toutes les écritures dans `historique_matchs.json`, `historique_tournois.json` et `tournois_data.json` sont effectuées de manière atomique avec création automatique d'une copie `.bak` et récupération transparente en cas d'interruption.
+* **☁️ Synchronisation automatique GitHub & Protection contre la mise en veille Streamlit Cloud :**
+  * **Restauration automatique au réveil :** Lorsque Streamlit Community Cloud met l'application en veille puis la redémarre, l'application interroge automatiquement le dépôt GitHub et fusionne sans doublon `historique_matchs.json`, `historique_tournois.json` et `tournois_data.json` avec les données locales.
+  * **Sauvegarde automatique vers GitHub en temps réel :** Dès qu'un jeton `GITHUB_TOKEN` est configuré (dans *Streamlit Cloud → Settings → Secrets* ou dans `⚙️ Administration → 🔑 Mot de passe d'accès`), chaque sauvegarde de match, de tournoi ou d'équipes est instantanément poussée sur le dépôt GitHub.
+  * **Écriture atomique locale & Copies `.bak` :** Toutes les écritures JSON locales sont effectuées de manière atomique avec création d'une copie `.bak` et récupération automatique en cas de coupure.
 
 ---
 
@@ -120,6 +136,14 @@ streamlit run billard_app.py
 
 L'application est alors accessible dans votre navigateur à l'adresse `http://localhost:8501`.
 
+### 4. Configuration de la persistance GitHub sur Streamlit Cloud (optionnel mais recommandé)
+Dans le tableau de bord Streamlit Cloud de votre application (**Settings → Secrets**), ajoutez :
+```toml
+GITHUB_TOKEN = "ghp_votre_jeton_personnel_github"
+GITHUB_REPO = "vezir649-droid/ligue-billard-saphir"
+GITHUB_BRANCH = "main"
+```
+
 ---
 
 ## 🗂️ Structure des fichiers principaux
@@ -127,13 +151,17 @@ L'application est alors accessible dans votre navigateur à l'adresse `http://lo
 | Fichier | Rôle |
 | :--- | :--- |
 | `billard_app.py` / `app.py` | Code source principal de l'application Streamlit |
+| `README.md` | Documentation officielle (affichée et imprimable depuis la page d'ouverture) |
 | `equipes-saphir.csv` | Liste officielle des équipes et de leurs 3 joueurs réguliers |
-| `historique_matchs.json` | Base de données JSON des feuilles de matchs 3v3 validées |
-| `historique_tournois.json` | Historique officiel complet des tournois (Simples & Doubles) |
+| `historique_matchs.json` | Base de données JSON des feuilles de matchs 3v3 validées (synchronisée sur GitHub) |
+| `historique_tournois.json` | Historique officiel complet des tournois Simples & Doubles (synchronisé sur GitHub) |
 | `tournois_data.json` | État en temps réel des tournois actifs et synchronisation d'historique |
 | `sauvegarde_saisie_secours.json` | Sauvegarde temps réel de la feuille de match 3v3 en cours de saisie |
 | `sauvegarde_annulee_secours.json` | Corbeille de secours permettant d'annuler un « Nouveau match » |
+| `session_lock.json` | Verrouillage multi-utilisateurs de la main active (Marqueur / Administrateur) |
+| `config_auth.json` | Empreintes SHA-256 des mots de passe Marqueur et Administrateur |
 | `config_email.json` | Paramètres SMTP pour l'envoi automatique des rapports et sauvegardes |
+| `config_github.json` | Configuration locale de la synchronisation automatique GitHub |
 
 ---
 
