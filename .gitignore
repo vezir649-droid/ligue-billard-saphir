@@ -5,7 +5,6 @@ session_lock.json
 *.log
 
 # Fichiers de données locales
-historique_matchs.json
 
 # Cache Python
 __pycache__/

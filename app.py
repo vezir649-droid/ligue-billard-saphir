@@ -393,6 +393,305 @@ def sauvegarder_mot_de_passe_super_admin(nouveau_mdp_admin):
     except Exception:
         return False
 
+# ==============================================================================
+# SYNCHRONISATION AUTOMATIQUE GITHUB (PERSISTANCE ANTI-VEILLE STREAMLIT CLOUD)
+# ==============================================================================
+GITHUB_REPO_DEFAULT = "vezir649-droid/ligue-billard-saphir"
+GITHUB_BRANCH_DEFAULT = "main"
+
+def obtenir_parametres_github():
+    """Récupère les paramètres de synchronisation GitHub (Token, Repo, Branche) depuis st.secrets, l'environnement ou config_admin.json."""
+    token = ""
+    repo = GITHUB_REPO_DEFAULT
+    branch = GITHUB_BRANCH_DEFAULT
+
+    # 1. Lecture depuis config_admin.json
+    cfg_adm = charger_config_admin()
+    if cfg_adm.get("github_token"):
+        token = str(cfg_adm.get("github_token", "")).strip()
+    if cfg_adm.get("github_repo"):
+        repo = str(cfg_adm.get("github_repo", GITHUB_REPO_DEFAULT)).strip() or GITHUB_REPO_DEFAULT
+    if cfg_adm.get("github_branch"):
+        branch = str(cfg_adm.get("github_branch", GITHUB_BRANCH_DEFAULT)).strip() or GITHUB_BRANCH_DEFAULT
+
+    # 2. Variable d'environnement
+    if not token and os.environ.get("GITHUB_TOKEN"):
+        token = os.environ.get("GITHUB_TOKEN", "").strip()
+
+    # 3. Streamlit Secrets (prioritaire sur Streamlit Community Cloud)
+    try:
+        if hasattr(st, "secrets"):
+            if "GITHUB_TOKEN" in st.secrets:
+                token = str(st.secrets["GITHUB_TOKEN"]).strip()
+            elif "github_token" in st.secrets:
+                token = str(st.secrets["github_token"]).strip()
+            elif "github" in st.secrets and isinstance(st.secrets["github"], dict):
+                token = str(st.secrets["github"].get("token", token)).strip()
+                repo = str(st.secrets["github"].get("repo", repo)).strip() or repo
+                branch = str(st.secrets["github"].get("branch", branch)).strip() or branch
+            if "GITHUB_REPO" in st.secrets:
+                repo = str(st.secrets["GITHUB_REPO"]).strip() or repo
+    except Exception:
+        pass
+
+    return token, repo, branch
+
+def sauvegarder_parametres_github(token, repo=GITHUB_REPO_DEFAULT, branch=GITHUB_BRANCH_DEFAULT):
+    """Enregistre le jeton et le dépôt GitHub dans config_admin.json."""
+    try:
+        data = charger_config_admin()
+        data["github_token"] = (token or "").strip()
+        data["github_repo"] = (repo or GITHUB_REPO_DEFAULT).strip()
+        data["github_branch"] = (branch or GITHUB_BRANCH_DEFAULT).strip()
+        with open(ADMIN_CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
+        return True
+    except Exception:
+        return False
+
+def synchroniser_fichier_github(filepath, commit_message=None):
+    """Pousse automatiquement un fichier de données local vers le dépôt GitHub pour éviter toute perte lors de la mise en veille Streamlit."""
+    if not filepath or not os.path.exists(filepath):
+        return False, "Fichier local introuvable."
+
+    filename = os.path.basename(filepath)
+    if not commit_message:
+        commit_message = f"Sauvegarde automatique {filename} ({datetime.now().strftime('%d/%m/%Y %H:%M:%S')})"
+
+    token, repo, branch = obtenir_parametres_github()
+
+    # Méthode 1 : API REST GitHub (fonctionne sur Streamlit Community Cloud et en local)
+    if token and repo:
+        try:
+            import urllib.request
+            import urllib.error
+            import base64
+
+            with open(filepath, "rb") as f:
+                raw_bytes = f.read()
+            b64_content = base64.b64encode(raw_bytes).decode("ascii")
+
+            api_url = f"https://api.github.com/repos/{repo}/contents/{filename}"
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "LigueBillardSaphir-StreamlitApp",
+                "Content-Type": "application/json"
+            }
+
+            # Récupérer le SHA actuel du fichier s'il existe déjà sur GitHub
+            sha_actuel = None
+            try:
+                req_get = urllib.request.Request(f"{api_url}?ref={branch}", headers=headers, method="GET")
+                with urllib.request.urlopen(req_get, timeout=6) as resp_get:
+                    info_actuelle = json.loads(resp_get.read().decode("utf-8"))
+                    sha_actuel = info_actuelle.get("sha")
+            except urllib.error.HTTPError as e_get:
+                if e_get.code != 404:
+                    pass
+            except Exception:
+                pass
+
+            payload = {
+                "message": commit_message,
+                "content": b64_content,
+                "branch": branch
+            }
+            if sha_actuel:
+                payload["sha"] = sha_actuel
+
+            data_bytes = json.dumps(payload).encode("utf-8")
+            req_put = urllib.request.Request(api_url, data=data_bytes, headers=headers, method="PUT")
+            with urllib.request.urlopen(req_put, timeout=8) as resp_put:
+                if resp_put.status in (200, 201):
+                    try:
+                        st.session_state["dernier_sync_github"] = f"✅ {filename} synchronisé sur GitHub ({datetime.now().strftime('%H:%M:%S')})"
+                    except Exception:
+                        pass
+                    return True, f"Fichier {filename} sauvegardé sur GitHub ({repo})."
+        except Exception as e_api:
+            return False, f"Erreur API GitHub ({filename}) : {e_api}"
+
+    # Méthode 2 (Repli local si dépôt Git présent avec identifiants configurés)
+    git_dir = os.path.join(BASE_DIR, ".git")
+    if os.path.isdir(git_dir):
+        try:
+            import subprocess
+            subprocess.run(["git", "-C", BASE_DIR, "add", "-f", filename], timeout=5, check=False, capture_output=True)
+            res_c = subprocess.run(["git", "-C", BASE_DIR, "commit", "-m", commit_message], timeout=5, check=False, capture_output=True)
+            if res_c.returncode == 0:
+                res_p = subprocess.run(["git", "-C", BASE_DIR, "push", "origin", branch], timeout=10, check=False, capture_output=True)
+                if res_p.returncode == 0:
+                    return True, f"Fichier {filename} poussé via Git local."
+        except Exception:
+            pass
+
+    return False, "Aucun jeton GitHub (GITHUB_TOKEN) configuré pour l'écriture distante."
+
+def telecharger_json_depuis_github(filename):
+    """Télécharge la dernière version d'un fichier JSON depuis le dépôt GitHub (fonctionne même sans token sur un dépôt public)."""
+    token, repo, branch = obtenir_parametres_github()
+    if not repo:
+        return None
+    try:
+        import urllib.request
+        import base64
+        api_url = f"https://api.github.com/repos/{repo}/contents/{filename}?ref={branch}"
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "LigueBillardSaphir-StreamlitApp"
+        }
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        req = urllib.request.Request(api_url, headers=headers, method="GET")
+        with urllib.request.urlopen(req, timeout=6) as resp:
+            info = json.loads(resp.read().decode("utf-8"))
+            b64_c = info.get("content", "")
+            if b64_c:
+                raw_txt = base64.b64decode(b64_c).decode("utf-8")
+                return json.loads(raw_txt)
+    except Exception:
+        pass
+    return None
+
+def restaurer_depuis_github_au_reveil(forcer=False):
+    """Au réveil du conteneur Streamlit (ou sur demande), vérifie et fusionne les historiques depuis GitHub afin qu'aucune donnée ne soit perdue."""
+    try:
+        if not forcer and st.session_state.get("github_wake_sync_done", False):
+            return False, "Déjà synchronisé pour cette session."
+        st.session_state["github_wake_sync_done"] = True
+    except Exception:
+        pass
+
+    nb_maj = 0
+    details = []
+
+    # 1. Historique des matchs
+    try:
+        gh_matchs = telecharger_json_depuis_github("historique_matchs.json")
+        if isinstance(gh_matchs, list) and gh_matchs:
+            loc_matchs = []
+            if os.path.exists(HISTORIQUE_FILE):
+                try:
+                    with open(HISTORIQUE_FILE, "r", encoding="utf-8") as f:
+                        loc_matchs = json.load(f)
+                        if not isinstance(loc_matchs, list):
+                            loc_matchs = []
+                except Exception:
+                    loc_matchs = []
+
+            # Signature unique d'un match (date + receveur + visiteur + total_receveur + total_visiteur)
+            def _sig_match(m_item):
+                if not isinstance(m_item, dict):
+                    return ""
+                return f"{m_item.get('date_enregistrement', m_item.get('date', ''))}|{m_item.get('receveur', '')}|{m_item.get('visiteur', '')}"
+
+            sigs_loc = {_sig_match(m): idx for idx, m in enumerate(loc_matchs) if isinstance(m, dict)}
+            modif_m = False
+            for m_gh in gh_matchs:
+                if not isinstance(m_gh, dict):
+                    continue
+                s_gh = _sig_match(m_gh)
+                if s_gh not in sigs_loc:
+                    loc_matchs.append(m_gh)
+                    modif_m = True
+                else:
+                    # Si la version GitHub a été rectifiée et pas la locale, prendre la version rectifiée
+                    idx_l = sigs_loc[s_gh]
+                    if m_gh.get("date_rectification") and not loc_matchs[idx_l].get("date_rectification"):
+                        loc_matchs[idx_l] = m_gh
+                        modif_m = True
+            if modif_m:
+                with open(HISTORIQUE_FILE, "w", encoding="utf-8") as f_w:
+                    json.dump(loc_matchs, f_w, ensure_ascii=False, indent=4)
+                nb_maj += 1
+                details.append(f"historique_matchs.json ({len(loc_matchs)} matchs)")
+    except Exception:
+        pass
+
+    # 2. Historique des tournois
+    try:
+        gh_tournois = telecharger_json_depuis_github("historique_tournois.json")
+        if isinstance(gh_tournois, list) and gh_tournois:
+            loc_tournois = []
+            if os.path.exists(HISTORIQUE_TOURNOIS_FILE):
+                try:
+                    with open(HISTORIQUE_TOURNOIS_FILE, "r", encoding="utf-8") as f:
+                        loc_tournois = json.load(f)
+                        if not isinstance(loc_tournois, list):
+                            loc_tournois = []
+                except Exception:
+                    loc_tournois = []
+
+            ids_loc = {t.get("id_archive"): idx for idx, t in enumerate(loc_tournois) if isinstance(t, dict) and t.get("id_archive")}
+            modif_t = False
+            for t_gh in gh_tournois:
+                if not isinstance(t_gh, dict):
+                    continue
+                id_g = t_gh.get("id_archive")
+                if id_g and id_g not in ids_loc:
+                    loc_tournois.append(t_gh)
+                    modif_t = True
+                elif id_g and id_g in ids_loc:
+                    idx_l = ids_loc[id_g]
+                    if t_gh.get("statut") == "termine" and loc_tournois[idx_l].get("statut") != "termine":
+                        loc_tournois[idx_l] = t_gh
+                        modif_t = True
+            if modif_t:
+                with open(HISTORIQUE_TOURNOIS_FILE, "w", encoding="utf-8") as f_w:
+                    json.dump(loc_tournois, f_w, ensure_ascii=False, indent=4)
+                nb_maj += 1
+                details.append(f"historique_tournois.json ({len(loc_tournois)} tournois)")
+    except Exception:
+        pass
+
+    # 3. Données de tournois actifs (tournois_data.json)
+    try:
+        gh_td = telecharger_json_depuis_github("tournois_data.json")
+        if isinstance(gh_td, dict) and gh_td:
+            loc_td = {}
+            if os.path.exists(TOURNOIS_FILE):
+                try:
+                    with open(TOURNOIS_FILE, "r", encoding="utf-8") as f:
+                        loc_td = json.load(f)
+                        if not isinstance(loc_td, dict):
+                            loc_td = {}
+                except Exception:
+                    loc_td = {}
+            modif_td = False
+            for mode_k in ["simple", "double"]:
+                if gh_td.get(mode_k) and not loc_td.get(mode_k):
+                    loc_td[mode_k] = gh_td[mode_k]
+                    modif_td = True
+            if modif_td:
+                with open(TOURNOIS_FILE, "w", encoding="utf-8") as f_w:
+                    json.dump(loc_td, f_w, ensure_ascii=False, indent=4)
+                nb_maj += 1
+                details.append("tournois_data.json")
+    except Exception:
+        pass
+
+    return (nb_maj > 0), (", ".join(details) if details else "Fichiers locaux déjà à jour avec GitHub.")
+
+def synchroniser_tous_les_fichiers_github():
+    """Force l'envoi immédiat de tous les fichiers d'historique et d'équipes vers GitHub."""
+    fichiers = [
+        (HISTORIQUE_FILE, "Synchronisation complete historique_matchs.json"),
+        (HISTORIQUE_TOURNOIS_FILE, "Synchronisation complete historique_tournois.json"),
+        (TOURNOIS_FILE, "Synchronisation complete tournois_data.json"),
+        (EQUIPES_CSV_FILE, "Synchronisation complete equipes-saphir.csv"),
+    ]
+    succes_list = []
+    erreurs_list = []
+    for fp, msg in fichiers:
+        if os.path.exists(fp):
+            ok, info = synchroniser_fichier_github(fp, msg)
+            if ok:
+                succes_list.append(os.path.basename(fp))
+            else:
+                erreurs_list.append(f"{os.path.basename(fp)} ({info})")
+    return len(succes_list), succes_list, erreurs_list
+
 def charger_equipes_csv():
     """Charge la liste des équipes et joueurs depuis le fichier CSV."""
     equipes = {}
@@ -462,6 +761,7 @@ def sauvegarder_equipes_csv(equipes_df_ou_dict):
         with open(EQUIPES_CSV_FILE, "w", encoding="utf-8") as f:
             f.writelines(lignes)
 
+        synchroniser_fichier_github(EQUIPES_CSV_FILE, f"Mise a jour equipes-saphir.csv ({len(lignes)} equipes)")
         return True, f"{len(lignes)} équipe(s) enregistrée(s) avec succès dans equipes-saphir.csv."
     except Exception as e:
         return False, f"Erreur lors de la sauvegarde du fichier equipes-saphir.csv : {e}"
@@ -1108,6 +1408,7 @@ def sauvegarder_historique_matchs(historique_list):
         with open(tmp_file, "w", encoding="utf-8") as f_tmp:
             json.dump(historique_list, f_tmp, ensure_ascii=False, indent=4)
         os.replace(tmp_file, HISTORIQUE_FILE)
+        synchroniser_fichier_github(HISTORIQUE_FILE, f"Sauvegarde auto historique_matchs.json ({len(historique_list)} matchs)")
         return True
     except Exception as e:
         try:
@@ -1831,6 +2132,8 @@ def sauvegarder_tournois_data(data, marqueur_session=None, action="sauvegarde", 
         data["historique"] = hist_disque
         _ecrire_json_atomique(HISTORIQUE_TOURNOIS_FILE, hist_disque)
         _ecrire_json_atomique(TOURNOIS_FILE, data)
+        synchroniser_fichier_github(HISTORIQUE_TOURNOIS_FILE, f"Sauvegarde auto historique_tournois.json ({len(hist_disque)} tournois)")
+        synchroniser_fichier_github(TOURNOIS_FILE, f"Sauvegarde auto tournois_data.json ({action})")
         return True
     except Exception as e:
         st.error(f"Erreur lors de l'enregistrement du tournoi : {e}")
@@ -1995,6 +2298,8 @@ def sauvegarder_historique_tournois(historique_list):
             _ecrire_json_atomique(TOURNOIS_FILE, td)
         except Exception:
             pass
+        synchroniser_fichier_github(HISTORIQUE_TOURNOIS_FILE, f"Sauvegarde auto historique_tournois.json ({len(liste_a_sauver)} tournois)")
+        synchroniser_fichier_github(TOURNOIS_FILE, "Synchronisation auto tournois_data.json")
         return True
     except Exception as e:
         st.error(f"Erreur lors de la sauvegarde de l'historique des tournois : {e}")
@@ -2230,6 +2535,8 @@ def supprimer_tournoi_historique(id_archive):
         td["historique"] = nouveau_h
         _ecrire_json_atomique(HISTORIQUE_TOURNOIS_FILE, nouveau_h)
         _ecrire_json_atomique(TOURNOIS_FILE, td)
+        synchroniser_fichier_github(HISTORIQUE_TOURNOIS_FILE, f"Suppression tournoi {id_archive}")
+        synchroniser_fichier_github(TOURNOIS_FILE, f"Suppression tournoi {id_archive}")
     else:
         sauvegarder_historique_tournois(nouveau_h)
     return True
@@ -6162,6 +6469,7 @@ def afficher_tableau_de_bord_progression(historique):
 # Injection des balises d'icône pour écran d'accueil mobile et tablette (iOS & Android)
 injecter_meta_icones_mobiles()
 injecter_theme_css_saphir()
+restaurer_depuis_github_au_reveil()
 # Remontée forcée en haut de page désactivée
 
 def charger_readme_documentation():
@@ -8187,9 +8495,8 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                     st.write("Cette action est irréversible et supprimera le fichier d'historique.")
                     if st.button("🔴 Confirmer la réinitialisation de la saison", type="primary", use_container_width=True):
                         try:
-                            if os.path.exists(HISTORIQUE_FILE):
-                                os.remove(HISTORIQUE_FILE)
-                            st.success("✅ Historique réinitialisé avec succès ! La nouvelle saison est ouverte.")
+                            sauvegarder_historique_matchs([])
+                            st.success("✅ Historique réinitialisé avec succès (localement et sur GitHub) ! La nouvelle saison est ouverte.")
                             st.rerun()
                         except Exception as e_hist:
                             st.error(f"Erreur lors de la suppression de l'historique : {e_hist}")
@@ -8626,6 +8933,68 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                                     st.success("✅ Mot de passe Administrateur mis à jour avec succès !")
                                 else:
                                     st.error("Erreur lors de la sauvegarde.")
+
+                st.divider()
+                st.markdown("#### ☁️ Synchronisation automatique GitHub (Protection anti-veille Streamlit Cloud)")
+                st.caption(
+                    "Sur Streamlit Community Cloud, la mise en veille réinitialise le disque local à partir de GitHub. "
+                    "En renseignant un jeton d'accès personnel GitHub (`GITHUB_TOKEN`), chaque validation de match ou de tournoi est **automatiquement poussée en temps réel sur votre dépôt GitHub**."
+                )
+                tok_actuel, repo_actuel, branch_actuelle = obtenir_parametres_github()
+                if tok_actuel:
+                    st.success(f"🟢 **Synchronisation GitHub active** vers `{repo_actuel}` (branche `{branch_actuelle}`). Chaque sauvegarde de match ou de tournoi est automatiquement enregistrée sur GitHub.")
+                else:
+                    st.warning(
+                        "🟠 **Jeton GitHub (`GITHUB_TOKEN`) non configuré pour l'écriture distante.**\n\n"
+                        "Pour que Streamlit Cloud pousse automatiquement les nouveaux matchs et tournois sur GitHub avant toute mise en veille :\n"
+                        "1. Créez un jeton sur GitHub (*Settings → Developer settings → Personal access tokens → Tokens (classic)* avec la permission **`repo`**).\n"
+                        "2. Collez-le ci-dessous **OU** dans les paramètres de votre application Streamlit Cloud (*Settings → Secrets*) sous la forme : `GITHUB_TOKEN = 'ghp_...'`"
+                    )
+                col_gh1, col_gh2 = st.columns([2, 1])
+                with col_gh1:
+                    saisie_gh_token = st.text_input(
+                        "Jeton d'accès personnel GitHub (Personal Access Token) :",
+                        value=tok_actuel,
+                        type="password",
+                        placeholder="ghp_... ou github_pat_...",
+                        key="input_gh_token_admin"
+                    )
+                with col_gh2:
+                    saisie_gh_repo = st.text_input(
+                        "Dépôt GitHub ( propriétaire/nom ) :",
+                        value=repo_actuel,
+                        key="input_gh_repo_admin"
+                    )
+
+                col_gh_btn1, col_gh_btn2, col_gh_btn3 = st.columns(3)
+                with col_gh_btn1:
+                    if st.button("💾 Enregistrer la configuration GitHub", use_container_width=True, key="btn_save_gh_cfg"):
+                        if sauvegarder_parametres_github(saisie_gh_token, saisie_gh_repo, branch_actuelle):
+                            st.success("✅ Configuration GitHub enregistrée !")
+                            time.sleep(0.8)
+                            st.rerun()
+                        else:
+                            st.error("Erreur lors de l'enregistrement.")
+                with col_gh_btn2:
+                    if st.button("☁️ Pousser tous les historiques vers GitHub", type="primary", use_container_width=True, key="btn_push_all_gh"):
+                        with st.spinner("Synchronisation des fichiers vers GitHub en cours..."):
+                            nb_ok, l_ok, l_err = synchroniser_tous_les_fichiers_github()
+                        if nb_ok > 0 and not l_err:
+                            st.success(f"✅ {nb_ok} fichier(s) synchronisé(s) sur GitHub : {', '.join(l_ok)}")
+                        elif nb_ok > 0:
+                            st.warning(f"⚠️ Synchronisé(s) : {', '.join(l_ok)} | Erreur(s) : {'; '.join(l_err)}")
+                        else:
+                            st.error(f"❌ Échec de la synchronisation : {'; '.join(l_err)}")
+                with col_gh_btn3:
+                    if st.button("📥 Récupérer / Fusionner depuis GitHub", use_container_width=True, key="btn_pull_all_gh"):
+                        with st.spinner("Vérification et fusion depuis GitHub..."):
+                            maj_ok, msg_pull = restaurer_depuis_github_au_reveil(forcer=True)
+                        if maj_ok:
+                            st.success(f"✅ Historiques récupérés et fusionnés : {msg_pull}")
+                            time.sleep(0.8)
+                            st.rerun()
+                        else:
+                            st.info(f"ℹ️ {msg_pull}")
 
 
 with tab_stats:
