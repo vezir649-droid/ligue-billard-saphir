@@ -89,11 +89,14 @@ La barre latérale **« 📋 Paramètres du Match »** regroupe tous les réglag
 ---
 
 ### 6. ⚙️ Espace Administration & Persistance Sécurisée
-* **Onglet dédié `⚙️ Administration` (réservé aux marqueurs/administrateurs) :**
+* **Accès exclusif Administrateur (`🛡️ Accès Administrateur` sur la page de démarrage) :**
+  * **🔒 Accès Marqueur / Éditeur** (mot de passe par défaut : `saphir2026`) : permet la saisie des manches 3v3, la validation officielle des matchs et la gestion des tournois, **sans accès au volet Administration**.
+  * **🛡️ Accès Administrateur** (mot de passe par défaut : `admin2026`) : donne accès à toutes les fonctionnalités de saisie ainsi qu'**en exclusivité à l'onglet `⚙️ Administration`**.
+* **Onglet dédié `⚙️ Administration` (réservé uniquement à l'Administrateur) :**
   * **👥 Édition des équipes & joueurs (`equipes-saphir.csv`) :** Tableau interactif modifiable, ajout rapide d'équipe, import et export CSV.
   * **✏️ Rectification officielle d'un match archivé :** Correction des scores ou joueurs avec motif obligatoire, bandeau de rectification sur la feuille officielle et sauvegarde de sécurité horodatée.
   * **📤 Export & Sauvegarde JSON :** Envoi du bilan complet par courriel SMTP (avec `historique_matchs.json` ou `historique_tournois.json` en pièce jointe) + **téléchargement et restauration directe des fichiers JSON** en un clic.
-  * **🗓️ Nouvelle saison, 📧 Configuration SMTP & 🔑 Mot de passe d'accès.**
+  * **🗓️ Nouvelle saison, 📧 Configuration SMTP & 🔑 Gestion séparée des mots de passe Marqueur et Administrateur.**
 * **Écriture atomique & Copies de secours (`.bak`) :**
   * Toutes les écritures dans `historique_matchs.json`, `historique_tournois.json` et `tournois_data.json` sont effectuées de manière atomique avec création automatique d'une copie `.bak` et récupération transparente en cas d'interruption.
 

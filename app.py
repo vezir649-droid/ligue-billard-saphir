@@ -325,23 +325,33 @@ def injecter_theme_css_saphir():
         unsafe_allow_html=True
     )
 
-def charger_mot_de_passe_admin():
-    """Charge le mot de passe d'administration (défaut: saphir2026)."""
+def charger_config_admin():
+    """Charge la configuration des mots de passe depuis config_admin.json."""
     if os.path.exists(ADMIN_CONFIG_FILE):
         try:
             with open(ADMIN_CONFIG_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                return str(data.get("mot_de_passe", "saphir2026")).strip()
+                if isinstance(data, dict):
+                    return data
         except Exception:
-            return "saphir2026"
-    return "saphir2026"
+            pass
+    return {}
+
+def charger_mot_de_passe_admin():
+    """Charge le mot de passe Marqueur / Éditeur (défaut: saphir2026)."""
+    data = charger_config_admin()
+    return str(data.get("mot_de_passe", "saphir2026")).strip() or "saphir2026"
+
+def charger_mot_de_passe_super_admin():
+    """Charge le mot de passe Administrateur ayant seul accès au volet Administration (défaut: admin2026)."""
+    data = charger_config_admin()
+    return str(data.get("mot_de_passe_admin", "admin2026")).strip() or "admin2026"
 
 def verifier_mot_de_passe_admin(saisie):
-    """Vérifie si le mot de passe saisi est valide (tolérance aux espaces et casse)."""
+    """Vérifie si le mot de passe Marqueur saisi est valide (tolérance aux espaces et casse)."""
     if not saisie or not isinstance(saisie, str):
         return False
     s_clean = saisie.strip()
-    # Le mot de passe par défaut 'saphir2026' est TOUJOURS garanti et accepté
     if s_clean.lower() == "saphir2026":
         return True
     mdp_actuel = charger_mot_de_passe_admin()
@@ -349,11 +359,36 @@ def verifier_mot_de_passe_admin(saisie):
         return True
     return False
 
+def verifier_mot_de_passe_super_admin(saisie):
+    """Vérifie si le mot de passe Administrateur saisi est valide (défaut: admin2026)."""
+    if not saisie or not isinstance(saisie, str):
+        return False
+    s_clean = saisie.strip()
+    if s_clean.lower() == "admin2026":
+        return True
+    mdp_admin = charger_mot_de_passe_super_admin()
+    if s_clean == mdp_admin or s_clean.lower() == mdp_admin.lower():
+        return True
+    return False
+
 def sauvegarder_mot_de_passe_admin(nouveau_mdp):
-    """Enregistre le nouveau mot de passe administrateur."""
+    """Enregistre le nouveau mot de passe Marqueur / Éditeur."""
     try:
+        data = charger_config_admin()
+        data["mot_de_passe"] = nouveau_mdp.strip()
         with open(ADMIN_CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump({"mot_de_passe": nouveau_mdp}, f, ensure_ascii=False, indent=4)
+            json.dump(data, f, ensure_ascii=False, indent=4)
+        return True
+    except Exception:
+        return False
+
+def sauvegarder_mot_de_passe_super_admin(nouveau_mdp_admin):
+    """Enregistre le nouveau mot de passe Administrateur."""
+    try:
+        data = charger_config_admin()
+        data["mot_de_passe_admin"] = nouveau_mdp_admin.strip()
+        with open(ADMIN_CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
         return True
     except Exception:
         return False
@@ -6386,19 +6421,39 @@ if not est_connecte and not est_spectateur:
         st.markdown("</div>", unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown("### 🔒 Accès Marqueur / Éditeur")
-            st.caption("Permet la saisie des manches, la validation officielle et l'administration.")
+            st.caption("Permet la saisie des manches, la validation officielle des matchs et la gestion des tournois.")
             with st.form("form_login_marqueur", clear_on_submit=False):
-                mdp_saisi = st.text_input("Mot de passe", type="password", key="login_pass_input", placeholder="Entrez le mot de passe...")
-                bouton_login = st.form_submit_button("🔓 Se connecter pour saisir", type="primary", use_container_width=True)
+                mdp_saisi = st.text_input("Mot de passe Marqueur", type="password", key="login_pass_input", placeholder="Entrez le mot de passe marqueur...")
+                bouton_login = st.form_submit_button("🔓 Se connecter comme Marqueur", type="primary", use_container_width=True)
                 if bouton_login:
                     if verifier_mot_de_passe_admin(mdp_saisi):
                         st.session_state["authentifie"] = True
+                        st.session_state["est_admin"] = False
                         st.session_state["est_spectateur"] = False
                         st.session_state["mode_consultation"] = False
                         st.rerun()
                     else:
-                        st.error("❌ Mot de passe incorrect.")
+                        st.error("❌ Mot de passe marqueur incorrect.")
             st.caption("💡 *Mot de passe par défaut : `saphir2026`*")
+
+        st.markdown("<div style='text-align:center; font-weight:bold; margin: 16px 0;'>OU</div>", unsafe_allow_html=True)
+
+        with st.container(border=True):
+            st.markdown("### 🛡️ Accès Administrateur")
+            st.caption("Donne accès à la saisie ainsi qu'en exclusivité au volet **⚙️ Administration** (gestion des équipes, saisons, rectifications, sauvegardes JSON, SMTP et sécurité).")
+            with st.form("form_login_administrateur", clear_on_submit=False):
+                mdp_admin_saisi = st.text_input("Mot de passe Administrateur", type="password", key="login_admin_pass_input", placeholder="Entrez le mot de passe administrateur...")
+                bouton_login_admin = st.form_submit_button("🛡️ Se connecter comme Administrateur", type="primary", use_container_width=True)
+                if bouton_login_admin:
+                    if verifier_mot_de_passe_super_admin(mdp_admin_saisi):
+                        st.session_state["authentifie"] = True
+                        st.session_state["est_admin"] = True
+                        st.session_state["est_spectateur"] = False
+                        st.session_state["mode_consultation"] = False
+                        st.rerun()
+                    else:
+                        st.error("❌ Mot de passe administrateur incorrect.")
+            st.caption("💡 *Mot de passe par défaut : `admin2026`*")
 
         st.markdown("<div style='text-align:center; font-weight:bold; margin: 16px 0;'>OU</div>", unsafe_allow_html=True)
 
@@ -6408,6 +6463,7 @@ if not est_connecte and not est_spectateur:
             if st.button("👁️ Entrer en tant que spectateur", use_container_width=True):
                 st.session_state["est_spectateur"] = True
                 st.session_state["authentifie"] = False
+                st.session_state["est_admin"] = False
                 st.session_state["mode_consultation"] = True
                 st.rerun()
 
@@ -6525,8 +6581,9 @@ if "message_validation_reussie" in st.session_state:
 # NAVIGATION PRINCIPALE PAR ONGLETS (FEUILLE DE MATCH vs STATISTIQUES vs TOURNOIS vs ADMINISTRATION)
 # ==============================================================================
 historique_matchs = charger_historique_matchs()
+est_admin = st.session_state.get("est_admin", False)
 
-if not est_spectateur:
+if est_admin and not est_spectateur:
     tab_feuille, tab_stats, tab_tournoi, tab_admin = st.tabs([
         "🎱 Feuille de match & Consultation",
         "📈 Statistiques & Progression",
@@ -6654,11 +6711,13 @@ with tab_feuille:
     
                     # 3. Conserver l'authentification, l'identifiant de session et l'état de consultation
                     auth_ok = st.session_state.get("authentifie", False)
+                    admin_ok = st.session_state.get("est_admin", False)
                     spec_ok = st.session_state.get("est_spectateur", False)
                     user_sess = st.session_state.get("user_session_id")
                     mode_c = st.session_state.get("mode_consultation", False)
                     st.session_state.clear()
                     st.session_state["authentifie"] = auth_ok
+                    st.session_state["est_admin"] = admin_ok
                     st.session_state["est_spectateur"] = spec_ok
                     if user_sess:
                         st.session_state["user_session_id"] = user_sess
@@ -6697,9 +6756,12 @@ with tab_feuille:
 
     # --- BARRE LATÉRALE : SÉLECTION DU MATCH ET JOUEURS ---
     st.sidebar.header("📋 Paramètres du Match")
+    role_badge_sb = "🛡️ Administrateur" if st.session_state.get("est_admin", False) else ("👁️ Spectateur" if est_spectateur else "🔒 Marqueur / Éditeur")
+    st.sidebar.caption(f"Profil connecté : **{role_badge_sb}**")
     if st.sidebar.button("🚪 Déconnexion / Accueil", use_container_width=True, help="Sauvegarde les tournois et le match, libère la main et retourne à l'écran d'accueil"):
         ceder_la_main_avec_sauvegarde(my_session_id)
         st.session_state["authentifie"] = False
+        st.session_state["est_admin"] = False
         st.session_state["est_spectateur"] = False
         st.session_state["mode_consultation"] = False
         st.rerun()
@@ -7937,10 +7999,12 @@ with tab_feuille:
     # ==============================================================================
     # ESPACE ADMINISTRATION (SAISON, SMTP ET SÉCURITÉ) — ONGLET DÉDIÉ
     # ==============================================================================
-    if not est_spectateur:
-        st.caption("💡 *Astuce : L'Espace Administration (édition des équipes, nouvelle saison, rectification d'un match, SMTP et mot de passe) est accessible directement via l'onglet **⚙️ Administration** en haut de page.*")
+    if est_admin and not est_spectateur:
+        st.caption("💡 *Astuce : L'Espace Administration (édition des équipes, nouvelle saison, rectification d'un match, SMTP et mots de passe) est accessible directement via l'onglet **⚙️ Administration** en haut de page.*")
+    elif not est_spectateur:
+        st.caption("🔒 *Note : Le volet **⚙️ Administration** est réservé à l'Administrateur (accessible via **🛡️ Accès Administrateur** sur la page de démarrage).*")
 
-if tab_admin is not None:
+if tab_admin is not None and st.session_state.get("est_admin", False):
     with tab_admin:
         st.markdown("### ⚙️ Espace Administration de la Ligue")
         st.caption("Gérez la composition officielle des équipes, rectifiez un match archivé, démarrez une nouvelle saison ou configurez la messagerie SMTP et la sécurité.")
@@ -8528,19 +8592,40 @@ if tab_admin is not None:
                                 st.error(f"❌ {msg_test}")
 
             with tab_secu:
-                st.markdown("#### 🔑 Modifier le mot de passe d'accès à l'application")
-                nouveau_mdp = st.text_input("Nouveau mot de passe d'accès", type="password", key="new_admin_pwd")
-                confirm_mdp = st.text_input("Confirmer le nouveau mot de passe", type="password", key="confirm_admin_pwd")
-                if st.button("💾 Mettre à jour le mot de passe", use_container_width=True):
-                    if not nouveau_mdp:
-                        st.error("Le mot de passe ne peut pas être vide.")
-                    elif nouveau_mdp != confirm_mdp:
-                        st.error("Les deux mots de passe ne correspondent pas.")
-                    else:
-                        if sauvegarder_mot_de_passe_admin(nouveau_mdp):
-                            st.success("✅ Mot de passe d'accès mis à jour avec succès !")
-                        else:
-                            st.error("Erreur lors de la sauvegarde.")
+                st.markdown("#### 🔑 Gestion des mots de passe d'accès")
+                col_pwd_m, col_pwd_a = st.columns(2)
+                with col_pwd_m:
+                    with st.container(border=True):
+                        st.markdown("##### 🔒 Mot de passe Marqueur / Éditeur")
+                        st.caption("Permet la saisie des matchs et la gestion des tournois (défaut : `saphir2026`).")
+                        nouveau_mdp = st.text_input("Nouveau mot de passe Marqueur", type="password", key="new_admin_pwd")
+                        confirm_mdp = st.text_input("Confirmer le mot de passe Marqueur", type="password", key="confirm_admin_pwd")
+                        if st.button("💾 Mettre à jour le mot de passe Marqueur", use_container_width=True, key="btn_save_pwd_marqueur"):
+                            if not nouveau_mdp:
+                                st.error("Le mot de passe ne peut pas être vide.")
+                            elif nouveau_mdp != confirm_mdp:
+                                st.error("Les deux mots de passe ne correspondent pas.")
+                            else:
+                                if sauvegarder_mot_de_passe_admin(nouveau_mdp):
+                                    st.success("✅ Mot de passe Marqueur mis à jour avec succès !")
+                                else:
+                                    st.error("Erreur lors de la sauvegarde.")
+                with col_pwd_a:
+                    with st.container(border=True):
+                        st.markdown("##### 🛡️ Mot de passe Administrateur")
+                        st.caption("Donne seul accès au volet **⚙️ Administration** (défaut : `admin2026`).")
+                        nouveau_mdp_sup = st.text_input("Nouveau mot de passe Administrateur", type="password", key="new_super_admin_pwd")
+                        confirm_mdp_sup = st.text_input("Confirmer le mot de passe Administrateur", type="password", key="confirm_super_admin_pwd")
+                        if st.button("💾 Mettre à jour le mot de passe Administrateur", type="primary", use_container_width=True, key="btn_save_pwd_super_admin"):
+                            if not nouveau_mdp_sup:
+                                st.error("Le mot de passe administrateur ne peut pas être vide.")
+                            elif nouveau_mdp_sup != confirm_mdp_sup:
+                                st.error("Les deux mots de passe ne correspondent pas.")
+                            else:
+                                if sauvegarder_mot_de_passe_super_admin(nouveau_mdp_sup):
+                                    st.success("✅ Mot de passe Administrateur mis à jour avec succès !")
+                                else:
+                                    st.error("Erreur lors de la sauvegarde.")
 
 
 with tab_stats:
