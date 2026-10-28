@@ -6420,6 +6420,18 @@ if not est_connecte and not est_spectateur:
         st.markdown("Veuillez choisir votre mode d'accès ci-dessous.")
         st.markdown("</div>", unsafe_allow_html=True)
         with st.container(border=True):
+            st.markdown("### 👁️ Accès Spectateur")
+            st.caption("Consultez en direct les résultats du match en cours, les statistiques et les tournois en mode lecture seule (aucun mot de passe requis).")
+            if st.button("👁️ Entrer en tant que spectateur", type="primary", use_container_width=True):
+                st.session_state["est_spectateur"] = True
+                st.session_state["authentifie"] = False
+                st.session_state["est_admin"] = False
+                st.session_state["mode_consultation"] = True
+                st.rerun()
+
+        st.markdown("<div style='text-align:center; font-weight:bold; margin: 16px 0;'>OU</div>", unsafe_allow_html=True)
+
+        with st.container(border=True):
             st.markdown("### 🔒 Accès Marqueur / Éditeur")
             st.caption("Permet la saisie des manches, la validation officielle des matchs et la gestion des tournois.")
             with st.form("form_login_marqueur", clear_on_submit=False):
@@ -6454,18 +6466,6 @@ if not est_connecte and not est_spectateur:
                     else:
                         st.error("❌ Mot de passe administrateur incorrect.")
             st.caption("💡 *Mot de passe par défaut : `admin2026`*")
-
-        st.markdown("<div style='text-align:center; font-weight:bold; margin: 16px 0;'>OU</div>", unsafe_allow_html=True)
-
-        with st.container(border=True):
-            st.markdown("### 👁️ Accès Spectateur")
-            st.caption("Consultez en direct les résultats du match en cours en mode lecture seule (aucun mot de passe requis).")
-            if st.button("👁️ Entrer en tant que spectateur", use_container_width=True):
-                st.session_state["est_spectateur"] = True
-                st.session_state["authentifie"] = False
-                st.session_state["est_admin"] = False
-                st.session_state["mode_consultation"] = True
-                st.rerun()
 
         st.markdown("<div style='text-align:center; font-weight:bold; margin: 16px 0;'>OU</div>", unsafe_allow_html=True)
 
