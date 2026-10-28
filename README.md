@@ -28,9 +28,9 @@ Dès l'ouverture de l'application, la page d'accueil présente trois modes d'acc
   * Affichage permanent en temps réel du score global (**Équipe Receveuse vs Équipe Visiteuse**), d'une jauge de progression des **9 manches** (`X / 9 manches complétées`) et du statut de verrouillage.
 * **Rotation optimisée des 9 duels :**
   * Chaque joueur de l'équipe receveuse affronte les 3 joueurs de l'équipe visiteuse selon un ordre officiel garantissant qu'**aucun joueur ne dispute deux manches consécutives**.
-* **Règles officielles du Billard au 8 & Validation instantanée :**
-  * Le vainqueur d'une manche marque **8 points** ; l'adversaire marque ses boules empochées (**0 à 7 points**).
-  * Indicateurs visuels par manche (`⏳ À jouer`, `✅ Manche terminée — Victoire`, `⚠️ Score incomplet ou invalide`) et synchronisation immédiate des totaux par équipe et par joueur.
+* **Pointage souple des manches & Validation instantanée :**
+  * Saisie libre de **0 à 8 points** par joueur **sans obligation d'un score de 8** pour valider une manche ou enregistrer la feuille de match.
+  * Indicateurs visuels par manche (`⚪ À jouer`, `✅ Manche — 🏆 Victoire`, `⚖️ Égalité`) et synchronisation immédiate des totaux par équipe et par joueur.
 * **Approbation & Impression A4 :**
   * Double approbation officielle par un représentant de chaque équipe avant archivage.
   * Génération d'une **feuille de match officielle calibrée pour l'impression sur une seule page A4**.

@@ -1251,8 +1251,8 @@ def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_j
         lignes_texte.append(f"Manche {num} : {label_a} ({sa}) vs ({sb}) {label_b}")
 
         bg_color = "#f9fbfd" if num % 2 == 1 else "#ffffff"
-        sa_fmt = f"<strong>{sa}</strong>" if sa == 8 else f"{sa}"
-        sb_fmt = f"<strong>{sb}</strong>" if sb == 8 else f"{sb}"
+        sa_fmt = f"<strong>{sa}</strong>" if (sa == 8 or sa > sb) else f"{sa}"
+        sb_fmt = f"<strong>{sb}</strong>" if (sb == 8 or sb > sa) else f"{sb}"
         lignes_html.append(f"""
         <tr style="background-color: {bg_color}; border-bottom: 1px solid #e0e0e0; text-align: center;">
             <td style="padding: 5px 6px; font-weight: bold;">Manche {num}</td>
@@ -1540,8 +1540,8 @@ def obtenir_html_match(m):
         pts_vis_j[jb] = pts_vis_j.get(jb, 0) + sb
         
         bg_color = "#f9fbfd" if num % 2 == 1 else "#ffffff"
-        sa_fmt = f"<strong>{sa}</strong>" if sa == 8 else f"{sa}"
-        sb_fmt = f"<strong>{sb}</strong>" if sb == 8 else f"{sb}"
+        sa_fmt = f"<strong>{sa}</strong>" if (sa == 8 or sa > sb) else f"{sa}"
+        sb_fmt = f"<strong>{sb}</strong>" if (sb == 8 or sb > sa) else f"{sb}"
         
         lignes_html.append(f"""
             <tr style="background-color: {bg_color}; border-bottom: 1px solid #ddd; text-align: center;">
@@ -8042,18 +8042,18 @@ with tab_feuille:
                         sa_val = row["sa"]
                         sb_val = row["sb"]
                     
-                        if sa_val == 8:
+                        if sa_val > sb_val:
                             sc_a = f"**{sa_val}**"
                             sc_b = f"{sb_val}"
                             statut = f"🏆 **Gagné ({row['ja']})**"
-                        elif sb_val == 8:
+                        elif sb_val > sa_val:
                             sc_a = f"{sa_val}"
                             sc_b = f"**{sb_val}**"
                             statut = f"🏆 **Gagné ({row['jb']})**"
-                        elif sa_val > 0 or sb_val > 0:
-                            sc_a = f"{sa_val}"
-                            sc_b = f"{sb_val}"
-                            statut = "⏳ *En cours*"
+                        elif sa_val > 0 and sa_val == sb_val:
+                            sc_a = f"**{sa_val}**"
+                            sc_b = f"**{sb_val}**"
+                            statut = f"⚖️ **Égalité ({sa_val}-{sb_val})**"
                         else:
                             sc_a = "0"
                             sc_b = "0"
@@ -8087,7 +8087,7 @@ with tab_feuille:
         st.markdown("### 🎯 Grille de saisie des 9 manches (Rotation alternée 3 contre 3)")
         st.info(
             "📌 **Règle de rotation :** Aucun joueur ne joue deux manches consécutives.\n\n"
-            "🎱 **Règle du jeu au 8 :** Le vainqueur obtient **8 points**, le perdant obtient de **0 à 7 points**."
+            "🎱 **Pointage des manches :** Saisie libre de **0 à 8 points** par joueur (**sans obligation d'un score de 8** pour valider un résultat)."
         )
 
         donnees_a_sauvegarder = {
@@ -8164,16 +8164,13 @@ with tab_feuille:
                         disabled=not est_editeur
                     ))
             
-                # Validation logique du billard au 8 et retour visuel immédiat
-                if score_a == 8 and score_b == 8:
-                    st.warning("⚠️ Les deux joueurs ne peuvent pas avoir 8 points.")
-                    manches_invalides.append(num_manche)
-                elif score_a == 8:
-                    st.caption(f"✅ **Manche {num_manche} terminée — 🏆 Victoire de {joueur_a}** ({score_a} à {score_b})")
-                elif score_b == 8:
-                    st.caption(f"✅ **Manche {num_manche} terminée — 🏆 Victoire de {joueur_b}** ({score_b} à {score_a})")
-                elif score_a > 0 or score_b > 0:
-                    st.caption(f"⏳ *Manche {num_manche} en cours : {joueur_a} ({score_a}) - ({score_b}) {joueur_b}*")
+                # Retour visuel immédiat (résultat permis sans obligation d'un score de 8)
+                if score_a > score_b:
+                    st.caption(f"✅ **Manche {num_manche} — 🏆 Victoire de {joueur_a}** ({score_a} à {score_b})")
+                elif score_b > score_a:
+                    st.caption(f"✅ **Manche {num_manche} — 🏆 Victoire de {joueur_b}** ({score_b} à {score_a})")
+                elif score_a > 0 and score_a == score_b:
+                    st.caption(f"✅ **Manche {num_manche} — ⚖️ Égalité** ({score_a} à {score_b})")
 
                 donnees_a_sauvegarder["matchs"][str(num_manche)] = {
                     "score_a": int(score_a),
@@ -8201,7 +8198,7 @@ with tab_feuille:
         # Mise à jour du Bandeau Scoreboard Live en haut de page avec les totaux exacts calculés ci-dessus
         nb_manches_term = sum(
             1 for m_v in donnees_a_sauvegarder["matchs"].values()
-            if (m_v["score_a"] == 8 or m_v["score_b"] == 8) and not (m_v["score_a"] == 8 and m_v["score_b"] == 8)
+            if (m_v["score_a"] > 0 or m_v["score_b"] > 0 or m_v.get("joueur_a_absent") or m_v.get("joueur_b_absent"))
         )
         pct_manches = int(round((nb_manches_term / 9.0) * 100))
 
@@ -8392,9 +8389,9 @@ with tab_feuille:
                 ja_abs = " *(Absent)*" if m.get("joueur_a_absent") else ""
                 jb_abs = " *(Absent)*" if m.get("joueur_b_absent") else ""
 
-                # Score vert en gras pour le vainqueur de la manche (8 pts)
-                sc_a_str = f"**{sa}**" if sa == 8 else f"{sa}"
-                sc_b_str = f"**{sb}**" if sb == 8 else f"{sb}"
+                # Score en gras pour le vainqueur de la manche (sans obligation de 8 pts)
+                sc_a_str = f"**{sa}**" if (sa == 8 or sa > sb) else f"{sa}"
+                sc_b_str = f"**{sb}**" if (sb == 8 or sb > sa) else f"{sb}"
 
                 table_md.append(f"| **Manche {num}** | {ja}{ja_abs} | {sc_a_str} | {sc_b_str} | {jb}{jb_abs} |")
 
@@ -8577,8 +8574,8 @@ with tab_feuille:
                 sb = m_ap.get("score_b", 0)
                 ja = str(m_ap.get("joueur_a", "")).replace("|", "/")
                 jb = str(m_ap.get("joueur_b", "")).replace("|", "/")
-                sc_a_str = f"**{sa}**" if sa == 8 else f"{sa}"
-                sc_b_str = f"**{sb}**" if sb == 8 else f"{sb}"
+                sc_a_str = f"**{sa}**" if (sa == 8 or sa > sb) else f"{sa}"
+                sc_b_str = f"**{sb}**" if (sb == 8 or sb > sa) else f"{sb}"
                 table_ap_md.append(f"| **Manche {num}** | {ja} | {sc_a_str} | {sc_b_str} | {jb} |")
             table_ap_md.append(f"| **TOTAL** | **{equipe_receveur}** | **{total_pts_receveur} pts** | **{total_pts_visiteur} pts** | **{equipe_visiteur}** |")
             st.markdown("\n".join(table_ap_md))
@@ -8929,12 +8926,7 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                             sb_edite = c_m_sb.number_input(f"Pts {vis_sel}", min_value=0, max_value=8, value=sb_def, key=f"rec_sb_{idx_sel}_{num_m}")
                             nom_b_edite = c_m_jb.text_input(f"Joueur ({vis_sel})", value=jb_def, key=f"rec_jb_{idx_sel}_{num_m}")
 
-                            if sa_edite == 8 and sb_edite == 8:
-                                st.error(f"❌ Manche {num_m} : Les deux joueurs ne peuvent pas avoir 8 points.")
-                                erreurs_manches.append(num_m)
-                            elif sa_edite < 8 and sb_edite < 8 and (sa_edite > 0 or sb_edite > 0):
-                                st.warning(f"⚠️ Manche {num_m} : Un des deux joueurs doit avoir 8 points (règle du billard au 8).")
-                                erreurs_manches.append(num_m)
+                            # Aucun score de 8 obligatoire lors de la rectification d'une manche
 
                             nouveaux_scores[str_m] = {
                                 "score_a": int(sa_edite),
