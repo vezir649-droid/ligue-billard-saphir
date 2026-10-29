@@ -8910,6 +8910,13 @@ if "message_validation_reussie" in st.session_state:
     st.success(st.session_state.pop("message_validation_reussie"))
 
 
+def cb_consulter_saphir():
+    st.session_state["choix_match_vue"] = "🌐 Consulter https://saphirbillard.com (Joueurs, Équipes, Horaire)"
+
+def cb_retour_match_en_cours():
+    lbl_direct = "🔴 Saisie du match en direct (En cours)" if not st.session_state.get("est_spectateur", False) else "🔴 Match en direct (En cours)"
+    st.session_state["choix_match_vue"] = lbl_direct
+
 def cb_appliquer_match_du_jour_btn():
     rencontre = determiner_match_du_jour()
     if rencontre:
@@ -9165,9 +9172,7 @@ with tab_feuille:
 
     with st.sidebar.expander("🌐 Consulter https://saphirbillard.com", expanded=False):
         st.caption("Consultez en direct les joueurs, moyennes, équipes et l'horaire officiel extraits de https://saphirbillard.com.")
-        if st.button("🔍 Extraire les données du site", key="btn_sb_extract_saphir", use_container_width=True):
-            st.session_state["choix_match_vue"] = "🌐 Consulter https://saphirbillard.com (Joueurs, Équipes, Horaire)"
-            st.rerun()
+        st.button("🔍 Extraire les données du site", key="btn_sb_extract_saphir", on_click=cb_consulter_saphir, use_container_width=True)
     role_badge_sb = "🛡️ Administrateur" if st.session_state.get("est_admin", False) else ("👁️ Spectateur" if est_spectateur else "🔒 Marqueur / Éditeur")
     st.sidebar.caption(f"Profil connecté : **{role_badge_sb}**")
     if st.sidebar.button("🚪 Déconnexion / Accueil", use_container_width=True, help="Sauvegarde les tournois et le match, libère la main et retourne à l'écran d'accueil"):
@@ -9913,20 +9918,23 @@ with tab_feuille:
         options_matchs.append(label)
         mapping_matchs[label] = m
 
-    def callback_retour_match_en_cours():
-        """Callback officiel Streamlit exécuté avant l'instanciation des widgets lors du clic sur Retour."""
-        st.session_state["choix_match_vue"] = label_direct
+    # Prise en compte de toute demande en attente avant l'instanciation du selectbox
+    if "pending_choix_match_vue" in st.session_state:
+        st.session_state["choix_match_vue"] = st.session_state.pop("pending_choix_match_vue")
 
     # S'assurer que la sélection est valide avant l'affichage du selectbox
     if "choix_match_vue" in st.session_state and st.session_state["choix_match_vue"] not in options_matchs:
         st.session_state["choix_match_vue"] = label_direct
+
+    cur_choix = st.session_state.get("choix_match_vue", label_direct)
+    idx_choix = options_matchs.index(cur_choix) if cur_choix in options_matchs else 0
 
     col_sel1, col_sel2 = st.columns([3, 1])
     with col_sel1:
         choix_vue = st.selectbox(
             "📜 **Consulter les résultats d'un match :**",
             options_matchs,
-            index=0,
+            index=idx_choix,
             key="choix_match_vue",
             help="Sélectionnez le match en direct ou une copie officielle archivée envoyée par courriel"
         )
@@ -9951,9 +9959,7 @@ with tab_feuille:
                 st.session_state["saphir_cache_data"] = None
                 st.rerun()
         with col_sap_h3:
-            if st.button("🔙 Revenir au match", key="btn_back_from_saphir", type="primary", use_container_width=True):
-                st.session_state["choix_match_vue"] = label_direct
-                st.rerun()
+            st.button("🔙 Revenir au match", key="btn_back_from_saphir", type="primary", use_container_width=True, on_click=cb_retour_match_en_cours)
 
         if "saphir_cache_data" not in st.session_state or not st.session_state["saphir_cache_data"]:
             with st.spinner("Extraction en direct des données depuis https://saphirbillard.com..."):
@@ -10054,7 +10060,7 @@ with tab_feuille:
                             if idx_arch >= 0:
                                 ok_del, msg_del = supprimer_match_historique(idx_arch)
                                 if ok_del:
-                                    st.session_state["choix_match_vue"] = label_direct
+                                    st.session_state["pending_choix_match_vue"] = label_direct
                                     st.success("✅ Match supprimé de l'historique !")
                                     time.sleep(0.8)
                                     st.rerun()
