@@ -1887,7 +1887,7 @@ def determiner_match_du_jour(lignes_horaire=None, date_ref=None):
     return None
 
 def appliquer_match_du_jour(rencontre=None, forcer=False):
-    """Configure automatiquement les équipes receveuse et visiteuse ainsi que leurs joueurs et moyennes selon l'horaire."""
+    """Configure automatiquement les équipes receveuse et visiteuse ainsi que leurs joueurs, moyennes et fichier de sauvegarde."""
     if rencontre is None:
         rencontre = determiner_match_du_jour()
     if not rencontre:
@@ -1909,44 +1909,87 @@ def appliquer_match_du_jour(rencontre=None, forcer=False):
     st.session_state["track_choix_vis"] = eq_vis
 
     # 2. Joueurs Receveurs
-    if len(roster_r) >= 1:
-        st.session_state["sel_j1_rec"] = roster_r[0]
-        st.session_state["last_nom_j1_rec"] = roster_r[0]
-        st.session_state["moy_j1_rec"] = obtenir_moyenne_joueur(roster_r[0])
-        st.session_state["pts_j1_rec"] = calculer_score_absent(st.session_state["moy_j1_rec"])
-        st.session_state["pres_j1_rec"] = True
-    if len(roster_r) >= 2:
-        st.session_state["sel_j2_rec"] = roster_r[1]
-        st.session_state["last_nom_j2_rec"] = roster_r[1]
-        st.session_state["moy_j2_rec"] = obtenir_moyenne_joueur(roster_r[1])
-        st.session_state["pts_j2_rec"] = calculer_score_absent(st.session_state["moy_j2_rec"])
-        st.session_state["pres_j2_rec"] = True
-    if len(roster_r) >= 3:
-        st.session_state["last_nom_j3_rec"] = roster_r[2]
-        st.session_state["moy_j3_rec"] = obtenir_moyenne_joueur(roster_r[2])
-        st.session_state["pts_j3_rec"] = calculer_score_absent(st.session_state["moy_j3_rec"])
-        st.session_state["pres_j3_rec"] = True
+    j1_r_nom = roster_r[0] if len(roster_r) >= 1 else "Joueur 1"
+    j2_r_nom = roster_r[1] if len(roster_r) >= 2 else "Joueur 2"
+    j3_r_nom = roster_r[2] if len(roster_r) >= 3 else "Joueur 3"
+
+    st.session_state["sel_j1_rec"] = j1_r_nom
+    st.session_state["last_nom_j1_rec"] = j1_r_nom
+    st.session_state["moy_j1_rec"] = obtenir_moyenne_joueur(j1_r_nom)
+    st.session_state["pts_j1_rec"] = calculer_score_absent(st.session_state["moy_j1_rec"])
+    st.session_state["pres_j1_rec"] = True
+
+    st.session_state["sel_j2_rec"] = j2_r_nom
+    st.session_state["last_nom_j2_rec"] = j2_r_nom
+    st.session_state["moy_j2_rec"] = obtenir_moyenne_joueur(j2_r_nom)
+    st.session_state["pts_j2_rec"] = calculer_score_absent(st.session_state["moy_j2_rec"])
+    st.session_state["pres_j2_rec"] = True
+
+    st.session_state["last_nom_j3_rec"] = j3_r_nom
+    st.session_state["moy_j3_rec"] = obtenir_moyenne_joueur(j3_r_nom)
+    st.session_state["pts_j3_rec"] = calculer_score_absent(st.session_state["moy_j3_rec"])
+    st.session_state["pres_j3_rec"] = True
 
     # 3. Joueurs Visiteurs
-    if len(roster_v) >= 1:
-        st.session_state["sel_j1_vis"] = roster_v[0]
-        st.session_state["last_nom_j1_vis"] = roster_v[0]
-        st.session_state["moy_j1_vis"] = obtenir_moyenne_joueur(roster_v[0])
-        st.session_state["pts_j1_vis"] = calculer_score_absent(st.session_state["moy_j1_vis"])
-        st.session_state["pres_j1_vis"] = True
-    if len(roster_v) >= 2:
-        st.session_state["sel_j2_vis"] = roster_v[1]
-        st.session_state["last_nom_j2_vis"] = roster_v[1]
-        st.session_state["moy_j2_vis"] = obtenir_moyenne_joueur(roster_v[1])
-        st.session_state["pts_j2_vis"] = calculer_score_absent(st.session_state["moy_j2_vis"])
-        st.session_state["pres_j2_vis"] = True
-    if len(roster_v) >= 3:
-        st.session_state["last_nom_j3_vis"] = roster_v[2]
-        st.session_state["moy_j3_vis"] = obtenir_moyenne_joueur(roster_v[2])
-        st.session_state["pts_j3_vis"] = calculer_score_absent(st.session_state["moy_j3_vis"])
-        st.session_state["pres_j3_vis"] = True
+    j1_v_nom = roster_v[0] if len(roster_v) >= 1 else "Joueur 1"
+    j2_v_nom = roster_v[1] if len(roster_v) >= 2 else "Joueur 2"
+    j3_v_nom = roster_v[2] if len(roster_v) >= 3 else "Joueur 3"
+
+    st.session_state["sel_j1_vis"] = j1_v_nom
+    st.session_state["last_nom_j1_vis"] = j1_v_nom
+    st.session_state["moy_j1_vis"] = obtenir_moyenne_joueur(j1_v_nom)
+    st.session_state["pts_j1_vis"] = calculer_score_absent(st.session_state["moy_j1_vis"])
+    st.session_state["pres_j1_vis"] = True
+
+    st.session_state["sel_j2_vis"] = j2_v_nom
+    st.session_state["last_nom_j2_vis"] = j2_v_nom
+    st.session_state["moy_j2_vis"] = obtenir_moyenne_joueur(j2_v_nom)
+    st.session_state["pts_j2_vis"] = calculer_score_absent(st.session_state["moy_j2_vis"])
+    st.session_state["pres_j2_vis"] = True
+
+    st.session_state["last_nom_j3_vis"] = j3_v_nom
+    st.session_state["moy_j3_vis"] = obtenir_moyenne_joueur(j3_v_nom)
+    st.session_state["pts_j3_vis"] = calculer_score_absent(st.session_state["moy_j3_vis"])
+    st.session_state["pres_j3_vis"] = True
+
+    # 4. Réinitialisation des scores des manches à 0
+    for num in range(1, 10):
+        st.session_state[f"s_a_{num}"] = 0
+        st.session_state[f"s_b_{num}"] = 0
+
+    for p_id in ["j1_rec", "j2_rec", "j3_rec", "j1_vis", "j2_vis", "j3_vis"]:
+        st.session_state[f"prev_state_{p_id}"] = True
+        st.session_state[f"prev_pts_{p_id}"] = 0
+
+    # 5. Enregistrement immédiat dans sauvegarde_saisie_secours.json pour synchroniser le disque
+    try:
+        dict_j_init = {
+            "j1_rec": {"nom": j1_r_nom, "present": True, "moyenne": float(st.session_state["moy_j1_rec"]), "pts_absent": int(st.session_state["pts_j1_rec"])},
+            "j2_rec": {"nom": j2_r_nom, "present": True, "moyenne": float(st.session_state["moy_j2_rec"]), "pts_absent": int(st.session_state["pts_j2_rec"])},
+            "j3_rec": {"nom": j3_r_nom, "present": True, "moyenne": float(st.session_state["moy_j3_rec"]), "pts_absent": int(st.session_state["pts_j3_rec"])},
+            "j1_vis": {"nom": j1_v_nom, "present": True, "moyenne": float(st.session_state["moy_j1_vis"]), "pts_absent": int(st.session_state["pts_j1_vis"])},
+            "j2_vis": {"nom": j2_v_nom, "present": True, "moyenne": float(st.session_state["moy_j2_vis"]), "pts_absent": int(st.session_state["pts_j2_vis"])},
+            "j3_vis": {"nom": j3_v_nom, "present": True, "moyenne": float(st.session_state["moy_j3_vis"]), "pts_absent": int(st.session_state["pts_j3_vis"])},
+        }
+        data_init = {
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "receveur": eq_rec,
+            "visiteur": eq_vis,
+            "choix_rec": eq_rec,
+            "choix_vis": eq_vis,
+            "sel_j1_rec": j1_r_nom,
+            "sel_j2_rec": j2_r_nom,
+            "sel_j1_vis": j1_v_nom,
+            "sel_j2_vis": j2_v_nom,
+            "joueurs": dict_j_init,
+            "matchs": {str(m): {"score_a": 0, "score_b": 0, "joueur_a": "", "joueur_b": "", "joueur_a_absent": False, "joueur_b_absent": False} for m in range(1, 10)}
+        }
+        sauvegarder_donnees(data_init)
+    except Exception:
+        pass
 
     st.session_state["match_du_jour_applique_date"] = datetime.today().strftime("%Y-%m-%d")
+    st.session_state["match_du_jour_initialise_session"] = True
     return True
 
 def initialiser_donnees_saphir_au_demarrage():
@@ -8788,13 +8831,27 @@ else:
 sauvegarde_existante = charger_sauvegarde()
 demande_rechargement = st.session_state.pop("forcer_rechargement", False)
 
+# Vérifier si la sauvegarde contient de vrais points saisis (> 0)
+scores_sauvegarde = False
+if sauvegarde_existante and "matchs" in sauvegarde_existante:
+    scores_sauvegarde = any(
+        int(m.get("score_a", 0)) > 0 or int(m.get("score_b", 0)) > 0
+        for m in sauvegarde_existante.get("matchs", {}).values()
+        if isinstance(m, dict)
+    )
+
 if demande_rechargement or ("app_initialisee" not in st.session_state) or (not est_editeur):
     st.session_state.app_initialisee = True
-    if sauvegarde_existante and "matchs" in sauvegarde_existante:
+    if scores_sauvegarde:
         try:
             restaurer_session(sauvegarde_existante)
         except Exception:
             pass
+    elif "match_du_jour_initialise_session" not in st.session_state:
+        st.session_state["match_du_jour_initialise_session"] = True
+        rencontre_init = determiner_match_du_jour()
+        if rencontre_init:
+            appliquer_match_du_jour(rencontre_init, forcer=True)
 
 # Chargement de la configuration email au démarrage
 config_email = charger_config_email()
@@ -9016,7 +9073,10 @@ with tab_feuille:
             st.markdown(f"🔵 **{rencontre_active['receveur']}** *(Receveur)*<br>vs 🟠 **{rencontre_active['visiteur']}** *(Visiteur)*", unsafe_allow_html=True)
             if st.button("🔄 Charger le match du jour et alignements", key="btn_apply_match_jour_sb", use_container_width=True, help="Configure automatiquement les équipes et les joueurs selon l'horaire officiel"):
                 appliquer_match_du_jour(rencontre_active, forcer=True)
+                st.session_state["msg_match_applique"] = f"✅ Match appliqué : {rencontre_active['receveur']} vs {rencontre_active['visiteur']} !"
                 st.rerun()
+        if "msg_match_applique" in st.session_state:
+            st.sidebar.success(st.session_state.pop("msg_match_applique"))
 
     with st.sidebar.expander("🌐 Consulter https://saphirbillard.com", expanded=False):
         st.caption("Consultez en direct les joueurs, moyennes, équipes et l'horaire officiel extraits de https://saphirbillard.com.")
