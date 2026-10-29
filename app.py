@@ -10354,28 +10354,45 @@ with tab_feuille:
             with st.expander(f"Manche {num_manche} : {joueur_a} ({equipe_receveur}) vs {joueur_b} ({equipe_visiteur}){status_label}", expanded=True):
                 c1, c2 = st.columns(2)
 
+                options_scores = [0, 1, 2, 3, 4, 5, 6, 7, 8]
+
                 if f"s_a_{num_manche}" not in st.session_state:
                     st.session_state[f"s_a_{num_manche}"] = max(0, min(8, int(init_val_a)))
                 if f"s_b_{num_manche}" not in st.session_state:
                     st.session_state[f"s_b_{num_manche}"] = max(0, min(8, int(init_val_b)))
 
+                cur_sa = int(st.session_state.get(f"s_a_{num_manche}", init_val_a))
+                if cur_sa not in options_scores:
+                    cur_sa = max(0, min(8, cur_sa))
+                idx_sa = options_scores.index(cur_sa)
+
+                cur_sb = int(st.session_state.get(f"s_b_{num_manche}", init_val_b))
+                if cur_sb not in options_scores:
+                    cur_sb = max(0, min(8, cur_sb))
+                idx_sb = options_scores.index(cur_sb)
+
                 with c1:
                     badge_lbl_a = f" [Absent : {init_val_a} pts]" if not a_pres else (f" [Score calculé selon moyenne : {init_val_a} pts]" if not b_pres else "")
                     label_champ_a = f"🔵 Points de {joueur_a} ({equipe_receveur}){badge_lbl_a}"
-                    score_a = int(st.number_input(
+                    score_a = int(st.selectbox(
                         label_champ_a, 
-                        0, 8, 
+                        options=options_scores,
+                        index=idx_sa,
                         key=f"s_a_{num_manche}",
-                        disabled=not est_editeur
+                        disabled=not est_editeur,
+                        help="Sélectionnez le score de la manche (0 à 8). Vous pouvez modifier librement le score calculé."
                     ))
+
                 with c2:
                     badge_lbl_b = f" [Absent : {init_val_b} pts]" if not b_pres else (f" [Score calculé selon moyenne : {init_val_b} pts]" if not a_pres else "")
                     label_champ_b = f"🟠 Points de {joueur_b} ({equipe_visiteur}){badge_lbl_b}"
-                    score_b = int(st.number_input(
+                    score_b = int(st.selectbox(
                         label_champ_b, 
-                        0, 8, 
+                        options=options_scores,
+                        index=idx_sb,
                         key=f"s_b_{num_manche}",
-                        disabled=not est_editeur
+                        disabled=not est_editeur,
+                        help="Sélectionnez le score de la manche (0 à 8). Vous pouvez modifier librement le score calculé."
                     ))
             
                 # Retour visuel immédiat (résultat permis sans obligation d'un score de 8)
@@ -11348,14 +11365,25 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                         init_sa = 0
                         init_sb = 0
 
+                    options_scores = [0, 1, 2, 3, 4, 5, 6, 7, 8]
+                    cur_sa_ant = int(st.session_state.get(f"ant_sa_{num_m}", init_sa))
+                    if cur_sa_ant not in options_scores:
+                        cur_sa_ant = max(0, min(8, cur_sa_ant))
+                    idx_sa_ant = options_scores.index(cur_sa_ant)
+
+                    cur_sb_ant = int(st.session_state.get(f"ant_sb_{num_m}", init_sb))
+                    if cur_sb_ant not in options_scores:
+                        cur_sb_ant = max(0, min(8, cur_sb_ant))
+                    idx_sb_ant = options_scores.index(cur_sb_ant)
+
                     with st.container(border=True):
                         col_m_lbl, col_m_ja, col_m_sa, col_m_sb, col_m_jb = st.columns([1.2, 1.8, 1, 1, 1.8])
                         col_m_lbl.markdown(f"**Manche {num_m}**{status_abs}")
                         lbl_a = f"`{nom_a}`" + (" *(Absent)*" if not a_pres else "")
                         lbl_b = f"`{nom_b}`" + (" *(Absent)*" if not b_pres else "")
                         col_m_ja.markdown(f"{lbl_a} *({eq_rec_ant})*")
-                        sa_in = col_m_sa.number_input(f"Score {nom_a} (M{num_m})", min_value=0, max_value=8, value=init_sa, key=f"ant_sa_{num_m}")
-                        sb_in = col_m_sb.number_input(f"Score {nom_b} (M{num_m})", min_value=0, max_value=8, value=init_sb, key=f"ant_sb_{num_m}")
+                        sa_in = col_m_sa.selectbox(f"Score {nom_a} (M{num_m})", options=options_scores, index=idx_sa_ant, key=f"ant_sa_{num_m}")
+                        sb_in = col_m_sb.selectbox(f"Score {nom_b} (M{num_m})", options=options_scores, index=idx_sb_ant, key=f"ant_sb_{num_m}")
                         col_m_jb.markdown(f"{lbl_b} *({eq_vis_ant})*")
 
                         manches_ant[str(num_m)] = {
@@ -11538,8 +11566,11 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                         
                             nom_a_edite = c_m_ja.text_input(f"Joueur ({rec_sel})", value=ja_def, key=f"rec_ja_{idx_sel}_{num_m}")
                             abs_a_edite = c_m_ja.checkbox("Absent", value=ja_abs, key=f"rec_abs_a_{idx_sel}_{num_m}")
-                            sa_edite = c_m_sa.number_input(f"Pts {rec_sel}", min_value=0, max_value=8, value=sa_def, key=f"rec_sa_{idx_sel}_{num_m}")
-                            sb_edite = c_m_sb.number_input(f"Pts {vis_sel}", min_value=0, max_value=8, value=sb_def, key=f"rec_sb_{idx_sel}_{num_m}")
+                            options_scores = [0, 1, 2, 3, 4, 5, 6, 7, 8]
+                            idx_r_sa = options_scores.index(sa_def) if sa_def in options_scores else 0
+                            idx_r_sb = options_scores.index(sb_def) if sb_def in options_scores else 0
+                            sa_edite = c_m_sa.selectbox(f"Pts {rec_sel}", options=options_scores, index=idx_r_sa, key=f"rec_sa_{idx_sel}_{num_m}")
+                            sb_edite = c_m_sb.selectbox(f"Pts {vis_sel}", options=options_scores, index=idx_r_sb, key=f"rec_sb_{idx_sel}_{num_m}")
                             nom_b_edite = c_m_jb.text_input(f"Joueur ({vis_sel})", value=jb_def, key=f"rec_jb_{idx_sel}_{num_m}")
                             abs_b_edite = c_m_jb.checkbox("Absent", value=jb_abs, key=f"rec_abs_b_{idx_sel}_{num_m}")
 
