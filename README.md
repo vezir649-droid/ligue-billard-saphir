@@ -94,10 +94,14 @@ La barre latérale **« 📋 Paramètres du Match »** regroupe tous les réglag
      * **🚫 Règle officielle d'évitement des rematchs (*Anti-Rematch*) :** Les joueurs reversés dans le tableau des perdants (*Loser Bracket*) sont automatiquement croisés et permutés afin de **ne jamais rejouer contre un adversaire déjà affronté dans le tableau des gagnants (*Winner Bracket*)**.
      * **🏆 Grande Finale** : *3 de 5* entre le champion du Winner Bracket et le survivant du Loser Bracket.
   3. **🔄 Championnat Round-Robin (Tous contre tous)** : Classement en direct (Points, Victoires, Défaites, Manches Pour/Contre, Différence).
-* **Suivi opérationnel en direct :**
+* **Suivi opérationnel en direct & Diffusion :**
   * **Affichage automatique du tournoi actif** et ouverture directe de son arborescence à jour lors de l'accès à l'onglet Tournois.
   * **Barre de progression globale** (`matchs terminés / total`) et panneau **« 🎱 En direct / Prochains matchs prêts à appeler aux tables »** avec numéro de table et horaire estimé.
-  * **Arborescence visuelle interactive** (plein écran et impression officielle **A4 Paysage**) avec code couleur par tableau (Bleu Gagnants, Ambre Seconde chance, Or Grande Finale).
+  * **Arborescence visuelle interactive & Impression A4 :** Affichage plein écran et impression officielle **A4 Paysage** avec code couleur par tableau (Bleu Gagnants, Ambre Seconde chance, Or Grande Finale).
+  * **📧 Envoi de l'arborescence officielle par courriel :**
+    * Option accessible en un clic dans la boîte de dialogue d'arborescence, dans la barre de commandes du tournoi actif et dans l'historique des tournois archivés.
+    * Génère et attache la **page HTML complète de l'arborescence** (prête pour affichage sur mobile/tablette ou impression A4) ainsi que le fichier `historique_tournois.json` en pièces jointes.
+    * Permet l'envoi vers les administrateurs SMTP par défaut ou vers n'importe quelle adresse courriel saisie manuellement.
   * Gestion des **passes-droits en cours de tournoi** (`🎟️ Passe-droit`) pour promouvoir un joueur ou un duo au tour suivant.
 
 ---
@@ -128,10 +132,11 @@ La barre latérale **« 📋 Paramètres du Match »** regroupe tous les réglag
   * **✏️ Rectification officielle d'un match archivé :** Correction des scores ou joueurs avec motif obligatoire, bandeau de rectification sur la feuille officielle et sauvegarde de sécurité horodatée.
   * **📤 Export & Sauvegarde JSON :** Envoi du bilan complet par courriel SMTP (avec `historique_matchs.json` ou `historique_tournois.json` en pièce jointe) + **téléchargement et restauration directe des fichiers JSON** en un clic.
   * **🗓️ Nouvelle saison, 📧 Configuration SMTP & 🔑 Gestion séparée des mots de passe Marqueur et Administrateur.**
-* **☁️ Synchronisation automatique GitHub & Protection contre la mise en veille Streamlit Cloud :**
-  * **Restauration automatique au réveil :** Lorsque Streamlit Community Cloud met l'application en veille puis la redémarre, l'application interroge automatiquement le dépôt GitHub et fusionne sans doublon `historique_matchs.json`, `historique_tournois.json` et `tournois_data.json` avec les données locales.
-  * **Sauvegarde automatique vers GitHub en temps réel :** Dès qu'un jeton `GITHUB_TOKEN` est configuré (dans *Streamlit Cloud → Settings → Secrets* ou dans `⚙️ Administration → 🔑 Mot de passe d'accès`), chaque sauvegarde de match, de tournoi ou d'équipes est instantanément poussée sur le dépôt GitHub.
-  * **Écriture atomique locale & Copies `.bak` :** Toutes les écritures JSON locales sont effectuées de manière atomique avec création d'une copie `.bak` et récupération automatique en cas de coupure.
+* **☁️ Synchronisation automatique GitHub intégrale (.json & .csv) & Protection anti-veille :**
+  * **Au démarrage / Réveil de l'application :** Récupération et restauration automatiques de **tous les fichiers de données JSON et CSV** depuis GitHub (`historique_matchs.json`, `historique_tournois.json`, `tournois_data.json`, `sauvegarde_saisie_secours.json`, `equipes-saphir.csv`, `config_email.json`, `config_admin.json`). Fusion intelligente sans doublon et prise en compte des dernières modifications horodatées.
+  * **Lors des sauvegardes :** Envoi automatique vers GitHub de **tous les fichiers .json et .csv** dès qu'une sauvegarde est déclenchée (validation de match, mise à jour ou clôture de tournoi, modification des équipes CSV, configuration email SMTP, mots de passe, cession de main et saisie de secours).
+  * **Sécurité & Optimisation des flux :** Masquage automatique des jetons d'accès dans `config_admin.json` avant tout envoi pour prévenir les alertes GitHub Secret Scanning, et comparaison par hash SHA1 Git blob pour éviter tout commit redondant inutile.
+  * **Écriture atomique locale & Copies `.bak` :** Toutes les écritures locales sont atomiques avec copies de sauvegarde de secours `.bak` pour une résilience absolue.
 
 ---
 

@@ -378,6 +378,7 @@ def sauvegarder_mot_de_passe_admin(nouveau_mdp):
         data["mot_de_passe"] = nouveau_mdp.strip()
         with open(ADMIN_CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
+        synchroniser_tous_les_fichiers_github(commit_prefix="Mise a jour mot de passe marqueur")
         return True
     except Exception:
         return False
@@ -389,6 +390,7 @@ def sauvegarder_mot_de_passe_super_admin(nouveau_mdp_admin):
         data["mot_de_passe_admin"] = nouveau_mdp_admin.strip()
         with open(ADMIN_CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
+        synchroniser_tous_les_fichiers_github(commit_prefix="Mise a jour mot de passe admin")
         return True
     except Exception:
         return False
@@ -445,12 +447,53 @@ def sauvegarder_parametres_github(token, repo=GITHUB_REPO_DEFAULT, branch=GITHUB
         data["github_branch"] = (branch or GITHUB_BRANCH_DEFAULT).strip()
         with open(ADMIN_CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
+        synchroniser_tous_les_fichiers_github(commit_prefix="Mise a jour config GitHub")
         return True
     except Exception:
         return False
 
+def lister_fichiers_locaux_donnees():
+    """Identifie dynamiquement tous les fichiers .json et .csv de données à synchroniser vers GitHub."""
+    fichiers_dict = {}
+    fichiers_prioritaires = [
+        HISTORIQUE_FILE,
+        HISTORIQUE_TOURNOIS_FILE,
+        TOURNOIS_FILE,
+        BACKUP_FILE,
+        CORBEILLE_FILE,
+        EQUIPES_CSV_FILE,
+        CONFIG_EMAIL_FILE,
+        ADMIN_CONFIG_FILE
+    ]
+    for p in fichiers_prioritaires:
+        if p and os.path.exists(p) and os.path.isfile(p):
+            fichiers_dict[os.path.basename(p)] = p
+
+    # Scanner BASE_DIR et os.getcwd() pour tout autre fichier .json et .csv utile
+    dossiers = [BASE_DIR]
+    if os.getcwd() != BASE_DIR:
+        dossiers.append(os.getcwd())
+
+    for d in dossiers:
+        if not os.path.isdir(d):
+            continue
+        try:
+            for nom in os.listdir(d):
+                nom_l = nom.lower()
+                ext = os.path.splitext(nom_l)[1]
+                if ext in (".json", ".csv"):
+                    if nom_l in ("manifest.json", "session_lock.json") or nom_l.endswith(".tmp") or nom_l.endswith(".bak"):
+                        continue
+                    p_full = os.path.join(d, nom)
+                    if os.path.isfile(p_full):
+                        fichiers_dict[nom] = p_full
+        except Exception:
+            pass
+
+    return list(fichiers_dict.values())
+
 def synchroniser_fichier_github(filepath, commit_message=None):
-    """Pousse automatiquement un fichier de données local vers le dépôt GitHub pour éviter toute perte lors de la mise en veille Streamlit."""
+    """Pousse automatiquement un fichier de données local (.json ou .csv) vers le dépôt GitHub pour persistance anti-veille."""
     if not filepath or not os.path.exists(filepath):
         return False, "Fichier local introuvable."
 
@@ -460,15 +503,29 @@ def synchroniser_fichier_github(filepath, commit_message=None):
 
     token, repo, branch = obtenir_parametres_github()
 
-    # Méthode 1 : API REST GitHub (fonctionne sur Streamlit Community Cloud et en local)
+    # Méthode 1 : API REST GitHub (Streamlit Community Cloud et environnement distant)
     if token and repo:
         try:
             import urllib.request
             import urllib.error
             import base64
+            import hashlib
 
             with open(filepath, "rb") as f:
                 raw_bytes = f.read()
+
+            # Sécurité anti-fuite de token pour config_admin.json
+            if filename == "config_admin.json":
+                try:
+                    cfg_dict = json.loads(raw_bytes.decode("utf-8"))
+                    if "github_token" in cfg_dict and cfg_dict["github_token"]:
+                        cfg_dict["github_token"] = ""
+                        raw_bytes = json.dumps(cfg_dict, ensure_ascii=False, indent=4).encode("utf-8")
+                except Exception:
+                    pass
+
+            # Calcul du SHA1 Git blob local pour éviter des commits redondants inutiles
+            git_blob_sha = hashlib.sha1(f"blob {len(raw_bytes)}\0".encode("utf-8") + raw_bytes).hexdigest()
             b64_content = base64.b64encode(raw_bytes).decode("ascii")
 
             api_url = f"https://api.github.com/repos/{repo}/contents/{filename}"
@@ -479,7 +536,7 @@ def synchroniser_fichier_github(filepath, commit_message=None):
                 "Content-Type": "application/json"
             }
 
-            # Récupérer le SHA actuel du fichier s'il existe déjà sur GitHub
+            # Récupérer le SHA distant actuel du fichier s'il existe déjà sur GitHub
             sha_actuel = None
             try:
                 req_get = urllib.request.Request(f"{api_url}?ref={branch}", headers=headers, method="GET")
@@ -491,6 +548,9 @@ def synchroniser_fichier_github(filepath, commit_message=None):
                     pass
             except Exception:
                 pass
+
+            if sha_actuel and sha_actuel == git_blob_sha:
+                return True, f"Fichier {filename} déjà strictement à jour sur GitHub."
 
             payload = {
                 "message": commit_message,
@@ -528,8 +588,8 @@ def synchroniser_fichier_github(filepath, commit_message=None):
 
     return False, "Aucun jeton GitHub (GITHUB_TOKEN) configuré pour l'écriture distante."
 
-def telecharger_json_depuis_github(filename):
-    """Télécharge la dernière version d'un fichier JSON depuis le dépôt GitHub (fonctionne même sans token sur un dépôt public)."""
+def telecharger_fichier_brut_depuis_github(filename):
+    """Télécharge le contenu binaire brut d'un fichier (.json, .csv, etc.) depuis le dépôt GitHub."""
     token, repo, branch = obtenir_parametres_github()
     if not repo:
         return None
@@ -548,14 +608,63 @@ def telecharger_json_depuis_github(filename):
             info = json.loads(resp.read().decode("utf-8"))
             b64_c = info.get("content", "")
             if b64_c:
-                raw_txt = base64.b64decode(b64_c).decode("utf-8")
-                return json.loads(raw_txt)
+                return base64.b64decode(b64_c)
     except Exception:
         pass
     return None
 
+def telecharger_json_depuis_github(filename):
+    """Télécharge et désérialise un fichier JSON depuis le dépôt GitHub."""
+    raw_b = telecharger_fichier_brut_depuis_github(filename)
+    if raw_b:
+        try:
+            return json.loads(raw_b.decode("utf-8"))
+        except Exception:
+            return None
+    return None
+
+def telecharger_texte_depuis_github(filename):
+    """Télécharge un fichier texte ou CSV depuis le dépôt GitHub."""
+    raw_b = telecharger_fichier_brut_depuis_github(filename)
+    if raw_b:
+        try:
+            return raw_b.decode("utf-8")
+        except Exception:
+            return None
+    return None
+
+def lister_fichiers_depuis_github():
+    """Liste tous les fichiers .json et .csv présents à la racine du dépôt GitHub."""
+    token, repo, branch = obtenir_parametres_github()
+    if not repo:
+        return []
+    try:
+        import urllib.request
+        api_url = f"https://api.github.com/repos/{repo}/contents?ref={branch}"
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "LigueBillardSaphir-StreamlitApp"
+        }
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        req = urllib.request.Request(api_url, headers=headers, method="GET")
+        with urllib.request.urlopen(req, timeout=6) as resp:
+            items = json.loads(resp.read().decode("utf-8"))
+            if isinstance(items, list):
+                res = []
+                for it in items:
+                    if it.get("type") == "file":
+                        name = it.get("name", "")
+                        ext = os.path.splitext(name)[1].lower()
+                        if ext in (".json", ".csv") and name.lower() not in ("manifest.json", "session_lock.json"):
+                            res.append(name)
+                return res
+    except Exception:
+        pass
+    return []
+
 def restaurer_depuis_github_au_reveil(forcer=False):
-    """Au réveil du conteneur Streamlit (ou sur demande), vérifie et fusionne les historiques depuis GitHub afin qu'aucune donnée ne soit perdue."""
+    """Au réveil de l'application ou sur demande, télécharge et restaure tous les fichiers .json et .csv depuis GitHub."""
     try:
         if not forcer and st.session_state.get("github_wake_sync_done", False):
             return False, "Déjà synchronisé pour cette session."
@@ -566,7 +675,7 @@ def restaurer_depuis_github_au_reveil(forcer=False):
     nb_maj = 0
     details = []
 
-    # 1. Historique des matchs
+    # 1. Historique des matchs (fusion sans doublon et prise en compte des rectifications)
     try:
         gh_matchs = telecharger_json_depuis_github("historique_matchs.json")
         if isinstance(gh_matchs, list) and gh_matchs:
@@ -580,7 +689,6 @@ def restaurer_depuis_github_au_reveil(forcer=False):
                 except Exception:
                     loc_matchs = []
 
-            # Signature unique d'un match (date + receveur + visiteur + total_receveur + total_visiteur)
             def _sig_match(m_item):
                 if not isinstance(m_item, dict):
                     return ""
@@ -596,7 +704,6 @@ def restaurer_depuis_github_au_reveil(forcer=False):
                     loc_matchs.append(m_gh)
                     modif_m = True
                 else:
-                    # Si la version GitHub a été rectifiée et pas la locale, prendre la version rectifiée
                     idx_l = sigs_loc[s_gh]
                     if m_gh.get("date_rectification") and not loc_matchs[idx_l].get("date_rectification"):
                         loc_matchs[idx_l] = m_gh
@@ -609,7 +716,7 @@ def restaurer_depuis_github_au_reveil(forcer=False):
     except Exception:
         pass
 
-    # 2. Historique des tournois
+    # 2. Historique des tournois (fusion sans doublon par id_archive)
     try:
         gh_tournois = telecharger_json_depuis_github("historique_tournois.json")
         if isinstance(gh_tournois, list) and gh_tournois:
@@ -660,9 +767,18 @@ def restaurer_depuis_github_au_reveil(forcer=False):
                     loc_td = {}
             modif_td = False
             for mode_k in ["simple", "double"]:
-                if gh_td.get(mode_k) and not loc_td.get(mode_k):
-                    loc_td[mode_k] = gh_td[mode_k]
-                    modif_td = True
+                t_gh = gh_td.get(mode_k)
+                t_loc = loc_td.get(mode_k)
+                if t_gh and isinstance(t_gh, dict):
+                    if not t_loc or not isinstance(t_loc, dict):
+                        loc_td[mode_k] = t_gh
+                        modif_td = True
+                    else:
+                        d_gh = t_gh.get("date_derniere_sauvegarde", "") or t_gh.get("date_creation", "")
+                        d_loc = t_loc.get("date_derniere_sauvegarde", "") or t_loc.get("date_creation", "")
+                        if d_gh and (not d_loc or d_gh > d_loc):
+                            loc_td[mode_k] = t_gh
+                            modif_td = True
             if modif_td:
                 with open(TOURNOIS_FILE, "w", encoding="utf-8") as f_w:
                     json.dump(loc_td, f_w, ensure_ascii=False, indent=4)
@@ -671,26 +787,152 @@ def restaurer_depuis_github_au_reveil(forcer=False):
     except Exception:
         pass
 
-    return (nb_maj > 0), (", ".join(details) if details else "Fichiers locaux déjà à jour avec GitHub.")
+    # 4. Fichier de secours de saisie en direct (sauvegarde_saisie_secours.json)
+    try:
+        gh_backup = telecharger_json_depuis_github("sauvegarde_saisie_secours.json")
+        if isinstance(gh_backup, dict) and gh_backup:
+            maj_backup = False
+            if not os.path.exists(BACKUP_FILE):
+                maj_backup = True
+            else:
+                try:
+                    with open(BACKUP_FILE, "r", encoding="utf-8") as f_b:
+                        loc_b = json.load(f_b)
+                    ts_gh = gh_backup.get("ts_modif", 0)
+                    ts_loc = loc_b.get("ts_modif", 0)
+                    if ts_gh and ts_gh > ts_loc:
+                        maj_backup = True
+                except Exception:
+                    maj_backup = True
+            if maj_backup:
+                with open(BACKUP_FILE, "w", encoding="utf-8") as f_bw:
+                    json.dump(gh_backup, f_bw, ensure_ascii=False, indent=4)
+                nb_maj += 1
+                details.append("sauvegarde_saisie_secours.json")
+    except Exception:
+        pass
 
-def synchroniser_tous_les_fichiers_github():
-    """Force l'envoi immédiat de tous les fichiers d'historique et d'équipes vers GitHub."""
-    fichiers = [
-        (HISTORIQUE_FILE, "Synchronisation complete historique_matchs.json"),
-        (HISTORIQUE_TOURNOIS_FILE, "Synchronisation complete historique_tournois.json"),
-        (TOURNOIS_FILE, "Synchronisation complete tournois_data.json"),
-        (EQUIPES_CSV_FILE, "Synchronisation complete equipes-saphir.csv"),
-    ]
+    # 5. Fichier CSV des équipes et joueurs (equipes-saphir.csv)
+    try:
+        gh_csv = telecharger_texte_depuis_github("equipes-saphir.csv")
+        if gh_csv and gh_csv.strip():
+            maj_csv = False
+            if not os.path.exists(EQUIPES_CSV_FILE):
+                maj_csv = True
+            else:
+                try:
+                    with open(EQUIPES_CSV_FILE, "r", encoding="utf-8") as f_c:
+                        loc_c = f_c.read()
+                    if gh_csv.strip() != loc_c.strip():
+                        # Si local est vide ou différent de GitHub, restaurer
+                        if len(loc_c.strip()) < len(gh_csv.strip()) or not loc_c.strip():
+                            maj_csv = True
+                except Exception:
+                    maj_csv = True
+            if maj_csv:
+                with open(EQUIPES_CSV_FILE, "w", encoding="utf-8") as f_cw:
+                    f_cw.write(gh_csv)
+                nb_maj += 1
+                details.append("equipes-saphir.csv")
+    except Exception:
+        pass
+
+    # 6. Configuration email SMTP (config_email.json)
+    try:
+        gh_email = telecharger_json_depuis_github("config_email.json")
+        if isinstance(gh_email, dict) and gh_email:
+            maj_email = False
+            if not os.path.exists(CONFIG_EMAIL_FILE):
+                maj_email = True
+            else:
+                try:
+                    with open(CONFIG_EMAIL_FILE, "r", encoding="utf-8") as f_em:
+                        loc_em = json.load(f_em)
+                    if gh_email.get("smtp_serveur") and not loc_em.get("smtp_serveur"):
+                        loc_em.update(gh_email)
+                        maj_email = True
+                except Exception:
+                    maj_email = True
+            if maj_email:
+                with open(CONFIG_EMAIL_FILE, "w", encoding="utf-8") as f_ew:
+                    json.dump(gh_email, f_ew, ensure_ascii=False, indent=4)
+                nb_maj += 1
+                details.append("config_email.json")
+    except Exception:
+        pass
+
+    # 7. Configuration administrateur (config_admin.json, préserve le token local)
+    try:
+        gh_adm = telecharger_json_depuis_github("config_admin.json")
+        if isinstance(gh_adm, dict) and gh_adm:
+            loc_adm = {}
+            if os.path.exists(ADMIN_CONFIG_FILE):
+                try:
+                    with open(ADMIN_CONFIG_FILE, "r", encoding="utf-8") as f_adm:
+                        loc_adm = json.load(f_adm)
+                except Exception:
+                    loc_adm = {}
+            token_preserv = loc_adm.get("github_token", "")
+            loc_adm.update(gh_adm)
+            if token_preserv:
+                loc_adm["github_token"] = token_preserv
+            with open(ADMIN_CONFIG_FILE, "w", encoding="utf-8") as f_aw:
+                json.dump(loc_adm, f_aw, ensure_ascii=False, indent=4)
+            nb_maj += 1
+            details.append("config_admin.json")
+    except Exception:
+        pass
+
+    # 8. Récupération de tout autre fichier .json et .csv présent sur GitHub
+    try:
+        fichiers_gh = lister_fichiers_depuis_github()
+        deja_traites = {"historique_matchs.json", "historique_tournois.json", "tournois_data.json",
+                        "sauvegarde_saisie_secours.json", "equipes-saphir.csv", "config_email.json", "config_admin.json"}
+        for f_nom in fichiers_gh:
+            if f_nom not in deja_traites:
+                dest_p = os.path.join(BASE_DIR, f_nom)
+                raw_bytes_dyn = telecharger_fichier_brut_depuis_github(f_nom)
+                if raw_bytes_dyn:
+                    if not os.path.exists(dest_p) or os.path.getsize(dest_p) != len(raw_bytes_dyn):
+                        with open(dest_p, "wb") as f_dyn:
+                            f_dyn.write(raw_bytes_dyn)
+                        nb_maj += 1
+                        details.append(f_nom)
+    except Exception:
+        pass
+
+    return (nb_maj > 0), (", ".join(details) if details else "Tous les fichiers de données (.json & .csv) sont à jour avec GitHub.")
+
+def synchroniser_tous_les_fichiers_github(commit_prefix=None):
+    """Pousse automatiquement tous les fichiers .json et .csv de données vers le dépôt GitHub."""
+    fichiers = lister_fichiers_locaux_donnees()
     succes_list = []
     erreurs_list = []
-    for fp, msg in fichiers:
-        if os.path.exists(fp):
-            ok, info = synchroniser_fichier_github(fp, msg)
-            if ok:
-                succes_list.append(os.path.basename(fp))
-            else:
-                erreurs_list.append(f"{os.path.basename(fp)} ({info})")
+    prefix = (commit_prefix or "Sauvegarde automatique").strip()
+    date_str = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+
+    for fp in fichiers:
+        fn = os.path.basename(fp)
+        msg = f"{prefix} {fn} ({date_str})"
+        ok, info = synchroniser_fichier_github(fp, msg)
+        if ok:
+            succes_list.append(fn)
+        else:
+            erreurs_list.append(f"{fn} ({info})")
+
     return len(succes_list), succes_list, erreurs_list
+
+def declencher_sync_github_arriere_plan(delai=1.5, commit_prefix=None):
+    """Déclenche la synchronisation de tous les fichiers .json et .csv en arrière-plan sans bloquer l'UI."""
+    import threading
+    def _worker():
+        time.sleep(delai)
+        try:
+            synchroniser_tous_les_fichiers_github(commit_prefix=commit_prefix)
+        except Exception:
+            pass
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
 
 def charger_equipes_csv():
     """Charge la liste des équipes et joueurs depuis le fichier CSV."""
@@ -761,7 +1003,7 @@ def sauvegarder_equipes_csv(equipes_df_ou_dict):
         with open(EQUIPES_CSV_FILE, "w", encoding="utf-8") as f:
             f.writelines(lignes)
 
-        synchroniser_fichier_github(EQUIPES_CSV_FILE, f"Mise a jour equipes-saphir.csv ({len(lignes)} equipes)")
+        synchroniser_tous_les_fichiers_github(commit_prefix=f"Mise a jour equipes-saphir.csv ({len(lignes)} equipes)")
         return True, f"{len(lignes)} équipe(s) enregistrée(s) avec succès dans equipes-saphir.csv."
     except Exception as e:
         return False, f"Erreur lors de la sauvegarde du fichier equipes-saphir.csv : {e}"
@@ -785,6 +1027,7 @@ def sauvegarder_donnees(data):
         data["ts_modif"] = time.time()
         with open(BACKUP_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
+        declencher_sync_github_arriere_plan(delai=2.0, commit_prefix="Sauvegarde saisie secours")
     except Exception as e:
         st.error(f"Erreur lors de la sauvegarde automatique : {e}")
 
@@ -812,6 +1055,7 @@ def sauvegarder_config_email(cfg):
     try:
         with open(CONFIG_EMAIL_FILE, "w", encoding="utf-8") as f:
             json.dump(cfg, f, ensure_ascii=False, indent=4)
+        synchroniser_tous_les_fichiers_github(commit_prefix="Mise a jour config_email.json")
         return True
     except Exception:
         return False
@@ -1408,7 +1652,7 @@ def sauvegarder_historique_matchs(historique_list):
         with open(tmp_file, "w", encoding="utf-8") as f_tmp:
             json.dump(historique_list, f_tmp, ensure_ascii=False, indent=4)
         os.replace(tmp_file, HISTORIQUE_FILE)
-        synchroniser_fichier_github(HISTORIQUE_FILE, f"Sauvegarde auto historique_matchs.json ({len(historique_list)} matchs)")
+        synchroniser_tous_les_fichiers_github(commit_prefix=f"Sauvegarde match ({len(historique_list)} matchs)")
         return True
     except Exception as e:
         try:
@@ -2132,8 +2376,7 @@ def sauvegarder_tournois_data(data, marqueur_session=None, action="sauvegarde", 
         data["historique"] = hist_disque
         _ecrire_json_atomique(HISTORIQUE_TOURNOIS_FILE, hist_disque)
         _ecrire_json_atomique(TOURNOIS_FILE, data)
-        synchroniser_fichier_github(HISTORIQUE_TOURNOIS_FILE, f"Sauvegarde auto historique_tournois.json ({len(hist_disque)} tournois)")
-        synchroniser_fichier_github(TOURNOIS_FILE, f"Sauvegarde auto tournois_data.json ({action})")
+        synchroniser_tous_les_fichiers_github(commit_prefix=f"Sauvegarde tournois ({action})")
         return True
     except Exception as e:
         st.error(f"Erreur lors de l'enregistrement du tournoi : {e}")
@@ -2298,12 +2541,141 @@ def sauvegarder_historique_tournois(historique_list):
             _ecrire_json_atomique(TOURNOIS_FILE, td)
         except Exception:
             pass
-        synchroniser_fichier_github(HISTORIQUE_TOURNOIS_FILE, f"Sauvegarde auto historique_tournois.json ({len(liste_a_sauver)} tournois)")
-        synchroniser_fichier_github(TOURNOIS_FILE, "Synchronisation auto tournois_data.json")
+        synchroniser_tous_les_fichiers_github(commit_prefix=f"Sauvegarde historique tournois ({len(liste_a_sauver)} tournois)")
         return True
     except Exception as e:
         st.error(f"Erreur lors de la sauvegarde de l'historique des tournois : {e}")
         return False
+
+def envoyer_courriel_arborescence_tournoi(tournoi_obj, mode="simple", destinataires_specifiques=None):
+    """Envoie par courriel l'arborescence officielle d'un tournoi avec la page HTML A4 et l'historique_tournois.json en pièces jointes."""
+    config_email = charger_config_email()
+    destinataires = (destinataires_specifiques or config_email.get("destinataires", "")).strip()
+
+    if not destinataires:
+        return False, "Aucune adresse de destinataire spécifiée. Veuillez renseigner un courriel valide."
+
+    if not config_email.get("smtp_serveur") or not config_email.get("smtp_expediteur"):
+        return False, "Configuration SMTP incomplète (serveur ou expéditeur manquant dans l'onglet Administration)."
+
+    if not tournoi_obj or not isinstance(tournoi_obj, dict):
+        return False, "Données de tournoi introuvables."
+
+    titre_t = tournoi_obj.get("titre", "Tournoi officiel")
+    mode_label = "Simple (1 contre 1)" if mode == "simple" else "Double / Équipes (2 contre 2)"
+    fmt = tournoi_obj.get("format", "elimination")
+    if fmt == "double_elimination":
+        fmt_label = "Double élimination (Winner & Loser Bracket — Seconde chance)"
+    elif fmt == "elimination":
+        fmt_label = "Élimination directe (Préliminaires 2 de 3 • Finale 3 de 5)"
+    else:
+        fmt_label = "Championnat Round-Robin (2 de 3)"
+
+    statut_t = tournoi_obj.get("statut", "en_cours")
+    champion = tournoi_obj.get("vainqueur_final") or tournoi_obj.get("champion") or ""
+    finaliste = tournoi_obj.get("finaliste") or ""
+    date_now_str = datetime.now().strftime("%d/%m/%Y à %H:%M")
+    nb_participants = len(tournoi_obj.get("participants", []))
+    nb_tables = tournoi_obj.get("nb_tables", 2)
+    h_deb = tournoi_obj.get("heure_debut", "09:00")
+    h_fin = tournoi_obj.get("heure_fin_estimee", "")
+    horaire_txt = f"{h_deb} à ~{h_fin}" if h_fin else f"Début à {h_deb}"
+
+    # Génération du fichier HTML complet officiel pour l'arborescence
+    html_bracket = generer_html_tournoi(tournoi_obj, mode=mode)
+    import tempfile
+    slug_titre = re.sub(r"[^a-zA-Z0-9_-]", "_", titre_t)
+    pj_bracket_nom = f"arborescence_tournoi_{slug_titre}_{mode}.html"
+    pj_bracket_path = os.path.join(tempfile.gettempdir(), pj_bracket_nom)
+    try:
+        with open(pj_bracket_path, "w", encoding="utf-8") as f_pj:
+            f_pj.write(html_bracket)
+    except Exception:
+        pj_bracket_path = None
+
+    pieces_jointes = []
+    if pj_bracket_path and os.path.exists(pj_bracket_path):
+        pieces_jointes.append(pj_bracket_path)
+    if os.path.exists(HISTORIQUE_TOURNOIS_FILE):
+        pieces_jointes.append(HISTORIQUE_TOURNOIS_FILE)
+
+    sujet = f"🌳 [ARBORESCENCE TOURNOI] {titre_t} ({mode_label}) - Ligue de billard Boule en main"
+
+    texte_brut = (
+        f"LIGUE DE BILLARD BOULE EN MAIN - ARBORESCENCE OFFICIELLE DE TOURNOI\n"
+        f"===================================================================\n\n"
+        f"Tournoi : {titre_t}\n"
+        f"Catégorie : {mode_label}\n"
+        f"Formule : {fmt_label}\n"
+        f"Participants : {nb_participants}\n"
+        f"Statut : {statut_t.upper()}\n"
+        f"Champion : {champion if champion else 'En cours'}\n"
+        f"Finaliste : {finaliste if finaliste else '-'}\n"
+        f"Horaires : {horaire_txt} ({nb_tables} tables)\n"
+        f"Date d'envoi : {date_now_str}\n\n"
+        f"La feuille officielle de l'arborescence est jointe en fichier HTML ({pj_bracket_nom}).\n"
+        f"Ce fichier s'ouvre dans n'importe quel navigateur pour consultation ou impression A4 paysage."
+    )
+
+    podium_html = ""
+    if champion and champion != "En cours":
+        podium_html = f"""
+        <div style="background: #fffde7; border: 2px solid #fbc02d; border-radius: 8px; padding: 14px; margin: 16px 0; text-align: center;">
+            <div style="font-size: 18px; font-weight: bold; color: #f57f17;">🥇 Champion Officiel : {champion}</div>
+            {f'<div style="font-size: 14px; color: #555; margin-top: 6px;">🥈 Finaliste : {finaliste}</div>' if finaliste and finaliste != '-' else ''}
+        </div>
+        """
+
+    corps_html = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; background-color: #f4f6f8; margin: 0; padding: 20px;">
+    <div style="max-width: 680px; margin: 0 auto; background: #ffffff; border-radius: 8px; border: 1px solid #dcdcdc; overflow: hidden; box-shadow: 0 3px 10px rgba(0,0,0,0.08);">
+        <div style="background: #0b3c5d; color: white; padding: 20px 24px; text-align: center;">
+            <h2 style="margin: 0; font-size: 20px; letter-spacing: 0.5px;">🎱 Ligue de billard Boule en main</h2>
+            <p style="margin: 6px 0 0; font-size: 13px; opacity: 0.9;">Salle Le Saphir — Arborescence officielle de tournoi</p>
+        </div>
+        <div style="padding: 24px;">
+            <h3 style="color: #0b3c5d; margin-top: 0;">🌳 Arborescence du tournoi : {titre_t}</h3>
+            <p style="font-size: 14px; color: #444; line-height: 1.5;">
+                Veuillez trouver ci-joint l'arborescence officielle complète de la compétition, prête pour consultation et impression A4 paysage.
+            </p>
+            <table style="width: 100%; border-collapse: collapse; margin: 18px 0; font-size: 14px;">
+                <tr style="border-bottom: 1px solid #eee;">
+                    <td style="padding: 8px 0; font-weight: bold; color: #555;">Catégorie :</td>
+                    <td style="padding: 8px 0; color: #111;">{mode_label}</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #eee;">
+                    <td style="padding: 8px 0; font-weight: bold; color: #555;">Formule :</td>
+                    <td style="padding: 8px 0; color: #111;">{fmt_label}</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #eee;">
+                    <td style="padding: 8px 0; font-weight: bold; color: #555;">Participants :</td>
+                    <td style="padding: 8px 0; color: #111;">{nb_participants} participant(s)</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #eee;">
+                    <td style="padding: 8px 0; font-weight: bold; color: #555;">Statut :</td>
+                    <td style="padding: 8px 0; font-weight: bold; color: {'#2e7d32' if statut_t == 'termine' else '#e65100'};">{statut_t.upper()}</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #eee;">
+                    <td style="padding: 8px 0; font-weight: bold; color: #555;">Date d'envoi :</td>
+                    <td style="padding: 8px 0; color: #111;">{date_now_str}</td>
+                </tr>
+            </table>
+            {podium_html}
+            <div style="background: #e3f2fd; border: 1px solid #90caf9; border-radius: 6px; padding: 12px; margin: 18px 0; font-size: 13px; color: #0d47a1;">
+                📎 <strong>Pièce jointe :</strong> <code>{pj_bracket_nom}</code> (Arborescence officielle interactive au format HTML, calibrée pour impression A4 paysage).
+            </div>
+        </div>
+        <div style="background: #f8f9fa; border-top: 1px solid #e9ecef; padding: 12px 24px; text-align: center; font-size: 11px; color: #888;">
+            Courriel automatique généré par le système officiel de la Ligue de billard Boule en main — Salle Le Saphir.
+        </div>
+    </div>
+</body>
+</html>"""
+
+    ok, msg = envoyer_courriel(destinataires, sujet, texte_brut, corps_html, config_email, pieces_jointes=pieces_jointes)
+    return ok, msg
 
 def envoyer_courriel_sauvegarde_tournoi(tournoi_obj=None, mode="simple", destinataires_specifiques=None):
     """Envoie un courriel aux administrateurs définis dans la configuration SMTP avec en attachement le fichier historique_tournois.json."""
@@ -2535,8 +2907,7 @@ def supprimer_tournoi_historique(id_archive):
         td["historique"] = nouveau_h
         _ecrire_json_atomique(HISTORIQUE_TOURNOIS_FILE, nouveau_h)
         _ecrire_json_atomique(TOURNOIS_FILE, td)
-        synchroniser_fichier_github(HISTORIQUE_TOURNOIS_FILE, f"Suppression tournoi {id_archive}")
-        synchroniser_fichier_github(TOURNOIS_FILE, f"Suppression tournoi {id_archive}")
+        synchroniser_tous_les_fichiers_github(commit_prefix=f"Suppression tournoi {id_archive}")
     else:
         sauvegarder_historique_tournois(nouveau_h)
     return True
@@ -5302,7 +5673,7 @@ def modal_arborescence_tournoi(tournoi_obj, mode_str="simple"):
     html_feuille = generer_html_tournoi(tournoi_obj, mode=mode_str)
     html_json_str = json.dumps(html_feuille)
 
-    col_btn_print, col_btn_ext, col_btn_refresh, col_btn_close = st.columns([1.3, 1.4, 1.2, 0.8])
+    col_btn_print, col_btn_ext, col_btn_mail, col_btn_refresh, col_btn_close = st.columns([1.1, 1.1, 1.4, 1.0, 0.7])
     with col_btn_print:
         st.components.v1.html(
             f"""
@@ -5344,6 +5715,19 @@ def modal_arborescence_tournoi(tournoi_obj, mode_str="simple"):
             """,
             height=42
         )
+    with col_btn_mail:
+        with st.popover("📧 Envoyer l'arborescence", use_container_width=True, help="Envoyer l'arborescence par courriel"):
+            st.markdown("##### 📧 Envoi de l'arborescence")
+            st.caption("Transmet l'arborescence officielle en format HTML et l'historique par courriel.")
+            dest_def = charger_config_email().get("destinataires", "")
+            dest_saisi = st.text_input("Destinataire(s)", value=dest_def, placeholder="ex: joueur@gmail.com, admin@saphir.ca", key=f"mail_dest_dlg_{mode_str}")
+            if st.button("📤 Envoyer", type="primary", use_container_width=True, key=f"btn_send_mail_dlg_{mode_str}"):
+                with st.spinner("Envoi de l'arborescence par courriel..."):
+                    ok_m, msg_m = envoyer_courriel_arborescence_tournoi(tournoi_obj, mode=mode_str, destinataires_specifiques=dest_saisi)
+                if ok_m:
+                    st.success("✅ Arborescence envoyée avec succès !")
+                else:
+                    st.error(f"❌ {msg_m}")
     with col_btn_refresh:
         if st.button("🔄 Actualiser", use_container_width=True, key=f"btn_act_dlg_{mode_str}", help="Recharge les derniers résultats saisis pour ce tournoi"):
             st.rerun()
@@ -6052,9 +6436,9 @@ def afficher_section_tournoi(mode="simple"):
         html_t_json = json.dumps(html_tournoi)
 
         if est_editeur:
-            col_top1, col_top2, col_top3, col_top_new, col_top4, col_top5 = st.columns([1.6, 1.0, 1.0, 1.1, 1.2, 1.2])
+            col_top1, col_top2, col_top3, col_top_mail, col_top_new, col_top4, col_top5 = st.columns([1.5, 0.9, 0.9, 1.1, 1.0, 1.1, 1.1])
         else:
-            col_top1, col_top2, col_top3, col_top4 = st.columns([2.1, 1.2, 1.1, 1.3])
+            col_top1, col_top2, col_top3, col_top_mail, col_top4 = st.columns([1.8, 1.0, 1.0, 1.2, 1.2])
 
         with col_top1:
             st.markdown(f"#### 🏆 **{titre_t}**")
@@ -6114,6 +6498,20 @@ def afficher_section_tournoi(mode="simple"):
                 """,
                 height=42
             )
+
+        with col_top_mail:
+            with st.popover("📧 Courriel arborescence", use_container_width=True, help="Envoyer l'arborescence officielle et son fichier HTML par courriel"):
+                st.markdown("##### 📧 Envoi de l'arborescence")
+                st.caption("Transmet l'arborescence officielle (format HTML A4) et l'historique aux destinataires.")
+                dest_def_act = charger_config_email().get("destinataires", "")
+                dest_act_saisi = st.text_input("Destinataire(s)", value=dest_def_act, placeholder="courriel@exemple.com", key=f"dest_mail_top_{mode}")
+                if st.button("📤 Envoyer", type="primary", use_container_width=True, key=f"btn_send_top_mail_{mode}"):
+                    with st.spinner("Envoi de l'arborescence..."):
+                        ok_act_m, msg_act_m = envoyer_courriel_arborescence_tournoi(tournoi, mode=mode, destinataires_specifiques=dest_act_saisi)
+                    if ok_act_m:
+                        st.success("✅ Arborescence transmise avec succès !")
+                    else:
+                        st.error(f"❌ {msg_act_m}")
 
         if est_editeur:
             with col_top_new:
@@ -6678,12 +7076,16 @@ def afficher_section_historique_tournois():
             )
 
         with col_dt3:
-            if est_editeur:
-                if st.button("📧 Notifier admins", key=f"btn_mail_arch_{tournoi_choisi.get('id_archive', choix_idx)}", use_container_width=True, help="Envoie ce tournoi et le fichier historique_tournois.json aux administrateurs SMTP"):
-                    with st.spinner("Envoi du courriel aux administrateurs..."):
-                        ok_arch, msg_arch = envoyer_courriel_sauvegarde_tournoi(tournoi_choisi, mode=mode_choisi)
+            with st.popover("📧 Courriel arborescence", use_container_width=True, help="Envoyer l'arborescence officielle de ce tournoi archivé par courriel"):
+                st.markdown("##### 📧 Envoi de l'arborescence")
+                st.caption("Transmet l'arborescence officielle HTML et l'historique par courriel.")
+                dest_def_h = charger_config_email().get("destinataires", "")
+                dest_h_saisi = st.text_input("Destinataire(s)", value=dest_def_h, placeholder="courriel@exemple.com", key=f"dest_h_mail_{choix_idx}")
+                if st.button("📤 Envoyer l'arborescence", type="primary", use_container_width=True, key=f"btn_send_h_mail_{choix_idx}"):
+                    with st.spinner("Envoi en cours..."):
+                        ok_arch, msg_arch = envoyer_courriel_arborescence_tournoi(tournoi_choisi, mode=mode_choisi, destinataires_specifiques=dest_h_saisi)
                     if ok_arch:
-                        st.success("✅ Courriel envoyé avec succès !")
+                        st.success("✅ Arborescence envoyée avec succès !")
                     else:
                         st.warning(f"⚠️ {msg_arch}")
 
