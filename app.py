@@ -7451,10 +7451,19 @@ def afficher_section_tournoi(mode="simple"):
                         if not termine:
                             if est_editeur:
                                 col_s1, col_s2, col_s3, col_s4 = st.columns([1, 1, 1.2, 1.4])
+                                options_sc_m = list(range(int(m_race) + 1))
+                                key_sc_a = f"sc_a_{mode}_{m_id}"
+                                key_sc_b = f"sc_b_{mode}_{m_id}"
+                                if key_sc_a not in st.session_state or st.session_state[key_sc_a] not in options_sc_m:
+                                    st.session_state[key_sc_a] = 0
+                                if key_sc_b not in st.session_state or st.session_state[key_sc_b] not in options_sc_m:
+                                    st.session_state[key_sc_b] = 0
+                                idx_sc_a = options_sc_m.index(st.session_state[key_sc_a])
+                                idx_sc_b = options_sc_m.index(st.session_state[key_sc_b])
                                 with col_s1:
-                                    sc_a_in = st.number_input(f"{formater_nom_abrege_joueur(ea)}", min_value=0, max_value=m_race, value=0, key=f"sc_a_{mode}_{m_id}")
+                                    sc_a_in = int(st.selectbox(f"{formater_nom_abrege_joueur(ea)}", options=options_sc_m, index=idx_sc_a, key=key_sc_a, help=f"Score de {ea} (0 à {m_race})"))
                                 with col_s2:
-                                    sc_b_in = st.number_input(f"{formater_nom_abrege_joueur(eb)}", min_value=0, max_value=m_race, value=0, key=f"sc_b_{mode}_{m_id}")
+                                    sc_b_in = int(st.selectbox(f"{formater_nom_abrege_joueur(eb)}", options=options_sc_m, index=idx_sc_b, key=key_sc_b, help=f"Score de {eb} (0 à {m_race})"))
                                 with col_s3:
                                     st.write("")
                                     peut_valider = (ea != "À déterminer" and eb != "À déterminer")
@@ -7607,10 +7616,19 @@ def afficher_section_tournoi(mode="simple"):
                         if not termine:
                             if est_editeur:
                                 col_s1, col_s2, col_s3, col_s4 = st.columns([1, 1, 1.2, 1.4])
+                                options_rr_m = list(range(int(rr_race) + 1))
+                                key_rr_a = f"rr_a_{mode}_{m_id}"
+                                key_rr_b = f"rr_b_{mode}_{m_id}"
+                                if key_rr_a not in st.session_state or st.session_state[key_rr_a] not in options_rr_m:
+                                    st.session_state[key_rr_a] = 0
+                                if key_rr_b not in st.session_state or st.session_state[key_rr_b] not in options_rr_m:
+                                    st.session_state[key_rr_b] = 0
+                                idx_rr_a = options_rr_m.index(st.session_state[key_rr_a])
+                                idx_rr_b = options_rr_m.index(st.session_state[key_rr_b])
                                 with col_s1:
-                                    sc_a_in = st.number_input(f"{formater_nom_abrege_joueur(ea)}", min_value=0, max_value=rr_race, value=0, key=f"rr_a_{mode}_{m_id}")
+                                    sc_a_in = int(st.selectbox(f"{formater_nom_abrege_joueur(ea)}", options=options_rr_m, index=idx_rr_a, key=key_rr_a, help=f"Score de {ea} (0 à {rr_race})"))
                                 with col_s2:
-                                    sc_b_in = st.number_input(f"{formater_nom_abrege_joueur(eb)}", min_value=0, max_value=rr_race, value=0, key=f"rr_b_{mode}_{m_id}")
+                                    sc_b_in = int(st.selectbox(f"{formater_nom_abrege_joueur(eb)}", options=options_rr_m, index=idx_rr_b, key=key_rr_b, help=f"Score de {eb} (0 à {rr_race})"))
                                 with col_s3:
                                     st.write("")
                                     if st.button("✅ Valider", key=f"btn_rr_{mode}_{m_id}", use_container_width=True):
