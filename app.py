@@ -9461,6 +9461,32 @@ with tab_feuille:
             "🎱 **Pointage des manches :** Saisie libre de **0 à 8 points** par joueur (**sans obligation d'un score de 8** pour valider un résultat)."
         )
 
+        with st.expander("👥 **Présence des joueurs — Indiquer si un joueur est présent ou absent**", expanded=False):
+            st.caption("Vous pouvez basculer l'état de présence de chaque joueur directement ici ou dans la barre latérale. En cas d'absence, la moyenne est utilisée pour calculer le score forfaitaire (plafonné à 7 pts).")
+            col_pr_r, col_pr_v = st.columns(2)
+            with col_pr_r:
+                st.markdown(f"**🏠 {equipe_receveur}**")
+                for p_id in ["j1_rec", "j2_rec", "j3_rec"]:
+                    nom_j = dict_joueurs[p_id]["nom"]
+                    c_n, c_t = st.columns([3, 2])
+                    c_n.markdown(f"**{nom_j}**")
+                    curr_pres = bool(st.session_state.get(f"pres_{p_id}", True))
+                    new_pres = c_t.toggle("Présent", value=curr_pres, key=f"main_pres_tog_{p_id}", disabled=not est_editeur)
+                    if new_pres != curr_pres:
+                        st.session_state[f"pres_{p_id}"] = new_pres
+                        st.rerun()
+            with col_pr_v:
+                st.markdown(f"**🚗 {equipe_visiteur}**")
+                for p_id in ["j1_vis", "j2_vis", "j3_vis"]:
+                    nom_j = dict_joueurs[p_id]["nom"]
+                    c_n, c_t = st.columns([3, 2])
+                    c_n.markdown(f"**{nom_j}**")
+                    curr_pres = bool(st.session_state.get(f"pres_{p_id}", True))
+                    new_pres = c_t.toggle("Présent", value=curr_pres, key=f"main_pres_tog_{p_id}", disabled=not est_editeur)
+                    if new_pres != curr_pres:
+                        st.session_state[f"pres_{p_id}"] = new_pres
+                        st.rerun()
+
         donnees_a_sauvegarder = {
             "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "receveur": equipe_receveur,
@@ -10262,32 +10288,106 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                 while len(roster_vis_def) < 3:
                     roster_vis_def.append(f"Joueur {len(roster_vis_def)+1}")
 
-                st.markdown("##### 👥 Alignement des 3 joueurs par équipe")
+                st.markdown("##### 👥 Alignement des 3 joueurs par équipe & Présences (Présent / Absent)")
+                st.caption("Indiquez pour chaque joueur s'il était présent ou absent. En cas d'absence, le score est calculé automatiquement selon sa moyenne (plafonné à 7 maximum).")
+
                 col_j_r, col_j_v = st.columns(2)
                 with col_j_r:
                     st.markdown(f"**Joueurs — {eq_rec_ant} :**")
-                    j1_r_ant = st.text_input(f"Joueur 1 ({eq_rec_ant}) :", value=roster_rec_def[0], key="ant_j1_rec")
-                    j2_r_ant = st.text_input(f"Joueur 2 ({eq_rec_ant}) :", value=roster_rec_def[1], key="ant_j2_rec")
-                    j3_r_ant = st.text_input(f"Joueur 3 ({eq_rec_ant}) :", value=roster_rec_def[2], key="ant_j3_rec")
+                    
+                    # Joueur 1 Rec
+                    c_n1, c_p1 = st.columns([3, 2])
+                    j1_r_ant = c_n1.text_input(f"Joueur 1 ({eq_rec_ant}) :", value=roster_rec_def[0], key="ant_j1_rec")
+                    j1_r_pres = c_p1.toggle("Présent", value=True, key="ant_pres_j1_r")
+                    if not j1_r_pres:
+                        c_m1, c_m2 = st.columns([3, 2])
+                        moy_j1_r = c_m1.number_input(f"Moyenne ({j1_r_ant}) :", min_value=0.0, max_value=100.0, value=0.625, step=0.025, format="%.3f", key="ant_moy_j1_r", help="Formule officielle : arrondi(moyenne × 24 ÷ 3), max 7.")
+                        pts_abs_j1_r = calculer_score_absent(moy_j1_r)
+                        c_m2.metric("Score absent", f"{pts_abs_j1_r} pts")
+                    else:
+                        pts_abs_j1_r = 0
+                        moy_j1_r = 0.0
+
+                    # Joueur 2 Rec
+                    c_n2, c_p2 = st.columns([3, 2])
+                    j2_r_ant = c_n2.text_input(f"Joueur 2 ({eq_rec_ant}) :", value=roster_rec_def[1], key="ant_j2_rec")
+                    j2_r_pres = c_p2.toggle("Présent", value=True, key="ant_pres_j2_r")
+                    if not j2_r_pres:
+                        c_m1, c_m2 = st.columns([3, 2])
+                        moy_j2_r = c_m1.number_input(f"Moyenne ({j2_r_ant}) :", min_value=0.0, max_value=100.0, value=0.625, step=0.025, format="%.3f", key="ant_moy_j2_r", help="Formule officielle : arrondi(moyenne × 24 ÷ 3), max 7.")
+                        pts_abs_j2_r = calculer_score_absent(moy_j2_r)
+                        c_m2.metric("Score absent", f"{pts_abs_j2_r} pts")
+                    else:
+                        pts_abs_j2_r = 0
+                        moy_j2_r = 0.0
+
+                    # Joueur 3 Rec
+                    c_n3, c_p3 = st.columns([3, 2])
+                    j3_r_ant = c_n3.text_input(f"Joueur 3 ({eq_rec_ant}) :", value=roster_rec_def[2], key="ant_j3_rec")
+                    j3_r_pres = c_p3.toggle("Présent", value=True, key="ant_pres_j3_r")
+                    if not j3_r_pres:
+                        c_m1, c_m2 = st.columns([3, 2])
+                        moy_j3_r = c_m1.number_input(f"Moyenne ({j3_r_ant}) :", min_value=0.0, max_value=100.0, value=0.625, step=0.025, format="%.3f", key="ant_moy_j3_r", help="Formule officielle : arrondi(moyenne × 24 ÷ 3), max 7.")
+                        pts_abs_j3_r = calculer_score_absent(moy_j3_r)
+                        c_m2.metric("Score absent", f"{pts_abs_j3_r} pts")
+                    else:
+                        pts_abs_j3_r = 0
+                        moy_j3_r = 0.0
 
                 with col_j_v:
                     st.markdown(f"**Joueurs — {eq_vis_ant} :**")
-                    j1_v_ant = st.text_input(f"Joueur 1 ({eq_vis_ant}) :", value=roster_vis_def[0], key="ant_j1_vis")
-                    j2_v_ant = st.text_input(f"Joueur 2 ({eq_vis_ant}) :", value=roster_vis_def[1], key="ant_j2_vis")
-                    j3_v_ant = st.text_input(f"Joueur 3 ({eq_vis_ant}) :", value=roster_vis_def[2], key="ant_j3_vis")
+                    
+                    # Joueur 1 Vis
+                    c_vn1, c_vp1 = st.columns([3, 2])
+                    j1_v_ant = c_vn1.text_input(f"Joueur 1 ({eq_vis_ant}) :", value=roster_vis_def[0], key="ant_j1_vis")
+                    j1_v_pres = c_vp1.toggle("Présent", value=True, key="ant_pres_j1_v")
+                    if not j1_v_pres:
+                        c_m1, c_m2 = st.columns([3, 2])
+                        moy_j1_v = c_m1.number_input(f"Moyenne ({j1_v_ant}) :", min_value=0.0, max_value=100.0, value=0.625, step=0.025, format="%.3f", key="ant_moy_j1_v", help="Formule officielle : arrondi(moyenne × 24 ÷ 3), max 7.")
+                        pts_abs_j1_v = calculer_score_absent(moy_j1_v)
+                        c_m2.metric("Score absent", f"{pts_abs_j1_v} pts")
+                    else:
+                        pts_abs_j1_v = 0
+                        moy_j1_v = 0.0
+
+                    # Joueur 2 Vis
+                    c_vn2, c_vp2 = st.columns([3, 2])
+                    j2_v_ant = c_vn2.text_input(f"Joueur 2 ({eq_vis_ant}) :", value=roster_vis_def[1], key="ant_j2_vis")
+                    j2_v_pres = c_vp2.toggle("Présent", value=True, key="ant_pres_j2_v")
+                    if not j2_v_pres:
+                        c_m1, c_m2 = st.columns([3, 2])
+                        moy_j2_v = c_m1.number_input(f"Moyenne ({j2_v_ant}) :", min_value=0.0, max_value=100.0, value=0.625, step=0.025, format="%.3f", key="ant_moy_j2_v", help="Formule officielle : arrondi(moyenne × 24 ÷ 3), max 7.")
+                        pts_abs_j2_v = calculer_score_absent(moy_j2_v)
+                        c_m2.metric("Score absent", f"{pts_abs_j2_v} pts")
+                    else:
+                        pts_abs_j2_v = 0
+                        moy_j2_v = 0.0
+
+                    # Joueur 3 Vis
+                    c_vn3, c_vp3 = st.columns([3, 2])
+                    j3_v_ant = c_vn3.text_input(f"Joueur 3 ({eq_vis_ant}) :", value=roster_vis_def[2], key="ant_j3_vis")
+                    j3_v_pres = c_vp3.toggle("Présent", value=True, key="ant_pres_j3_v")
+                    if not j3_v_pres:
+                        c_m1, c_m2 = st.columns([3, 2])
+                        moy_j3_v = c_m1.number_input(f"Moyenne ({j3_v_ant}) :", min_value=0.0, max_value=100.0, value=0.625, step=0.025, format="%.3f", key="ant_moy_j3_v", help="Formule officielle : arrondi(moyenne × 24 ÷ 3), max 7.")
+                        pts_abs_j3_v = calculer_score_absent(moy_j3_v)
+                        c_m2.metric("Score absent", f"{pts_abs_j3_v} pts")
+                    else:
+                        pts_abs_j3_v = 0
+                        moy_j3_v = 0.0
 
                 dict_joueurs_ant = {
-                    "j1_rec": {"nom": j1_r_ant.strip() or "Joueur 1", "equipe": eq_rec_ant, "present": True, "pts_absent": 0, "moyenne": 0.0},
-                    "j2_rec": {"nom": j2_r_ant.strip() or "Joueur 2", "equipe": eq_rec_ant, "present": True, "pts_absent": 0, "moyenne": 0.0},
-                    "j3_rec": {"nom": j3_r_ant.strip() or "Joueur 3", "equipe": eq_rec_ant, "present": True, "pts_absent": 0, "moyenne": 0.0},
-                    "j1_vis": {"nom": j1_v_ant.strip() or "Joueur 1", "equipe": eq_vis_ant, "present": True, "pts_absent": 0, "moyenne": 0.0},
-                    "j2_vis": {"nom": j2_v_ant.strip() or "Joueur 2", "equipe": eq_vis_ant, "present": True, "pts_absent": 0, "moyenne": 0.0},
-                    "j3_vis": {"nom": j3_v_ant.strip() or "Joueur 3", "equipe": eq_vis_ant, "present": True, "pts_absent": 0, "moyenne": 0.0},
+                    "j1_rec": {"nom": j1_r_ant.strip() or "Joueur 1", "equipe": eq_rec_ant, "present": j1_r_pres, "pts_absent": pts_abs_j1_r, "moyenne": moy_j1_r},
+                    "j2_rec": {"nom": j2_r_ant.strip() or "Joueur 2", "equipe": eq_rec_ant, "present": j2_r_pres, "pts_absent": pts_abs_j2_r, "moyenne": moy_j2_r},
+                    "j3_rec": {"nom": j3_r_ant.strip() or "Joueur 3", "equipe": eq_rec_ant, "present": j3_r_pres, "pts_absent": pts_abs_j3_r, "moyenne": moy_j3_r},
+                    "j1_vis": {"nom": j1_v_ant.strip() or "Joueur 1", "equipe": eq_vis_ant, "present": j1_v_pres, "pts_absent": pts_abs_j1_v, "moyenne": moy_j1_v},
+                    "j2_vis": {"nom": j2_v_ant.strip() or "Joueur 2", "equipe": eq_vis_ant, "present": j2_v_pres, "pts_absent": pts_abs_j2_v, "moyenne": moy_j2_v},
+                    "j3_vis": {"nom": j3_v_ant.strip() or "Joueur 3", "equipe": eq_vis_ant, "present": j3_v_pres, "pts_absent": pts_abs_j3_v, "moyenne": moy_j3_v},
                 }
 
                 # Grille de pointage des 9 manches selon rotation officielle
                 st.markdown("##### 🎯 Pointage des 9 manches (Rotation officielle 3 contre 3)")
-                st.caption("Pointage libre de **0 à 8 points** par joueur (sans obligation d'un score de 8).")
+                st.caption("Pointage libre de **0 à 8 points** par joueur (sans obligation d'un score de 8). Les joueurs absents sont automatiquement identifiés.")
 
                 manches_ant = {}
                 pts_joueurs_ant = {k: 0 for k in dict_joueurs_ant}
@@ -10305,24 +10405,47 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                 ]
 
                 for num_m, id_a, id_b in matchs_pairs_ant:
-                    nom_a = dict_joueurs_ant[id_a]["nom"]
-                    nom_b = dict_joueurs_ant[id_b]["nom"]
+                    info_a = dict_joueurs_ant[id_a]
+                    info_b = dict_joueurs_ant[id_b]
+                    nom_a = info_a["nom"]
+                    nom_b = info_b["nom"]
+                    a_pres = info_a["present"]
+                    b_pres = info_b["present"]
+
+                    status_abs = ""
+                    if not a_pres and not b_pres:
+                        status_abs = " ❌ (Forfait double : 2 absents)"
+                        init_sa = info_a["pts_absent"]
+                        init_sb = info_b["pts_absent"]
+                    elif not a_pres:
+                        status_abs = f" ❌ ({nom_a} absent : {info_a['pts_absent']} pts)"
+                        init_sa = info_a["pts_absent"]
+                        init_sb = 8
+                    elif not b_pres:
+                        status_abs = f" ❌ ({nom_b} absent : {info_b['pts_absent']} pts)"
+                        init_sa = 8
+                        init_sb = info_b["pts_absent"]
+                    else:
+                        init_sa = 0
+                        init_sb = 0
 
                     with st.container(border=True):
-                        col_m_lbl, col_m_ja, col_m_sa, col_m_sb, col_m_jb = st.columns([1, 2, 1, 1, 2])
-                        col_m_lbl.markdown(f"**Manche {num_m}**")
-                        col_m_ja.markdown(f"`{nom_a}` *({eq_rec_ant})*")
-                        sa_in = col_m_sa.number_input(f"Score {nom_a} (M{num_m})", min_value=0, max_value=8, value=0, key=f"ant_sa_{num_m}")
-                        sb_in = col_m_sb.number_input(f"Score {nom_b} (M{num_m})", min_value=0, max_value=8, value=0, key=f"ant_sb_{num_m}")
-                        col_m_jb.markdown(f"`{nom_b}` *({eq_vis_ant})*")
+                        col_m_lbl, col_m_ja, col_m_sa, col_m_sb, col_m_jb = st.columns([1.2, 1.8, 1, 1, 1.8])
+                        col_m_lbl.markdown(f"**Manche {num_m}**{status_abs}")
+                        lbl_a = f"`{nom_a}`" + (" *(Absent)*" if not a_pres else "")
+                        lbl_b = f"`{nom_b}`" + (" *(Absent)*" if not b_pres else "")
+                        col_m_ja.markdown(f"{lbl_a} *({eq_rec_ant})*")
+                        sa_in = col_m_sa.number_input(f"Score {nom_a} (M{num_m})", min_value=0, max_value=8, value=init_sa, key=f"ant_sa_{num_m}")
+                        sb_in = col_m_sb.number_input(f"Score {nom_b} (M{num_m})", min_value=0, max_value=8, value=init_sb, key=f"ant_sb_{num_m}")
+                        col_m_jb.markdown(f"{lbl_b} *({eq_vis_ant})*")
 
                         manches_ant[str(num_m)] = {
                             "score_a": int(sa_in),
                             "score_b": int(sb_in),
                             "joueur_a": nom_a,
                             "joueur_b": nom_b,
-                            "joueur_a_absent": False,
-                            "joueur_b_absent": False
+                            "joueur_a_absent": not a_pres,
+                            "joueur_b_absent": not b_pres
                         }
                         pts_joueurs_ant[id_a] += int(sa_in)
                         pts_joueurs_ant[id_b] += int(sb_in)
@@ -10346,6 +10469,11 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                         st.error("❌ L'équipe receveuse et l'équipe visiteuse doivent être différentes.")
                     else:
                         # Génération du résumé texte et HTML officiel
+                        absents_det_ant = []
+                        for p_id_k, j_info_k in dict_joueurs_ant.items():
+                            if not j_info_k.get("present", True):
+                                absents_det_ant.append(f"{j_info_k['nom']} ({j_info_k['equipe']} — {j_info_k['pts_absent']} pts/manche)")
+
                         txt_ant, html_ant = generer_resume_match(
                             eq_rec_ant,
                             eq_vis_ant,
@@ -10355,6 +10483,7 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                             pts_joueurs_ant,
                             dict_joueurs_ant,
                             date_ant_str,
+                            absents_info=absents_det_ant,
                             approbateur_rec=app_rec_ant,
                             approbateur_vis=app_vis_ant
                         )
@@ -10489,19 +10618,19 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                             c_m_titre.markdown(f"**Manche {num_m}**")
                         
                             nom_a_edite = c_m_ja.text_input(f"Joueur ({rec_sel})", value=ja_def, key=f"rec_ja_{idx_sel}_{num_m}")
+                            abs_a_edite = c_m_ja.checkbox("Absent", value=ja_abs, key=f"rec_abs_a_{idx_sel}_{num_m}")
                             sa_edite = c_m_sa.number_input(f"Pts {rec_sel}", min_value=0, max_value=8, value=sa_def, key=f"rec_sa_{idx_sel}_{num_m}")
                             sb_edite = c_m_sb.number_input(f"Pts {vis_sel}", min_value=0, max_value=8, value=sb_def, key=f"rec_sb_{idx_sel}_{num_m}")
                             nom_b_edite = c_m_jb.text_input(f"Joueur ({vis_sel})", value=jb_def, key=f"rec_jb_{idx_sel}_{num_m}")
-
-                            # Aucun score de 8 obligatoire lors de la rectification d'une manche
+                            abs_b_edite = c_m_jb.checkbox("Absent", value=jb_abs, key=f"rec_abs_b_{idx_sel}_{num_m}")
 
                             nouveaux_scores[str_m] = {
                                 "score_a": int(sa_edite),
                                 "score_b": int(sb_edite),
                                 "joueur_a": nom_a_edite.strip(),
                                 "joueur_b": nom_b_edite.strip(),
-                                "joueur_a_absent": ja_abs,
-                                "joueur_b_absent": jb_abs
+                                "joueur_a_absent": abs_a_edite,
+                                "joueur_b_absent": abs_b_edite
                             }
 
                     tot_rec_nouveau = sum(m["score_a"] for m in nouveaux_scores.values())
