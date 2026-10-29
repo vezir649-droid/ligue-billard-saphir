@@ -90,7 +90,7 @@ La barre latérale **« 📋 Paramètres du Match »** regroupe tous les réglag
      * **Exemple en Double (9, 10, 11 ou 12 duos en 2v2) :** Calcul automatique des passes-droits pour équilibrer les Quarts de finale (**4 matchs**) et Demi-finales (**2 matchs**).
   2. **🛡️ Double élimination — Winner & Loser Bracket (Seconde chance)** :
      * **🟦 Tableau des Gagnants (*Winner Bracket*)** : *2 de 3* — pour **18, 20, 22 et 24 joueurs**, tous les joueurs disputent le 1er tour (**9, 10, 11 ou 12 matchs**), puis le 2e tour d'équilibrage (**1, 2, 3 ou 4 matchs** + gagnants promus) forme les Quarts de finale à **4 matchs (8 joueurs)**.
-     * **🟧 Tableau de Repêchage (*Loser Bracket — Seconde chance*)** : *2 de 3* — tout participant perdant un premier match est automatiquement reversé dans le Loser Bracket (**2, 4, 6 ou 8 matchs** au Tour 1 Seconde Chance pour **18, 20, 22 ou 24 joueurs**, ramenant exactement à **4 matchs / 8 joueurs** au Tour 2 Seconde Chance).
+     * **🟧 Tableau de Repêchage (*Loser Bracket — Seconde chance*)** : *2 de 3* — tout participant perdant un premier match est automatiquement reversé dans le Loser Bracket et **doit obligatoirement jouer contre un adversaire réel (jamais contre un passe-droit)**.
      * **🚫 Règle officielle d'évitement des rematchs (*Anti-Rematch*) :** Les joueurs reversés dans le tableau des perdants (*Loser Bracket*) sont automatiquement croisés et permutés afin de **ne jamais rejouer contre un adversaire déjà affronté dans le tableau des gagnants (*Winner Bracket*)**.
      * **🏆 Grande Finale** : *3 de 5* entre le champion du Winner Bracket et le survivant du Loser Bracket.
   3. **🔄 Championnat Round-Robin (Tous contre tous)** : Classement en direct (Points, Victoires, Défaites, Manches Pour/Contre, Différence).

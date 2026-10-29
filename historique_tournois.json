@@ -18,11 +18,11 @@
       "Duo_1A & Duo_1B",
       "Duo_2A & Duo_2B"
     ],
-    "total_tours": 8,
+    "total_tours": 7,
     "tours": [
       {
         "numero": 1,
-        "nom": "Gagnants — Quarts de finale",
+        "nom": "Gagnants — 1ᵉʳ tour (2 matchs)",
         "section": "winner",
         "bracket": "winner",
         "race_to": 2,
@@ -30,26 +30,6 @@
         "matchs": [
           {
             "id": "W1_M1",
-            "bracket": "winner",
-            "etape": 1,
-            "equipe_a": "Duo_1A & Duo_1B",
-            "equipe_b": "Exempt (Passe-droit)",
-            "score_a": 2,
-            "score_b": 0,
-            "termine": true,
-            "passe_droit": true,
-            "vainqueur": "Duo_1A & Duo_1B",
-            "perdant": "Exempt (Passe-droit)",
-            "source_a": null,
-            "source_b": null,
-            "type_source_a": "vainqueur",
-            "type_source_b": "vainqueur",
-            "heure_estimee": "—",
-            "table": "—",
-            "table_courte": "—"
-          },
-          {
-            "id": "W1_M2",
             "bracket": "winner",
             "etape": 1,
             "equipe_a": "Duo_5A & Duo_5B",
@@ -69,27 +49,7 @@
             "table_courte": "T1"
           },
           {
-            "id": "W1_M3",
-            "bracket": "winner",
-            "etape": 1,
-            "equipe_a": "Duo_2A & Duo_2B",
-            "equipe_b": "Exempt (Passe-droit)",
-            "score_a": 2,
-            "score_b": 0,
-            "termine": true,
-            "passe_droit": true,
-            "vainqueur": "Duo_2A & Duo_2B",
-            "perdant": "Exempt (Passe-droit)",
-            "source_a": null,
-            "source_b": null,
-            "type_source_a": "vainqueur",
-            "type_source_b": "vainqueur",
-            "heure_estimee": "—",
-            "table": "—",
-            "table_courte": "—"
-          },
-          {
-            "id": "W1_M4",
+            "id": "W1_M2",
             "bracket": "winner",
             "etape": 1,
             "equipe_a": "Duo_3A & Duo_3B",
@@ -129,14 +89,14 @@
             "termine": true,
             "passe_droit": false,
             "vainqueur": "Duo_1A & Duo_1B",
+            "perdant": "Duo_5A & Duo_5B",
             "source_a": "W1_M1",
-            "source_b": "W1_M2",
+            "source_b": null,
             "type_source_a": "vainqueur",
             "type_source_b": "vainqueur",
             "heure_estimee": "09h30",
             "table": "Table 1",
-            "table_courte": "T1",
-            "perdant": "Duo_5A & Duo_5B"
+            "table_courte": "T1"
           },
           {
             "id": "W2_M2",
@@ -149,14 +109,14 @@
             "termine": true,
             "passe_droit": false,
             "vainqueur": "Duo_2A & Duo_2B",
-            "source_a": "W1_M3",
-            "source_b": "W1_M4",
+            "perdant": "Duo_3A & Duo_3B",
+            "source_a": "W1_M2",
+            "source_b": null,
             "type_source_a": "vainqueur",
             "type_source_b": "vainqueur",
             "heure_estimee": "09h30",
             "table": "Table 2",
-            "table_courte": "T2",
-            "perdant": "Duo_3A & Duo_3B"
+            "table_courte": "T2"
           }
         ]
       },
@@ -179,20 +139,20 @@
             "termine": true,
             "passe_droit": false,
             "vainqueur": "Duo_1A & Duo_1B",
+            "perdant": "Duo_2A & Duo_2B",
             "source_a": "W2_M1",
             "source_b": "W2_M2",
             "type_source_a": "vainqueur",
             "type_source_b": "vainqueur",
-            "heure_estimee": "11h00",
+            "heure_estimee": "10h30",
             "table": "Table 1",
-            "table_courte": "T1",
-            "perdant": "Duo_2A & Duo_2B"
+            "table_courte": "T1"
           }
         ]
       },
       {
         "numero": 4,
-        "nom": "Seconde Chance — Tour 1",
+        "nom": "Seconde Chance — Tour 1 (2 matchs)",
         "section": "loser",
         "bracket": "loser",
         "race_to": 2,
@@ -200,56 +160,6 @@
         "matchs": [
           {
             "id": "L1_M1",
-            "bracket": "loser",
-            "etape": 2,
-            "equipe_a": "Exempt (Passe-droit)",
-            "equipe_b": "Duo_6A & Duo_6B",
-            "score_a": 0,
-            "score_b": 2,
-            "termine": true,
-            "passe_droit": true,
-            "vainqueur": "Duo_6A & Duo_6B",
-            "source_a": "W1_M1",
-            "source_b": "W1_M2",
-            "type_source_a": "perdant",
-            "type_source_b": "perdant",
-            "heure_estimee": "10h00",
-            "table": "Table 1",
-            "table_courte": "T1",
-            "perdant": "Exempt (Passe-droit)"
-          },
-          {
-            "id": "L1_M2",
-            "bracket": "loser",
-            "etape": 2,
-            "equipe_a": "Exempt (Passe-droit)",
-            "equipe_b": "Duo_4A & Duo_4B",
-            "score_a": 0,
-            "score_b": 2,
-            "termine": true,
-            "passe_droit": true,
-            "vainqueur": "Duo_4A & Duo_4B",
-            "source_a": "W1_M3",
-            "source_b": "W1_M4",
-            "type_source_a": "perdant",
-            "type_source_b": "perdant",
-            "heure_estimee": "10h00",
-            "table": "Table 2",
-            "table_courte": "T2",
-            "perdant": "Exempt (Passe-droit)"
-          }
-        ]
-      },
-      {
-        "numero": 5,
-        "nom": "Seconde Chance — Quarts de finale",
-        "section": "loser",
-        "bracket": "loser",
-        "race_to": 2,
-        "format_label": "2 de 3",
-        "matchs": [
-          {
-            "id": "L2_M1",
             "bracket": "loser",
             "etape": 3,
             "equipe_a": "Duo_6A & Duo_6B",
@@ -259,17 +169,17 @@
             "termine": true,
             "passe_droit": false,
             "vainqueur": "Duo_6A & Duo_6B",
-            "source_a": "L1_M1",
+            "perdant": "Duo_3A & Duo_3B",
+            "source_a": "W1_M1",
             "source_b": "W2_M2",
-            "type_source_a": "vainqueur",
+            "type_source_a": "perdant",
             "type_source_b": "perdant",
-            "heure_estimee": "10h30",
+            "heure_estimee": "10h00",
             "table": "Table 1",
-            "table_courte": "T1",
-            "perdant": "Duo_3A & Duo_3B"
+            "table_courte": "T1"
           },
           {
-            "id": "L2_M2",
+            "id": "L1_M2",
             "bracket": "loser",
             "etape": 3,
             "equipe_a": "Duo_4A & Duo_4B",
@@ -279,19 +189,19 @@
             "termine": true,
             "passe_droit": false,
             "vainqueur": "Duo_4A & Duo_4B",
-            "source_a": "L1_M2",
+            "perdant": "Duo_5A & Duo_5B",
+            "source_a": "W1_M2",
             "source_b": "W2_M1",
-            "type_source_a": "vainqueur",
+            "type_source_a": "perdant",
             "type_source_b": "perdant",
-            "heure_estimee": "10h30",
+            "heure_estimee": "10h00",
             "table": "Table 2",
-            "table_courte": "T2",
-            "perdant": "Duo_5A & Duo_5B"
+            "table_courte": "T2"
           }
         ]
       },
       {
-        "numero": 6,
+        "numero": 5,
         "nom": "Seconde Chance — Demi-finale",
         "section": "loser",
         "bracket": "loser",
@@ -299,7 +209,7 @@
         "format_label": "2 de 3",
         "matchs": [
           {
-            "id": "L3_M1",
+            "id": "L2_M1",
             "bracket": "loser",
             "etape": 4,
             "equipe_a": "Duo_6A & Duo_6B",
@@ -309,19 +219,19 @@
             "termine": true,
             "passe_droit": false,
             "vainqueur": "Duo_6A & Duo_6B",
-            "source_a": "L2_M1",
-            "source_b": "L2_M2",
+            "perdant": "Duo_4A & Duo_4B",
+            "source_a": "L1_M1",
+            "source_b": "L1_M2",
             "type_source_a": "vainqueur",
             "type_source_b": "vainqueur",
-            "heure_estimee": "11h00",
+            "heure_estimee": "10h30",
             "table": "Table 2",
-            "table_courte": "T2",
-            "perdant": "Duo_4A & Duo_4B"
+            "table_courte": "T2"
           }
         ]
       },
       {
-        "numero": 7,
+        "numero": 6,
         "nom": "Seconde Chance — Finale",
         "section": "loser",
         "bracket": "loser",
@@ -329,7 +239,7 @@
         "format_label": "2 de 3",
         "matchs": [
           {
-            "id": "L4_M1",
+            "id": "L3_M1",
             "bracket": "loser",
             "etape": 5,
             "equipe_a": "Duo_6A & Duo_6B",
@@ -339,19 +249,19 @@
             "termine": true,
             "passe_droit": false,
             "vainqueur": "Duo_6A & Duo_6B",
-            "source_a": "L3_M1",
+            "perdant": "Duo_2A & Duo_2B",
+            "source_a": "L2_M1",
             "source_b": "W3_M1",
             "type_source_a": "vainqueur",
             "type_source_b": "perdant",
-            "heure_estimee": "11h30",
+            "heure_estimee": "11h00",
             "table": "Table 1",
-            "table_courte": "T1",
-            "perdant": "Duo_2A & Duo_2B"
+            "table_courte": "T1"
           }
         ]
       },
       {
-        "numero": 8,
+        "numero": 7,
         "nom": "🏆 Grande Finale Officielle",
         "section": "finale",
         "bracket": "finale",
@@ -370,14 +280,14 @@
             "termine": true,
             "passe_droit": false,
             "vainqueur": "Duo_1A & Duo_1B",
+            "perdant": "Duo_6A & Duo_6B",
             "source_a": "W3_M1",
-            "source_b": "L4_M1",
+            "source_b": "L3_M1",
             "type_source_a": "vainqueur",
             "type_source_b": "vainqueur",
-            "heure_estimee": "13h00",
+            "heure_estimee": "11h30",
             "table": "Table 1",
-            "table_courte": "T1",
-            "perdant": "Duo_6A & Duo_6B"
+            "table_courte": "T1"
           }
         ]
       }
