@@ -325,6 +325,68 @@ def injecter_theme_css_saphir():
         unsafe_allow_html=True
     )
 
+    st.components.v1.html(
+        """
+        <script>
+        (function() {
+            function neutraliserGestionnaireMotsDePasse() {
+                try {
+                    var doc = window.parent ? window.parent.document : document;
+                    if (!doc) return;
+
+                    // 1. Ajouter autocomplete="off" sur tous les formulaires
+                    var forms = doc.querySelectorAll('form');
+                    for (var i = 0; i < forms.length; i++) {
+                        if (forms[i].getAttribute('autocomplete') !== 'off') {
+                            forms[i].setAttribute('autocomplete', 'off');
+                        }
+                    }
+
+                    // 2. Marquer tous les inputs pour ignorer les gestionnaires de mots de passe
+                    var inputs = doc.querySelectorAll('input');
+                    for (var j = 0; j < inputs.length; j++) {
+                        var inp = inputs[j];
+                        var type = (inp.getAttribute('type') || '').toLowerCase();
+                        var key = (inp.id || '') + ' ' + (inp.getAttribute('aria-label') || '');
+
+                        if (key.indexOf('login_pass') === -1 && key.indexOf('login_admin') === -1) {
+                            if (type !== 'password') {
+                                if (!inp.hasAttribute('autocomplete')) {
+                                    inp.setAttribute('autocomplete', 'off');
+                                }
+                            } else {
+                                inp.setAttribute('autocomplete', 'new-password');
+                            }
+                            inp.setAttribute('data-lpignore', 'true');
+                            inp.setAttribute('data-1p-ignore', 'true');
+                            inp.setAttribute('data-bwignore', 'true');
+                            inp.setAttribute('data-form-type', 'other');
+                        }
+                    }
+
+                    // 3. Forcer type="button" sur les boutons de tournoi/validation pour eviter toute interpretation de soumission
+                    var btns = doc.querySelectorAll('button');
+                    for (var k = 0; k < btns.length; k++) {
+                        var btn = btns[k];
+                        var t = (btn.innerText || '').toLowerCase();
+                        if (t.indexOf('valider') !== -1 || t.indexOf('sauvegarder') !== -1 || t.indexOf('passe-droit') !== -1) {
+                            if (btn.getAttribute('type') === 'submit' && !btn.closest('form[id*="form_login"]')) {
+                                btn.setAttribute('type', 'button');
+                            }
+                        }
+                    }
+                } catch(e) {}
+            }
+
+            neutraliserGestionnaireMotsDePasse();
+            setInterval(neutraliserGestionnaireMotsDePasse, 600);
+        })();
+        </script>
+        """,
+        height=0
+    )
+
+
 def charger_config_admin():
     """Charge la configuration des mots de passe depuis config_admin.json."""
     if os.path.exists(ADMIN_CONFIG_FILE):
@@ -8005,6 +8067,7 @@ if not est_connecte and not est_spectateur:
                 bouton_login = st.form_submit_button("🔓 Se connecter comme Marqueur", type="primary", use_container_width=True)
                 if bouton_login:
                     if verifier_mot_de_passe_admin(mdp_saisi):
+                        st.session_state["login_pass_input"] = ""
                         st.session_state["authentifie"] = True
                         st.session_state["est_admin"] = False
                         st.session_state["est_spectateur"] = False
@@ -8024,6 +8087,7 @@ if not est_connecte and not est_spectateur:
                 bouton_login_admin = st.form_submit_button("🛡️ Se connecter comme Administrateur", type="primary", use_container_width=True)
                 if bouton_login_admin:
                     if verifier_mot_de_passe_super_admin(mdp_admin_saisi):
+                        st.session_state["login_admin_pass_input"] = ""
                         st.session_state["authentifie"] = True
                         st.session_state["est_admin"] = True
                         st.session_state["est_spectateur"] = False
@@ -10447,7 +10511,20 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                 smtp_serveur = col_c1.text_input("Serveur SMTP", value=config_email.get("smtp_serveur", "smtp.gmail.com"), key="admin_smtp_serveur")
                 smtp_port = col_c2.number_input("Port SMTP", value=int(config_email.get("smtp_port", 587)), key="admin_smtp_port")
                 smtp_expediteur = col_c1.text_input("Courriel expéditeur", value=config_email.get("smtp_expediteur", ""), key="admin_smtp_exp")
-                smtp_mdp = col_c2.text_input("Mot de passe / Clé d'application", type="password", value=config_email.get("smtp_mdp", ""), key="admin_smtp_pwd")
+                
+                # Protection anti-popup fureteur : le champ mot de passe n'est pas injecté dans le DOM s'il est déjà enregistré
+                mdp_smtp_actuel = config_email.get("smtp_mdp", "")
+                with col_c2:
+                    if mdp_smtp_actuel:
+                        st.caption("🔒 Mot de passe / Clé SMTP : `••••••••••••` *(enregistré)*")
+                        modifier_smtp_pwd = st.checkbox("Modifier la clé d'application SMTP", key="chk_edit_smtp_pwd")
+                        if modifier_smtp_pwd:
+                            smtp_mdp = st.text_input("Nouvelle clé d'application SMTP", type="password", key="admin_smtp_pwd", placeholder="Entrez la nouvelle clé...")
+                        else:
+                            smtp_mdp = mdp_smtp_actuel
+                    else:
+                        smtp_mdp = st.text_input("Mot de passe / Clé d'application", type="password", key="admin_smtp_pwd", placeholder="Clé d'application SMTP...")
+                
                 smtp_ssl = st.checkbox("Utiliser SSL (Port 465)", value=config_email.get("smtp_ssl", False), key="admin_smtp_ssl")
 
                 col_btn_cfg1, col_btn_cfg2 = st.columns(2)
@@ -10503,34 +10580,38 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                     with st.container(border=True):
                         st.markdown("##### 🔒 Mot de passe Marqueur / Éditeur")
                         st.caption("Permet la saisie des matchs et la gestion des tournois (défaut : `saphir2026`).")
-                        nouveau_mdp = st.text_input("Nouveau mot de passe Marqueur", type="password", key="new_admin_pwd")
-                        confirm_mdp = st.text_input("Confirmer le mot de passe Marqueur", type="password", key="confirm_admin_pwd")
-                        if st.button("💾 Mettre à jour le mot de passe Marqueur", use_container_width=True, key="btn_save_pwd_marqueur"):
-                            if not nouveau_mdp:
-                                st.error("Le mot de passe ne peut pas être vide.")
-                            elif nouveau_mdp != confirm_mdp:
-                                st.error("Les deux mots de passe ne correspondent pas.")
-                            else:
-                                if sauvegarder_mot_de_passe_admin(nouveau_mdp):
-                                    st.success("✅ Mot de passe Marqueur mis à jour avec succès !")
+                        modifier_m_pwd = st.checkbox("Modifier le mot de passe Marqueur", key="chk_mod_m_pwd")
+                        if modifier_m_pwd:
+                            nouveau_mdp = st.text_input("Nouveau mot de passe Marqueur", type="password", key="new_admin_pwd")
+                            confirm_mdp = st.text_input("Confirmer le mot de passe Marqueur", type="password", key="confirm_admin_pwd")
+                            if st.button("💾 Mettre à jour le mot de passe Marqueur", use_container_width=True, key="btn_save_pwd_marqueur"):
+                                if not nouveau_mdp:
+                                    st.error("Le mot de passe ne peut pas être vide.")
+                                elif nouveau_mdp != confirm_mdp:
+                                    st.error("Les deux mots de passe ne correspondent pas.")
                                 else:
-                                    st.error("Erreur lors de la sauvegarde.")
+                                    if sauvegarder_mot_de_passe_admin(nouveau_mdp):
+                                        st.success("✅ Mot de passe Marqueur mis à jour avec succès !")
+                                    else:
+                                        st.error("Erreur lors de la sauvegarde.")
                 with col_pwd_a:
                     with st.container(border=True):
                         st.markdown("##### 🛡️ Mot de passe Administrateur")
                         st.caption("Donne seul accès au volet **⚙️ Administration** (défaut : `admin2026`).")
-                        nouveau_mdp_sup = st.text_input("Nouveau mot de passe Administrateur", type="password", key="new_super_admin_pwd")
-                        confirm_mdp_sup = st.text_input("Confirmer le mot de passe Administrateur", type="password", key="confirm_super_admin_pwd")
-                        if st.button("💾 Mettre à jour le mot de passe Administrateur", type="primary", use_container_width=True, key="btn_save_pwd_super_admin"):
-                            if not nouveau_mdp_sup:
-                                st.error("Le mot de passe administrateur ne peut pas être vide.")
-                            elif nouveau_mdp_sup != confirm_mdp_sup:
-                                st.error("Les deux mots de passe ne correspondent pas.")
-                            else:
-                                if sauvegarder_mot_de_passe_super_admin(nouveau_mdp_sup):
-                                    st.success("✅ Mot de passe Administrateur mis à jour avec succès !")
+                        modifier_a_pwd = st.checkbox("Modifier le mot de passe Administrateur", key="chk_mod_a_pwd")
+                        if modifier_a_pwd:
+                            nouveau_mdp_sup = st.text_input("Nouveau mot de passe Administrateur", type="password", key="new_super_admin_pwd")
+                            confirm_mdp_sup = st.text_input("Confirmer le mot de passe Administrateur", type="password", key="confirm_super_admin_pwd")
+                            if st.button("💾 Mettre à jour le mot de passe Administrateur", type="primary", use_container_width=True, key="btn_save_pwd_super_admin"):
+                                if not nouveau_mdp_sup:
+                                    st.error("Le mot de passe administrateur ne peut pas être vide.")
+                                elif nouveau_mdp_sup != confirm_mdp_sup:
+                                    st.error("Les deux mots de passe ne correspondent pas.")
                                 else:
-                                    st.error("Erreur lors de la sauvegarde.")
+                                    if sauvegarder_mot_de_passe_super_admin(nouveau_mdp_sup):
+                                        st.success("✅ Mot de passe Administrateur mis à jour avec succès !")
+                                    else:
+                                        st.error("Erreur lors de la sauvegarde.")
 
                 st.divider()
                 st.markdown("#### ☁️ Synchronisation automatique GitHub (Protection anti-veille Streamlit Cloud)")
@@ -10540,16 +10621,16 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                 )
                 tok_actuel, repo_actuel, branch_actuelle = obtenir_parametres_github()
                 if tok_actuel:
-                    st.success(f"🟢 **Synchronisation GitHub active** vers `{repo_actuel}` (branche `{branch_actuelle}`). Chaque sauvegarde de match ou de tournoi est automatiquement enregistrée sur GitHub.")
+                    st.success(f"🟢 **Synchronisation GitHub active** vers `{repo_actuel}` (branche `{branch_actuelle}`). Jeton configuré (`ghp_••••••••••••`).")
                 else:
 
                     st.warning(
 
                         "🟠 **Jeton GitHub (`GITHUB_TOKEN`) non configuré pour l'écriture distante.**\n\n"
 
-                        "Pour que Streamlit Cloud pousse automatiquement les nouveaux matchs et tournois sur GitHub avant toute mise en veille :\n"
+                        "Pour que Streamlit Cloud pousse automatiquement les nouveaux matchs et tournois sur GitHub avant toute mise en veille :\n\n"
 
-                        "1. Créez un jeton sur GitHub (*Settings → Developer settings → Personal access tokens → Tokens (classic)* avec la permission **`repo`**).\n"
+                        "1. Créez un jeton sur GitHub (*Settings → Developer settings → Personal access tokens → Tokens (classic)* avec la permission **`repo`**).\n\n"
 
                         "2. Collez-le ci-dessous **OU** dans les paramètres de votre application Streamlit Cloud (*Settings → Secrets*) sous la forme : `GITHUB_TOKEN = 'ghp_...'`"
 
@@ -10557,13 +10638,25 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
 
                 col_gh1, col_gh2 = st.columns([2, 1])
                 with col_gh1:
-                    saisie_gh_token = st.text_input(
-                        "Jeton d'accès personnel GitHub (Personal Access Token) :",
-                        value=tok_actuel,
-                        type="password",
-                        placeholder="ghp_... ou github_pat_...",
-                        key="input_gh_token_admin"
-                    )
+                    if tok_actuel:
+                        st.caption("🔑 Jeton GitHub enregistré : `ghp_••••••••••••••••••••••••`")
+                        modifier_gh_tok = st.checkbox("Modifier le jeton d'accès GitHub", key="chk_mod_gh_tok")
+                        if modifier_gh_tok:
+                            saisie_gh_token = st.text_input(
+                                "Nouveau jeton d'accès GitHub :",
+                                type="password",
+                                placeholder="ghp_... ou github_pat_...",
+                                key="input_gh_token_admin"
+                            )
+                        else:
+                            saisie_gh_token = tok_actuel
+                    else:
+                        saisie_gh_token = st.text_input(
+                            "Jeton d'accès personnel GitHub (Personal Access Token) :",
+                            type="password",
+                            placeholder="ghp_... ou github_pat_...",
+                            key="input_gh_token_admin"
+                        )
                 with col_gh2:
                     saisie_gh_repo = st.text_input(
                         "Dépôt GitHub ( propriétaire/nom ) :",
