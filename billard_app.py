@@ -8062,12 +8062,11 @@ if not est_connecte and not est_spectateur:
         with st.container(border=True):
             st.markdown("### 🔒 Accès Marqueur / Éditeur")
             st.caption("Permet la saisie des manches, la validation officielle des matchs et la gestion des tournois.")
-            with st.form("form_login_marqueur", clear_on_submit=False):
+            with st.form("form_login_marqueur", clear_on_submit=True):
                 mdp_saisi = st.text_input("Mot de passe Marqueur", type="password", key="login_pass_input", placeholder="Entrez le mot de passe marqueur...")
                 bouton_login = st.form_submit_button("🔓 Se connecter comme Marqueur", type="primary", use_container_width=True)
                 if bouton_login:
                     if verifier_mot_de_passe_admin(mdp_saisi):
-                        st.session_state["login_pass_input"] = ""
                         st.session_state["authentifie"] = True
                         st.session_state["est_admin"] = False
                         st.session_state["est_spectateur"] = False
@@ -8082,12 +8081,11 @@ if not est_connecte and not est_spectateur:
         with st.container(border=True):
             st.markdown("### 🛡️ Accès Administrateur")
             st.caption("Donne accès à la saisie ainsi qu'en exclusivité au volet **⚙️ Administration** (gestion des équipes, saisons, rectifications, sauvegardes JSON, SMTP et sécurité).")
-            with st.form("form_login_administrateur", clear_on_submit=False):
+            with st.form("form_login_administrateur", clear_on_submit=True):
                 mdp_admin_saisi = st.text_input("Mot de passe Administrateur", type="password", key="login_admin_pass_input", placeholder="Entrez le mot de passe administrateur...")
                 bouton_login_admin = st.form_submit_button("🛡️ Se connecter comme Administrateur", type="primary", use_container_width=True)
                 if bouton_login_admin:
                     if verifier_mot_de_passe_super_admin(mdp_admin_saisi):
-                        st.session_state["login_admin_pass_input"] = ""
                         st.session_state["authentifie"] = True
                         st.session_state["est_admin"] = True
                         st.session_state["est_spectateur"] = False
