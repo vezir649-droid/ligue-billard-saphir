@@ -129,9 +129,12 @@ La barre latérale **« 📋 Paramètres du Match »** regroupe tous les réglag
 ### 7. ⚙️ Espace Administration & Persistance Cloud GitHub (Anti-veille Streamlit)
 * **Onglet dédié `⚙️ Administration` (accessible uniquement via `🛡️ Accès Administrateur`) :**
   * **👥 Édition des équipes & joueurs (`equipes-saphir.csv`) :** Tableau interactif modifiable, ajout rapide d'équipe, import et export CSV.
-  * **✏️ Rectification officielle d'un match archivé :** Correction des scores ou joueurs avec motif obligatoire, bandeau de rectification sur la feuille officielle et sauvegarde de sécurité horodatée.
+  * **📝 Saisie de matchs antérieurs (Matchs en retard ou archives) :** Formulaire complet permettant d'enregistrer rétroactivement une rencontre disputée avec date, heure, composition des équipes et scores des 9 manches (selon la rotation officielle alternée). Met à jour immédiatement les classements, statistiques et déclenche la synchronisation GitHub.
+  * **✏️ Rectification ou suppression d'un match archivé :** 
+    * Correction des scores ou joueurs avec motif officiel et régénération de la feuille officielle.
+    * **🗑️ Suppression d'un match de l'historique :** Option sécurisée (accessible dans l'Administration et directement lors de la consultation d'une feuille archivée) avec confirmation, création d'une copie de sauvegarde `.bak` horodatée et synchronisation GitHub automatique.
   * **📤 Export & Sauvegarde JSON :** Envoi du bilan complet par courriel SMTP (avec `historique_matchs.json` ou `historique_tournois.json` en pièce jointe) + **téléchargement et restauration directe des fichiers JSON** en un clic.
-  * **🗓️ Nouvelle saison, 📧 Configuration SMTP & 🔑 Gestion séparée des mots de passe Marqueur et Administrateur.**
+  * **🗓️ Nouvelle saison, 📧 Configuration SMTP & 🔑 Gestion des mots de passe Marqueur et Administrateur.**
 * **☁️ Synchronisation automatique GitHub intégrale (.json & .csv) & Protection anti-veille :**
   * **Au démarrage / Réveil de l'application :** Récupération et restauration automatiques de **tous les fichiers de données JSON et CSV** depuis GitHub (`historique_matchs.json`, `historique_tournois.json`, `tournois_data.json`, `sauvegarde_saisie_secours.json`, `equipes-saphir.csv`, `config_email.json`, `config_admin.json`). Fusion intelligente sans doublon et prise en compte des dernières modifications horodatées.
   * **Lors des sauvegardes :** Envoi automatique vers GitHub de **tous les fichiers .json et .csv** dès qu'une sauvegarde est déclenchée (validation de match, mise à jour ou clôture de tournoi, modification des équipes CSV, configuration email SMTP, mots de passe, cession de main et saisie de secours).

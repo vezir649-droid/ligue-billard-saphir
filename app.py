@@ -6,7 +6,7 @@ import re
 import smtplib
 import time
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time as dt_time
 from email.mime.application import MIMEApplication
 from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
@@ -1724,6 +1724,25 @@ def sauvegarder_historique_matchs(historique_list):
         except Exception:
             st.error(f"Erreur lors de la sauvegarde de l'historique des matchs : {e}")
             return False
+
+def supprimer_match_historique(index_match):
+    """Supprime un match de l'historique officiel de manière sécurisée avec sauvegarde .bak et synchronisation GitHub."""
+    historique = charger_historique_matchs()
+    if not isinstance(historique, list) or index_match < 0 or index_match >= len(historique):
+        return False, "Index de match invalide."
+    try:
+        backup_fn = os.path.join(BASE_DIR, f"historique_backup_suppr_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
+        with open(backup_fn, "w", encoding="utf-8") as f_bk:
+            json.dump(historique, f_bk, ensure_ascii=False, indent=4)
+    except Exception:
+        pass
+
+    m_suppr = historique.pop(index_match)
+    ok = sauvegarder_historique_matchs(historique)
+    info_m = f"{m_suppr.get('receveur', '')} vs {m_suppr.get('visiteur', '')} ({m_suppr.get('date_enregistrement', m_suppr.get('date', ''))})"
+    if ok:
+        return True, f"Match {info_m} supprimé avec succès de l'historique !"
+    return False, "Erreur lors de la sauvegarde de l'historique après suppression."
 
 def verifier_match_deja_valide(equipe_rec, equipe_vis, matchs_actuels, historique):
     """Vérifie si le match actuellement affiché a déjà été validé et archivé."""
@@ -9142,7 +9161,12 @@ with tab_feuille:
             rec_slug = str(m_arch.get('receveur', 'rec')).replace(' ', '_')
             vis_slug = str(m_arch.get('visiteur', 'vis')).replace(' ', '_')
 
-            c_btn1, c_btn2, c_btn3 = st.columns([2, 1, 1])
+            if est_editeur or st.session_state.get("est_admin", False):
+                c_btn1, c_btn2, c_btn3, c_btn4 = st.columns([1.7, 0.9, 0.9, 0.9])
+            else:
+                c_btn1, c_btn2, c_btn3 = st.columns([2, 1, 1])
+                c_btn4 = None
+
             c_btn1.info("✉️ **Copie certifiée conforme :** Ce résultat correspond exactement à la feuille de match officielle transmise par courriel lors de la validation.")
             with c_btn2:
                 st.download_button(
@@ -9176,6 +9200,33 @@ with tab_feuille:
                     """,
                     height=42
                 )
+            if c_btn4 is not None:
+                with c_btn4:
+                    with st.popover("🗑️ Supprimer", use_container_width=True, help="Supprimer définitivement ce match de l'historique"):
+                        st.markdown("### ⚠️ Suppression définitive")
+                        st.write(f"Supprimer le match **{m_arch.get('receveur')}** vs **{m_arch.get('visiteur')}** ({m_arch.get('date_enregistrement', '')}) ?")
+                        st.caption("Cette action retirera le match de l'historique et recalculera les statistiques. Une sauvegarde de sécurité sera créée.")
+                        if st.button("🔴 Confirmer la suppression", type="primary", use_container_width=True, key=f"btn_del_arch_m_{date_slug}"):
+                            idx_arch = -1
+                            for idx_h, item_h in enumerate(historique_matchs):
+                                if item_h is m_arch or (
+                                    item_h.get("date_enregistrement") == m_arch.get("date_enregistrement")
+                                    and item_h.get("receveur") == m_arch.get("receveur")
+                                    and item_h.get("visiteur") == m_arch.get("visiteur")
+                                ):
+                                    idx_arch = idx_h
+                                    break
+                            if idx_arch >= 0:
+                                ok_del, msg_del = supprimer_match_historique(idx_arch)
+                                if ok_del:
+                                    st.session_state["choix_match_vue"] = label_direct
+                                    st.success("✅ Match supprimé de l'historique !")
+                                    time.sleep(0.8)
+                                    st.rerun()
+                                else:
+                                    st.error(msg_del)
+                            else:
+                                st.error("Match introuvable dans l'historique.")
 
             # Option d'envoi par courriel à une adresse saisie dans un champ adjacent
             col_m_input, col_m_btn = st.columns([3, 1])
@@ -9982,10 +10033,11 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
         st.markdown("### ⚙️ Espace Administration de la Ligue")
         st.caption("Gérez la composition officielle des équipes, rectifiez un match archivé, démarrez une nouvelle saison ou configurez la messagerie SMTP et la sécurité.")
         if True:
-            tab_equipes, tab_saison, tab_rectif, tab_export, tab_smtp, tab_secu = st.tabs([
+            tab_equipes, tab_saisie_ant, tab_rectif, tab_saison, tab_export, tab_smtp, tab_secu = st.tabs([
                 "👥 Édition des équipes & joueurs",
+                "📝 Saisie d'un match antérieur",
+                "✏️ Rectifier ou supprimer un match",
                 "🗓️ Démarrer une nouvelle saison",
-                "✏️ Rectifier un match archivé",
                 "📤 Envoyer l'historique complet",
                 "📧 Configuration SMTP",
                 "🔑 Mot de passe d'accès"
@@ -10166,6 +10218,188 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                         except Exception as e_hist:
                             st.error(f"Erreur lors de la suppression de l'historique : {e_hist}")
 
+            with tab_saisie_ant:
+                st.markdown("#### 📝 Saisie d'un match antérieur (Match en retard ou archive)")
+                st.caption("Enregistrez un match officiel disputé antérieurement directement dans l'historique de la saison. Les classements, statistiques et synchronisations GitHub seront mis à jour automatiquement.")
+
+                eq_dispo = charger_equipes_csv()
+                noms_eq = list(eq_dispo.keys())
+
+                col_ant_d1, col_ant_d2 = st.columns(2)
+                with col_ant_d1:
+                    date_ant_saisie = st.date_input("Date du match disputé :", value=datetime.today(), key="ant_date_input")
+                with col_ant_d2:
+                    heure_ant_saisie = st.time_input("Heure du match :", value=dt_time(19, 0), key="ant_time_input")
+
+                date_ant_str = f"{date_ant_saisie.strftime('%d/%m/%Y')} à {heure_ant_saisie.strftime('%H:%M')}"
+
+                col_ant_eq1, col_ant_eq2 = st.columns(2)
+                with col_ant_eq1:
+                    st.markdown("##### 🏠 Équipe Receveuse")
+                    opt_rec = noms_eq + ["Autre / Personnalisée"]
+                    sel_rec = st.selectbox("Sélectionner l'équipe receveuse :", opt_rec, index=0, key="ant_sel_rec")
+                    if sel_rec == "Autre / Personnalisée":
+                        eq_rec_ant = st.text_input("Nom de l'équipe receveuse :", value="Équipe 1", key="ant_cust_rec").strip()
+                    else:
+                        eq_rec_ant = sel_rec
+
+                with col_ant_eq2:
+                    st.markdown("##### 🚗 Équipe Visiteuse")
+                    opt_vis = [e for e in opt_rec if e != sel_rec] or opt_rec
+                    def_vis_idx = 1 if len(opt_vis) > 1 else 0
+                    sel_vis = st.selectbox("Sélectionner l'équipe visiteuse :", opt_vis, index=def_vis_idx, key="ant_sel_vis")
+                    if sel_vis == "Autre / Personnalisée":
+                        eq_vis_ant = st.text_input("Nom de l'équipe visiteuse :", value="Équipe 2", key="ant_cust_vis").strip()
+                    else:
+                        eq_vis_ant = sel_vis
+
+                # Roster des joueurs par défaut
+                roster_rec_def = list(eq_dispo.get(eq_rec_ant, ["Joueur 1", "Joueur 2", "Joueur 3"]))
+                while len(roster_rec_def) < 3:
+                    roster_rec_def.append(f"Joueur {len(roster_rec_def)+1}")
+
+                roster_vis_def = list(eq_dispo.get(eq_vis_ant, ["Joueur 1", "Joueur 2", "Joueur 3"]))
+                while len(roster_vis_def) < 3:
+                    roster_vis_def.append(f"Joueur {len(roster_vis_def)+1}")
+
+                st.markdown("##### 👥 Alignement des 3 joueurs par équipe")
+                col_j_r, col_j_v = st.columns(2)
+                with col_j_r:
+                    st.markdown(f"**Joueurs — {eq_rec_ant} :**")
+                    j1_r_ant = st.text_input(f"Joueur 1 ({eq_rec_ant}) :", value=roster_rec_def[0], key="ant_j1_rec")
+                    j2_r_ant = st.text_input(f"Joueur 2 ({eq_rec_ant}) :", value=roster_rec_def[1], key="ant_j2_rec")
+                    j3_r_ant = st.text_input(f"Joueur 3 ({eq_rec_ant}) :", value=roster_rec_def[2], key="ant_j3_rec")
+
+                with col_j_v:
+                    st.markdown(f"**Joueurs — {eq_vis_ant} :**")
+                    j1_v_ant = st.text_input(f"Joueur 1 ({eq_vis_ant}) :", value=roster_vis_def[0], key="ant_j1_vis")
+                    j2_v_ant = st.text_input(f"Joueur 2 ({eq_vis_ant}) :", value=roster_vis_def[1], key="ant_j2_vis")
+                    j3_v_ant = st.text_input(f"Joueur 3 ({eq_vis_ant}) :", value=roster_vis_def[2], key="ant_j3_vis")
+
+                dict_joueurs_ant = {
+                    "j1_rec": {"nom": j1_r_ant.strip() or "Joueur 1", "equipe": eq_rec_ant, "present": True, "pts_absent": 0, "moyenne": 0.0},
+                    "j2_rec": {"nom": j2_r_ant.strip() or "Joueur 2", "equipe": eq_rec_ant, "present": True, "pts_absent": 0, "moyenne": 0.0},
+                    "j3_rec": {"nom": j3_r_ant.strip() or "Joueur 3", "equipe": eq_rec_ant, "present": True, "pts_absent": 0, "moyenne": 0.0},
+                    "j1_vis": {"nom": j1_v_ant.strip() or "Joueur 1", "equipe": eq_vis_ant, "present": True, "pts_absent": 0, "moyenne": 0.0},
+                    "j2_vis": {"nom": j2_v_ant.strip() or "Joueur 2", "equipe": eq_vis_ant, "present": True, "pts_absent": 0, "moyenne": 0.0},
+                    "j3_vis": {"nom": j3_v_ant.strip() or "Joueur 3", "equipe": eq_vis_ant, "present": True, "pts_absent": 0, "moyenne": 0.0},
+                }
+
+                # Grille de pointage des 9 manches selon rotation officielle
+                st.markdown("##### 🎯 Pointage des 9 manches (Rotation officielle 3 contre 3)")
+                st.caption("Pointage libre de **0 à 8 points** par joueur (sans obligation d'un score de 8).")
+
+                manches_ant = {}
+                pts_joueurs_ant = {k: 0 for k in dict_joueurs_ant}
+
+                matchs_pairs_ant = [
+                    (1, "j1_rec", "j1_vis"),
+                    (2, "j2_rec", "j2_vis"),
+                    (3, "j3_rec", "j3_vis"),
+                    (4, "j1_rec", "j2_vis"),
+                    (5, "j2_rec", "j3_vis"),
+                    (6, "j3_rec", "j1_vis"),
+                    (7, "j1_rec", "j3_vis"),
+                    (8, "j2_rec", "j1_vis"),
+                    (9, "j3_rec", "j2_vis")
+                ]
+
+                for num_m, id_a, id_b in matchs_pairs_ant:
+                    nom_a = dict_joueurs_ant[id_a]["nom"]
+                    nom_b = dict_joueurs_ant[id_b]["nom"]
+
+                    with st.container(border=True):
+                        col_m_lbl, col_m_ja, col_m_sa, col_m_sb, col_m_jb = st.columns([1, 2, 1, 1, 2])
+                        col_m_lbl.markdown(f"**Manche {num_m}**")
+                        col_m_ja.markdown(f"`{nom_a}` *({eq_rec_ant})*")
+                        sa_in = col_m_sa.number_input(f"Score {nom_a} (M{num_m})", min_value=0, max_value=8, value=0, key=f"ant_sa_{num_m}")
+                        sb_in = col_m_sb.number_input(f"Score {nom_b} (M{num_m})", min_value=0, max_value=8, value=0, key=f"ant_sb_{num_m}")
+                        col_m_jb.markdown(f"`{nom_b}` *({eq_vis_ant})*")
+
+                        manches_ant[str(num_m)] = {
+                            "score_a": int(sa_in),
+                            "score_b": int(sb_in),
+                            "joueur_a": nom_a,
+                            "joueur_b": nom_b,
+                            "joueur_a_absent": False,
+                            "joueur_b_absent": False
+                        }
+                        pts_joueurs_ant[id_a] += int(sa_in)
+                        pts_joueurs_ant[id_b] += int(sb_in)
+
+                tot_rec_ant = sum(m["score_a"] for m in manches_ant.values())
+                tot_vis_ant = sum(m["score_b"] for m in manches_ant.values())
+
+                st.markdown(f"#### 🏆 Score final calculé : `{eq_rec_ant}` **{tot_rec_ant}** — **{tot_vis_ant}** `{eq_vis_ant}`")
+
+                # Approbateurs
+                col_app_r, col_app_v = st.columns(2)
+                with col_app_r:
+                    app_rec_ant = st.selectbox("Approbateur officiel (Receveur) :", [dict_joueurs_ant[k]["nom"] for k in ["j1_rec", "j2_rec", "j3_rec"]], key="ant_app_rec")
+                with col_app_v:
+                    app_vis_ant = st.selectbox("Approbateur officiel (Visiteur) :", [dict_joueurs_ant[k]["nom"] for k in ["j1_vis", "j2_vis", "j3_vis"]], key="ant_app_vis")
+
+                envoyer_courriel_ant = st.checkbox("📧 Envoyer la feuille de match par courriel aux administrateurs", value=False, key="ant_check_mail")
+
+                if st.button("💾 Enregistrer ce match antérieur dans l'historique", type="primary", use_container_width=True, key="btn_save_ant_match"):
+                    if eq_rec_ant == eq_vis_ant:
+                        st.error("❌ L'équipe receveuse et l'équipe visiteuse doivent être différentes.")
+                    else:
+                        # Génération du résumé texte et HTML officiel
+                        txt_ant, html_ant = generer_resume_match(
+                            eq_rec_ant,
+                            eq_vis_ant,
+                            manches_ant,
+                            tot_rec_ant,
+                            tot_vis_ant,
+                            pts_joueurs_ant,
+                            dict_joueurs_ant,
+                            date_ant_str,
+                            approbateur_rec=app_rec_ant,
+                            approbateur_vis=app_vis_ant
+                        )
+
+                        nouveau_match_ant = {
+                            "date": date_ant_str,
+                            "date_enregistrement": date_ant_str,
+                            "receveur": eq_rec_ant,
+                            "visiteur": eq_vis_ant,
+                            "total_receveur": tot_rec_ant,
+                            "total_visiteur": tot_vis_ant,
+                            "approbateur_receveur": app_rec_ant,
+                            "approbateur_visiteur": app_vis_ant,
+                            "points_par_joueur": {
+                                p_id: {
+                                    "nom": dict_joueurs_ant[p_id]["nom"],
+                                    "equipe": dict_joueurs_ant[p_id]["equipe"],
+                                    "points": pts_joueurs_ant[p_id],
+                                    "present": True,
+                                    "moyenne": 0.0
+                                }
+                                for p_id in dict_joueurs_ant
+                            },
+                            "matchs": manches_ant,
+                            "html_officiel": html_ant,
+                            "saisi_comme_anterieur": True
+                        }
+
+                        hist_actuel = charger_historique_matchs()
+                        hist_actuel.append(nouveau_match_ant)
+                        sauvegarder_historique_matchs(hist_actuel)
+
+                        st.success(f"✅ Match antérieur {eq_rec_ant} ({tot_rec_ant}) vs {eq_vis_ant} ({tot_vis_ant}) du {date_ant_str} enregistré avec succès dans l'historique !")
+
+                        if envoyer_courriel_ant:
+                            cfg_em = charger_config_email()
+                            dests = cfg_em.get("destinataires", "").strip()
+                            if dests:
+                                sujet_ant = f"🎱 [MATCH ANTÉRIEUR] Ligue de billard : {eq_rec_ant} ({tot_rec_ant}) vs {eq_vis_ant} ({tot_vis_ant}) - {date_ant_str}"
+                                envoyer_courriel(dests, sujet_ant, txt_ant, html_ant, cfg_em, pieces_jointes=[HISTORIQUE_FILE] if os.path.exists(HISTORIQUE_FILE) else None)
+                                st.info(f"✉️ Courriel officiel transmis à `{dests}`.")
+
+                        time.sleep(1.2)
+                        st.rerun()
+
             with tab_rectif:
                 st.markdown("#### ✏️ Rectifier un match archivé")
                 st.caption("Permet de corriger une erreur de score ou de joueur sur un match passé. Une copie de sauvegarde automatique de l'historique est effectuée avant chaque modification.")
@@ -10199,7 +10433,7 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                     if m_sel.get("date_rectification"):
                         st.warning(f"ℹ️ Ce match a déjà été rectifié le **{m_sel.get('date_rectification')}** (Motif : *{m_sel.get('motif_rectification')}*).")
 
-                    col_mot1, col_mot2 = st.columns([2, 1])
+                    col_mot1, col_mot2, col_mot_del = st.columns([2, 1, 1])
                     with col_mot1:
                         motif_saisi = st.text_input(
                             "Motif officiel de la rectification :",
@@ -10208,11 +10442,24 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                         )
                     with col_mot2:
                         envoyer_mail_rectif = st.checkbox(
-                            "📧 Envoyer courriel rectificatif",
+                            "📧 Envoyer rectificatif",
                             value=bool(config_email.get("destinataires")),
                             key=f"check_mail_rect_{idx_sel}",
                             help="Transmet la feuille rectifiée aux destinataires configurés"
                         )
+                    with col_mot_del:
+                        with st.popover("🗑️ Supprimer ce match", use_container_width=True, help="Supprimer définitivement ce match de l'historique"):
+                            st.markdown("### ⚠️ Suppression définitive")
+                            st.write(f"Supprimer le match **#{idx_sel+1}** : **{rec_sel}** vs **{vis_sel}** ({date_sel}) ?")
+                            st.caption("Cette action est irréversible. Une sauvegarde automatique sera créée.")
+                            if st.button("🔴 Confirmer la suppression", type="primary", use_container_width=True, key=f"btn_del_match_rect_{idx_sel}"):
+                                ok_del_r, msg_del_r = supprimer_match_historique(idx_sel)
+                                if ok_del_r:
+                                    st.success(msg_del_r)
+                                    time.sleep(0.8)
+                                    st.rerun()
+                                else:
+                                    st.error(msg_del_r)
 
                     if envoyer_mail_rectif:
                         dest_rectif_input = st.text_input(
