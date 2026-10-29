@@ -10337,15 +10337,16 @@ with tab_feuille:
             calc_sc_b = calculer_score_absent(moy_b_val)
 
             status_label = ""
-            if not a_pres or not b_pres:
+            manche_forfait = (not a_pres or not b_pres)
+            if manche_forfait:
                 init_val_a = calc_sc_a
                 init_val_b = calc_sc_b
                 if not a_pres and not b_pres:
-                    status_label = f" ❌ (2 absents : {calc_sc_a} pts vs {calc_sc_b} pts)"
+                    status_label = f" 🔒 (2 absents : {calc_sc_a} pts vs {calc_sc_b} pts - Verrouillé)"
                 elif not a_pres:
-                    status_label = f" ❌ ({joueur_a} absent : {calc_sc_a} pts vs {joueur_b} {calc_sc_b} pts selon moyennes)"
+                    status_label = f" 🔒 ({joueur_a} absent : {calc_sc_a} pts vs {joueur_b} {calc_sc_b} pts selon moyennes - Verrouillé)"
                 else:
-                    status_label = f" ❌ ({joueur_b} absent : {calc_sc_b} pts vs {joueur_a} {calc_sc_a} pts selon moyennes)"
+                    status_label = f" 🔒 ({joueur_b} absent : {calc_sc_b} pts vs {joueur_a} {calc_sc_a} pts selon moyennes - Verrouillé)"
             else:
                 init_val_a = 0
                 init_val_b = 0
@@ -10356,10 +10357,14 @@ with tab_feuille:
 
                 options_scores = [0, 1, 2, 3, 4, 5, 6, 7, 8]
 
-                if f"s_a_{num_manche}" not in st.session_state:
+                if manche_forfait:
                     st.session_state[f"s_a_{num_manche}"] = max(0, min(8, int(init_val_a)))
-                if f"s_b_{num_manche}" not in st.session_state:
                     st.session_state[f"s_b_{num_manche}"] = max(0, min(8, int(init_val_b)))
+                else:
+                    if f"s_a_{num_manche}" not in st.session_state:
+                        st.session_state[f"s_a_{num_manche}"] = 0
+                    if f"s_b_{num_manche}" not in st.session_state:
+                        st.session_state[f"s_b_{num_manche}"] = 0
 
                 cur_sa = int(st.session_state.get(f"s_a_{num_manche}", init_val_a))
                 if cur_sa not in options_scores:
@@ -10371,28 +10376,31 @@ with tab_feuille:
                     cur_sb = max(0, min(8, cur_sb))
                 idx_sb = options_scores.index(cur_sb)
 
+                disabled_a = (not est_editeur) or manche_forfait
+                disabled_b = (not est_editeur) or manche_forfait
+
                 with c1:
-                    badge_lbl_a = f" [Absent : {init_val_a} pts]" if not a_pres else (f" [Score calculé selon moyenne : {init_val_a} pts]" if not b_pres else "")
+                    badge_lbl_a = f" [Absent : {init_val_a} pts 🔒]" if not a_pres else (f" [Score calculé selon moyenne : {init_val_a} pts 🔒]" if not b_pres else "")
                     label_champ_a = f"🔵 Points de {joueur_a} ({equipe_receveur}){badge_lbl_a}"
                     score_a = int(st.selectbox(
                         label_champ_a, 
                         options=options_scores,
                         index=idx_sa,
                         key=f"s_a_{num_manche}",
-                        disabled=not est_editeur,
-                        help="Sélectionnez le score de la manche (0 à 8). Vous pouvez modifier librement le score calculé."
+                        disabled=disabled_a,
+                        help="🔒 Score verrouillé calculé automatiquement selon la moyenne en raison d'une absence." if manche_forfait else "Sélectionnez le score de la manche (0 à 8)."
                     ))
 
                 with c2:
-                    badge_lbl_b = f" [Absent : {init_val_b} pts]" if not b_pres else (f" [Score calculé selon moyenne : {init_val_b} pts]" if not a_pres else "")
+                    badge_lbl_b = f" [Absent : {init_val_b} pts 🔒]" if not b_pres else (f" [Score calculé selon moyenne : {init_val_b} pts 🔒]" if not a_pres else "")
                     label_champ_b = f"🟠 Points de {joueur_b} ({equipe_visiteur}){badge_lbl_b}"
                     score_b = int(st.selectbox(
                         label_champ_b, 
                         options=options_scores,
                         index=idx_sb,
                         key=f"s_b_{num_manche}",
-                        disabled=not est_editeur,
-                        help="Sélectionnez le score de la manche (0 à 8). Vous pouvez modifier librement le score calculé."
+                        disabled=disabled_b,
+                        help="🔒 Score verrouillé calculé automatiquement selon la moyenne en raison d'une absence." if manche_forfait else "Sélectionnez le score de la manche (0 à 8)."
                     ))
             
                 # Retour visuel immédiat (résultat permis sans obligation d'un score de 8)
@@ -11352,18 +11360,25 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                     sc_calc_b = calculer_score_absent(moy_b_ant)
 
                     status_abs = ""
-                    if not a_pres or not b_pres:
+                    manche_forfait_ant = (not a_pres or not b_pres)
+                    if manche_forfait_ant:
                         init_sa = sc_calc_a
                         init_sb = sc_calc_b
+                        st.session_state[f"ant_sa_{num_m}"] = max(0, min(8, int(init_sa)))
+                        st.session_state[f"ant_sb_{num_m}"] = max(0, min(8, int(init_sb)))
                         if not a_pres and not b_pres:
-                            status_abs = f" ❌ (2 absents : {sc_calc_a} pts vs {sc_calc_b} pts)"
+                            status_abs = f" 🔒 (2 absents : {sc_calc_a} pts vs {sc_calc_b} pts - Verrouillé)"
                         elif not a_pres:
-                            status_abs = f" ❌ ({nom_a} absent : {sc_calc_a} pts vs {nom_b} {sc_calc_b} pts selon moyennes)"
+                            status_abs = f" 🔒 ({nom_a} absent : {sc_calc_a} pts vs {nom_b} {sc_calc_b} pts selon moyennes - Verrouillé)"
                         else:
-                            status_abs = f" ❌ ({nom_b} absent : {sc_calc_b} pts vs {nom_a} {sc_calc_a} pts selon moyennes)"
+                            status_abs = f" 🔒 ({nom_b} absent : {sc_calc_b} pts vs {nom_a} {sc_calc_a} pts selon moyennes - Verrouillé)"
                     else:
                         init_sa = 0
                         init_sb = 0
+                        if f"ant_sa_{num_m}" not in st.session_state:
+                            st.session_state[f"ant_sa_{num_m}"] = 0
+                        if f"ant_sb_{num_m}" not in st.session_state:
+                            st.session_state[f"ant_sb_{num_m}"] = 0
 
                     options_scores = [0, 1, 2, 3, 4, 5, 6, 7, 8]
                     cur_sa_ant = int(st.session_state.get(f"ant_sa_{num_m}", init_sa))
@@ -11379,11 +11394,11 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                     with st.container(border=True):
                         col_m_lbl, col_m_ja, col_m_sa, col_m_sb, col_m_jb = st.columns([1.2, 1.8, 1, 1, 1.8])
                         col_m_lbl.markdown(f"**Manche {num_m}**{status_abs}")
-                        lbl_a = f"`{nom_a}`" + (" *(Absent)*" if not a_pres else "")
-                        lbl_b = f"`{nom_b}`" + (" *(Absent)*" if not b_pres else "")
+                        lbl_a = f"`{nom_a}`" + (" *(Absent 🔒)*" if not a_pres else (" *(Moyenne 🔒)*" if not b_pres else ""))
+                        lbl_b = f"`{nom_b}`" + (" *(Absent 🔒)*" if not b_pres else (" *(Moyenne 🔒)*" if not a_pres else ""))
                         col_m_ja.markdown(f"{lbl_a} *({eq_rec_ant})*")
-                        sa_in = col_m_sa.selectbox(f"Score {nom_a} (M{num_m})", options=options_scores, index=idx_sa_ant, key=f"ant_sa_{num_m}")
-                        sb_in = col_m_sb.selectbox(f"Score {nom_b} (M{num_m})", options=options_scores, index=idx_sb_ant, key=f"ant_sb_{num_m}")
+                        sa_in = col_m_sa.selectbox(f"Score {nom_a} (M{num_m})", options=options_scores, index=idx_sa_ant, key=f"ant_sa_{num_m}", disabled=manche_forfait_ant, help="🔒 Score verrouillé pour cause d'absence" if manche_forfait_ant else None)
+                        sb_in = col_m_sb.selectbox(f"Score {nom_b} (M{num_m})", options=options_scores, index=idx_sb_ant, key=f"ant_sb_{num_m}", disabled=manche_forfait_ant, help="🔒 Score verrouillé pour cause d'absence" if manche_forfait_ant else None)
                         col_m_jb.markdown(f"{lbl_b} *({eq_vis_ant})*")
 
                         manches_ant[str(num_m)] = {
