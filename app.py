@@ -81,6 +81,7 @@ CONFIG_EMAIL_FILE = get_data_path("config_email.json")
 ADMIN_CONFIG_FILE = get_data_path("config_admin.json")
 EQUIPES_CSV_FILE = get_data_path("equipes-saphir.csv")
 JOUEURS_CSV_FILE = get_data_path("joueurs_stats.csv")
+HORAIRE_SAPHIR_FILE = get_data_path("horaire_saphir.json")
 ARMOIRIES_FILE = find_armoiries_path()
 LOCK_FILE = get_data_path("session_lock.json")
 LOCK_TIMEOUT = 900  # 15 minutes d'inactivité avant libération automatique
@@ -1811,10 +1812,37 @@ def parser_ligne_horaire_match(cell_text):
         }
     return None
 
-def determiner_match_du_jour(lignes_horaire, date_ref=None):
+def charger_horaire_json():
+    """Charge le calendrier des rencontres depuis le fichier local horaire_saphir.json."""
+    if os.path.exists(HORAIRE_SAPHIR_FILE):
+        try:
+            with open(HORAIRE_SAPHIR_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, list) and data:
+                    return data
+        except Exception:
+            pass
+    return []
+
+def sauvegarder_horaire_json(lignes_horaire):
+    """Enregistre le calendrier des rencontres dans horaire_saphir.json."""
+    if not lignes_horaire:
+        return
+    try:
+        with open(HORAIRE_SAPHIR_FILE, "w", encoding="utf-8") as f:
+            json.dump(lignes_horaire, f, indent=2, ensure_ascii=False)
+    except Exception:
+        pass
+
+def determiner_match_du_jour(lignes_horaire=None, date_ref=None):
     """Identifie la rencontre officielle programmée pour la date du jour selon l'horaire de saphirbillard.com."""
+    if not lignes_horaire:
+        lignes_horaire = charger_horaire_json()
     if date_ref is None:
         date_ref = datetime.today()
+
+    mois_fr = {1: "janvier", 2: "février", 3: "mars", 4: "avril", 5: "mai", 6: "juin",
+               7: "juillet", 8: "août", 9: "septembre", 10: "octobre", 11: "novembre", 12: "décembre"}
 
     tous_matchs = []
     for row in (lignes_horaire or []):
@@ -1832,7 +1860,8 @@ def determiner_match_du_jour(lignes_horaire, date_ref=None):
                 "receveur": m["receveur"],
                 "visiteur": m["visiteur"],
                 "texte": m["texte"],
-                "est_aujourdhui": True
+                "est_aujourdhui": True,
+                "date_texte": f"{m['jour']} {mois_fr.get(m['mois'], '')}"
             }
 
     # 2. Sinon, le prochain match dans le calendrier
@@ -1843,7 +1872,8 @@ def determiner_match_du_jour(lignes_horaire, date_ref=None):
             "receveur": p["receveur"],
             "visiteur": p["visiteur"],
             "texte": p["texte"],
-            "est_aujourdhui": False
+            "est_aujourdhui": False,
+            "date_texte": f"{p['jour']} {mois_fr.get(p['mois'], '')}"
         }
     elif tous_matchs:
         dernier = tous_matchs[-1]
@@ -1851,39 +1881,106 @@ def determiner_match_du_jour(lignes_horaire, date_ref=None):
             "receveur": dernier["receveur"],
             "visiteur": dernier["visiteur"],
             "texte": dernier["texte"],
-            "est_aujourdhui": False
+            "est_aujourdhui": False,
+            "date_texte": f"{dernier['jour']} {mois_fr.get(dernier['mois'], '')}"
         }
     return None
 
+def appliquer_match_du_jour(rencontre=None, forcer=False):
+    """Configure automatiquement les équipes receveuse et visiteuse ainsi que leurs joueurs et moyennes selon l'horaire."""
+    if rencontre is None:
+        rencontre = determiner_match_du_jour()
+    if not rencontre:
+        return False
+
+    eq_rec = rencontre.get("receveur", "")
+    eq_vis = rencontre.get("visiteur", "")
+    if not eq_rec or not eq_vis:
+        return False
+
+    equipes = charger_equipes_csv()
+    roster_r = equipes.get(eq_rec, ["Joueur 1", "Joueur 2", "Joueur 3"])
+    roster_v = equipes.get(eq_vis, ["Joueur 1", "Joueur 2", "Joueur 3"])
+
+    # 1. Équipes
+    st.session_state["sel_equipe_rec"] = eq_rec
+    st.session_state["sel_equipe_vis"] = eq_vis
+    st.session_state["track_choix_rec"] = eq_rec
+    st.session_state["track_choix_vis"] = eq_vis
+
+    # 2. Joueurs Receveurs
+    if len(roster_r) >= 1:
+        st.session_state["sel_j1_rec"] = roster_r[0]
+        st.session_state["last_nom_j1_rec"] = roster_r[0]
+        st.session_state["moy_j1_rec"] = obtenir_moyenne_joueur(roster_r[0])
+        st.session_state["pts_j1_rec"] = calculer_score_absent(st.session_state["moy_j1_rec"])
+        st.session_state["pres_j1_rec"] = True
+    if len(roster_r) >= 2:
+        st.session_state["sel_j2_rec"] = roster_r[1]
+        st.session_state["last_nom_j2_rec"] = roster_r[1]
+        st.session_state["moy_j2_rec"] = obtenir_moyenne_joueur(roster_r[1])
+        st.session_state["pts_j2_rec"] = calculer_score_absent(st.session_state["moy_j2_rec"])
+        st.session_state["pres_j2_rec"] = True
+    if len(roster_r) >= 3:
+        st.session_state["last_nom_j3_rec"] = roster_r[2]
+        st.session_state["moy_j3_rec"] = obtenir_moyenne_joueur(roster_r[2])
+        st.session_state["pts_j3_rec"] = calculer_score_absent(st.session_state["moy_j3_rec"])
+        st.session_state["pres_j3_rec"] = True
+
+    # 3. Joueurs Visiteurs
+    if len(roster_v) >= 1:
+        st.session_state["sel_j1_vis"] = roster_v[0]
+        st.session_state["last_nom_j1_vis"] = roster_v[0]
+        st.session_state["moy_j1_vis"] = obtenir_moyenne_joueur(roster_v[0])
+        st.session_state["pts_j1_vis"] = calculer_score_absent(st.session_state["moy_j1_vis"])
+        st.session_state["pres_j1_vis"] = True
+    if len(roster_v) >= 2:
+        st.session_state["sel_j2_vis"] = roster_v[1]
+        st.session_state["last_nom_j2_vis"] = roster_v[1]
+        st.session_state["moy_j2_vis"] = obtenir_moyenne_joueur(roster_v[1])
+        st.session_state["pts_j2_vis"] = calculer_score_absent(st.session_state["moy_j2_vis"])
+        st.session_state["pres_j2_vis"] = True
+    if len(roster_v) >= 3:
+        st.session_state["last_nom_j3_vis"] = roster_v[2]
+        st.session_state["moy_j3_vis"] = obtenir_moyenne_joueur(roster_v[2])
+        st.session_state["pts_j3_vis"] = calculer_score_absent(st.session_state["moy_j3_vis"])
+        st.session_state["pres_j3_vis"] = True
+
+    st.session_state["match_du_jour_applique_date"] = datetime.today().strftime("%Y-%m-%d")
+    return True
+
 def initialiser_donnees_saphir_au_demarrage():
-    """Au démarrage de l'application, extrait les données en arrière-plan sans les présenter,
-    met à jour joueurs_stats.csv et configure automatiquement les équipes du jour selon l'horaire officiel."""
+    """Au démarrage de l'application, applique immédiatement le match du jour selon l'horaire
+    et synchronise silencieusement les données depuis saphirbillard.com en arrière-plan."""
+    today_key = datetime.today().strftime("%Y-%m-%d")
+    if st.session_state.get("match_du_jour_applique_date") != today_key:
+        rencontre = determiner_match_du_jour()
+        if rencontre:
+            # On applique automatiquement si aucun point n'a encore été entré
+            scores_entames = any(int(st.session_state.get(f"s_a_{m}", 0)) > 0 or int(st.session_state.get(f"s_b_{m}", 0)) > 0 for m in range(1, 10))
+            if not scores_entames:
+                appliquer_match_du_jour(rencontre, forcer=True)
+
     if st.session_state.get("saphir_demarrage_effectue", False):
         return
-
     st.session_state["saphir_demarrage_effectue"] = True
 
-    try:
-        donnees = extraire_donnees_saphirbillard()
-        if donnees and donnees.get("succes"):
-            # 1. Enregistre le fichier CSV des joueurs avec nom, pointage et moyenne
-            sauvegarder_joueurs_stats_csv(donnees.get("joueurs", []), donnees.get("equipes", []))
+    def _sync_bg():
+        try:
+            donnees = extraire_donnees_saphirbillard()
+            if donnees and donnees.get("succes"):
+                sauvegarder_joueurs_stats_csv(donnees.get("joueurs", []), donnees.get("equipes", []))
+                eq_dict = {e["equipe"]: e["joueurs"] for e in donnees.get("equipes", []) if e.get("equipe") and e.get("joueurs")}
+                if eq_dict:
+                    sauvegarder_equipes_csv(eq_dict)
+                if donnees.get("horaire"):
+                    sauvegarder_horaire_json(donnees.get("horaire"))
+        except Exception:
+            pass
 
-            # 2. Met à jour equipes-saphir.csv
-            eq_dict = {e["equipe"]: e["joueurs"] for e in donnees.get("equipes", []) if e.get("equipe") and e.get("joueurs")}
-            if eq_dict:
-                sauvegarder_equipes_csv(eq_dict)
-
-            # 3. Identifie le match selon l'horaire et la date du jour
-            rencontre = determiner_match_du_jour(donnees.get("horaire", []))
-            if rencontre:
-                st.session_state["saphir_match_jour"] = rencontre
-                if "sel_equipe_rec" not in st.session_state:
-                    st.session_state["sel_equipe_rec"] = rencontre["receveur"]
-                if "sel_equipe_vis" not in st.session_state:
-                    st.session_state["sel_equipe_vis"] = rencontre["visiteur"]
-    except Exception:
-        pass
+    import threading
+    t = threading.Thread(target=_sync_bg, daemon=True)
+    t.start()
 
 def extraire_donnees_saphirbillard():
     """Extrait en direct les données du site officiel https://saphirbillard.com (joueurs, moyennes, équipes, horaire)."""
@@ -8911,6 +9008,16 @@ with tab_feuille:
 
     # --- BARRE LATÉRALE : SÉLECTION DU MATCH ET JOUEURS ---
     st.sidebar.header("📋 Paramètres du Match")
+    rencontre_active = determiner_match_du_jour()
+    if rencontre_active:
+        tag_match = "Aujourd'hui" if rencontre_active.get("est_aujourdhui") else f"Prévu ({rencontre_active.get('date_texte', '')})"
+        with st.sidebar.container(border=True):
+            st.markdown(f"**📅 Match du jour — {tag_match}**")
+            st.markdown(f"🔵 **{rencontre_active['receveur']}** *(Receveur)*<br>vs 🟠 **{rencontre_active['visiteur']}** *(Visiteur)*", unsafe_allow_html=True)
+            if st.button("🔄 Charger le match du jour et alignements", key="btn_apply_match_jour_sb", use_container_width=True, help="Configure automatiquement les équipes et les joueurs selon l'horaire officiel"):
+                appliquer_match_du_jour(rencontre_active, forcer=True)
+                st.rerun()
+
     with st.sidebar.expander("🌐 Consulter https://saphirbillard.com", expanded=False):
         st.caption("Consultez en direct les joueurs, moyennes, équipes et l'horaire officiel extraits de https://saphirbillard.com.")
         if st.button("🔍 Extraire les données du site", key="btn_sb_extract_saphir", use_container_width=True):
@@ -9284,6 +9391,26 @@ with tab_feuille:
             if "sel_equipe_rec" in st.session_state and st.session_state["sel_equipe_rec"] in options_rec:
                 def_idx_rec = options_rec.index(st.session_state["sel_equipe_rec"])
             choix_rec = st.selectbox("Équipe Receveuse :", options_rec, index=def_idx_rec, key="sel_equipe_rec", disabled=not est_editeur)
+            if "track_choix_rec" not in st.session_state:
+                st.session_state["track_choix_rec"] = choix_rec
+            elif st.session_state["track_choix_rec"] != choix_rec:
+                st.session_state["track_choix_rec"] = choix_rec
+                if choix_rec in equipes_disponibles:
+                    r_rec = equipes_disponibles[choix_rec]
+                    if len(r_rec) >= 1:
+                        st.session_state["sel_j1_rec"] = r_rec[0]
+                        st.session_state["last_nom_j1_rec"] = r_rec[0]
+                        st.session_state["moy_j1_rec"] = obtenir_moyenne_joueur(r_rec[0])
+                        st.session_state["pts_j1_rec"] = calculer_score_absent(st.session_state["moy_j1_rec"])
+                    if len(r_rec) >= 2:
+                        st.session_state["sel_j2_rec"] = r_rec[1]
+                        st.session_state["last_nom_j2_rec"] = r_rec[1]
+                        st.session_state["moy_j2_rec"] = obtenir_moyenne_joueur(r_rec[1])
+                        st.session_state["pts_j2_rec"] = calculer_score_absent(st.session_state["moy_j2_rec"])
+                    if len(r_rec) >= 3:
+                        st.session_state["last_nom_j3_rec"] = r_rec[2]
+                        st.session_state["moy_j3_rec"] = obtenir_moyenne_joueur(r_rec[2])
+                        st.session_state["pts_j3_rec"] = calculer_score_absent(st.session_state["moy_j3_rec"])
 
             if choix_rec == "Autre / Personnalisée":
                 equipe_receveur = st.text_input("Nom équipe receveuse", value=st.session_state.get("input_custom_rec", "Équipe 1"), key="input_custom_rec", disabled=not est_editeur)
@@ -9424,6 +9551,26 @@ with tab_feuille:
             if "sel_equipe_vis" in st.session_state and st.session_state["sel_equipe_vis"] in options_vis:
                 def_idx_vis = options_vis.index(st.session_state["sel_equipe_vis"])
             choix_vis = st.selectbox("Équipe Visiteuse :", options_vis, index=def_idx_vis, key="sel_equipe_vis", disabled=not est_editeur)
+            if "track_choix_vis" not in st.session_state:
+                st.session_state["track_choix_vis"] = choix_vis
+            elif st.session_state["track_choix_vis"] != choix_vis:
+                st.session_state["track_choix_vis"] = choix_vis
+                if choix_vis in equipes_disponibles:
+                    r_vis = equipes_disponibles[choix_vis]
+                    if len(r_vis) >= 1:
+                        st.session_state["sel_j1_vis"] = r_vis[0]
+                        st.session_state["last_nom_j1_vis"] = r_vis[0]
+                        st.session_state["moy_j1_vis"] = obtenir_moyenne_joueur(r_vis[0])
+                        st.session_state["pts_j1_vis"] = calculer_score_absent(st.session_state["moy_j1_vis"])
+                    if len(r_vis) >= 2:
+                        st.session_state["sel_j2_vis"] = r_vis[1]
+                        st.session_state["last_nom_j2_vis"] = r_vis[1]
+                        st.session_state["moy_j2_vis"] = obtenir_moyenne_joueur(r_vis[1])
+                        st.session_state["pts_j2_vis"] = calculer_score_absent(st.session_state["moy_j2_vis"])
+                    if len(r_vis) >= 3:
+                        st.session_state["last_nom_j3_vis"] = r_vis[2]
+                        st.session_state["moy_j3_vis"] = obtenir_moyenne_joueur(r_vis[2])
+                        st.session_state["pts_j3_vis"] = calculer_score_absent(st.session_state["moy_j3_vis"])
 
             if choix_vis == "Autre / Personnalisée":
                 equipe_visiteur = st.text_input("Nom équipe visiteuse", value=st.session_state.get("input_custom_vis", "Équipe 2"), key="input_custom_vis", disabled=not est_editeur)
