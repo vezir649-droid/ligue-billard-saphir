@@ -80,6 +80,7 @@ HISTORIQUE_TOURNOIS_FILE = get_data_path("historique_tournois.json")
 CONFIG_EMAIL_FILE = get_data_path("config_email.json")
 ADMIN_CONFIG_FILE = get_data_path("config_admin.json")
 EQUIPES_CSV_FILE = get_data_path("equipes-saphir.csv")
+JOUEURS_CSV_FILE = get_data_path("joueurs_stats.csv")
 ARMOIRIES_FILE = find_armoiries_path()
 LOCK_FILE = get_data_path("session_lock.json")
 LOCK_TIMEOUT = 900  # 15 minutes d'inactivité avant libération automatique
@@ -1688,6 +1689,202 @@ def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_j
 # ==============================================================================
 # EXTRACTION ET VISUALISATION DES DONNÉES EN DIRECT DE SAPHIRBILLARD.COM
 # ==============================================================================
+
+# ==============================================================================
+# GESTION DES JOUEURS, STATISTIQUES ET HORAIRE OFFICIEL DE SAPHIRBILLARD.COM
+# ==============================================================================
+import csv
+import unicodedata
+
+def normaliser_nom_joueur(nom):
+    """Normalise un nom pour recherche insensible à la casse, aux accents et à la ponctuation."""
+    if not nom:
+        return ""
+    n = ''.join(c for c in unicodedata.normalize('NFD', nom) if unicodedata.category(c) != 'Mn').lower()
+    return re.sub(r'[^a-z0-9]', '', n)
+
+def inverser_nom_prenom_saphir(nom_brut):
+    """Convertit 'Derasp, Sylvain' en 'Sylvain Derasp'."""
+    if not nom_brut:
+        return ""
+    if "," in nom_brut:
+        parts = nom_brut.split(",")
+        return f"{parts[1].strip()} {parts[0].strip()}"
+    return nom_brut.strip()
+
+def sauvegarder_joueurs_stats_csv(joueurs_raw, equipes_raw, filepath=JOUEURS_CSV_FILE):
+    """Sauvegarde la liste des joueurs extraite du site avec Points, Moyenne, Semaines, Rang et Équipe dans joueurs_stats.csv."""
+    joueur_equipe_map = {}
+    for eq in (equipes_raw or []):
+        nom_e = eq.get("equipe", "")
+        for p in eq.get("joueurs", []):
+            joueur_equipe_map[normaliser_nom_joueur(p)] = nom_e
+
+    lignes = []
+    for j in (joueurs_raw or []):
+        nom_aff = inverser_nom_prenom_saphir(j.get("nom", ""))
+        pts_str = j.get("points", "").replace("*", "").strip()
+        moy_str = j.get("moyenne", "0.625").strip()
+        sem_str = j.get("semaines", "0").strip()
+        rang_str = j.get("rang", "").strip()
+        eq_str = joueur_equipe_map.get(normaliser_nom_joueur(nom_aff), "")
+        lignes.append({
+            "Nom": nom_aff,
+            "Points": pts_str,
+            "Moyenne": moy_str,
+            "Semaines": sem_str,
+            "Rang": rang_str,
+            "Equipe": eq_str
+        })
+
+    try:
+        with open(filepath, "w", encoding="utf-8", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=["Nom", "Points", "Moyenne", "Semaines", "Rang", "Equipe"])
+            writer.writeheader()
+            writer.writerows(lignes)
+        return True
+    except Exception:
+        return False
+
+@st.cache_data(ttl=300)
+def charger_joueurs_stats_csv(filepath=JOUEURS_CSV_FILE):
+    """Charge le dictionnaire des statistiques officielles des joueurs depuis joueurs_stats.csv."""
+    stats = {}
+    if os.path.exists(filepath):
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    nom = row.get("Nom", "").strip()
+                    try:
+                        moy = float(row.get("Moyenne", "0.625"))
+                    except Exception:
+                        moy = 0.625
+                    info = {
+                        "nom": nom,
+                        "points": row.get("Points", "0"),
+                        "moyenne": moy,
+                        "semaines": row.get("Semaines", "0"),
+                        "rang": row.get("Rang", ""),
+                        "equipe": row.get("Equipe", "")
+                    }
+                    stats[normaliser_nom_joueur(nom)] = info
+                    if " " in nom:
+                        parts = nom.split()
+                        nom_inv = f"{parts[-1]} {' '.join(parts[:-1])}"
+                        stats[normaliser_nom_joueur(nom_inv)] = info
+        except Exception:
+            pass
+    return stats
+
+def obtenir_moyenne_joueur(nom_joueur):
+    """Retourne la moyenne officielle du joueur (extraite de saphirbillard.com / joueurs_stats.csv), ou 0.625 par défaut."""
+    if not nom_joueur:
+        return 0.625
+    stats = charger_joueurs_stats_csv()
+    cle = normaliser_nom_joueur(nom_joueur)
+    if cle in stats:
+        return float(stats[cle].get("moyenne", 0.625))
+    return 0.625
+
+def parser_ligne_horaire_match(cell_text):
+    """Parse une cellule d'horaire comme '29 octobre Delta Hotel'."""
+    mois_map = {
+        'janvier': 1, 'fevrier': 2, 'mars': 3, 'avril': 4, 'mai': 5, 'juin': 6,
+        'juillet': 7, 'aout': 8, 'septembre': 9, 'octobre': 10, 'novembre': 11, 'decembre': 12
+    }
+    m = re.search(r'(\d{1,2})\s+([a-zA-ZÀ-ſ�]+)\s+([a-zA-Z]+)\s+([a-zA-Z]+)', cell_text)
+    if m:
+        jour = int(m.group(1))
+        mois_raw = ''.join(c for c in unicodedata.normalize('NFD', m.group(2)) if unicodedata.category(c) != 'Mn').lower().replace('�', 'e')
+        mois_num = None
+        for k, v in mois_map.items():
+            if k in mois_raw or mois_raw in k:
+                mois_num = v
+                break
+        return {
+            "jour": jour,
+            "mois": mois_num,
+            "receveur": m.group(3).capitalize(),
+            "visiteur": m.group(4).capitalize(),
+            "texte": cell_text.strip()
+        }
+    return None
+
+def determiner_match_du_jour(lignes_horaire, date_ref=None):
+    """Identifie la rencontre officielle programmée pour la date du jour selon l'horaire de saphirbillard.com."""
+    if date_ref is None:
+        date_ref = datetime.today()
+
+    tous_matchs = []
+    for row in (lignes_horaire or []):
+        if not row:
+            continue
+        for cell in row[1:]:
+            res = parser_ligne_horaire_match(cell)
+            if res and res.get("mois"):
+                tous_matchs.append(res)
+
+    # 1. Match exact de la date d'aujourd'hui
+    for m in tous_matchs:
+        if m["jour"] == date_ref.day and m["mois"] == date_ref.month:
+            return {
+                "receveur": m["receveur"],
+                "visiteur": m["visiteur"],
+                "texte": m["texte"],
+                "est_aujourdhui": True
+            }
+
+    # 2. Sinon, le prochain match dans le calendrier
+    prochains = [m for m in tous_matchs if (m["mois"] > date_ref.month) or (m["mois"] == date_ref.month and m["jour"] >= date_ref.day)]
+    if prochains:
+        p = prochains[0]
+        return {
+            "receveur": p["receveur"],
+            "visiteur": p["visiteur"],
+            "texte": p["texte"],
+            "est_aujourdhui": False
+        }
+    elif tous_matchs:
+        dernier = tous_matchs[-1]
+        return {
+            "receveur": dernier["receveur"],
+            "visiteur": dernier["visiteur"],
+            "texte": dernier["texte"],
+            "est_aujourdhui": False
+        }
+    return None
+
+def initialiser_donnees_saphir_au_demarrage():
+    """Au démarrage de l'application, extrait les données en arrière-plan sans les présenter,
+    met à jour joueurs_stats.csv et configure automatiquement les équipes du jour selon l'horaire officiel."""
+    if st.session_state.get("saphir_demarrage_effectue", False):
+        return
+
+    st.session_state["saphir_demarrage_effectue"] = True
+
+    try:
+        donnees = extraire_donnees_saphirbillard()
+        if donnees and donnees.get("succes"):
+            # 1. Enregistre le fichier CSV des joueurs avec nom, pointage et moyenne
+            sauvegarder_joueurs_stats_csv(donnees.get("joueurs", []), donnees.get("equipes", []))
+
+            # 2. Met à jour equipes-saphir.csv
+            eq_dict = {e["equipe"]: e["joueurs"] for e in donnees.get("equipes", []) if e.get("equipe") and e.get("joueurs")}
+            if eq_dict:
+                sauvegarder_equipes_csv(eq_dict)
+
+            # 3. Identifie le match selon l'horaire et la date du jour
+            rencontre = determiner_match_du_jour(donnees.get("horaire", []))
+            if rencontre:
+                st.session_state["saphir_match_jour"] = rencontre
+                if "sel_equipe_rec" not in st.session_state:
+                    st.session_state["sel_equipe_rec"] = rencontre["receveur"]
+                if "sel_equipe_vis" not in st.session_state:
+                    st.session_state["sel_equipe_vis"] = rencontre["visiteur"]
+    except Exception:
+        pass
+
 def extraire_donnees_saphirbillard():
     """Extrait en direct les données du site officiel https://saphirbillard.com (joueurs, moyennes, équipes, horaire)."""
     import urllib.request
@@ -8119,6 +8316,7 @@ def afficher_tableau_de_bord_progression(historique):
 injecter_meta_icones_mobiles()
 injecter_theme_css_saphir()
 restaurer_depuis_github_au_reveil()
+initialiser_donnees_saphir_au_demarrage()
 # Remontée forcée en haut de page désactivée
 
 def charger_readme_documentation():
@@ -9115,9 +9313,14 @@ with tab_feuille:
             j1_rec = st.text_input("Nom Joueur 1 (Remplaçant)", value=st.session_state.get("cust_j1_rec", "Remplaçant 1"), key="cust_j1_rec", disabled=not est_editeur)
         else:
             j1_rec = sel_j1_rec
+
+        if "last_nom_j1_rec" not in st.session_state or st.session_state["last_nom_j1_rec"] != j1_rec:
+            st.session_state["last_nom_j1_rec"] = j1_rec
+            st.session_state["moy_j1_rec"] = obtenir_moyenne_joueur(j1_rec)
+            st.session_state["pts_j1_rec"] = calculer_score_absent(st.session_state["moy_j1_rec"])
         j1_rec_pres = col_j1_r2.toggle("Présent", value=st.session_state.get("pres_j1_rec", True), key="pres_j1_rec", disabled=not est_editeur)
         if not j1_rec_pres:
-            def_moy_j1 = float(st.session_state.get("moy_j1_rec", 0.625))
+            def_moy_j1 = float(st.session_state.get("moy_j1_rec", obtenir_moyenne_joueur(j1_rec)))
             col_m1, col_m2 = st.columns([3, 2])
             moy_j1 = col_m1.number_input(
                 f"Moyenne de {j1_rec} :",
@@ -9152,9 +9355,14 @@ with tab_feuille:
             j2_rec = st.text_input("Nom Joueur 2 (Remplaçant)", value=st.session_state.get("cust_j2_rec", "Remplaçant 2"), key="cust_j2_rec", disabled=not est_editeur)
         else:
             j2_rec = sel_j2_rec
+
+        if "last_nom_j2_rec" not in st.session_state or st.session_state["last_nom_j2_rec"] != j2_rec:
+            st.session_state["last_nom_j2_rec"] = j2_rec
+            st.session_state["moy_j2_rec"] = obtenir_moyenne_joueur(j2_rec)
+            st.session_state["pts_j2_rec"] = calculer_score_absent(st.session_state["moy_j2_rec"])
         j2_rec_pres = col_j2_r2.toggle("Présent", value=st.session_state.get("pres_j2_rec", True), key="pres_j2_rec", disabled=not est_editeur)
         if not j2_rec_pres:
-            def_moy_j2 = float(st.session_state.get("moy_j2_rec", 0.625))
+            def_moy_j2 = float(st.session_state.get("moy_j2_rec", obtenir_moyenne_joueur(j2_rec)))
             col_m1, col_m2 = st.columns([3, 2])
             moy_j2 = col_m1.number_input(
                 f"Moyenne de {j2_rec} :",
@@ -9175,13 +9383,18 @@ with tab_feuille:
             j2_rec_pts = int(st.session_state.get("pts_j2_rec", 0))
 
         # Joueur 3 (Évident / Déduit automatiquement)
-        col_j3_r1, col_j3_r2 = st.columns([3, 2])
         restants_rec = [p for p in roster_rec if p != sel_j1_rec and p != sel_j2_rec]
         j3_rec = restants_rec[0] if restants_rec else "Joueur 3"
+        if "last_nom_j3_rec" not in st.session_state or st.session_state["last_nom_j3_rec"] != j3_rec:
+            st.session_state["last_nom_j3_rec"] = j3_rec
+            st.session_state["moy_j3_rec"] = obtenir_moyenne_joueur(j3_rec)
+            st.session_state["pts_j3_rec"] = calculer_score_absent(st.session_state["moy_j3_rec"])
+
+        col_j3_r1, col_j3_r2 = st.columns([3, 2])
         col_j3_r1.markdown(f"**Joueur 3 (défini) :**<br>`{j3_rec}`", unsafe_allow_html=True)
         j3_rec_pres = col_j3_r2.toggle("Présent", value=st.session_state.get("pres_j3_rec", True), key="pres_j3_rec", disabled=not est_editeur)
         if not j3_rec_pres:
-            def_moy_j3 = float(st.session_state.get("moy_j3_rec", 0.625))
+            def_moy_j3 = float(st.session_state.get("moy_j3_rec", obtenir_moyenne_joueur(j3_rec)))
             col_m1, col_m2 = st.columns([3, 2])
             moy_j3 = col_m1.number_input(
                 f"Moyenne de {j3_rec} :",
@@ -9240,9 +9453,14 @@ with tab_feuille:
             j1_vis = st.text_input("Nom Visiteur 1 (Remplaçant)", value=st.session_state.get("cust_j1_vis", "Remplaçant 1"), key="cust_j1_vis", disabled=not est_editeur)
         else:
             j1_vis = sel_j1_vis
+
+        if "last_nom_j1_vis" not in st.session_state or st.session_state["last_nom_j1_vis"] != j1_vis:
+            st.session_state["last_nom_j1_vis"] = j1_vis
+            st.session_state["moy_j1_vis"] = obtenir_moyenne_joueur(j1_vis)
+            st.session_state["pts_j1_vis"] = calculer_score_absent(st.session_state["moy_j1_vis"])
         j1_vis_pres = col_j1_v2.toggle("Présent", value=st.session_state.get("pres_j1_vis", True), key="pres_j1_vis", disabled=not est_editeur)
         if not j1_vis_pres:
-            def_moy_v1 = float(st.session_state.get("moy_j1_vis", 0.625))
+            def_moy_v1 = float(st.session_state.get("moy_j1_vis", obtenir_moyenne_joueur(j1_vis)))
             col_m1, col_m2 = st.columns([3, 2])
             moy_v1 = col_m1.number_input(
                 f"Moyenne de {j1_vis} :",
@@ -9277,9 +9495,14 @@ with tab_feuille:
             j2_vis = st.text_input("Nom Visiteur 2 (Remplaçant)", value=st.session_state.get("cust_j2_vis", "Remplaçant 2"), key="cust_j2_vis", disabled=not est_editeur)
         else:
             j2_vis = sel_j2_vis
+
+        if "last_nom_j2_vis" not in st.session_state or st.session_state["last_nom_j2_vis"] != j2_vis:
+            st.session_state["last_nom_j2_vis"] = j2_vis
+            st.session_state["moy_j2_vis"] = obtenir_moyenne_joueur(j2_vis)
+            st.session_state["pts_j2_vis"] = calculer_score_absent(st.session_state["moy_j2_vis"])
         j2_vis_pres = col_j2_v2.toggle("Présent", value=st.session_state.get("pres_j2_vis", True), key="pres_j2_vis", disabled=not est_editeur)
         if not j2_vis_pres:
-            def_moy_v2 = float(st.session_state.get("moy_j2_vis", 0.625))
+            def_moy_v2 = float(st.session_state.get("moy_j2_vis", obtenir_moyenne_joueur(j2_vis)))
             col_m1, col_m2 = st.columns([3, 2])
             moy_v2 = col_m1.number_input(
                 f"Moyenne de {j2_vis} :",
@@ -9300,13 +9523,18 @@ with tab_feuille:
             j2_vis_pts = int(st.session_state.get("pts_j2_vis", 0))
 
         # Joueur 3 (Évident / Déduit automatiquement)
-        col_j3_v1, col_j3_v2 = st.columns([3, 2])
         restants_vis = [p for p in roster_vis if p != sel_j1_vis and p != sel_j2_vis]
         j3_vis = restants_vis[0] if restants_vis else "Joueur 3"
+        if "last_nom_j3_vis" not in st.session_state or st.session_state["last_nom_j3_vis"] != j3_vis:
+            st.session_state["last_nom_j3_vis"] = j3_vis
+            st.session_state["moy_j3_vis"] = obtenir_moyenne_joueur(j3_vis)
+            st.session_state["pts_j3_vis"] = calculer_score_absent(st.session_state["moy_j3_vis"])
+
+        col_j3_v1, col_j3_v2 = st.columns([3, 2])
         col_j3_v1.markdown(f"**Joueur 3 (défini) :**<br>`{j3_vis}`", unsafe_allow_html=True)
         j3_vis_pres = col_j3_v2.toggle("Présent", value=st.session_state.get("pres_j3_vis", True), key="pres_j3_vis", disabled=not est_editeur)
         if not j3_vis_pres:
-            def_moy_v3 = float(st.session_state.get("moy_j3_vis", 0.625))
+            def_moy_v3 = float(st.session_state.get("moy_j3_vis", obtenir_moyenne_joueur(j3_vis)))
             col_m1, col_m2 = st.columns([3, 2])
             moy_v3 = col_m1.number_input(
                 f"Moyenne de {j3_vis} :",
@@ -9812,6 +10040,13 @@ with tab_feuille:
     elif not est_spectateur:
         st.markdown("---")
         st.markdown("### 🎯 Grille de saisie des 9 manches (Rotation alternée 3 contre 3)")
+        rencontre_info = st.session_state.get("saphir_match_jour")
+        if rencontre_info:
+            txt_rencontre = rencontre_info.get("texte", "")
+            est_ajd = rencontre_info.get("est_aujourdhui", False)
+            badge_date = "🟢 **Match officiel du jour selon l'horaire :**" if est_ajd else "ℹ️ **Prochain match officiel au calendrier :**"
+            st.info(f"{badge_date} **{equipe_receveur}** (🏠 Receveur) vs **{equipe_visiteur}** (🚗 Visiteur) — *{txt_rencontre}*. Alignements et moyennes officielles des joueurs synchronisés.")
+
         st.info(
             "📌 **Règle de rotation :** Aucun joueur ne joue deux manches consécutives.\n\n"
             "🎱 **Pointage des manches :** Saisie libre de **0 à 8 points** par joueur (**sans obligation d'un score de 8** pour valider un résultat)."
@@ -10702,7 +10937,7 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                     j1_r_pres = c_p1.toggle("Présent", value=st.session_state.get("ant_pres_j1_r", True), key="ant_pres_j1_r")
                     if not j1_r_pres:
                         c_m1, c_m2 = st.columns([3, 2])
-                        moy_j1_r = c_m1.number_input(f"Moyenne ({j1_r_ant}) :", min_value=0.0, max_value=100.0, value=float(st.session_state.get("ant_moy_j1_r", 0.625)), step=0.025, format="%.3f", key="ant_moy_j1_r", help="Formule officielle : arrondi(moyenne × 24 ÷ 3), max 7.")
+                        moy_j1_r = c_m1.number_input(f"Moyenne ({j1_r_ant}) :", min_value=0.0, max_value=100.0, value=float(st.session_state.get("ant_moy_j1_r", obtenir_moyenne_joueur(j1_r_ant))), step=0.025, format="%.3f", key="ant_moy_j1_r", help="Formule officielle : arrondi(moyenne × 24 ÷ 3), max 7.")
                         pts_abs_j1_r = calculer_score_absent(moy_j1_r)
                         c_m2.metric("Score absent", f"{pts_abs_j1_r} pts")
                     else:
@@ -10726,7 +10961,7 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                     j2_r_pres = c_p2.toggle("Présent", value=st.session_state.get("ant_pres_j2_r", True), key="ant_pres_j2_r")
                     if not j2_r_pres:
                         c_m1, c_m2 = st.columns([3, 2])
-                        moy_j2_r = c_m1.number_input(f"Moyenne ({j2_r_ant}) :", min_value=0.0, max_value=100.0, value=float(st.session_state.get("ant_moy_j2_r", 0.625)), step=0.025, format="%.3f", key="ant_moy_j2_r", help="Formule officielle : arrondi(moyenne × 24 ÷ 3), max 7.")
+                        moy_j2_r = c_m1.number_input(f"Moyenne ({j2_r_ant}) :", min_value=0.0, max_value=100.0, value=float(st.session_state.get("ant_moy_j2_r", obtenir_moyenne_joueur(j2_r_ant))), step=0.025, format="%.3f", key="ant_moy_j2_r", help="Formule officielle : arrondi(moyenne × 24 ÷ 3), max 7.")
                         pts_abs_j2_r = calculer_score_absent(moy_j2_r)
                         c_m2.metric("Score absent", f"{pts_abs_j2_r} pts")
                     else:
@@ -10750,7 +10985,7 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                     j3_r_pres = c_p3.toggle("Présent", value=st.session_state.get("ant_pres_j3_r", True), key="ant_pres_j3_r")
                     if not j3_r_pres:
                         c_m1, c_m2 = st.columns([3, 2])
-                        moy_j3_r = c_m1.number_input(f"Moyenne ({j3_r_ant}) :", min_value=0.0, max_value=100.0, value=float(st.session_state.get("ant_moy_j3_r", 0.625)), step=0.025, format="%.3f", key="ant_moy_j3_r", help="Formule officielle : arrondi(moyenne × 24 ÷ 3), max 7.")
+                        moy_j3_r = c_m1.number_input(f"Moyenne ({j3_r_ant}) :", min_value=0.0, max_value=100.0, value=float(st.session_state.get("ant_moy_j3_r", obtenir_moyenne_joueur(j3_r_ant))), step=0.025, format="%.3f", key="ant_moy_j3_r", help="Formule officielle : arrondi(moyenne × 24 ÷ 3), max 7.")
                         pts_abs_j3_r = calculer_score_absent(moy_j3_r)
                         c_m2.metric("Score absent", f"{pts_abs_j3_r} pts")
                     else:
@@ -10777,7 +11012,7 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                     j1_v_pres = c_vp1.toggle("Présent", value=st.session_state.get("ant_pres_j1_v", True), key="ant_pres_j1_v")
                     if not j1_v_pres:
                         c_m1, c_m2 = st.columns([3, 2])
-                        moy_j1_v = c_m1.number_input(f"Moyenne ({j1_v_ant}) :", min_value=0.0, max_value=100.0, value=float(st.session_state.get("ant_moy_j1_v", 0.625)), step=0.025, format="%.3f", key="ant_moy_j1_v", help="Formule officielle : arrondi(moyenne × 24 ÷ 3), max 7.")
+                        moy_j1_v = c_m1.number_input(f"Moyenne ({j1_v_ant}) :", min_value=0.0, max_value=100.0, value=float(st.session_state.get("ant_moy_j1_v", obtenir_moyenne_joueur(j1_v_ant))), step=0.025, format="%.3f", key="ant_moy_j1_v", help="Formule officielle : arrondi(moyenne × 24 ÷ 3), max 7.")
                         pts_abs_j1_v = calculer_score_absent(moy_j1_v)
                         c_m2.metric("Score absent", f"{pts_abs_j1_v} pts")
                     else:
@@ -10801,7 +11036,7 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                     j2_v_pres = c_vp2.toggle("Présent", value=st.session_state.get("ant_pres_j2_v", True), key="ant_pres_j2_v")
                     if not j2_v_pres:
                         c_m1, c_m2 = st.columns([3, 2])
-                        moy_j2_v = c_m1.number_input(f"Moyenne ({j2_v_ant}) :", min_value=0.0, max_value=100.0, value=float(st.session_state.get("ant_moy_j2_v", 0.625)), step=0.025, format="%.3f", key="ant_moy_j2_v", help="Formule officielle : arrondi(moyenne × 24 ÷ 3), max 7.")
+                        moy_j2_v = c_m1.number_input(f"Moyenne ({j2_v_ant}) :", min_value=0.0, max_value=100.0, value=float(st.session_state.get("ant_moy_j2_v", obtenir_moyenne_joueur(j2_v_ant))), step=0.025, format="%.3f", key="ant_moy_j2_v", help="Formule officielle : arrondi(moyenne × 24 ÷ 3), max 7.")
                         pts_abs_j2_v = calculer_score_absent(moy_j2_v)
                         c_m2.metric("Score absent", f"{pts_abs_j2_v} pts")
                     else:
@@ -10825,7 +11060,7 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                     j3_v_pres = c_vp3.toggle("Présent", value=st.session_state.get("ant_pres_j3_v", True), key="ant_pres_j3_v")
                     if not j3_v_pres:
                         c_m1, c_m2 = st.columns([3, 2])
-                        moy_j3_v = c_m1.number_input(f"Moyenne ({j3_v_ant}) :", min_value=0.0, max_value=100.0, value=float(st.session_state.get("ant_moy_j3_v", 0.625)), step=0.025, format="%.3f", key="ant_moy_j3_v", help="Formule officielle : arrondi(moyenne × 24 ÷ 3), max 7.")
+                        moy_j3_v = c_m1.number_input(f"Moyenne ({j3_v_ant}) :", min_value=0.0, max_value=100.0, value=float(st.session_state.get("ant_moy_j3_v", obtenir_moyenne_joueur(j3_v_ant))), step=0.025, format="%.3f", key="ant_moy_j3_v", help="Formule officielle : arrondi(moyenne × 24 ÷ 3), max 7.")
                         pts_abs_j3_v = calculer_score_absent(moy_j3_v)
                         c_m2.metric("Score absent", f"{pts_abs_j3_v} pts")
                     else:
