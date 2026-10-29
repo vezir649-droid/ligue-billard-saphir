@@ -1918,17 +1918,20 @@ def appliquer_match_du_jour(rencontre=None, forcer=False):
     st.session_state["moy_j1_rec"] = obtenir_moyenne_joueur(j1_r_nom)
     st.session_state["pts_j1_rec"] = calculer_score_absent(st.session_state["moy_j1_rec"])
     st.session_state["pres_j1_rec"] = True
+    st.session_state["main_pres_tog_j1_rec"] = True
 
     st.session_state["sel_j2_rec"] = j2_r_nom
     st.session_state["last_nom_j2_rec"] = j2_r_nom
     st.session_state["moy_j2_rec"] = obtenir_moyenne_joueur(j2_r_nom)
     st.session_state["pts_j2_rec"] = calculer_score_absent(st.session_state["moy_j2_rec"])
     st.session_state["pres_j2_rec"] = True
+    st.session_state["main_pres_tog_j2_rec"] = True
 
     st.session_state["last_nom_j3_rec"] = j3_r_nom
     st.session_state["moy_j3_rec"] = obtenir_moyenne_joueur(j3_r_nom)
     st.session_state["pts_j3_rec"] = calculer_score_absent(st.session_state["moy_j3_rec"])
     st.session_state["pres_j3_rec"] = True
+    st.session_state["main_pres_tog_j3_rec"] = True
 
     # 3. Joueurs Visiteurs
     j1_v_nom = roster_v[0] if len(roster_v) >= 1 else "Joueur 1"
@@ -1940,17 +1943,20 @@ def appliquer_match_du_jour(rencontre=None, forcer=False):
     st.session_state["moy_j1_vis"] = obtenir_moyenne_joueur(j1_v_nom)
     st.session_state["pts_j1_vis"] = calculer_score_absent(st.session_state["moy_j1_vis"])
     st.session_state["pres_j1_vis"] = True
+    st.session_state["main_pres_tog_j1_vis"] = True
 
     st.session_state["sel_j2_vis"] = j2_v_nom
     st.session_state["last_nom_j2_vis"] = j2_v_nom
     st.session_state["moy_j2_vis"] = obtenir_moyenne_joueur(j2_v_nom)
     st.session_state["pts_j2_vis"] = calculer_score_absent(st.session_state["moy_j2_vis"])
     st.session_state["pres_j2_vis"] = True
+    st.session_state["main_pres_tog_j2_vis"] = True
 
     st.session_state["last_nom_j3_vis"] = j3_v_nom
     st.session_state["moy_j3_vis"] = obtenir_moyenne_joueur(j3_v_nom)
     st.session_state["pts_j3_vis"] = calculer_score_absent(st.session_state["moy_j3_vis"])
     st.session_state["pres_j3_vis"] = True
+    st.session_state["main_pres_tog_j3_vis"] = True
 
     # 4. Réinitialisation des scores des manches à 0
     for num in range(1, 10):
@@ -8886,6 +8892,70 @@ if "message_validation_reussie" in st.session_state:
     st.success(st.session_state.pop("message_validation_reussie"))
 
 
+def cb_appliquer_match_du_jour_btn():
+    rencontre = determiner_match_du_jour()
+    if rencontre:
+        appliquer_match_du_jour(rencontre, forcer=True)
+        st.session_state["msg_match_applique"] = f"✅ Match du jour appliqué : {rencontre['receveur']} vs {rencontre['visiteur']} !"
+
+def cb_toggle_presence_main(p_id):
+    st.session_state[f"pres_{p_id}"] = st.session_state[f"main_pres_tog_{p_id}"]
+
+def cb_toggle_presence_sb(p_id):
+    st.session_state[f"main_pres_tog_{p_id}"] = st.session_state[f"pres_{p_id}"]
+
+def cb_changer_equipe_rec():
+    eq = st.session_state.get("sel_equipe_rec")
+    equipes = charger_equipes_csv()
+    if eq in equipes:
+        r = equipes[eq]
+        if len(r) >= 1:
+            st.session_state["sel_j1_rec"] = r[0]
+            st.session_state["last_nom_j1_rec"] = r[0]
+            st.session_state["moy_j1_rec"] = obtenir_moyenne_joueur(r[0])
+            st.session_state["pts_j1_rec"] = calculer_score_absent(st.session_state["moy_j1_rec"])
+            st.session_state["pres_j1_rec"] = True
+            st.session_state["main_pres_tog_j1_rec"] = True
+        if len(r) >= 2:
+            st.session_state["sel_j2_rec"] = r[1]
+            st.session_state["last_nom_j2_rec"] = r[1]
+            st.session_state["moy_j2_rec"] = obtenir_moyenne_joueur(r[1])
+            st.session_state["pts_j2_rec"] = calculer_score_absent(st.session_state["moy_j2_rec"])
+            st.session_state["pres_j2_rec"] = True
+            st.session_state["main_pres_tog_j2_rec"] = True
+        if len(r) >= 3:
+            st.session_state["last_nom_j3_rec"] = r[2]
+            st.session_state["moy_j3_rec"] = obtenir_moyenne_joueur(r[2])
+            st.session_state["pts_j3_rec"] = calculer_score_absent(st.session_state["moy_j3_rec"])
+            st.session_state["pres_j3_rec"] = True
+            st.session_state["main_pres_tog_j3_rec"] = True
+
+def cb_changer_equipe_vis():
+    eq = st.session_state.get("sel_equipe_vis")
+    equipes = charger_equipes_csv()
+    if eq in equipes:
+        r = equipes[eq]
+        if len(r) >= 1:
+            st.session_state["sel_j1_vis"] = r[0]
+            st.session_state["last_nom_j1_vis"] = r[0]
+            st.session_state["moy_j1_vis"] = obtenir_moyenne_joueur(r[0])
+            st.session_state["pts_j1_vis"] = calculer_score_absent(st.session_state["moy_j1_vis"])
+            st.session_state["pres_j1_vis"] = True
+            st.session_state["main_pres_tog_j1_vis"] = True
+        if len(r) >= 2:
+            st.session_state["sel_j2_vis"] = r[1]
+            st.session_state["last_nom_j2_vis"] = r[1]
+            st.session_state["moy_j2_vis"] = obtenir_moyenne_joueur(r[1])
+            st.session_state["pts_j2_vis"] = calculer_score_absent(st.session_state["moy_j2_vis"])
+            st.session_state["pres_j2_vis"] = True
+            st.session_state["main_pres_tog_j2_vis"] = True
+        if len(r) >= 3:
+            st.session_state["last_nom_j3_vis"] = r[2]
+            st.session_state["moy_j3_vis"] = obtenir_moyenne_joueur(r[2])
+            st.session_state["pts_j3_vis"] = calculer_score_absent(st.session_state["moy_j3_vis"])
+            st.session_state["pres_j3_vis"] = True
+            st.session_state["main_pres_tog_j3_vis"] = True
+
 # ==============================================================================
 # NAVIGATION PRINCIPALE PAR ONGLETS (FEUILLE DE MATCH vs STATISTIQUES vs TOURNOIS vs ADMINISTRATION)
 # ==============================================================================
@@ -9071,10 +9141,7 @@ with tab_feuille:
         with st.sidebar.container(border=True):
             st.markdown(f"**📅 Match du jour — {tag_match}**")
             st.markdown(f"🔵 **{rencontre_active['receveur']}** *(Receveur)*<br>vs 🟠 **{rencontre_active['visiteur']}** *(Visiteur)*", unsafe_allow_html=True)
-            if st.button("🔄 Charger le match du jour et alignements", key="btn_apply_match_jour_sb", use_container_width=True, help="Configure automatiquement les équipes et les joueurs selon l'horaire officiel"):
-                appliquer_match_du_jour(rencontre_active, forcer=True)
-                st.session_state["msg_match_applique"] = f"✅ Match appliqué : {rencontre_active['receveur']} vs {rencontre_active['visiteur']} !"
-                st.rerun()
+            st.button("🔄 Charger le match du jour et alignements", key="btn_apply_match_jour_sb", on_click=cb_appliquer_match_du_jour_btn, use_container_width=True, help="Configure automatiquement les équipes et les joueurs selon l'horaire officiel")
         if "msg_match_applique" in st.session_state:
             st.sidebar.success(st.session_state.pop("msg_match_applique"))
 
@@ -9450,27 +9517,7 @@ with tab_feuille:
             def_idx_rec = 0
             if "sel_equipe_rec" in st.session_state and st.session_state["sel_equipe_rec"] in options_rec:
                 def_idx_rec = options_rec.index(st.session_state["sel_equipe_rec"])
-            choix_rec = st.selectbox("Équipe Receveuse :", options_rec, index=def_idx_rec, key="sel_equipe_rec", disabled=not est_editeur)
-            if "track_choix_rec" not in st.session_state:
-                st.session_state["track_choix_rec"] = choix_rec
-            elif st.session_state["track_choix_rec"] != choix_rec:
-                st.session_state["track_choix_rec"] = choix_rec
-                if choix_rec in equipes_disponibles:
-                    r_rec = equipes_disponibles[choix_rec]
-                    if len(r_rec) >= 1:
-                        st.session_state["sel_j1_rec"] = r_rec[0]
-                        st.session_state["last_nom_j1_rec"] = r_rec[0]
-                        st.session_state["moy_j1_rec"] = obtenir_moyenne_joueur(r_rec[0])
-                        st.session_state["pts_j1_rec"] = calculer_score_absent(st.session_state["moy_j1_rec"])
-                    if len(r_rec) >= 2:
-                        st.session_state["sel_j2_rec"] = r_rec[1]
-                        st.session_state["last_nom_j2_rec"] = r_rec[1]
-                        st.session_state["moy_j2_rec"] = obtenir_moyenne_joueur(r_rec[1])
-                        st.session_state["pts_j2_rec"] = calculer_score_absent(st.session_state["moy_j2_rec"])
-                    if len(r_rec) >= 3:
-                        st.session_state["last_nom_j3_rec"] = r_rec[2]
-                        st.session_state["moy_j3_rec"] = obtenir_moyenne_joueur(r_rec[2])
-                        st.session_state["pts_j3_rec"] = calculer_score_absent(st.session_state["moy_j3_rec"])
+            choix_rec = st.selectbox("Équipe Receveuse :", options_rec, index=def_idx_rec, key="sel_equipe_rec", on_change=cb_changer_equipe_rec, disabled=not est_editeur)
 
             if choix_rec == "Autre / Personnalisée":
                 equipe_receveur = st.text_input("Nom équipe receveuse", value=st.session_state.get("input_custom_rec", "Équipe 1"), key="input_custom_rec", disabled=not est_editeur)
@@ -9505,7 +9552,7 @@ with tab_feuille:
             st.session_state["last_nom_j1_rec"] = j1_rec
             st.session_state["moy_j1_rec"] = obtenir_moyenne_joueur(j1_rec)
             st.session_state["pts_j1_rec"] = calculer_score_absent(st.session_state["moy_j1_rec"])
-        j1_rec_pres = col_j1_r2.toggle("Présent", value=st.session_state.get("pres_j1_rec", True), key="pres_j1_rec", disabled=not est_editeur)
+        j1_rec_pres = col_j1_r2.toggle("Présent", value=st.session_state.get("pres_j1_rec", True), key="pres_j1_rec", on_change=cb_toggle_presence_sb, args=("j1_rec",), disabled=not est_editeur)
         if not j1_rec_pres:
             def_moy_j1 = float(st.session_state.get("moy_j1_rec", obtenir_moyenne_joueur(j1_rec)))
             col_m1, col_m2 = st.columns([3, 2])
@@ -9547,7 +9594,7 @@ with tab_feuille:
             st.session_state["last_nom_j2_rec"] = j2_rec
             st.session_state["moy_j2_rec"] = obtenir_moyenne_joueur(j2_rec)
             st.session_state["pts_j2_rec"] = calculer_score_absent(st.session_state["moy_j2_rec"])
-        j2_rec_pres = col_j2_r2.toggle("Présent", value=st.session_state.get("pres_j2_rec", True), key="pres_j2_rec", disabled=not est_editeur)
+        j2_rec_pres = col_j2_r2.toggle("Présent", value=st.session_state.get("pres_j2_rec", True), key="pres_j2_rec", on_change=cb_toggle_presence_sb, args=("j2_rec",), disabled=not est_editeur)
         if not j2_rec_pres:
             def_moy_j2 = float(st.session_state.get("moy_j2_rec", obtenir_moyenne_joueur(j2_rec)))
             col_m1, col_m2 = st.columns([3, 2])
@@ -9579,7 +9626,7 @@ with tab_feuille:
 
         col_j3_r1, col_j3_r2 = st.columns([3, 2])
         col_j3_r1.markdown(f"**Joueur 3 (défini) :**<br>`{j3_rec}`", unsafe_allow_html=True)
-        j3_rec_pres = col_j3_r2.toggle("Présent", value=st.session_state.get("pres_j3_rec", True), key="pres_j3_rec", disabled=not est_editeur)
+        j3_rec_pres = col_j3_r2.toggle("Présent", value=st.session_state.get("pres_j3_rec", True), key="pres_j3_rec", on_change=cb_toggle_presence_sb, args=("j3_rec",), disabled=not est_editeur)
         if not j3_rec_pres:
             def_moy_j3 = float(st.session_state.get("moy_j3_rec", obtenir_moyenne_joueur(j3_rec)))
             col_m1, col_m2 = st.columns([3, 2])
@@ -9610,27 +9657,7 @@ with tab_feuille:
                 st.session_state["sel_equipe_vis"] = options_vis[def_idx_vis]
             if "sel_equipe_vis" in st.session_state and st.session_state["sel_equipe_vis"] in options_vis:
                 def_idx_vis = options_vis.index(st.session_state["sel_equipe_vis"])
-            choix_vis = st.selectbox("Équipe Visiteuse :", options_vis, index=def_idx_vis, key="sel_equipe_vis", disabled=not est_editeur)
-            if "track_choix_vis" not in st.session_state:
-                st.session_state["track_choix_vis"] = choix_vis
-            elif st.session_state["track_choix_vis"] != choix_vis:
-                st.session_state["track_choix_vis"] = choix_vis
-                if choix_vis in equipes_disponibles:
-                    r_vis = equipes_disponibles[choix_vis]
-                    if len(r_vis) >= 1:
-                        st.session_state["sel_j1_vis"] = r_vis[0]
-                        st.session_state["last_nom_j1_vis"] = r_vis[0]
-                        st.session_state["moy_j1_vis"] = obtenir_moyenne_joueur(r_vis[0])
-                        st.session_state["pts_j1_vis"] = calculer_score_absent(st.session_state["moy_j1_vis"])
-                    if len(r_vis) >= 2:
-                        st.session_state["sel_j2_vis"] = r_vis[1]
-                        st.session_state["last_nom_j2_vis"] = r_vis[1]
-                        st.session_state["moy_j2_vis"] = obtenir_moyenne_joueur(r_vis[1])
-                        st.session_state["pts_j2_vis"] = calculer_score_absent(st.session_state["moy_j2_vis"])
-                    if len(r_vis) >= 3:
-                        st.session_state["last_nom_j3_vis"] = r_vis[2]
-                        st.session_state["moy_j3_vis"] = obtenir_moyenne_joueur(r_vis[2])
-                        st.session_state["pts_j3_vis"] = calculer_score_absent(st.session_state["moy_j3_vis"])
+            choix_vis = st.selectbox("Équipe Visiteuse :", options_vis, index=def_idx_vis, key="sel_equipe_vis", on_change=cb_changer_equipe_vis, disabled=not est_editeur)
 
             if choix_vis == "Autre / Personnalisée":
                 equipe_visiteur = st.text_input("Nom équipe visiteuse", value=st.session_state.get("input_custom_vis", "Équipe 2"), key="input_custom_vis", disabled=not est_editeur)
@@ -9665,7 +9692,7 @@ with tab_feuille:
             st.session_state["last_nom_j1_vis"] = j1_vis
             st.session_state["moy_j1_vis"] = obtenir_moyenne_joueur(j1_vis)
             st.session_state["pts_j1_vis"] = calculer_score_absent(st.session_state["moy_j1_vis"])
-        j1_vis_pres = col_j1_v2.toggle("Présent", value=st.session_state.get("pres_j1_vis", True), key="pres_j1_vis", disabled=not est_editeur)
+        j1_vis_pres = col_j1_v2.toggle("Présent", value=st.session_state.get("pres_j1_vis", True), key="pres_j1_vis", on_change=cb_toggle_presence_sb, args=("j1_vis",), disabled=not est_editeur)
         if not j1_vis_pres:
             def_moy_v1 = float(st.session_state.get("moy_j1_vis", obtenir_moyenne_joueur(j1_vis)))
             col_m1, col_m2 = st.columns([3, 2])
@@ -9707,7 +9734,7 @@ with tab_feuille:
             st.session_state["last_nom_j2_vis"] = j2_vis
             st.session_state["moy_j2_vis"] = obtenir_moyenne_joueur(j2_vis)
             st.session_state["pts_j2_vis"] = calculer_score_absent(st.session_state["moy_j2_vis"])
-        j2_vis_pres = col_j2_v2.toggle("Présent", value=st.session_state.get("pres_j2_vis", True), key="pres_j2_vis", disabled=not est_editeur)
+        j2_vis_pres = col_j2_v2.toggle("Présent", value=st.session_state.get("pres_j2_vis", True), key="pres_j2_vis", on_change=cb_toggle_presence_sb, args=("j2_vis",), disabled=not est_editeur)
         if not j2_vis_pres:
             def_moy_v2 = float(st.session_state.get("moy_j2_vis", obtenir_moyenne_joueur(j2_vis)))
             col_m1, col_m2 = st.columns([3, 2])
@@ -9739,7 +9766,7 @@ with tab_feuille:
 
         col_j3_v1, col_j3_v2 = st.columns([3, 2])
         col_j3_v1.markdown(f"**Joueur 3 (défini) :**<br>`{j3_vis}`", unsafe_allow_html=True)
-        j3_vis_pres = col_j3_v2.toggle("Présent", value=st.session_state.get("pres_j3_vis", True), key="pres_j3_vis", disabled=not est_editeur)
+        j3_vis_pres = col_j3_v2.toggle("Présent", value=st.session_state.get("pres_j3_vis", True), key="pres_j3_vis", on_change=cb_toggle_presence_sb, args=("j3_vis",), disabled=not est_editeur)
         if not j3_vis_pres:
             def_moy_v3 = float(st.session_state.get("moy_j3_vis", obtenir_moyenne_joueur(j3_vis)))
             col_m1, col_m2 = st.columns([3, 2])
@@ -10268,10 +10295,7 @@ with tab_feuille:
                     c_n, c_t = st.columns([3, 2])
                     c_n.markdown(f"**{nom_j}**")
                     curr_pres = bool(st.session_state.get(f"pres_{p_id}", True))
-                    new_pres = c_t.toggle("Présent", value=curr_pres, key=f"main_pres_tog_{p_id}", disabled=not est_editeur)
-                    if new_pres != curr_pres:
-                        st.session_state[f"pres_{p_id}"] = new_pres
-                        st.rerun()
+                    c_t.toggle("Présent", value=curr_pres, key=f"main_pres_tog_{p_id}", on_change=cb_toggle_presence_main, args=(p_id,), disabled=not est_editeur)
             with col_pr_v:
                 st.markdown(f"**🚗 {equipe_visiteur}**")
                 for p_id in ["j1_vis", "j2_vis", "j3_vis"]:
@@ -10279,10 +10303,7 @@ with tab_feuille:
                     c_n, c_t = st.columns([3, 2])
                     c_n.markdown(f"**{nom_j}**")
                     curr_pres = bool(st.session_state.get(f"pres_{p_id}", True))
-                    new_pres = c_t.toggle("Présent", value=curr_pres, key=f"main_pres_tog_{p_id}", disabled=not est_editeur)
-                    if new_pres != curr_pres:
-                        st.session_state[f"pres_{p_id}"] = new_pres
-                        st.rerun()
+                    c_t.toggle("Présent", value=curr_pres, key=f"main_pres_tog_{p_id}", on_change=cb_toggle_presence_main, args=(p_id,), disabled=not est_editeur)
 
         donnees_a_sauvegarder = {
             "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
