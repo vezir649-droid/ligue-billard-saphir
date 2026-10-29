@@ -6304,8 +6304,7 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
                 "Format de compétition :",
                 [
                     "🏆 Élimination directe (Arbre de tournoi)",
-                    "🛡️ Double élimination (Winner & Loser Bracket — Seconde chance)",
-                    "🔄 Championnat toutes rondes (Round-Robin)"
+                    "🛡️ Double élimination (Winner & Loser Bracket — Seconde chance)"
                 ],
                 key=f"tournoi_format_{mode}{key_suffix}"
             )
@@ -6318,15 +6317,10 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
                     "🔸 **Seconde chance :** 2 de 3 *(premier à 2)*\n\n"
                     "🏆 **Grande Finale :** 3 de 5 *(premier à 3)*"
                 )
-            elif "Élimination" in type_format:
+            else:
                 st.info(
                     "🔹 **Préliminaires :** 2 de 3 *(premier à 2)*\n\n"
                     "🏆 **Grande Finale :** 3 de 5 *(premier à 3)*"
-                )
-            else:
-                st.info(
-                    "🔄 **Round-Robin :** 2 de 3 *(premier à 2)*\n\n"
-                    "Chaque participant rencontre tous les autres."
                 )
 
         st.markdown("##### 📅 Organisation, Disponibilité des tables & Horaires (1 seule journée)")
@@ -6647,9 +6641,7 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
                     f"Aucun passe-droit requis. Tous les participants débuteront au 1ᵉʳ tour ({nb_m_t1} matchs) "
                     f"et le second tour comportera exactement **{nb_m_t2} matchs (nombre pair)**."
                 )
-        else:
-            nb_matchs_tot = (nb_p * (nb_p - 1)) // 2
-            st.success(f"🟢 **Championnat Round-Robin :** Les **{nb_p} participants inscrits** s'affronteront tous sans exception ({nb_matchs_tot} rencontres au total) !")
+
 
         if not est_editeur:
             st.info("🔒 *Bouton de lancement désactivé en mode consultation (prenez la main ci-dessus pour lancer le tournoi).*")
@@ -6679,7 +6671,7 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
                     nb_tables=nb_tables_saisi,
                     passes_droits=(promus_selectionnes if (promus_selectionnes and len(promus_selectionnes) == nb_promus) else None)
                 )
-            elif is_simple_elim:
+            else:
                 t_cree = generer_arbre_elimination(
                     participants_finaux,
                     race_prelim=2,
@@ -6689,15 +6681,6 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
                     duree_min=duree_min_saisie,
                     nb_tables=nb_tables_saisi,
                     passes_droits=(promus_selectionnes if (promus_selectionnes and len(promus_selectionnes) == nb_promus) else None)
-                )
-            else:
-                t_cree = generer_round_robin(
-                    participants_finaux,
-                    race_to=2,
-                    titre=titre_saisi,
-                    heure_debut=heure_debut_str,
-                    duree_min=duree_min_saisie,
-                    nb_tables=nb_tables_saisi
                 )
 
             if t_cree:
