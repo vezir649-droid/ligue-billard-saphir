@@ -1684,6 +1684,333 @@ def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_j
 """
     return texte, html
 
+
+# ==============================================================================
+# EXTRACTION ET VISUALISATION DES DONNÉES EN DIRECT DE SAPHIRBILLARD.COM
+# ==============================================================================
+def extraire_donnees_saphirbillard():
+    """Extrait en direct les données du site officiel https://saphirbillard.com (joueurs, moyennes, équipes, horaire)."""
+    import urllib.request
+    import ssl
+    import re
+    from datetime import datetime
+
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    headers = {"User-Agent": "Mozilla/5.0"}
+    base_url = "https://saphirbillard.com"
+
+    def _fetch_html(endpoint):
+        req = urllib.request.Request(f"{base_url}{endpoint}", headers=headers)
+        with urllib.request.urlopen(req, context=ctx, timeout=12) as resp:
+            return resp.read().decode("utf-8", errors="ignore")
+
+    donnees = {
+        "succes": False,
+        "date_extraction": datetime.now().strftime("%d/%m/%Y à %H:%M:%S"),
+        "joueurs": [],
+        "equipes": [],
+        "horaire": [],
+        "erreur": None
+    }
+
+    try:
+        # 1. Classement des joueurs
+        html_j = _fetch_html("/classement")
+        rows_j = re.findall(r'<tr[^>]*>(.*?)</tr>', html_j, re.DOTALL | re.IGNORECASE)
+        for r in rows_j:
+            cols = re.findall(r'<td[^>]*>(.*?)</td>', r, re.DOTALL | re.IGNORECASE)
+            if len(cols) >= 5:
+                rang = re.sub(r'<[^>]+>', '', cols[0]).strip()
+                nom = re.sub(r'<[^>]+>', '', cols[1]).strip()
+                sem = re.sub(r'<[^>]+>', '', cols[2]).strip()
+                pts = re.sub(r'<[^>]+>', '', cols[3]).strip()
+                moy = re.sub(r'<[^>]+>', '', cols[4]).strip()
+                donnees["joueurs"].append({
+                    "rang": rang,
+                    "nom": nom,
+                    "semaines": sem,
+                    "points": pts,
+                    "moyenne": moy
+                })
+
+        # 2. Classement des équipes
+        html_e = _fetch_html("/classement-par-equipe")
+        rows_e = re.findall(r'<tr[^>]*>(.*?)</tr>', html_e, re.DOTALL | re.IGNORECASE)
+        for r in rows_e:
+            cols = re.findall(r'<td[^>]*>(.*?)</td>', r, re.DOTALL | re.IGNORECASE)
+            if len(cols) >= 3:
+                rang = re.sub(r'<[^>]+>', '', cols[0]).strip()
+                eq_raw = re.sub(r'<[^>]+>', '', cols[1]).strip()
+                pts = re.sub(r'<[^>]+>', '', cols[2]).strip()
+                m = re.match(r'^(.*?)\s*\((.*?)\)$', eq_raw)
+                if m:
+                    nom_eq = m.group(1).strip()
+                    joueurs = [p.strip() for p in m.group(2).split(',') if p.strip()]
+                else:
+                    nom_eq = eq_raw
+                    joueurs = []
+                donnees["equipes"].append({
+                    "rang": rang,
+                    "equipe": nom_eq,
+                    "joueurs": joueurs,
+                    "points": pts
+                })
+
+        # 3. Horaire des matchs
+        html_h = _fetch_html("/horaire")
+        rows_h = re.findall(r'<tr[^>]*>(.*?)</tr>', html_h, re.DOTALL | re.IGNORECASE)
+        for r in rows_h:
+            cols = re.findall(r'<td[^>]*>(.*?)</td>', r, re.DOTALL | re.IGNORECASE)
+            if cols:
+                clean_cols = [re.sub(r'<[^>]+>', ' ', c).strip() for c in cols]
+                clean_cols = [' '.join(c.split()) for c in clean_cols if c]
+                if clean_cols:
+                    donnees["horaire"].append(clean_cols)
+
+        donnees["succes"] = True
+    except Exception as e:
+        donnees["erreur"] = str(e)
+
+    return donnees
+
+
+def generer_page_html_saphir(donnees):
+    """Génère une page HTML complète, élégante et responsive avec les données extraites de saphirbillard.com."""
+    date_ext = donnees.get("date_extraction", "")
+    joueurs = donnees.get("joueurs", [])
+    equipes = donnees.get("equipes", [])
+    horaire = donnees.get("horaire", [])
+
+    # Lignes du tableau des joueurs
+    lignes_j = ""
+    for j in joueurs:
+        rang_val = j.get("rang", "")
+        badge_cls = "badge-gold" if "#1" in rang_val else ("badge-silver" if "#2" in rang_val else ("badge-bronze" if "#3" in rang_val else "badge-default"))
+        lignes_j += f"""
+        <tr>
+            <td><span class="badge {badge_cls}">{rang_val}</span></td>
+            <td><strong>{j.get('nom', '')}</strong></td>
+            <td style="text-align:center;">{j.get('semaines', '')}</td>
+            <td style="text-align:center; font-weight:bold; color:#0284c7;">{j.get('points', '')}</td>
+            <td style="text-align:center; font-weight:bold; color:#16a34a;">{j.get('moyenne', '')}</td>
+        </tr>
+        """
+
+    # Cartes des équipes
+    cartes_e = ""
+    for eq in equipes:
+        r_eq = eq.get("rang", "")
+        pts_eq = eq.get("points", "")
+        nom_eq = eq.get("equipe", "")
+        j_list = eq.get("joueurs", [])
+        j_pills = "".join(f'<span class="pill-player">👤 {p}</span>' for p in j_list)
+        cartes_e += f"""
+        <div class="card-team">
+            <div class="team-header">
+                <div>
+                    <span class="team-rank">{r_eq}</span>
+                    <span class="team-name">{nom_eq}</span>
+                </div>
+                <div class="team-pts">{pts_eq} pts</div>
+            </div>
+            <div class="team-players">
+                {j_pills}
+            </div>
+        </div>
+        """
+
+    # Lignes du calendrier / horaire
+    lignes_h = ""
+    for h in horaire:
+        if not h:
+            continue
+        semaine_label = h[0] if len(h) > 0 else ""
+        matchs_sem = h[1:]
+        matchs_items = "".join(f'<div class="match-box">📅 {m}</div>' for m in matchs_sem if m and m != "—")
+        lignes_h += f"""
+        <div class="week-row">
+            <div class="week-title">{semaine_label}</div>
+            <div class="week-matches">{matchs_items}</div>
+        </div>
+        """
+
+    html = f"""<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ligue du Saphir - Données Officielles</title>
+<style>
+    :root {{
+        --primary: #0f172a;
+        --secondary: #0284c7;
+        --accent: #d97706;
+        --bg: #f8fafc;
+        --card-bg: #ffffff;
+        --border: #e2e8f0;
+        --text: #1e293b;
+        --text-muted: #64748b;
+    }}
+    * {{ box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }}
+    body {{ background: var(--bg); color: var(--text); padding: 20px; }}
+    .container {{ max-width: 1200px; margin: 0 auto; }}
+    .header {{
+        background: linear-gradient(135deg, #0b3c5d 0%, #1e293b 100%);
+        color: #ffffff;
+        padding: 24px;
+        border-radius: 12px;
+        margin-bottom: 24px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 15px;
+    }}
+    .header h1 {{ font-size: 24px; color: #fbbf24; margin-bottom: 6px; }}
+    .header p {{ color: #cbd5e1; font-size: 14px; }}
+    .meta-tag {{ background: rgba(255,255,255,0.15); padding: 6px 12px; border-radius: 99px; font-size: 13px; font-weight: 600; color: #f1f5f9; }}
+    
+    .section-title {{
+        font-size: 18px;
+        font-weight: 700;
+        color: #0b3c5d;
+        margin: 28px 0 14px 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        border-bottom: 2px solid #e2e8f0;
+        padding-bottom: 8px;
+    }}
+    
+    /* Table Joueurs */
+    .table-container {{
+        background: var(--card-bg);
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        border: 1px solid var(--border);
+        margin-bottom: 24px;
+    }}
+    table {{ width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; }}
+    th {{ background: #f1f5f9; color: #475569; font-weight: 700; padding: 12px 14px; border-bottom: 2px solid var(--border); }}
+    td {{ padding: 11px 14px; border-bottom: 1px solid #f1f5f9; }}
+    tr:hover {{ background: #f8fafc; }}
+    .badge {{ display: inline-block; padding: 3px 8px; border-radius: 6px; font-size: 12px; font-weight: 700; }}
+    .badge-gold {{ background: #fef3c7; color: #b45309; border: 1px solid #fde68a; }}
+    .badge-silver {{ background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }}
+    .badge-bronze {{ background: #ffedd5; color: #c2410c; border: 1px solid #fed7aa; }}
+    .badge-default {{ background: #f8fafc; color: #64748b; }}
+
+    /* Grid Equipes */
+    .teams-grid {{
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 16px;
+        margin-bottom: 24px;
+    }}
+    .card-team {{
+        background: var(--card-bg);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 16px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+        transition: transform 0.2s, box-shadow 0.2s;
+    }}
+    .card-team:hover {{
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }}
+    .team-header {{
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #f1f5f9;
+    }}
+    .team-rank {{ font-size: 12px; font-weight: 800; color: #d97706; background: #fef3c7; padding: 2px 8px; border-radius: 4px; margin-right: 6px; }}
+    .team-name {{ font-size: 16px; font-weight: 700; color: #0f172a; }}
+    .team-pts {{ font-size: 14px; font-weight: 800; color: #0284c7; background: #e0f2fe; padding: 3px 9px; border-radius: 99px; }}
+    .team-players {{ display: flex; flex-direction: column; gap: 6px; }}
+    .pill-player {{
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        padding: 6px 10px;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 600;
+        color: #334155;
+    }}
+
+    /* Horaire */
+    .schedule-container {{ display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px; }}
+    .week-row {{
+        background: var(--card-bg);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 14px 18px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+    }}
+    .week-title {{ font-size: 15px; font-weight: 800; color: #0369a1; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; }}
+    .week-matches {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }}
+    .match-box {{
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        padding: 8px 12px;
+        font-size: 13.5px;
+        font-weight: 600;
+        color: #1e293b;
+    }}
+</style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <div>
+            <h1>🎱 Ligue du Billard du Saphir</h1>
+            <p>Données officielles extraites en direct depuis <a href="https://saphirbillard.com" target="_blank" style="color:#fbbf24; text-decoration:none; font-weight:bold;">https://saphirbillard.com</a></p>
+        </div>
+        <div>
+            <span class="meta-tag">🕒 Extraction : {date_ext}</span>
+        </div>
+    </div>
+
+    <div class="section-title">🎱 Équipes et leurs joueurs respectifs ({len(equipes)} équipes)</div>
+    <div class="teams-grid">
+        {cartes_e}
+    </div>
+
+    <div class="section-title">👤 Liste des joueurs et leurs moyennes ({len(joueurs)} joueurs)</div>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:70px;">Rang</th>
+                    <th>Joueur</th>
+                    <th style="text-align:center; width:90px;">Semaines</th>
+                    <th style="text-align:center; width:90px;">Points</th>
+                    <th style="text-align:center; width:100px;">Moyenne</th>
+                </tr>
+            </thead>
+            <tbody>
+                {lignes_j}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="section-title">📅 Horaire des matchs ({len(horaire)} semaines programmées)</div>
+    <div class="schedule-container">
+        {lignes_h}
+    </div>
+</div>
+</body>
+</html>"""
+    return html
+
 def charger_historique_matchs():
     """Charge la liste des matchs archivés depuis le fichier d'historique (avec repli sur la sauvegarde .bak si nécessaire)."""
     for chemin in [HISTORIQUE_FILE, f"{HISTORIQUE_FILE}.bak"]:
@@ -8403,6 +8730,11 @@ with tab_feuille:
 
     # --- BARRE LATÉRALE : SÉLECTION DU MATCH ET JOUEURS ---
     st.sidebar.header("📋 Paramètres du Match")
+    with st.sidebar.expander("🌐 Consulter https://saphirbillard.com", expanded=False):
+        st.caption("Consultez en direct les joueurs, moyennes, équipes et l'horaire officiel extraits de https://saphirbillard.com.")
+        if st.button("🔍 Extraire les données du site", key="btn_sb_extract_saphir", use_container_width=True):
+            st.session_state["choix_match_vue"] = "🌐 Consulter https://saphirbillard.com (Joueurs, Équipes, Horaire)"
+            st.rerun()
     role_badge_sb = "🛡️ Administrateur" if st.session_state.get("est_admin", False) else ("👁️ Spectateur" if est_spectateur else "🔒 Marqueur / Éditeur")
     st.sidebar.caption(f"Profil connecté : **{role_badge_sb}**")
     if st.sidebar.button("🚪 Déconnexion / Accueil", use_container_width=True, help="Sauvegarde les tournois et le match, libère la main et retourne à l'écran d'accueil"):
@@ -9106,7 +9438,8 @@ with tab_feuille:
     historique_matchs = charger_historique_matchs()
 
     label_direct = "🔴 Saisie du match en direct (En cours)" if not est_spectateur else "🔴 Match en direct (En cours)"
-    options_matchs = [label_direct]
+    label_saphir = "🌐 Consulter https://saphirbillard.com (Joueurs, Équipes, Horaire)"
+    options_matchs = [label_direct, label_saphir]
     mapping_matchs = {}
     for m in reversed(historique_matchs or []):
         date_m = m.get("date_enregistrement", m.get("date", "Date inconnue"))
@@ -9145,8 +9478,48 @@ with tab_feuille:
         else:
             st.button("🔙 Revenir au match en cours", on_click=callback_retour_match_en_cours, use_container_width=True, help="Retourner à la saisie du match actuel")
 
-    # 1. Si une archive officielle est sélectionnée
-    if choix_vue != label_direct:
+    # 1. Si la consultation externe saphirbillard.com est sélectionnée
+    if choix_vue == label_saphir:
+        st.session_state["venant_de_archive"] = True
+        col_sap_h1, col_sap_h2, col_sap_h3 = st.columns([2.5, 1.2, 1.2])
+        with col_sap_h1:
+            st.info("🌐 **Consultation des données officielles extraites depuis https://saphirbillard.com**")
+        with col_sap_h2:
+            if st.button("🔄 Actualiser en direct", key="btn_refresh_saphir_live", use_container_width=True):
+                st.session_state["saphir_cache_data"] = None
+                st.rerun()
+        with col_sap_h3:
+            if st.button("🔙 Revenir au match", key="btn_back_from_saphir", type="primary", use_container_width=True):
+                st.session_state["choix_match_vue"] = label_direct
+                st.rerun()
+
+        if "saphir_cache_data" not in st.session_state or not st.session_state["saphir_cache_data"]:
+            with st.spinner("Extraction en direct des données depuis https://saphirbillard.com..."):
+                donnees_saphir = extraire_donnees_saphirbillard()
+                st.session_state["saphir_cache_data"] = donnees_saphir
+        else:
+            donnees_saphir = st.session_state["saphir_cache_data"]
+
+        if not donnees_saphir.get("succes"):
+            st.error(f"❌ Impossible d'accéder à https://saphirbillard.com : {donnees_saphir.get('erreur')}")
+        else:
+            col_sync1, col_sync2 = st.columns([3, 1.2])
+            with col_sync1:
+                st.caption(f"Extraction réussie à {donnees_saphir.get('date_extraction')}. Vous pouvez synchroniser automatiquement le fichier `equipes.csv` de l'application.")
+            with col_sync2:
+                if st.button("📥 Mettre à jour equipes.csv", key="btn_sync_eq_csv", use_container_width=True, help="Met à jour la liste locale des équipes et joueurs avec les données de saphirbillard.com"):
+                    eq_dict_maj = {e["equipe"]: e["joueurs"] for e in donnees_saphir.get("equipes", []) if e.get("equipe") and e.get("joueurs")}
+                    if eq_dict_maj:
+                        sauvegarder_equipes_csv(eq_dict_maj)
+                        st.success("✅ `equipes-saphir.csv` mis à jour avec succès depuis le site officiel !")
+                        time.sleep(1.0)
+                        st.rerun()
+
+            html_rendu = generer_page_html_saphir(donnees_saphir)
+            st.components.v1.html(html_rendu, height=1300, scrolling=True)
+
+    # 2. Si une archive officielle est sélectionnée
+    elif choix_vue != label_direct:
         st.session_state["venant_de_archive"] = True
         m_arch = mapping_matchs[choix_vue]
         html_arch = obtenir_html_match(m_arch)
