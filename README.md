@@ -80,13 +80,17 @@ La barre latérale **« 📋 Paramètres du Match »** regroupe tous les réglag
 * **Deux catégories indépendantes :**
   * **👤 Tournoi en Simple (1 contre 1)** — Joueurs individuels.
   * **👥 Tournoi en Double / Équipes (2 contre 2)** — Duos constitués aléatoirement ou manuellement.
-* **Trois formules de compétition prises en charge (avec équilibrage automatique jusqu'à 32 participants / 24 joueurs) :**
-  1. **⚡ Élimination directe (Simple élimination)** : Préliminaires en *2 de 3* (premier à 2 victoires) et Finale en *3 de 5* (premier à 3 victoires), avec calcul automatique des **passes-droits (byes)** au 1er tour pour obtenir un nombre pair de matchs au 2e tour :
-     * **Exemple avec 24 joueurs en Simple (1v1) :** **8 joueurs promus (passe-droit)** directement au 2e tour + **16 joueurs** au 1er tour (**8 matchs**) $\rightarrow$ **8 matchs** en Huitièmes de finale $\rightarrow$ **4 matchs** en Quarts $\rightarrow$ **2 matchs** en Demi-finales $\rightarrow$ **1 Finale**.
-     * **Exemple avec 24 joueurs en Double (12 duos en 2v2) :** **4 duos promus (passe-droit)** au 2e tour + **8 duos** au 1er tour (**4 matchs**) $\rightarrow$ **4 matchs** en Quarts de finale $\rightarrow$ **2 matchs** en Demi-finales $\rightarrow$ **1 Finale**.
-  2. **🛡️ Double élimination — Winner & Loser Bracket (Seconde chance, arbres de 4, 8, 16 ou 32)** :
-     * **🟦 Tableau des Gagnants (*Winner Bracket*)** : *2 de 3* (avec équilibrage automatique de **8 passes-droits pour 24 joueurs** en Simple ou **4 passes-droits pour 12 duos** en Double).
-     * **🟧 Tableau de Repêchage (*Loser Bracket — Seconde chance*)** : *2 de 3* — tout participant perdant un premier match est automatiquement reversé dans le Loser Bracket et conserve toutes ses chances d'atteindre la Grande Finale.
+* **Trois formules de compétition prises en charge (avec équilibrage automatique pour 18, 20, 22 et 24 joueurs ainsi que jusqu'à 32 participants) :**
+  1. **⚡ Élimination directe (Simple élimination)** : Préliminaires en *2 de 3* (premier à 2 victoires) et Finale en *3 de 5* (premier à 3 victoires) :
+     * **Cas spécifiques 18, 20, 22 et 24 joueurs (tous jouent au 1er tour + équilibrage au 2e tour) :**
+       * **18 joueurs :** **9 matchs** au 1er tour (tous les 18 joueurs jouent) $\rightarrow$ **1 match d'équilibrage** au 2e tour (+ 7 gagnants du 1er tour promus) $\rightarrow$ **4 matchs** en Quarts de finale (8 joueurs) $\rightarrow$ **2 matchs** en Demi-finales $\rightarrow$ **1 Finale**.
+       * **20 joueurs :** **10 matchs** au 1er tour (tous les 20 joueurs jouent) $\rightarrow$ **2 matchs d'équilibrage** au 2e tour (+ 6 gagnants du 1er tour promus) $\rightarrow$ **4 matchs** en Quarts de finale $\rightarrow$ **2 matchs** en Demi-finales $\rightarrow$ **1 Finale**.
+       * **22 joueurs :** **11 matchs** au 1er tour (tous les 22 joueurs jouent) $\rightarrow$ **3 matchs d'équilibrage** au 2e tour (+ 5 gagnants du 1er tour promus) $\rightarrow$ **4 matchs** en Quarts de finale $\rightarrow$ **2 matchs** en Demi-finales $\rightarrow$ **1 Finale**.
+       * **24 joueurs :** **12 matchs** au 1er tour (tous les 24 joueurs jouent) $\rightarrow$ **4 matchs d'équilibrage** au 2e tour (+ 4 gagnants du 1er tour promus) $\rightarrow$ **4 matchs** en Quarts de finale $\rightarrow$ **2 matchs** en Demi-finales $\rightarrow$ **1 Finale**.
+     * **Exemple en Double (9, 10, 11 ou 12 duos en 2v2) :** Calcul automatique des passes-droits pour équilibrer les Quarts de finale (**4 matchs**) et Demi-finales (**2 matchs**).
+  2. **🛡️ Double élimination — Winner & Loser Bracket (Seconde chance)** :
+     * **🟦 Tableau des Gagnants (*Winner Bracket*)** : *2 de 3* — pour **18, 20, 22 et 24 joueurs**, tous les joueurs disputent le 1er tour (**9, 10, 11 ou 12 matchs**), puis le 2e tour d'équilibrage (**1, 2, 3 ou 4 matchs** + gagnants promus) forme les Quarts de finale à **4 matchs (8 joueurs)**.
+     * **🟧 Tableau de Repêchage (*Loser Bracket — Seconde chance*)** : *2 de 3* — tout participant perdant un premier match est automatiquement reversé dans le Loser Bracket (**2, 4, 6 ou 8 matchs** au Tour 1 Seconde Chance pour **18, 20, 22 ou 24 joueurs**, ramenant exactement à **4 matchs / 8 joueurs** au Tour 2 Seconde Chance).
      * **🚫 Règle officielle d'évitement des rematchs (*Anti-Rematch*) :** Les joueurs reversés dans le tableau des perdants (*Loser Bracket*) sont automatiquement croisés et permutés afin de **ne jamais rejouer contre un adversaire déjà affronté dans le tableau des gagnants (*Winner Bracket*)**.
      * **🏆 Grande Finale** : *3 de 5* entre le champion du Winner Bracket et le survivant du Loser Bracket.
   3. **🔄 Championnat Round-Robin (Tous contre tous)** : Classement en direct (Points, Victoires, Défaites, Manches Pour/Contre, Différence).
