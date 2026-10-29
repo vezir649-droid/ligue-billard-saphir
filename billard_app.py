@@ -3077,8 +3077,10 @@ def generer_arbre_double_elimination(participants, race_prelim=2, race_finale=3,
         b = 4
     elif n <= 8:
         b = 8
-    else:
+    elif n <= 16:
         b = 16
+    else:
+        b = 32
 
     nb_promus = b - n
     promus = []
@@ -3101,8 +3103,12 @@ def generer_arbre_double_elimination(participants, race_prelim=2, race_finale=3,
         seed_order = [0, 1]
     elif b == 8:
         seed_order = [0, 2, 3, 1]
-    else:
+    elif b == 16:
         seed_order = [0, 4, 6, 2, 7, 3, 5, 1]
+    else:
+        # b == 32 (16 matchs en W1) : répartit d'abord 1 passe-droit par paire de matchs W1 (indices pairs)
+        # afin que pour 24 joueurs (8 promus), chaque match L1 ait exactement 1 perdant réel et 1 Exempt !
+        seed_order = [0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15]
 
     matchs_avec_promus = set(seed_order[:len(promus)])
     promus_places = list(promus)
@@ -3149,7 +3155,7 @@ def generer_arbre_double_elimination(participants, race_prelim=2, race_finale=3,
             })
 
     tours = []
-    w1_nom = "Gagnants — 8ᵉ de finale" if b == 16 else ("Gagnants — Quarts de finale" if b == 8 else "Gagnants — Demi-finales")
+    w1_nom = "Gagnants — 16ᵉ de finale (Tour 1)" if b == 32 else ("Gagnants — 8ᵉ de finale" if b == 16 else ("Gagnants — Quarts de finale" if b == 8 else "Gagnants — Demi-finales"))
     tours.append({
         "numero": 1,
         "nom": w1_nom,
@@ -3391,16 +3397,152 @@ def generer_arbre_double_elimination(participants, race_prelim=2, race_finale=3,
             }]
         })
 
-    # Propager les exemptions initiales de W1 vers les matchs correspondants
-    for m in w1_matchs:
-        if m.get("termine") and m.get("passe_droit"):
-            mid = m["id"]
-            for t in tours:
-                for mf in t.get("matchs", []):
-                    if mf.get("source_a") == mid:
-                        mf["equipe_a"] = m["vainqueur"] if mf.get("type_source_a") == "vainqueur" else m["perdant"]
-                    if mf.get("source_b") == mid:
-                        mf["equipe_b"] = m["vainqueur"] if mf.get("type_source_b") == "vainqueur" else m["perdant"]
+    elif b == 32:
+        # Winner Bracket (W2: 8 matchs, W3: 4 matchs, W4: 2 matchs, W5: 1 match)
+        tours.append({
+            "numero": 2, "nom": "Gagnants — 8ᵉ de finale", "section": "winner", "bracket": "winner",
+            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "matchs": [
+                {"id": f"W2_M{i+1}", "bracket": "winner", "etape": 2, "equipe_a": w1_matchs[2*i]["vainqueur"] or "À déterminer", "equipe_b": w1_matchs[2*i+1]["vainqueur"] or "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": f"W1_M{2*i+1}", "source_b": f"W1_M{2*i+2}", "type_source_a": "vainqueur", "type_source_b": "vainqueur"} for i in range(8)
+            ]
+        })
+        tours.append({
+            "numero": 3, "nom": "Gagnants — Quarts de finale", "section": "winner", "bracket": "winner",
+            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "matchs": [
+                {"id": f"W3_M{i+1}", "bracket": "winner", "etape": 4, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": f"W2_M{2*i+1}", "source_b": f"W2_M{2*i+2}", "type_source_a": "vainqueur", "type_source_b": "vainqueur"} for i in range(4)
+            ]
+        })
+        tours.append({
+            "numero": 4, "nom": "Gagnants — Demi-finales", "section": "winner", "bracket": "winner",
+            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "matchs": [
+                {"id": f"W4_M{i+1}", "bracket": "winner", "etape": 6, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": f"W3_M{2*i+1}", "source_b": f"W3_M{2*i+2}", "type_source_a": "vainqueur", "type_source_b": "vainqueur"} for i in range(2)
+            ]
+        })
+        tours.append({
+            "numero": 5, "nom": "Gagnants — Finale", "section": "winner", "bracket": "winner",
+            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "matchs": [{
+                "id": "W5_M1", "bracket": "winner", "etape": 8, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": "W4_M1", "source_b": "W4_M2", "type_source_a": "vainqueur", "type_source_b": "vainqueur"
+            }]
+        })
+        # Loser Bracket (L1 à L8)
+        tours.append({
+            "numero": 6, "nom": "Seconde Chance — Tour 1", "section": "loser", "bracket": "loser",
+            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "matchs": [
+                {"id": f"L1_M{i+1}", "bracket": "loser", "etape": 2, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": f"W1_M{2*i+1}", "source_b": f"W1_M{2*i+2}", "type_source_a": "perdant", "type_source_b": "perdant"} for i in range(8)
+            ]
+        })
+        w2_losers_32 = [f"W2_M{8-i}" for i in range(8)]
+        tours.append({
+            "numero": 7, "nom": "Seconde Chance — Tour 2", "section": "loser", "bracket": "loser",
+            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "matchs": [
+                {"id": f"L2_M{i+1}", "bracket": "loser", "etape": 3, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": f"L1_M{i+1}", "source_b": w2_losers_32[i], "type_source_a": "vainqueur", "type_source_b": "perdant"} for i in range(8)
+            ]
+        })
+        tours.append({
+            "numero": 8, "nom": "Seconde Chance — Tour 3", "section": "loser", "bracket": "loser",
+            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "matchs": [
+                {"id": f"L3_M{i+1}", "bracket": "loser", "etape": 4, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": f"L2_M{2*i+1}", "source_b": f"L2_M{2*i+2}", "type_source_a": "vainqueur", "type_source_b": "vainqueur"} for i in range(4)
+            ]
+        })
+        w3_losers_32 = ["W3_M4", "W3_M3", "W3_M2", "W3_M1"]
+        tours.append({
+            "numero": 9, "nom": "Seconde Chance — Quarts de finale", "section": "loser", "bracket": "loser",
+            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "matchs": [
+                {"id": f"L4_M{i+1}", "bracket": "loser", "etape": 5, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": f"L3_M{i+1}", "source_b": w3_losers_32[i], "type_source_a": "vainqueur", "type_source_b": "perdant"} for i in range(4)
+            ]
+        })
+        tours.append({
+            "numero": 10, "nom": "Seconde Chance — Repêchage Quarts", "section": "loser", "bracket": "loser",
+            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "matchs": [
+                {"id": f"L5_M{i+1}", "bracket": "loser", "etape": 6, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": f"L4_M{2*i+1}", "source_b": f"L4_M{2*i+2}", "type_source_a": "vainqueur", "type_source_b": "vainqueur"} for i in range(2)
+            ]
+        })
+        w4_losers_32 = ["W4_M2", "W4_M1"]
+        tours.append({
+            "numero": 11, "nom": "Seconde Chance — Repêchage Demi-finales", "section": "loser", "bracket": "loser",
+            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "matchs": [
+                {"id": f"L6_M{i+1}", "bracket": "loser", "etape": 7, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": f"L5_M{i+1}", "source_b": w4_losers_32[i], "type_source_a": "vainqueur", "type_source_b": "perdant"} for i in range(2)
+            ]
+        })
+        tours.append({
+            "numero": 12, "nom": "Seconde Chance — Demi-finale", "section": "loser", "bracket": "loser",
+            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "matchs": [{
+                "id": "L7_M1", "bracket": "loser", "etape": 8, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": "L6_M1", "source_b": "L6_M2", "type_source_a": "vainqueur", "type_source_b": "vainqueur"
+            }]
+        })
+        tours.append({
+            "numero": 13, "nom": "Seconde Chance — Finale", "section": "loser", "bracket": "loser",
+            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "matchs": [{
+                "id": "L8_M1", "bracket": "loser", "etape": 9, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": "L7_M1", "source_b": "W5_M1", "type_source_a": "vainqueur", "type_source_b": "perdant"
+            }]
+        })
+        tours.append({
+            "numero": 14, "nom": "🏆 Grande Finale Officielle", "section": "finale", "bracket": "finale",
+            "race_to": race_finale, "format_label": f"{race_finale} de {2*race_finale - 1}",
+            "matchs": [{
+                "id": "GF_M1", "bracket": "finale", "etape": 10, "race_to": race_finale, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": "W5_M1", "source_b": "L8_M1", "type_source_a": "vainqueur", "type_source_b": "vainqueur"
+            }]
+        })
+
+    # Propager en cascade les exemptions initiales de W1 vers les matchs correspondants (W2, L1, L2)
+    changement_cascade = True
+    while changement_cascade:
+        changement_cascade = False
+        for t_src in tours:
+            for m in t_src.get("matchs", []):
+                if m.get("termine") and m.get("passe_droit"):
+                    mid = m["id"]
+                    for t_dst in tours:
+                        for mf in t_dst.get("matchs", []):
+                            if mf.get("source_a") == mid:
+                                val_a = m["vainqueur"] if mf.get("type_source_a") == "vainqueur" else m["perdant"]
+                                if mf.get("equipe_a") != val_a:
+                                    mf["equipe_a"] = val_a
+                                    changement_cascade = True
+                            if mf.get("source_b") == mid:
+                                val_b = m["vainqueur"] if mf.get("type_source_b") == "vainqueur" else m["perdant"]
+                                if mf.get("equipe_b") != val_b:
+                                    mf["equipe_b"] = val_b
+                                    changement_cascade = True
+                            if not mf.get("termine"):
+                                ea_f = mf.get("equipe_a")
+                                eb_f = mf.get("equipe_b")
+                                r_f = mf.get("race_to", race_prelim)
+                                if ea_f == "Exempt (Passe-droit)" and eb_f == "Exempt (Passe-droit)":
+                                    mf["score_a"] = 0
+                                    mf["score_b"] = 0
+                                    mf["vainqueur"] = "Exempt (Passe-droit)"
+                                    mf["perdant"] = "Exempt (Passe-droit)"
+                                    mf["termine"] = True
+                                    mf["passe_droit"] = True
+                                    changement_cascade = True
+                                elif ea_f and ea_f not in ["À déterminer", "Exempt (Passe-droit)"] and eb_f == "Exempt (Passe-droit)":
+                                    mf["score_a"] = r_f
+                                    mf["score_b"] = 0
+                                    mf["vainqueur"] = ea_f
+                                    mf["perdant"] = "Exempt (Passe-droit)"
+                                    mf["termine"] = True
+                                    mf["passe_droit"] = True
+                                    changement_cascade = True
+                                elif eb_f and eb_f not in ["À déterminer", "Exempt (Passe-droit)"] and ea_f == "Exempt (Passe-droit)":
+                                    mf["score_a"] = 0
+                                    mf["score_b"] = r_f
+                                    mf["vainqueur"] = eb_f
+                                    mf["perdant"] = "Exempt (Passe-droit)"
+                                    mf["termine"] = True
+                                    mf["passe_droit"] = True
+                                    changement_cascade = True
 
     heure_fin = planifier_horaires_double_elimination(tours, heure_debut=heure_debut, duree_min=duree_min, nb_tables=nb_tables)
 
@@ -4776,12 +4918,13 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
 
             col_nb_d1, col_nb_d2 = st.columns([1.5, 3])
             with col_nb_d1:
+                options_nb_duos = [12, 8, 4, 16, 2, 6, 10, 14] if len(tous_candidats) >= 24 else [8, 4, 12, 16, 2, 6, 10, 14]
                 nb_duos_choisi = st.selectbox(
                     "Nombre de duos participant :",
-                    options=[8, 4, 12, 16, 2, 6, 10, 14],
+                    options=options_nb_duos,
                     index=0,
                     key=f"nb_duos_select_{mode}{key_suffix}",
-                    help="Sélectionnez le nombre de duos (8 duos = 16 joueurs, idéal pour un tournoi à élimination sur 3 rondes sans passe-droit)."
+                    help="12 duos = 24 joueurs (avec équilibrage automatique de 4 duos promus au 2e tour) ; 8 duos = 16 joueurs."
                 )
             with col_nb_d2:
                 col_btn_pige, col_btn_reset = st.columns(2)
@@ -4878,18 +5021,7 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
             bloquer_lancement = True
             st.warning("⚠️ **Double élimination :** Un minimum de **4 participants** est requis pour déployer la formule avec tableau des gagnants et tableau de repêchage (seconde chance).")
         elif is_elim:
-            if is_double_elim:
-                if nb_p <= 4:
-                    b_pow = 4
-                elif nb_p <= 8:
-                    b_pow = 8
-                else:
-                    b_pow = 16
-                nb_promus = b_pow - nb_p
-                nb_m_t1 = (nb_p - nb_promus) // 2
-                nb_m_t2 = b_pow // 4
-            else:
-                nb_promus, nb_m_t1, nb_m_t2, b_pow = calculer_structure_arbre(nb_p)
+            nb_promus, nb_m_t1, nb_m_t2, b_pow = calculer_structure_arbre(nb_p)
 
             if nb_promus > 0:
                 st.markdown(
@@ -4913,9 +5045,18 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
                 if cnt_del_key not in st.session_state:
                     st.session_state[cnt_del_key] = 0
 
-                # Initialisation de la liste des promus si non présente
-                if key_promus not in st.session_state:
-                    st.session_state[key_promus] = list(participants_finaux[:nb_promus])
+                key_last_nb_promus = f"last_nb_promus_{mode}{key_suffix}"
+                # Initialisation ou rééquilibrage automatique si le quota de promus change (ex. 24 joueurs -> 8 promus)
+                if key_promus not in st.session_state or st.session_state.get(key_last_nb_promus) != nb_promus:
+                    existants_valides = [p for p in st.session_state.get(key_promus, []) if p in participants_finaux]
+                    if len(existants_valides) > nb_promus:
+                        st.session_state[key_promus] = existants_valides[:nb_promus]
+                    elif len(existants_valides) < nb_promus:
+                        dispos = [p for p in participants_finaux if p not in existants_valides]
+                        st.session_state[key_promus] = existants_valides + dispos[:(nb_promus - len(existants_valides))]
+                    else:
+                        st.session_state[key_promus] = existants_valides
+                    st.session_state[key_last_nb_promus] = nb_promus
                 else:
                     # Ne conserver que les participants encore présents dans la liste finale
                     st.session_state[key_promus] = [p for p in st.session_state[key_promus] if p in participants_finaux]
