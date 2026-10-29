@@ -8917,6 +8917,8 @@ def cb_retour_match_en_cours():
     lbl_direct = "🔴 Saisie du match en direct (En cours)" if not st.session_state.get("est_spectateur", False) else "🔴 Match en direct (En cours)"
     st.session_state["choix_match_vue"] = lbl_direct
 
+callback_retour_match_en_cours = cb_retour_match_en_cours
+
 def cb_appliquer_match_du_jour_btn():
     rencontre = determiner_match_du_jour()
     if rencontre:
@@ -9946,7 +9948,7 @@ with tab_feuille:
                     st.session_state["forcer_rechargement"] = True
                     st.rerun()
         else:
-            st.button("🔙 Revenir au match en cours", on_click=callback_retour_match_en_cours, use_container_width=True, help="Retourner à la saisie du match actuel")
+            st.button("🔙 Revenir au match en cours", on_click=cb_retour_match_en_cours, use_container_width=True, help="Retourner à la saisie du match actuel")
 
     # 1. Si la consultation externe saphirbillard.com est sélectionnée
     if choix_vue == label_saphir:
@@ -10293,7 +10295,7 @@ with tab_feuille:
         with col_av1:
             st.info("💡 **Feuille archivée affichée ci-dessus.** La grille de saisie du match en cours est temporairement masquée.")
         with col_av2:
-            st.button("🔙 Reprendre la saisie", on_click=callback_retour_match_en_cours, type="primary", use_container_width=True, key="btn_reprendre_saisie")
+            st.button("🔙 Reprendre la saisie", on_click=cb_retour_match_en_cours, type="primary", use_container_width=True, key="btn_reprendre_saisie")
     elif not est_spectateur:
         st.markdown("---")
         st.markdown("### 🎯 Grille de saisie des 9 manches (Rotation alternée 3 contre 3)")
