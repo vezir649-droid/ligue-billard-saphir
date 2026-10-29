@@ -3351,7 +3351,7 @@ def generer_arbre_double_elimination(participants, race_prelim=2, race_finale=3,
                 {"id": f"L1_M{i+1}", "bracket": "loser", "etape": 2, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": f"W1_M{2*i+1}", "source_b": f"W1_M{2*i+2}", "type_source_a": "perdant", "type_source_b": "perdant"} for i in range(4)
             ]
         })
-        w2_losers = ["W2_M4", "W2_M3", "W2_M2", "W2_M1"]
+        w2_losers = ["W2_M2", "W2_M1", "W2_M4", "W2_M3"]
         tours.append({
             "numero": 6, "nom": "Seconde Chance — Tour 2", "section": "loser", "bracket": "loser",
             "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
@@ -3435,7 +3435,7 @@ def generer_arbre_double_elimination(participants, race_prelim=2, race_finale=3,
                 {"id": f"L1_M{i+1}", "bracket": "loser", "etape": 2, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": f"W1_M{2*i+1}", "source_b": f"W1_M{2*i+2}", "type_source_a": "perdant", "type_source_b": "perdant"} for i in range(8)
             ]
         })
-        w2_losers_32 = [f"W2_M{8-i}" for i in range(8)]
+        w2_losers_32 = ["W2_M2", "W2_M1", "W2_M4", "W2_M3", "W2_M6", "W2_M5", "W2_M8", "W2_M7"]
         tours.append({
             "numero": 7, "nom": "Seconde Chance — Tour 2", "section": "loser", "bracket": "loser",
             "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
@@ -3450,7 +3450,7 @@ def generer_arbre_double_elimination(participants, race_prelim=2, race_finale=3,
                 {"id": f"L3_M{i+1}", "bracket": "loser", "etape": 4, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": f"L2_M{2*i+1}", "source_b": f"L2_M{2*i+2}", "type_source_a": "vainqueur", "type_source_b": "vainqueur"} for i in range(4)
             ]
         })
-        w3_losers_32 = ["W3_M4", "W3_M3", "W3_M2", "W3_M1"]
+        w3_losers_32 = ["W3_M2", "W3_M1", "W3_M4", "W3_M3"]
         tours.append({
             "numero": 9, "nom": "Seconde Chance — Quarts de finale", "section": "loser", "bracket": "loser",
             "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
@@ -3565,7 +3565,178 @@ def generer_arbre_double_elimination(participants, race_prelim=2, race_finale=3,
         "vainqueur_final": None,
         "finaliste": None
     }
+    eviter_rematch_loser_bracket(tournoi_obj)
     return tournoi_obj
+
+def obtenir_duels_winner_joues(tournoi):
+    """Retourne l'ensemble des paires frozenset({joueurA, joueurB}) qui se sont déjà affrontées dans le tableau des gagnants."""
+    duels = set()
+    for t in tournoi.get("tours", []):
+        if t.get("bracket") == "winner":
+            for m in t.get("matchs", []):
+                ea = m.get("equipe_a")
+                eb = m.get("equipe_b")
+                if (
+                    ea and eb
+                    and ea not in ["À déterminer", "Exempt (Passe-droit)"]
+                    and eb not in ["À déterminer", "Exempt (Passe-droit)"]
+                    and not m.get("passe_droit")
+                ):
+                    duels.add(frozenset([ea, eb]))
+    return duels
+
+
+def _candidats_slot_tournoi(tournoi, nom_actuel, source_id, type_source="vainqueur", prof=0):
+    """Retourne l'ensemble des joueurs connus ou potentiels pouvant occuper un slot de match."""
+    if nom_actuel and nom_actuel not in ["À déterminer", "Exempt (Passe-droit)"]:
+        return {nom_actuel}
+    if not source_id or prof > 3:
+        return set()
+    for t in tournoi.get("tours", []):
+        for m in t.get("matchs", []):
+            if m.get("id") == source_id:
+                if m.get("termine"):
+                    val = m.get("vainqueur") if type_source == "vainqueur" else m.get("perdant")
+                    return {val} if val and val not in ["À déterminer", "Exempt (Passe-droit)"] else set()
+                cands = set()
+                for k_eq, k_src, k_typ in [
+                    ("equipe_a", "source_a", "type_source_a"),
+                    ("equipe_b", "source_b", "type_source_b")
+                ]:
+                    v = m.get(k_eq)
+                    if v and v not in ["À déterminer", "Exempt (Passe-droit)"]:
+                        cands.add(v)
+                    elif m.get(k_src):
+                        cands |= _candidats_slot_tournoi(tournoi, v, m.get(k_src), m.get(k_typ, "vainqueur"), prof + 1)
+                return cands
+    return set()
+
+
+def _a_conflit_rematch(cands_a, cands_b, duels_winner):
+    """Vérifie s'il existe un duel déjà joué dans le Winner Bracket entre deux ensembles de candidats."""
+    for pa in cands_a:
+        for pb in cands_b:
+            if pa != pb and frozenset([pa, pb]) in duels_winner:
+                return True
+    return False
+
+
+def eviter_rematch_loser_bracket(tournoi):
+    """
+    Règle officielle d'évitement en Double Élimination :
+    Les joueurs reversés dans le tableau des perdants (Loser Bracket) ne doivent pas
+    rejouer contre un adversaire déjà affronté dans le tableau des gagnants (Winner Bracket).
+    Si une affiche du Loser Bracket oppose deux joueurs ayant déjà joué ensemble dans le Winner Bracket,
+    permute automatiquement les positions avec un autre match non terminé du même tour.
+    """
+    if tournoi.get("format") != "double_elimination":
+        return False
+
+    duels_winner = obtenir_duels_winner_joues(tournoi)
+    if not duels_winner:
+        return False
+
+    modifie = False
+    for t in tournoi.get("tours", []):
+        if t.get("bracket") != "loser":
+            continue
+        matchs_l = t.get("matchs", [])
+        if len(matchs_l) < 2:
+            # S'il ne reste qu'un seul match dans ce tour (ex. Finale ou Demi-finale unique du Loser Bracket),
+            # aucune permutation n'est possible dans ce tour.
+            continue
+
+        for i, m_i in enumerate(matchs_l):
+            if m_i.get("termine") or m_i.get("passe_droit"):
+                continue
+            ea_i = m_i.get("equipe_a")
+            eb_i = m_i.get("equipe_b")
+            if ea_i == "Exempt (Passe-droit)" or eb_i == "Exempt (Passe-droit)":
+                continue
+
+            cands_a_i = _candidats_slot_tournoi(tournoi, ea_i, m_i.get("source_a"), m_i.get("type_source_a", "vainqueur"))
+            cands_b_i = _candidats_slot_tournoi(tournoi, eb_i, m_i.get("source_b"), m_i.get("type_source_b", "vainqueur"))
+
+            # On déclenche la permutation dès que les deux joueurs sont connus (ou que le seul candidat possible) crée un rematch
+            conflit_direct = (
+                ea_i not in ["À déterminer", "Exempt (Passe-droit)", None]
+                and eb_i not in ["À déterminer", "Exempt (Passe-droit)", None]
+                and frozenset([ea_i, eb_i]) in duels_winner
+            )
+            conflit_potentiel = (
+                len(cands_a_i) == 1 and len(cands_b_i) == 1
+                and _a_conflit_rematch(cands_a_i, cands_b_i, duels_winner)
+            )
+
+            if not (conflit_direct or conflit_potentiel):
+                continue
+
+            # Chercher un match m_j dans le même tour du Loser Bracket pour permuter sans créer de rematch
+            swapped = False
+            for passe_stricte in [True, False]:
+                for j, m_j in enumerate(matchs_l):
+                    if i == j or m_j.get("termine") or m_j.get("passe_droit"):
+                        continue
+                    ea_j = m_j.get("equipe_a")
+                    eb_j = m_j.get("equipe_b")
+                    if ea_j == "Exempt (Passe-droit)" or eb_j == "Exempt (Passe-droit)":
+                        continue
+
+                    cands_a_j = _candidats_slot_tournoi(tournoi, ea_j, m_j.get("source_a"), m_j.get("type_source_a", "vainqueur"))
+                    cands_b_j = _candidats_slot_tournoi(tournoi, eb_j, m_j.get("source_b"), m_j.get("type_source_b", "vainqueur"))
+
+                    # Essai 1 : Permuter les slots B entre m_i et m_j
+                    if passe_stricte:
+                        ok_b = (not _a_conflit_rematch(cands_a_i, cands_b_j, duels_winner)) and (not _a_conflit_rematch(cands_a_j, cands_b_i, duels_winner))
+                    else:
+                        ok_b = (
+                            not (ea_i not in ["À déterminer", None] and eb_j not in ["À déterminer", None] and frozenset([ea_i, eb_j]) in duels_winner)
+                            and not (ea_j not in ["À déterminer", None] and eb_i not in ["À déterminer", None] and frozenset([ea_j, eb_i]) in duels_winner)
+                        )
+                    if ok_b:
+                        m_i["equipe_b"], m_j["equipe_b"] = m_j.get("equipe_b"), m_i.get("equipe_b")
+                        m_i["source_b"], m_j["source_b"] = m_j.get("source_b"), m_i.get("source_b")
+                        m_i["type_source_b"], m_j["type_source_b"] = m_j.get("type_source_b", "vainqueur"), m_i.get("type_source_b", "vainqueur")
+                        swapped = True
+                        modifie = True
+                        break
+
+                    # Essai 2 : Permuter les slots A entre m_i et m_j
+                    if passe_stricte:
+                        ok_a = (not _a_conflit_rematch(cands_a_j, cands_b_i, duels_winner)) and (not _a_conflit_rematch(cands_a_i, cands_b_j, duels_winner))
+                    else:
+                        ok_a = (
+                            not (ea_j not in ["À déterminer", None] and eb_i not in ["À déterminer", None] and frozenset([ea_j, eb_i]) in duels_winner)
+                            and not (ea_i not in ["À déterminer", None] and eb_j not in ["À déterminer", None] and frozenset([ea_i, eb_j]) in duels_winner)
+                        )
+                    if ok_a:
+                        m_i["equipe_a"], m_j["equipe_a"] = m_j.get("equipe_a"), m_i.get("equipe_a")
+                        m_i["source_a"], m_j["source_a"] = m_j.get("source_a"), m_i.get("source_a")
+                        m_i["type_source_a"], m_j["type_source_a"] = m_j.get("type_source_a", "vainqueur"), m_i.get("type_source_a", "vainqueur")
+                        swapped = True
+                        modifie = True
+                        break
+
+                    # Essai 3 : Permuter slot B de m_i avec slot A de m_j
+                    if passe_stricte:
+                        ok_ba = (not _a_conflit_rematch(cands_a_i, cands_a_j, duels_winner)) and (not _a_conflit_rematch(cands_b_i, cands_b_j, duels_winner))
+                    else:
+                        ok_ba = (
+                            not (ea_i not in ["À déterminer", None] and ea_j not in ["À déterminer", None] and frozenset([ea_i, ea_j]) in duels_winner)
+                            and not (eb_i not in ["À déterminer", None] and eb_j not in ["À déterminer", None] and frozenset([eb_i, eb_j]) in duels_winner)
+                        )
+                    if ok_ba:
+                        m_i["equipe_b"], m_j["equipe_a"] = m_j.get("equipe_a"), m_i.get("equipe_b")
+                        m_i["source_b"], m_j["source_a"] = m_j.get("source_a"), m_i.get("source_b")
+                        m_i["type_source_b"], m_j["type_source_a"] = m_j.get("type_source_a", "vainqueur"), m_i.get("type_source_b", "vainqueur")
+                        swapped = True
+                        modifie = True
+                        break
+                if swapped:
+                    break
+
+    return modifie
+
 
 def actualiser_score_elimination(tournoi, tour_num, match_id, score_a, score_b):
     """Enregistre le score et qualifie automatiquement le vainqueur (et perdant en double élimination)."""
@@ -3681,6 +3852,9 @@ def actualiser_score_elimination(tournoi, tour_num, match_id, score_a, score_b):
         except Exception:
             pass
 
+    # Éviter qu'un joueur reversé dans le Loser Bracket n'affronte le même joueur que dans le Winner Bracket
+    eviter_rematch_loser_bracket(tournoi)
+
     est_finale = (tour_num == tournoi.get("total_tours")) or (match_id == "GF_M1")
     if est_finale:
         tournoi["vainqueur_final"] = vainqueur
@@ -3751,6 +3925,8 @@ def attribuer_passe_droit_elimination(tournoi, tour_num, match_id, beneficiaire)
                     prochain_match["equipe_b"] = beneficiaire
         except Exception:
             pass
+
+    eviter_rematch_loser_bracket(tournoi)
 
     est_finale = (tour_num == tournoi.get("total_tours")) or (match_id == "GF_M1")
     if est_finale:

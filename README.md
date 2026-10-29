@@ -87,6 +87,7 @@ La barre latérale **« 📋 Paramètres du Match »** regroupe tous les réglag
   2. **🛡️ Double élimination — Winner & Loser Bracket (Seconde chance, arbres de 4, 8, 16 ou 32)** :
      * **🟦 Tableau des Gagnants (*Winner Bracket*)** : *2 de 3* (avec équilibrage automatique de **8 passes-droits pour 24 joueurs** en Simple ou **4 passes-droits pour 12 duos** en Double).
      * **🟧 Tableau de Repêchage (*Loser Bracket — Seconde chance*)** : *2 de 3* — tout participant perdant un premier match est automatiquement reversé dans le Loser Bracket et conserve toutes ses chances d'atteindre la Grande Finale.
+     * **🚫 Règle officielle d'évitement des rematchs (*Anti-Rematch*) :** Les joueurs reversés dans le tableau des perdants (*Loser Bracket*) sont automatiquement croisés et permutés afin de **ne jamais rejouer contre un adversaire déjà affronté dans le tableau des gagnants (*Winner Bracket*)**.
      * **🏆 Grande Finale** : *3 de 5* entre le champion du Winner Bracket et le survivant du Loser Bracket.
   3. **🔄 Championnat Round-Robin (Tous contre tous)** : Classement en direct (Points, Victoires, Défaites, Manches Pour/Contre, Différence).
 * **Suivi opérationnel en direct :**
