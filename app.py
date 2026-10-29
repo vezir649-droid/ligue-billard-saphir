@@ -9593,15 +9593,14 @@ with tab_feuille:
                 if k_a == p_id or k_b == p_id:
                     info_a = dict_joueurs[k_a]
                     info_b = dict_joueurs[k_b]
-                    if not info_a["present"] and info_b["present"]:
-                        st.session_state[f"s_a_{num_m}"] = info_a["pts_absent"]
-                        st.session_state[f"s_b_{num_m}"] = 8
-                    elif not info_b["present"] and info_a["present"]:
-                        st.session_state[f"s_a_{num_m}"] = 8
-                        st.session_state[f"s_b_{num_m}"] = info_b["pts_absent"]
-                    elif not info_a["present"] and not info_b["present"]:
-                        st.session_state[f"s_a_{num_m}"] = info_a["pts_absent"]
-                        st.session_state[f"s_b_{num_m}"] = info_b["pts_absent"]
+                    a_abs = not info_a["present"]
+                    b_abs = not info_b["present"]
+                    if a_abs or b_abs:
+                        # Lorsqu'un joueur est absent, les deux joueurs (l'absent et le présent) ont leur score calculé selon leur moyenne respective
+                        moy_a = float(info_a.get("moyenne", 0.0)) or obtenir_moyenne_joueur(info_a.get("nom", ""))
+                        moy_b = float(info_b.get("moyenne", 0.0)) or obtenir_moyenne_joueur(info_b.get("nom", ""))
+                        st.session_state[f"s_a_{num_m}"] = calculer_score_absent(moy_a)
+                        st.session_state[f"s_b_{num_m}"] = calculer_score_absent(moy_b)
                     else:
                         st.session_state[f"s_a_{num_m}"] = 0
                         st.session_state[f"s_b_{num_m}"] = 0
@@ -10104,31 +10103,28 @@ with tab_feuille:
             a_pres = info_a["present"]
             b_pres = info_b["present"]
 
+            moy_a_val = float(info_a.get("moyenne", 0.0)) or obtenir_moyenne_joueur(joueur_a)
+            moy_b_val = float(info_b.get("moyenne", 0.0)) or obtenir_moyenne_joueur(joueur_b)
+            calc_sc_a = calculer_score_absent(moy_a_val)
+            calc_sc_b = calculer_score_absent(moy_b_val)
+
             status_label = ""
-            if not a_pres and not b_pres:
-                status_label = " ❌ (Forfait double : 2 absents)"
-            elif not a_pres:
-                status_label = f" ❌ ({joueur_a} absent : {info_a['pts_absent']} pts)"
-            elif not b_pres:
-                status_label = f" ❌ ({joueur_b} absent : {info_b['pts_absent']} pts)"
+            if not a_pres or not b_pres:
+                init_val_a = calc_sc_a
+                init_val_b = calc_sc_b
+                if not a_pres and not b_pres:
+                    status_label = f" ❌ (2 absents : {calc_sc_a} pts vs {calc_sc_b} pts)"
+                elif not a_pres:
+                    status_label = f" ❌ ({joueur_a} absent : {calc_sc_a} pts vs {joueur_b} {calc_sc_b} pts selon moyennes)"
+                else:
+                    status_label = f" ❌ ({joueur_b} absent : {calc_sc_b} pts vs {joueur_a} {calc_sc_a} pts selon moyennes)"
+            else:
+                init_val_a = 0
+                init_val_b = 0
 
             # IMPORTANT : Le titre du st.expander doit rester statique vis-à-vis des scores pour que Streamlit conserve l'état des champs numériques
             with st.expander(f"Manche {num_manche} : {joueur_a} ({equipe_receveur}) vs {joueur_b} ({equipe_visiteur}){status_label}", expanded=True):
                 c1, c2 = st.columns(2)
-
-                # Valeur par défaut si non encore définie dans session_state
-                if not a_pres and b_pres:
-                    init_val_a = info_a["pts_absent"]
-                    init_val_b = 8
-                elif not b_pres and a_pres:
-                    init_val_a = 8
-                    init_val_b = info_b["pts_absent"]
-                elif not a_pres and not b_pres:
-                    init_val_a = info_a["pts_absent"]
-                    init_val_b = info_b["pts_absent"]
-                else:
-                    init_val_a = 0
-                    init_val_b = 0
 
                 if f"s_a_{num_manche}" not in st.session_state:
                     st.session_state[f"s_a_{num_manche}"] = max(0, min(8, int(init_val_a)))
@@ -10136,7 +10132,8 @@ with tab_feuille:
                     st.session_state[f"s_b_{num_manche}"] = max(0, min(8, int(init_val_b)))
 
                 with c1:
-                    label_champ_a = f"🔵 Points de {joueur_a} ({equipe_receveur})" + (f" [Absent : {info_a['pts_absent']} pts]" if not a_pres else "")
+                    badge_lbl_a = f" [Absent : {init_val_a} pts]" if not a_pres else (f" [Score calculé selon moyenne : {init_val_a} pts]" if not b_pres else "")
+                    label_champ_a = f"🔵 Points de {joueur_a} ({equipe_receveur}){badge_lbl_a}"
                     score_a = int(st.number_input(
                         label_champ_a, 
                         0, 8, 
@@ -10144,7 +10141,8 @@ with tab_feuille:
                         disabled=not est_editeur
                     ))
                 with c2:
-                    label_champ_b = f"🟠 Points de {joueur_b} ({equipe_visiteur})" + (f" [Absent : {info_b['pts_absent']} pts]" if not b_pres else "")
+                    badge_lbl_b = f" [Absent : {init_val_b} pts]" if not b_pres else (f" [Score calculé selon moyenne : {init_val_b} pts]" if not a_pres else "")
+                    label_champ_b = f"🟠 Points de {joueur_b} ({equipe_visiteur}){badge_lbl_b}"
                     score_b = int(st.number_input(
                         label_champ_b, 
                         0, 8, 
@@ -11103,19 +11101,21 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                     a_pres = info_a["present"]
                     b_pres = info_b["present"]
 
+                    moy_a_ant = float(info_a.get("moyenne", 0.0)) or obtenir_moyenne_joueur(nom_a)
+                    moy_b_ant = float(info_b.get("moyenne", 0.0)) or obtenir_moyenne_joueur(nom_b)
+                    sc_calc_a = calculer_score_absent(moy_a_ant)
+                    sc_calc_b = calculer_score_absent(moy_b_ant)
+
                     status_abs = ""
-                    if not a_pres and not b_pres:
-                        status_abs = " ❌ (Forfait double : 2 absents)"
-                        init_sa = info_a["pts_absent"]
-                        init_sb = info_b["pts_absent"]
-                    elif not a_pres:
-                        status_abs = f" ❌ ({nom_a} absent : {info_a['pts_absent']} pts)"
-                        init_sa = info_a["pts_absent"]
-                        init_sb = 8
-                    elif not b_pres:
-                        status_abs = f" ❌ ({nom_b} absent : {info_b['pts_absent']} pts)"
-                        init_sa = 8
-                        init_sb = info_b["pts_absent"]
+                    if not a_pres or not b_pres:
+                        init_sa = sc_calc_a
+                        init_sb = sc_calc_b
+                        if not a_pres and not b_pres:
+                            status_abs = f" ❌ (2 absents : {sc_calc_a} pts vs {sc_calc_b} pts)"
+                        elif not a_pres:
+                            status_abs = f" ❌ ({nom_a} absent : {sc_calc_a} pts vs {nom_b} {sc_calc_b} pts selon moyennes)"
+                        else:
+                            status_abs = f" ❌ ({nom_b} absent : {sc_calc_b} pts vs {nom_a} {sc_calc_a} pts selon moyennes)"
                     else:
                         init_sa = 0
                         init_sb = 0
