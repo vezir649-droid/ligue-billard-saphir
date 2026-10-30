@@ -1,0 +1,8 @@
+{
+    "destinataires": "",
+    "smtp_serveur": "smtp.gmail.com",
+    "smtp_port": 587,
+    "smtp_expediteur": "",
+    "smtp_mdp": "",
+    "smtp_ssl": false
+}
