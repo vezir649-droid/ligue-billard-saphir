@@ -466,7 +466,7 @@ GITHUB_REPO_DEFAULT = "vezir649-droid/ligue-billard-saphir"
 GITHUB_BRANCH_DEFAULT = "main"
 
 def obtenir_parametres_github():
-    """Récupère les paramètres de synchronisation GitHub (Token, Repo, Branche) depuis st.secrets, l'environnement ou config_admin.json."""
+    """Récupère les paramètres de synchronisation GitHub (Token, Repo, Branche) depuis st.secrets, l'environnement, la CLI gh ou config_admin.json."""
     token = ""
     repo = GITHUB_REPO_DEFAULT
     branch = GITHUB_BRANCH_DEFAULT
@@ -484,7 +484,17 @@ def obtenir_parametres_github():
     if not token and os.environ.get("GITHUB_TOKEN"):
         token = os.environ.get("GITHUB_TOKEN", "").strip()
 
-    # 3. Streamlit Secrets (prioritaire sur Streamlit Community Cloud)
+    # 3. Récupération via le CLI GitHub local (gh auth token) si disponible
+    if not token:
+        try:
+            import subprocess
+            res_gh = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, timeout=3)
+            if res_gh.returncode == 0 and res_gh.stdout.strip():
+                token = res_gh.stdout.strip()
+        except Exception:
+            pass
+
+    # 4. Streamlit Secrets (prioritaire sur Streamlit Community Cloud)
     try:
         if hasattr(st, "secrets"):
             if "GITHUB_TOKEN" in st.secrets:
@@ -526,6 +536,8 @@ def lister_fichiers_locaux_donnees():
         BACKUP_FILE,
         CORBEILLE_FILE,
         EQUIPES_CSV_FILE,
+        JOUEURS_CSV_FILE,
+        HORAIRE_SAPHIR_FILE,
         CONFIG_EMAIL_FILE,
         ADMIN_CONFIG_FILE
     ]
@@ -636,21 +648,45 @@ def synchroniser_fichier_github(filepath, commit_message=None):
         except Exception as e_api:
             return False, f"Erreur API GitHub ({filename}) : {e_api}"
 
-    # Méthode 2 (Repli local si dépôt Git présent avec identifiants configurés)
-    git_dir = os.path.join(BASE_DIR, ".git")
-    if os.path.isdir(git_dir):
+    # Méthode 2 : Repli via Git local (dépôt local ou dépôt adjacent LigueBillardSaphir)
+    candidats_git = [
+        BASE_DIR,
+        os.getcwd(),
+        os.path.abspath(os.path.join(BASE_DIR, "..", "LigueBillardSaphir")),
+        "C:/Users/user/OneDrive/Documentos/LigueBillardSaphir",
+        "c:/Users/user/OneDrive/Documentos/LigueBillardSaphir"
+    ]
+    repos_vus = set()
+    for c_dir in candidats_git:
+        if not c_dir or not os.path.isdir(os.path.join(c_dir, ".git")):
+            continue
+        r_norm = os.path.normpath(os.path.abspath(c_dir)).lower()
+        if r_norm in repos_vus:
+            continue
+        repos_vus.add(r_norm)
         try:
             import subprocess
-            subprocess.run(["git", "-C", BASE_DIR, "add", "-f", filename], timeout=5, check=False, capture_output=True)
-            res_c = subprocess.run(["git", "-C", BASE_DIR, "commit", "-m", commit_message], timeout=5, check=False, capture_output=True)
-            if res_c.returncode == 0:
-                res_p = subprocess.run(["git", "-C", BASE_DIR, "push", "origin", branch], timeout=10, check=False, capture_output=True)
-                if res_p.returncode == 0:
-                    return True, f"Fichier {filename} poussé via Git local."
+            import shutil
+            # Si le fichier source est situé hors du dépôt Git, le synchroniser dans le dépôt cible
+            dest_f = os.path.join(c_dir, filename)
+            if os.path.normpath(os.path.abspath(filepath)).lower() != os.path.normpath(os.path.abspath(dest_f)).lower():
+                try:
+                    shutil.copy2(filepath, dest_f)
+                except Exception:
+                    pass
+            subprocess.run(["git", "-C", c_dir, "add", "-f", filename], timeout=8, check=False, capture_output=True)
+            res_c = subprocess.run(["git", "-C", c_dir, "commit", "-m", commit_message], timeout=8, check=False, capture_output=True)
+            res_p = subprocess.run(["git", "-C", c_dir, "push", "origin", branch], timeout=15, check=False, capture_output=True)
+            if res_p.returncode == 0:
+                try:
+                    st.session_state["dernier_sync_github"] = f"✅ {filename} synchronisé sur GitHub via Git local ({datetime.now().strftime('%H:%M:%S')})"
+                except Exception:
+                    pass
+                return True, f"Fichier {filename} poussé avec succès via Git local ({os.path.basename(c_dir)}). "
         except Exception:
             pass
 
-    return False, "Aucun jeton GitHub (GITHUB_TOKEN) configuré pour l'écriture distante."
+    return False, "Aucun jeton GitHub (GITHUB_TOKEN) configuré pour l'API et aucun push Git local n'a réussi."
 
 def telecharger_fichier_brut_depuis_github(filename):
     """Télécharge le contenu binaire brut d'un fichier (.json, .csv, etc.) depuis le dépôt GitHub."""
@@ -1743,6 +1779,7 @@ def sauvegarder_joueurs_stats_csv(joueurs_raw, equipes_raw, filepath=JOUEURS_CSV
             writer = csv.DictWriter(f, fieldnames=["Nom", "Points", "Moyenne", "Semaines", "Rang", "Equipe"])
             writer.writeheader()
             writer.writerows(lignes)
+        declencher_sync_github_arriere_plan(delai=1.0, commit_prefix=f"Sauvegarde joueurs_stats.csv ({len(lignes)} joueurs)")
         return True
     except Exception:
         return False
@@ -1825,12 +1862,13 @@ def charger_horaire_json():
     return []
 
 def sauvegarder_horaire_json(lignes_horaire):
-    """Enregistre le calendrier des rencontres dans horaire_saphir.json."""
+    """Enregistre le calendrier des rencontres dans horaire_saphir.json et synchronise sur GitHub."""
     if not lignes_horaire:
         return
     try:
         with open(HORAIRE_SAPHIR_FILE, "w", encoding="utf-8") as f:
             json.dump(lignes_horaire, f, indent=2, ensure_ascii=False)
+        declencher_sync_github_arriere_plan(delai=1.0, commit_prefix=f"Sauvegarde horaire_saphir.json ({len(lignes_horaire)} rencontres)")
     except Exception:
         pass
 
