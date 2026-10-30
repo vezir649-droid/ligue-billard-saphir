@@ -125,15 +125,40 @@ La barre latérale **« 📋 Paramètres du Match »** regroupe tous les réglag
 
 ---
 
-### 7. ⚙️ Espace Administration & Persistance Cloud GitHub (Anti-veille Streamlit)
-* **Onglet dédié `⚙️ Administration` (accessible uniquement via `🛡️ Accès Administrateur`) :**
-  * **👥 Édition des équipes & joueurs (`equipes-saphir.csv`) :** Tableau interactif modifiable, ajout rapide d'équipe, import et export CSV.
-  * **📝 Saisie de matchs antérieurs (Matchs en retard ou archives) :** Formulaire complet permettant d'enregistrer rétroactivement une rencontre disputée avec date, heure, composition des équipes et scores des 9 manches (selon la rotation officielle alternée). Met à jour immédiatement les classements, statistiques et déclenche la synchronisation GitHub.
-  * **✏️ Rectification ou suppression d'un match archivé :** 
-    * Correction des scores ou joueurs avec motif officiel et régénération de la feuille officielle.
+### 7. ⚙️ Espace Administration, API Saphir & Persistance Cloud GitHub (Anti-veille Streamlit)
+Le volet **`⚙️ Administration`** (réservé exclusivement à l'accès **`🛡️ Administrateur`**) regroupe les outils avancés de gestion de la ligue, de persistance des données, d'interconnexion API et de maintenance du système. Son ergonomie a été spécialement optimisée avec des libellés d'onglets compacts et un bandeau de navigation d'accès direct pour garantir une visibilité totale de tous les modules sans défilement masqué.
+
+* **Onglets et modules du volet Administration :**
+  * **👥 Équipes (`equipes-saphir.csv`) :** Tableau interactif modifiable en direct, ajout rapide d'équipes et de joueurs réguliers, import/export CSV et validation instantanée.
+  * **📝 Match passé (Saisie de matchs antérieurs ou en retard) :** Formulaire complet permettant d'enregistrer rétroactivement une rencontre disputée avec sélection de la date/heure, composition des équipes et scores des 9 manches selon la rotation officielle alternée. Met immédiatement à jour les classements, les statistiques cumulées et déclenche la synchronisation cloud.
+  * **✏️ Rectifications (Correction ou suppression de matchs archivés) :** 
+    * Correction ciblée des scores de manche, des présences ou des alignements avec saisie obligatoire d'un motif officiel et régénération immédiate de la feuille officielle.
     * **🗑️ Suppression d'un match de l'historique :** Option sécurisée (accessible dans l'Administration et directement lors de la consultation d'une feuille archivée) avec confirmation, création d'une copie de sauvegarde `.bak` horodatée et synchronisation GitHub automatique.
-  * **📤 Export & Sauvegarde JSON :** Envoi du bilan complet par courriel SMTP (avec `historique_matchs.json` ou `historique_tournois.json` en pièce jointe) + **téléchargement et restauration directe des fichiers JSON** en un clic.
-  * **🗓️ Nouvelle saison, 📧 Configuration SMTP & 🔑 Gestion des mots de passe Marqueur et Administrateur.**
+  * **🗓️ Saison (Gestion des cycles de compétition) :** Initialisation d'une nouvelle saison, archivage des statistiques précédentes et remise à zéro sécurisée des classements actifs.
+  * **💾 Sauvegardes & Restauration fiabilisée (Nettoyage JSON pur) :**
+    * **Nettoyage et allègement JSON pur :** Suppression complète du code HTML verbeux et des images base64 dans `historique_matchs.json`. Le fichier passe de ~448 Ko à ~56 Ko (réduction de plus de **88 %**), éliminant toute redondance et accélérant les synchronisations réseau. Le rendu visuel HTML officiel et l'impression A4 sont désormais générés dynamiquement à la volée de façon 100 % autonome et fidèle.
+    * **Restauration d'historique fiabilisée :** Prise en charge universelle des fichiers JSON téléversés (formats liste de matchs ou dictionnaire avec clé `"matchs"`), gestion robuste des encodages UTF-8 standard et UTF-8 avec BOM (`utf-8-sig`), calcul automatique des totaux de scores manquants (`score_total_receveur` / `score_total_visiteur`), déduplication des identifiants et **rafraîchissement immédiat de toutes les listes déroulantes de consultation et de rectification sans conflit d'index**.
+    * **Exports & Envois par courriel :** Téléchargement direct des bases JSON et envoi automatisé des bilans par courriel SMTP avec pièces jointes.
+  * **🌐 Test POST Saphir (`billardImport`) :**
+    * Module interactif d'interconnexion avec l'API officielle de la Salle Le Saphir, également accessible en raccourci direct depuis la vue Saphir de la feuille de match.
+    * **Point de terminaison officiel :** `POST https://saphirbillard.com/index.php?eID=billardImport`
+    * **Authentification sécurisée :** En-têtes HTTP `Content-Type: application/json` et `X-API-Key: UNE_CLE_DEBILEMENT_LONGUE` avec champ de saisie masqué.
+    * **Charge utile JSON structurée :** Modèle prérempli et éditeur en direct validant les données d'importation (saison, semaine, prénom, nom, pointage) :
+      ```json
+      [
+        {
+          "saison": 4,
+          "semaine": 21,
+          "prenom": "Sylvain",
+          "nom": "Derasp",
+          "pointage": 89
+        }
+      ]
+      ```
+    * **Outils d'inspection et de diagnostic :** Validation de syntaxe JSON en direct, génération instantanée de la commande `cURL` équivalente pour exécution en ligne de commande, mesure précise du temps de latence en millisecondes (ms), statut HTTP (`200 OK`, etc.), inspection détaillée des en-têtes et coloration syntaxique de la réponse retournée par le serveur.
+  * **📧 SMTP (Notifications et bilans officiels) :** Configuration du serveur d'expédition courriel, test d'envoi en direct et routage des alertes administratives.
+  * **🔑 Sécurité (Gestion des accès) :** Modification sécurisée des mots de passe Marqueur et Administrateur avec hachage cryptographique SHA-256 dans `config_auth.json`.
+
 * **☁️ Synchronisation automatique GitHub intégrale (.json & .csv) & Protection anti-veille :**
   * **Au démarrage / Réveil de l'application :** Récupération et restauration automatiques de **tous les fichiers de données JSON et CSV** depuis GitHub (`historique_matchs.json`, `historique_tournois.json`, `tournois_data.json`, `sauvegarde_saisie_secours.json`, `equipes-saphir.csv`, `config_email.json`, `config_admin.json`). Fusion intelligente sans doublon et prise en compte des dernières modifications horodatées.
   * **Lors des sauvegardes :** Envoi automatique vers GitHub de **tous les fichiers .json et .csv** dès qu'une sauvegarde est déclenchée (validation de match, mise à jour ou clôture de tournoi, modification des équipes CSV, configuration email SMTP, mots de passe, cession de main et saisie de secours).
@@ -177,7 +202,7 @@ GITHUB_BRANCH = "main"
 | `billard_app.py` / `app.py` | Code source principal de l'application Streamlit |
 | `README.md` | Documentation officielle (affichée et imprimable depuis la page d'ouverture) |
 | `equipes-saphir.csv` | Liste officielle des équipes et de leurs 3 joueurs réguliers |
-| `historique_matchs.json` | Base de données JSON des feuilles de matchs 3v3 validées (synchronisée sur GitHub) |
+| `historique_matchs.json` | Base de données JSON allégée (100 % JSON pur, sans HTML) des feuilles de matchs 3v3 validées (synchronisée sur GitHub) |
 | `historique_tournois.json` | Historique officiel complet des tournois Simples & Doubles (synchronisé sur GitHub) |
 | `tournois_data.json` | État en temps réel des tournois actifs et synchronisation d'historique |
 | `sauvegarde_saisie_secours.json` | Sauvegarde temps réel de la feuille de match 3v3 en cours de saisie |
