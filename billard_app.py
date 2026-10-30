@@ -390,16 +390,34 @@ def injecter_theme_css_saphir():
 
 
 def charger_config_admin():
-    """Charge la configuration des mots de passe depuis config_admin.json."""
+    """Charge la configuration des mots de passe depuis config_admin.json et st.secrets."""
+    data = {}
     if os.path.exists(ADMIN_CONFIG_FILE):
         try:
             with open(ADMIN_CONFIG_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if isinstance(data, dict):
-                    return data
+                d = json.load(f)
+                if isinstance(d, dict):
+                    data.update(d)
         except Exception:
             pass
-    return {}
+    # Prise en compte prioritaire ou de secours de st.secrets (Streamlit Secrets)
+    try:
+        if hasattr(st, "secrets"):
+            if "admin" in st.secrets and isinstance(st.secrets["admin"], dict):
+                for k, v in st.secrets["admin"].items():
+                    if v is not None and str(v).strip():
+                        data[k] = v
+            if "mot_de_passe" in st.secrets and st.secrets["mot_de_passe"]:
+                data["mot_de_passe"] = str(st.secrets["mot_de_passe"]).strip()
+            if "mot_de_passe_admin" in st.secrets and st.secrets["mot_de_passe_admin"]:
+                data["mot_de_passe_admin"] = str(st.secrets["mot_de_passe_admin"]).strip()
+            if "saphir_api_key" in st.secrets and st.secrets["saphir_api_key"]:
+                data["saphir_api_key"] = str(st.secrets["saphir_api_key"]).strip()
+            if "saphir_api_url" in st.secrets and st.secrets["saphir_api_url"]:
+                data["saphir_api_url"] = str(st.secrets["saphir_api_url"]).strip()
+    except Exception:
+        pass
+    return data
 
 def charger_mot_de_passe_admin():
     """Charge le mot de passe Marqueur / Éditeur (défaut: saphir2026)."""
@@ -1132,7 +1150,7 @@ def sauvegarder_donnees(data):
         st.error(f"Erreur lors de la sauvegarde automatique : {e}")
 
 def charger_config_email():
-    """Charge la configuration SMTP au démarrage de l'application."""
+    """Charge la configuration SMTP au démarrage de l'application depuis config_email.json et st.secrets."""
     defaut = {
         "destinataires": "",
         "smtp_serveur": "smtp.gmail.com",
@@ -1145,10 +1163,36 @@ def charger_config_email():
         try:
             with open(CONFIG_EMAIL_FILE, "r", encoding="utf-8") as f:
                 donnees = json.load(f)
-                defaut.update(donnees)
-                return defaut
+                if isinstance(donnees, dict):
+                    defaut.update(donnees)
         except Exception:
-            return defaut
+            pass
+    # Prise en compte de st.secrets (Streamlit Secrets)
+    try:
+        if hasattr(st, "secrets"):
+            sec_email = None
+            if "email" in st.secrets and isinstance(st.secrets["email"], dict):
+                sec_email = st.secrets["email"]
+            elif "smtp" in st.secrets and isinstance(st.secrets["smtp"], dict):
+                sec_email = st.secrets["smtp"]
+            if sec_email:
+                for k in ["destinataires", "smtp_serveur", "smtp_port", "smtp_expediteur", "smtp_mdp", "smtp_ssl"]:
+                    if k in sec_email and sec_email[k] is not None and str(sec_email[k]).strip():
+                        if k == "smtp_port":
+                            defaut[k] = int(sec_email[k])
+                        elif k == "smtp_ssl":
+                            defaut[k] = bool(sec_email[k])
+                        else:
+                            defaut[k] = str(sec_email[k]).strip()
+            # Clés directes
+            if "smtp_mdp" in st.secrets and st.secrets["smtp_mdp"]:
+                defaut["smtp_mdp"] = str(st.secrets["smtp_mdp"]).strip()
+            if "smtp_expediteur" in st.secrets and st.secrets["smtp_expediteur"]:
+                defaut["smtp_expediteur"] = str(st.secrets["smtp_expediteur"]).strip()
+            if "destinataires" in st.secrets and st.secrets["destinataires"]:
+                defaut["destinataires"] = str(st.secrets["destinataires"]).strip()
+    except Exception:
+        pass
     return defaut
 
 def sauvegarder_config_email(cfg):
