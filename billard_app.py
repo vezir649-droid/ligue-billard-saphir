@@ -2354,6 +2354,245 @@ def generer_page_html_saphir(donnees):
 </html>"""
     return html
 
+def charger_config_api_saphir():
+    """Charge l'URL et la clé d'API Saphir depuis config_admin.json (avec valeurs par défaut)."""
+    cfg = charger_config_admin()
+    url = cfg.get("saphir_api_url", "https://saphirbillard.com/index.php?eID=billardImport")
+    key = cfg.get("saphir_api_key", "UNE_CLE_DEBILEMENT_LONGUE")
+    return url, key
+
+def sauvegarder_config_api_saphir(api_key, url=None):
+    """Sauvegarde l'URL et la clé d'API Saphir dans config_admin.json."""
+    cfg = charger_config_admin()
+    cfg["saphir_api_key"] = str(api_key).strip()
+    if url:
+        cfg["saphir_api_url"] = str(url).strip()
+    try:
+        with open(ADMIN_CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=4)
+        declencher_sync_github_arriere_plan(delai=1.0, commit_prefix="Mise a jour cle API Saphir")
+        return True
+    except Exception:
+        return False
+
+def envoyer_post_saphir_import(payload, api_key="UNE_CLE_DEBILEMENT_LONGUE", url="https://saphirbillard.com/index.php?eID=billardImport", timeout=15):
+    """Exécute une requête HTTP POST au format officiel vers l'API Saphir (billardImport).
+    
+    Exemple curl :
+      curl -X POST "https://saphirbillard.com/index.php?eID=billardImport" \
+           -H "Content-Type: application/json" \
+           -H "X-API-Key: UNE_CLE_DEBILEMENT_LONGUE" \
+           -d '[{"saison": 4, "semaine": 21, "prenom": "Sylvain", "nom": "Derasp", "pointage": 89}]'
+           
+    Retourne : (succes: bool, code_http: int, reponse_texte: str, temps_ms: float)
+    """
+    import urllib.request
+    import urllib.error
+    import ssl
+    import time
+    import json
+
+    # Normalisation du payload JSON
+    if isinstance(payload, (list, dict)):
+        data_bytes = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    elif isinstance(payload, str):
+        payload_propre = payload.strip()
+        try:
+            val_json = json.loads(payload_propre)
+            data_bytes = json.dumps(val_json, ensure_ascii=False).encode("utf-8")
+        except Exception as e_json:
+            return False, 0, f"Erreur de syntaxe JSON dans le payload : {e_json}", 0.0
+    else:
+        return False, 0, "Type de données de payload non supporté (liste ou chaîne JSON attendue).", 0.0
+
+    url_cible = (url or "https://saphirbillard.com/index.php?eID=billardImport").strip()
+    cle_api = (api_key or "UNE_CLE_DEBILEMENT_LONGUE").strip()
+
+    headers = {
+        "Content-Type": "application/json",
+        "X-API-Key": cle_api,
+        "User-Agent": "LigueBillardSaphir-App/1.0"
+    }
+
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+
+    t0 = time.time()
+    try:
+        req = urllib.request.Request(
+            url_cible,
+            data=data_bytes,
+            headers=headers,
+            method="POST"
+        )
+        with urllib.request.urlopen(req, context=ctx, timeout=timeout) as resp:
+            code = resp.getcode()
+            corps = resp.read().decode("utf-8", errors="replace")
+            temps_ms = round((time.time() - t0) * 1000, 1)
+            return True, code, corps, temps_ms
+    except urllib.error.HTTPError as e_http:
+        temps_ms = round((time.time() - t0) * 1000, 1)
+        err_corps = e_http.read().decode("utf-8", errors="replace") if e_http.fp else str(e_http)
+        return False, e_http.code, err_corps, temps_ms
+    except urllib.error.URLError as e_url:
+        temps_ms = round((time.time() - t0) * 1000, 1)
+        return False, 0, f"Erreur réseau / connexion URL : {e_url.reason}", temps_ms
+    except Exception as e_gen:
+        temps_ms = round((time.time() - t0) * 1000, 1)
+        return False, 0, f"Erreur inattendue : {e_gen}", temps_ms
+
+def afficher_module_test_post_saphir(key_prefix="saphir_api"):
+    """Composant d'interface pour tester et exécuter une requête HTTP POST vers l'API Saphir billardImport."""
+    st.markdown("#### 🌐 Test d'envoi POST vers l'API Saphir (`billardImport`)")
+    st.caption(
+        "Ce module permet de tester et d'exécuter des requêtes HTTP POST pour importer des pointages individuels "
+        "directement sur le serveur **saphirbillard.com** avec authentification par en-tête `X-API-Key`."
+    )
+
+    cfg_url_def, cfg_key_def = charger_config_api_saphir()
+
+    with st.container(border=True):
+        st.markdown("##### ⚙️ Paramètres de connexion de l'API")
+        col_api_u, col_api_k = st.columns([1.5, 1.2])
+        with col_api_u:
+            api_url_input = st.text_input(
+                "URL de l'API cible :",
+                value=cfg_url_def,
+                key=f"{key_prefix}_url",
+                help="Point de terminaison API officiel de saphirbillard.com"
+            )
+        with col_api_k:
+            api_key_input = st.text_input(
+                "Clé d'authentification (`X-API-Key`) :",
+                value=cfg_key_def,
+                type="password",
+                key=f"{key_prefix}_key",
+                help="Clé secrète transmise dans l'en-tête HTTP 'X-API-Key'"
+            )
+
+        col_save_k1, col_save_k2 = st.columns([1, 1])
+        with col_save_k1:
+            if st.button("💾 Mémoriser l'URL et la clé API par défaut", use_container_width=True, key=f"{key_prefix}_btn_save_cfg"):
+                ok_s = sauvegarder_config_api_saphir(api_key_input, api_url_input)
+                if ok_s:
+                    st.success("✅ Paramètres d'API sauvegardés avec succès dans la configuration !")
+                else:
+                    st.error("❌ Erreur lors de l'enregistrement des paramètres.")
+        with col_save_k2:
+            if st.checkbox("Afficher la clé API en clair", value=False, key=f"{key_prefix}_chk_show_key"):
+                st.code(api_key_input, language="text")
+
+    st.markdown("##### 📦 Données du payload JSON (`-d`)")
+
+    session_payload_key = f"{key_prefix}_payload_str"
+    if session_payload_key not in st.session_state:
+        st.session_state[session_payload_key] = json.dumps([
+            {
+                "saison": 4,
+                "semaine": 21,
+                "prenom": "Sylvain",
+                "nom": "Derasp",
+                "pointage": 89
+            }
+        ], ensure_ascii=False, indent=2)
+
+    col_mode1, col_mode2 = st.columns(2)
+    with col_mode1:
+        if st.button("📋 Recharger l'exemple officiel", use_container_width=True, key=f"{key_prefix}_btn_load_ex"):
+            st.session_state[session_payload_key] = json.dumps([
+                {
+                    "saison": 4,
+                    "semaine": 21,
+                    "prenom": "Sylvain",
+                    "nom": "Derasp",
+                    "pointage": 89
+                }
+            ], ensure_ascii=False, indent=2)
+            st.rerun()
+
+    with col_mode2:
+        with st.popover("➕ Composer une entrée manuellement", use_container_width=True):
+            st.markdown("###### Ajouter / Remplacer un pointage")
+            c_p1, c_p2 = st.columns(2)
+            in_saison = c_p1.number_input("Saison :", min_value=1, max_value=99, value=4, step=1, key=f"{key_prefix}_comp_saison")
+            in_semaine = c_p2.number_input("Semaine :", min_value=1, max_value=52, value=21, step=1, key=f"{key_prefix}_comp_semaine")
+            c_p3, c_p4 = st.columns(2)
+            in_prenom = c_p3.text_input("Prénom :", value="Sylvain", key=f"{key_prefix}_comp_prenom").strip()
+            in_nom = c_p4.text_input("Nom :", value="Derasp", key=f"{key_prefix}_comp_nom").strip()
+            in_pts = st.number_input("Pointage :", min_value=0, max_value=300, value=89, step=1, key=f"{key_prefix}_comp_pts")
+            
+            c_add1, c_add2 = st.columns(2)
+            if c_add1.button("Remplacer le JSON", type="primary", use_container_width=True, key=f"{key_prefix}_btn_replace"):
+                obj = [{"saison": int(in_saison), "semaine": int(in_semaine), "prenom": in_prenom, "nom": in_nom, "pointage": int(in_pts)}]
+                st.session_state[session_payload_key] = json.dumps(obj, ensure_ascii=False, indent=2)
+                st.rerun()
+            if c_add2.button("Ajouter à la liste", use_container_width=True, key=f"{key_prefix}_btn_append"):
+                try:
+                    cur_list = json.loads(st.session_state.get(session_payload_key, "[]"))
+                    if not isinstance(cur_list, list):
+                        cur_list = []
+                except Exception:
+                    cur_list = []
+                cur_list.append({"saison": int(in_saison), "semaine": int(in_semaine), "prenom": in_prenom, "nom": in_nom, "pointage": int(in_pts)})
+                st.session_state[session_payload_key] = json.dumps(cur_list, ensure_ascii=False, indent=2)
+                st.rerun()
+
+    payload_saisi = st.text_area(
+        "Édition du JSON à expédier :",
+        value=st.session_state[session_payload_key],
+        height=160,
+        key=f"{key_prefix}_area_payload",
+        help="Liste d'objets JSON avec les clés : saison, semaine, prenom, nom, pointage."
+    )
+    st.session_state[session_payload_key] = payload_saisi
+
+    cle_curl = api_key_input if api_key_input else "UNE_CLE_DEBILEMENT_LONGUE"
+    payload_one_line = re.sub(r"\s+", " ", payload_saisi.strip())
+    curl_cmd = (
+        f'curl -X POST "{api_url_input}" \\\n'
+        f'  -H "Content-Type: application/json" \\\n'
+        f'  -H "X-API-Key: {cle_curl}" \\\n'
+        f"  -d '{payload_one_line}'"
+    )
+
+    with st.expander("💻 Voir la commande cURL équivalente", expanded=False):
+        st.code(curl_cmd, language="bash")
+
+    st.write("")
+    col_post1, col_post2 = st.columns([1.5, 1])
+    with col_post1:
+        btn_lancer_post = st.button("🚀 Envoyer la requête HTTP POST vers Saphir", type="primary", use_container_width=True, key=f"{key_prefix}_btn_exec")
+
+    if btn_lancer_post:
+        with st.spinner("Transmission de la requête POST vers https://saphirbillard.com en cours..."):
+            ok_p, code_p, reponse_p, duree_ms = envoyer_post_saphir_import(
+                payload_saisi,
+                api_key=api_key_input,
+                url=api_url_input,
+                timeout=15
+            )
+
+        m_col1, m_col2, m_col3 = st.columns(3)
+        statut_str = f"{code_p} OK" if (200 <= code_p < 300) else (f"{code_p} Erreur" if code_p > 0 else "0 Échec réseau")
+        m_col1.metric("Code HTTP", statut_str)
+        m_col2.metric("Temps d'exécution", f"{duree_ms} ms")
+        m_col3.metric("Taille de la réponse", f"{len(reponse_p)} octets")
+
+        if ok_p and 200 <= code_p < 300:
+            st.success(f"✅ Requête HTTP POST exécutée avec succès (Code {code_p}) en {duree_ms} ms !")
+        else:
+            st.error(f"❌ La requête POST a retourné une erreur (Code {code_p}) en {duree_ms} ms.")
+
+        with st.container(border=True):
+            st.markdown("###### 📥 Corps de la réponse du serveur (`Response Body`)")
+            try:
+                parsed_json = json.loads(reponse_p)
+                st.json(parsed_json)
+            except Exception:
+                st.code(reponse_p if reponse_p else "(Réponse vide)", language="text")
+
+
 def charger_historique_matchs():
     """Charge la liste des matchs archivés depuis le fichier d'historique (avec repli sur la sauvegarde .bak si nécessaire)."""
     for chemin in [HISTORIQUE_FILE, f"{HISTORIQUE_FILE}.bak"]:
@@ -2368,10 +2607,25 @@ def charger_historique_matchs():
     return []
 
 def sauvegarder_historique_matchs(historique_list):
-    """Sauvegarde de façon atomique et sécurisée la liste des matchs dans historique_matchs.json avec copie .bak."""
+    """Sauvegarde de façon atomique et sécurisée la liste des matchs dans historique_matchs.json sans HTML, avec copie .bak."""
     if not isinstance(historique_list, list):
         return False
     try:
+        # Nettoyage systématique : aucun HTML dans le JSON d'historique (données pures uniquement)
+        for idx_m, m in enumerate(historique_list):
+            if isinstance(m, dict):
+                m.pop("html_officiel", None)
+                m.pop("html", None)
+                if "matchs" in m and isinstance(m["matchs"], dict):
+                    if m.get("total_receveur") is None:
+                        m["total_receveur"] = sum(m["matchs"].get(str(i), {}).get("score_a", 0) for i in range(1, 10))
+                    if m.get("total_visiteur") is None:
+                        m["total_visiteur"] = sum(m["matchs"].get(str(i), {}).get("score_b", 0) for i in range(1, 10))
+                if not m.get("date_enregistrement") and m.get("date"):
+                    m["date_enregistrement"] = m["date"]
+                if not m.get("date_enregistrement"):
+                    m["date_enregistrement"] = f"Match archivé #{idx_m+1}"
+
         if os.path.exists(HISTORIQUE_FILE) and os.path.getsize(HISTORIQUE_FILE) > 2:
             try:
                 with open(HISTORIQUE_FILE, "r", encoding="utf-8") as f_src:
@@ -2383,13 +2637,23 @@ def sauvegarder_historique_matchs(historique_list):
         tmp_file = f"{HISTORIQUE_FILE}.tmp"
         with open(tmp_file, "w", encoding="utf-8") as f_tmp:
             json.dump(historique_list, f_tmp, ensure_ascii=False, indent=4)
-        os.replace(tmp_file, HISTORIQUE_FILE)
-        synchroniser_tous_les_fichiers_github(commit_prefix=f"Sauvegarde match ({len(historique_list)} matchs)")
+        try:
+            os.replace(tmp_file, HISTORIQUE_FILE)
+        except Exception:
+            with open(HISTORIQUE_FILE, "w", encoding="utf-8") as f_direct:
+                json.dump(historique_list, f_direct, ensure_ascii=False, indent=4)
+            if os.path.exists(tmp_file):
+                try:
+                    os.remove(tmp_file)
+                except Exception:
+                    pass
+        declencher_sync_github_arriere_plan(delai=1.0, commit_prefix=f"Sauvegarde match ({len(historique_list)} matchs)")
         return True
     except Exception as e:
         try:
             with open(HISTORIQUE_FILE, "w", encoding="utf-8") as f_direct:
                 json.dump(historique_list, f_direct, ensure_ascii=False, indent=4)
+            declencher_sync_github_arriere_plan(delai=1.0, commit_prefix=f"Sauvegarde match ({len(historique_list)} matchs)")
             return True
         except Exception:
             st.error(f"Erreur lors de la sauvegarde de l'historique des matchs : {e}")
@@ -3065,7 +3329,16 @@ def _ecrire_json_atomique(filepath, payload):
     tmp_path = f"{filepath}.tmp"
     with open(tmp_path, "w", encoding="utf-8") as f_tmp:
         json.dump(payload, f_tmp, ensure_ascii=False, indent=4)
-    os.replace(tmp_path, filepath)
+    try:
+        os.replace(tmp_path, filepath)
+    except Exception:
+        with open(filepath, "w", encoding="utf-8") as f_direct:
+            json.dump(payload, f_direct, ensure_ascii=False, indent=4)
+        if os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
 
 def sauvegarder_tournois_data(data, marqueur_session=None, action="sauvegarde", synchroniser_historique=True):
     """Enregistre les données des tournois dans tournois_data.json et synchronise automatiquement historique_tournois.json."""
@@ -9910,13 +10183,25 @@ with tab_feuille:
     label_saphir = "🌐 Consulter https://saphirbillard.com (Joueurs, Équipes, Horaire)"
     options_matchs = [label_direct, label_saphir]
     mapping_matchs = {}
-    for m in reversed(historique_matchs or []):
-        date_m = m.get("date_enregistrement", m.get("date", "Date inconnue"))
-        rec_m = m.get("receveur", "Receveur")
-        vis_m = m.get("visiteur", "Visiteur")
-        tot_r = m.get("total_receveur", 0)
-        tot_v = m.get("total_visiteur", 0)
-        label = f"📜 {date_m} — {rec_m} ({tot_r}) vs {vis_m} ({tot_v})"
+    nb_total_m = len(historique_matchs or [])
+    for idx_m, m in enumerate(reversed(historique_matchs or [])):
+        date_m = m.get("date_enregistrement", m.get("date", f"Match archivé #{nb_total_m - idx_m}"))
+        rec_m = m.get("receveur", m.get("equipe_receveur", "Receveur"))
+        vis_m = m.get("visiteur", m.get("equipe_visiteur", "Visiteur"))
+        tot_r = m.get("total_receveur")
+        tot_v = m.get("total_visiteur")
+        if tot_r is None and "matchs" in m:
+            tot_r = sum(m["matchs"].get(str(i), {}).get("score_a", 0) for i in range(1, 10))
+        if tot_v is None and "matchs" in m:
+            tot_v = sum(m["matchs"].get(str(i), {}).get("score_b", 0) for i in range(1, 10))
+        tot_r = tot_r if tot_r is not None else 0
+        tot_v = tot_v if tot_v is not None else 0
+        base_label = f"📜 {date_m} — {rec_m} ({tot_r}) vs {vis_m} ({tot_v})"
+        label = base_label
+        cpt = 2
+        while label in mapping_matchs:
+            label = f"{base_label} (#{cpt})"
+            cpt += 1
         options_matchs.append(label)
         mapping_matchs[label] = m
 
@@ -9984,6 +10269,9 @@ with tab_feuille:
                         st.success("✅ `equipes-saphir.csv` mis à jour avec succès depuis le site officiel !")
                         time.sleep(1.0)
                         st.rerun()
+
+            with st.expander("🌐 Tester l'envoi de pointages vers l'API Saphir (POST billardImport)", expanded=False):
+                afficher_module_test_post_saphir(key_prefix="saphir_live")
 
             html_rendu = generer_page_html_saphir(donnees_saphir)
             st.components.v1.html(html_rendu, height=1300, scrolling=True)
@@ -10780,7 +11068,7 @@ with tab_feuille:
                         for p_id in dict_j
                     }
                     donnees_finales["date_enregistrement"] = d_match
-                    donnees_finales["html_officiel"] = html_res_final
+                    donnees_finales.pop("html_officiel", None)
                     historique.append(donnees_finales)
 
                     sauvegarder_historique_matchs(historique)
@@ -10927,14 +11215,16 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
         st.markdown("### ⚙️ Espace Administration de la Ligue")
         st.caption("Gérez la composition officielle des équipes, rectifiez un match archivé, démarrez une nouvelle saison ou configurez la messagerie SMTP et la sécurité.")
         if True:
-            tab_equipes, tab_saisie_ant, tab_rectif, tab_saison, tab_export, tab_smtp, tab_secu = st.tabs([
-                "👥 Édition des équipes & joueurs",
-                "📝 Saisie d'un match antérieur",
-                "✏️ Rectifier ou supprimer un match",
-                "🗓️ Démarrer une nouvelle saison",
-                "📤 Envoyer l'historique complet",
-                "📧 Configuration SMTP",
-                "🔑 Mot de passe d'accès"
+            st.info("📌 **Sections d'administration :** 👥 Équipes & Joueurs | 📝 Match antérieur | ✏️ Rectifications | 🗓️ Nouvelle saison | 💾 Sauvegardes & JSON | 🌐 **Test POST API Saphir** | 📧 SMTP | 🔑 Sécurité")
+            tab_equipes, tab_saisie_ant, tab_rectif, tab_saison, tab_export, tab_api_saphir, tab_smtp, tab_secu = st.tabs([
+                "👥 Équipes",
+                "📝 Match passé",
+                "✏️ Rectifications",
+                "🗓️ Saison",
+                "💾 Sauvegardes",
+                "🌐 Test POST Saphir",
+                "📧 SMTP",
+                "🔑 Sécurité"
             ])
 
             with tab_equipes:
@@ -11496,7 +11786,6 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                                 for p_id in dict_joueurs_ant
                             },
                             "matchs": manches_ant,
-                            "html_officiel": html_ant,
                             "saisi_comme_anterieur": True
                         }
 
@@ -11527,18 +11816,29 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                 else:
                     options_rectif = []
                     for i, m_h in enumerate(historique_complet):
-                        d_h = m_h.get("date_enregistrement", m_h.get("date", "Date inconnue"))
-                        r_h = m_h.get("receveur", "Receveur")
-                        v_h = m_h.get("visiteur", "Visiteur")
-                        tr_h = m_h.get("total_receveur", 0)
-                        tv_h = m_h.get("total_visiteur", 0)
+                        d_h = m_h.get("date_enregistrement", m_h.get("date", f"Match #{i+1}"))
+                        r_h = m_h.get("receveur", m_h.get("equipe_receveur", "Receveur"))
+                        v_h = m_h.get("visiteur", m_h.get("equipe_visiteur", "Visiteur"))
+                        tr_h = m_h.get("total_receveur")
+                        tv_h = m_h.get("total_visiteur")
+                        if tr_h is None and "matchs" in m_h:
+                            tr_h = sum(m_h["matchs"].get(str(k), {}).get("score_a", 0) for k in range(1, 10))
+                        if tv_h is None and "matchs" in m_h:
+                            tv_h = sum(m_h["matchs"].get(str(k), {}).get("score_b", 0) for k in range(1, 10))
+                        tr_h = tr_h if tr_h is not None else 0
+                        tv_h = tv_h if tv_h is not None else 0
                         rectif_tag = " [Rectifié]" if m_h.get("date_rectification") else ""
                         options_rectif.append(f"Match #{i+1} : {d_h} — {r_h} ({tr_h}) vs {v_h} ({tv_h}){rectif_tag}")
+
+                    # Sécurité anti-IndexError en cas de mise à jour ou changement de taille de l'historique
+                    if "select_match_to_rectify" in st.session_state:
+                        if st.session_state["select_match_to_rectify"] not in range(len(options_rectif)):
+                            st.session_state["select_match_to_rectify"] = 0
 
                     idx_sel = st.selectbox(
                         "Sélectionnez le match à corriger :",
                         range(len(options_rectif)),
-                        format_func=lambda x: options_rectif[x],
+                        format_func=lambda x: options_rectif[x] if 0 <= x < len(options_rectif) else "",
                         key="select_match_to_rectify"
                     )
                     m_sel = historique_complet[idx_sel]
@@ -11651,10 +11951,9 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                             m_sel["date_rectification"] = date_rectif_str
                             m_sel["motif_rectification"] = motif_saisi.strip()
 
-                            # Reconstitution propre du HTML officiel avec bandeau de rectification
-                            m_sel["html_officiel"] = None
+                            # Reconstitution propre du HTML officiel avec bandeau de rectification (pour courriel sans stockage dans JSON)
+                            m_sel.pop("html_officiel", None)
                             nouveau_html = obtenir_html_match(m_sel)
-                            m_sel["html_officiel"] = nouveau_html
 
                             historique_complet[idx_sel] = m_sel
 
@@ -11810,64 +12109,143 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
 
                 st.divider()
                 st.markdown("#### 💾 Sauvegarde locale & Restauration des fichiers JSON officiels")
-                st.caption("Téléchargez ou restaurez directement les fichiers d'historique officiels (`historique_matchs.json` et `historique_tournois.json`).")
+                st.caption("Téléchargez ou restaurez directement les fichiers d'historique officiels (`historique_matchs.json` et `historique_tournois.json`). Les fichiers ne contiennent que les données pures JSON (sans code HTML).")
+                
+                if "msg_restauration_matchs_succes" in st.session_state:
+                    st.success(st.session_state.pop("msg_restauration_matchs_succes"))
+                if "msg_restauration_tournois_succes" in st.session_state:
+                    st.success(st.session_state.pop("msg_restauration_tournois_succes"))
+
                 col_json_m, col_json_t = st.columns(2)
                 with col_json_m:
                     with st.container(border=True):
                         st.markdown("###### 🎱 Historique des matchs (`historique_matchs.json`)")
                         hist_m_actuel = charger_historique_matchs()
-                        st.caption(f"{len(hist_m_actuel)} match(s) actuellement enregistré(s) sur le disque.")
+                        st.caption(f"**{len(hist_m_actuel)} match(s)** actuellement enregistré(s) sur le disque.")
+                        
+                        # Nettoyer hist_m_actuel pour le téléchargement (aucun HTML dans le JSON)
+                        hist_m_clean = []
+                        for m_item in hist_m_actuel:
+                            if isinstance(m_item, dict):
+                                m_c = dict(m_item)
+                                m_c.pop("html_officiel", None)
+                                m_c.pop("html", None)
+                                hist_m_clean.append(m_c)
+
                         st.download_button(
                             label="📥 Télécharger historique_matchs.json",
-                            data=json.dumps(hist_m_actuel, ensure_ascii=False, indent=4),
+                            data=json.dumps(hist_m_clean, ensure_ascii=False, indent=4),
                             file_name="historique_matchs.json",
                             mime="application/json",
                             use_container_width=True,
                             key="btn_dl_json_matchs"
                         )
-                        with st.popover("📤 Restaurer / Importer historique_matchs.json", use_container_width=True):
-                            up_m = st.file_uploader("Fichier historique_matchs.json", type=["json"], key="up_json_matchs")
+                        with st.expander("📤 Restaurer / Importer un fichier historique_matchs.json", expanded=False):
+                            up_m = st.file_uploader("Fichier JSON de sauvegarde des matchs", type=["json"], key="up_json_matchs")
                             if up_m is not None:
-                                if st.button("Confirmer l'importation des matchs", type="primary", use_container_width=True, key="btn_conf_up_m"):
-                                    try:
-                                        data_m_up = json.loads(up_m.getvalue().decode("utf-8"))
-                                        if isinstance(data_m_up, list):
-                                            sauvegarder_historique_matchs(data_m_up)
-                                            st.success(f"✅ {len(data_m_up)} match(s) restauré(s) avec succès !")
-                                            time.sleep(0.8)
-                                            st.rerun()
+                                try:
+                                    raw_m = up_m.getvalue().decode("utf-8-sig")
+                                    data_m_up = json.loads(raw_m)
+                                    if isinstance(data_m_up, dict):
+                                        for k_cand in ["historique_matchs", "matchs", "historique", "data"]:
+                                            if k_cand in data_m_up and isinstance(data_m_up[k_cand], list):
+                                                data_m_up = data_m_up[k_cand]
+                                                break
                                         else:
-                                            st.error("Format JSON invalide (liste attendue).")
-                                    except Exception as e_up_m:
-                                        st.error(f"Erreur d'importation : {e_up_m}")
+                                            if "receveur" in data_m_up and "visiteur" in data_m_up:
+                                                data_m_up = [data_m_up]
+
+                                    if isinstance(data_m_up, list):
+                                        nb_m = len(data_m_up)
+                                        st.info(f"📄 **{up_m.name}** : **{nb_m} match(s)** détecté(s).")
+                                        if nb_m > 0:
+                                            apercu_m = [f"• {m.get('receveur', '?')} vs {m.get('visiteur', '?')} ({m.get('date_enregistrement', m.get('date', 'Date'))})" for m in data_m_up[-3:]]
+                                            st.caption("Aperçu des derniers matchs :<br>" + "<br>".join(apercu_m), unsafe_allow_html=True)
+                                        
+                                        if st.button("📥 Valider la restauration des matchs", type="primary", use_container_width=True, key="btn_conf_up_m"):
+                                            # Nettoyage systématique de tout résidu HTML
+                                            for m in data_m_up:
+                                                if isinstance(m, dict):
+                                                    m.pop("html_officiel", None)
+                                                    m.pop("html", None)
+                                            
+                                            ok_sv_m = sauvegarder_historique_matchs(data_m_up)
+                                            if ok_sv_m:
+                                                # Réinitialisation de session pour mise à jour immédiate des listes déroulantes
+                                                st.session_state.pop("select_match_to_rectify", None)
+                                                st.session_state.pop("choix_match_vue", None)
+                                                st.session_state["msg_restauration_matchs_succes"] = f"✅ {nb_m} match(s) restauré(s) avec succès ! Les listes déroulantes de consultation et de rectification ont été mises à jour."
+                                                st.rerun()
+                                            else:
+                                                st.error("Erreur lors de l'enregistrement de l'historique des matchs sur le disque.")
+                                    else:
+                                        st.error("Format JSON invalide (une liste de matchs est attendue).")
+                                except Exception as e_up_m:
+                                    st.error(f"Erreur d'importation : {e_up_m}")
                 with col_json_t:
                     with st.container(border=True):
                         st.markdown("###### 🏆 Historique des tournois (`historique_tournois.json`)")
                         hist_t_actuel = charger_historique_tournois()
-                        st.caption(f"{len(hist_t_actuel)} tournoi(s) actuellement enregistré(s) sur le disque.")
+                        st.caption(f"**{len(hist_t_actuel)} tournoi(s)** actuellement enregistré(s) sur le disque.")
+                        
+                        hist_t_clean = []
+                        for t_item in hist_t_actuel:
+                            if isinstance(t_item, dict):
+                                t_c = dict(t_item)
+                                t_c.pop("html_officiel", None)
+                                t_c.pop("html", None)
+                                hist_t_clean.append(t_c)
+
                         st.download_button(
                             label="📥 Télécharger historique_tournois.json",
-                            data=json.dumps(hist_t_actuel, ensure_ascii=False, indent=4),
+                            data=json.dumps(hist_t_clean, ensure_ascii=False, indent=4),
                             file_name="historique_tournois.json",
                             mime="application/json",
                             use_container_width=True,
                             key="btn_dl_json_tournois"
                         )
-                        with st.popover("📤 Restaurer / Importer historique_tournois.json", use_container_width=True):
-                            up_t = st.file_uploader("Fichier historique_tournois.json", type=["json"], key="up_json_tournois")
+                        with st.expander("📤 Restaurer / Importer un fichier historique_tournois.json", expanded=False):
+                            up_t = st.file_uploader("Fichier JSON de sauvegarde des tournois", type=["json"], key="up_json_tournois")
                             if up_t is not None:
-                                if st.button("Confirmer l'importation des tournois", type="primary", use_container_width=True, key="btn_conf_up_t"):
-                                    try:
-                                        data_t_up = json.loads(up_t.getvalue().decode("utf-8"))
-                                        if isinstance(data_t_up, list):
-                                            sauvegarder_historique_tournois(data_t_up)
-                                            st.success(f"✅ {len(data_t_up)} tournoi(s) restauré(s) avec succès !")
-                                            time.sleep(0.8)
-                                            st.rerun()
+                                try:
+                                    raw_t = up_t.getvalue().decode("utf-8-sig")
+                                    data_t_up = json.loads(raw_t)
+                                    if isinstance(data_t_up, dict):
+                                        for k_cand in ["historique_tournois", "tournois", "historique", "data"]:
+                                            if k_cand in data_t_up and isinstance(data_t_up[k_cand], list):
+                                                data_t_up = data_t_up[k_cand]
+                                                break
                                         else:
-                                            st.error("Format JSON invalide (liste attendue).")
-                                    except Exception as e_up_t:
-                                        st.error(f"Erreur d'importation : {e_up_t}")
+                                            if "nom" in data_t_up or "id_archive" in data_t_up:
+                                                data_t_up = [data_t_up]
+
+                                    if isinstance(data_t_up, list):
+                                        st.info(f"📄 **{up_t.name}** : **{len(data_t_up)} tournoi(s)** détecté(s).")
+                                        if st.button("📥 Valider la restauration des tournois", type="primary", use_container_width=True, key="btn_conf_up_t"):
+                                            for t in data_t_up:
+                                                if isinstance(t, dict):
+                                                    t.pop("html", None)
+                                                    t.pop("html_officiel", None)
+                                            ok_sv_t = sauvegarder_historique_tournois(data_t_up)
+                                            if ok_sv_t:
+                                                st.session_state["msg_restauration_tournois_succes"] = f"✅ {len(data_t_up)} tournoi(s) restauré(s) avec succès !"
+                                                st.rerun()
+                                            else:
+                                                st.error("Erreur lors de l'enregistrement de l'historique des tournois.")
+                                    else:
+                                        st.error("Format JSON invalide (une liste de tournois est attendue).")
+                                except Exception as e_up_t:
+                                    st.error(f"Erreur d'importation : {e_up_t}")
+
+
+                st.divider()
+                st.markdown("#### 🌐 Passerelle API Saphir (`billardImport`)")
+                st.caption("Vous pouvez tester l'envoi direct de pointages en HTTP POST vers **https://saphirbillard.com**.")
+                with st.expander("🚀 Ouvrir le module de test POST API Saphir", expanded=True):
+                    afficher_module_test_post_saphir(key_prefix="export_sec")
+
+            with tab_api_saphir:
+                afficher_module_test_post_saphir(key_prefix="admin_tab")
 
             with tab_smtp:
                 st.markdown("#### ⚙️ Configuration du serveur de messagerie (SMTP)")
