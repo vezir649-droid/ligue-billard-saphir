@@ -6,7 +6,7 @@ import re
 import smtplib
 import time
 import uuid
-from datetime import datetime, timedelta, time as dt_time
+from datetime import date, datetime, timedelta, time as dt_time
 from email.mime.application import MIMEApplication
 from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
@@ -1916,6 +1916,90 @@ def sauvegarder_horaire_json(lignes_horaire):
     except Exception:
         pass
 
+def obtenir_date_debut_ligue():
+    """Récupère la date de début de la ligue (Saison 1) depuis st.secrets."""
+    val = None
+    if hasattr(st, "secrets"):
+        try:
+            if "ligue" in st.secrets and isinstance(st.secrets["ligue"], dict):
+                val = st.secrets["ligue"].get("date_debut") or st.secrets["ligue"].get("date_debut_saison_1")
+            if not val and "date_debut_ligue" in st.secrets:
+                val = st.secrets["date_debut_ligue"]
+            if not val and "date_debut_saison_1" in st.secrets:
+                val = st.secrets["date_debut_saison_1"]
+        except Exception:
+            pass
+    if val:
+        try:
+            return datetime.strptime(str(val).strip(), "%Y-%m-%d").date()
+        except Exception:
+            pass
+    return None
+
+def calculer_numero_saison(date_match, date_debut_saison_1=None):
+    """Calcule le numéro et le type de saison (Hiver / Automne) à partir de la date d'un match.
+    Chaque saison dure 14 semaines.
+    Deux saisons par année :
+      - Saison 1 : Hiver / Printemps (début d'année à mi-avril/mai)
+      - Seconde saison : Fin été / début automne (septembre à mi-décembre).
+    """
+    if date_debut_saison_1 is None:
+        date_debut_saison_1 = obtenir_date_debut_ligue()
+        
+    if isinstance(date_match, datetime):
+        date_match = date_match.date()
+    elif not isinstance(date_match, (date, datetime)):
+        date_match = datetime.today().date()
+        
+    if not date_debut_saison_1:
+        date_debut_saison_1 = date(2025, 1, 6)
+        
+    if isinstance(date_debut_saison_1, datetime):
+        date_debut_saison_1 = date_debut_saison_1.date()
+        
+    if date_match < date_debut_saison_1:
+        typ_init = "Hiver" if date_debut_saison_1.month < 7 else "Automne"
+        return 1, typ_init
+        
+    y_deb = date_debut_saison_1.year
+    y_m = date_match.year
+    m_deb = date_debut_saison_1.month
+    m_m = date_match.month
+    
+    est_saison1_automne = (m_deb >= 7)
+    est_match_automne = (m_m >= 7)
+    type_saison = "Automne" if est_match_automne else "Hiver"
+    
+    if est_saison1_automne:
+        if est_match_automne:
+            num = 2 * (y_m - y_deb) + 1
+        else:
+            num = 2 * (y_m - y_deb)
+    else:
+        if est_match_automne:
+            num = 2 * (y_m - y_deb) + 2
+        else:
+            num = 2 * (y_m - y_deb) + 1
+            
+    return max(1, num), type_saison
+
+def calculer_semaine_saison(date_match, date_debut_saison_1=None):
+    """Calcule le numéro de semaine (1 à 14) dans la saison active."""
+    if isinstance(date_match, datetime):
+        date_match = date_match.date()
+    elif not isinstance(date_match, date):
+        date_match = datetime.today().date()
+        
+    if date_match.month >= 7:
+        debut_saison = date(date_match.year, 9, 7)
+    else:
+        debut_saison = date(date_match.year, 1, 6)
+        
+    diff = (date_match - debut_saison).days
+    if diff < 0:
+        return 1
+    return max(1, min(14, (diff // 7) + 1))
+
 def determiner_match_du_jour(lignes_horaire=None, date_ref=None):
     """Identifie la rencontre officielle programmée pour la date du jour selon l'horaire de saphirbillard.com."""
     if not lignes_horaire:
@@ -1930,42 +2014,49 @@ def determiner_match_du_jour(lignes_horaire=None, date_ref=None):
     for row in (lignes_horaire or []):
         if not row:
             continue
+        semaine_label = str(row[0]).strip() if (isinstance(row, list) and len(row) > 0 and "Semaine" in str(row[0])) else ""
         for cell in row[1:]:
             res = parser_ligne_horaire_match(cell)
             if res and res.get("mois"):
+                res["semaine"] = semaine_label if semaine_label else f"Semaine {calculer_semaine_saison(res.get('date_match', date_ref))}"
+                annee_m = date_ref.year
+                if date_ref.month >= 11 and res["mois"] <= 2:
+                    annee_m = date_ref.year + 1
+                elif date_ref.month <= 2 and res["mois"] >= 11:
+                    annee_m = date_ref.year - 1
+                try:
+                    res["date_match"] = date(annee_m, res["mois"], res["jour"])
+                except Exception:
+                    res["date_match"] = date_ref.date() if isinstance(date_ref, datetime) else date_ref
+                num_s, typ_s = calculer_numero_saison(res["date_match"])
+                res["saison"] = num_s
+                res["saison_type"] = typ_s
                 tous_matchs.append(res)
+
+    def _formater_retour(m, est_ajd):
+        return {
+            "receveur": m["receveur"],
+            "visiteur": m["visiteur"],
+            "texte": m["texte"],
+            "est_aujourdhui": est_ajd,
+            "date_texte": f"{m['jour']} {mois_fr.get(m['mois'], '')}",
+            "date_match": m.get("date_match"),
+            "semaine": m.get("semaine", ""),
+            "saison": m.get("saison", 1),
+            "saison_type": m.get("saison_type", "")
+        }
 
     # 1. Match exact de la date d'aujourd'hui
     for m in tous_matchs:
         if m["jour"] == date_ref.day and m["mois"] == date_ref.month:
-            return {
-                "receveur": m["receveur"],
-                "visiteur": m["visiteur"],
-                "texte": m["texte"],
-                "est_aujourdhui": True,
-                "date_texte": f"{m['jour']} {mois_fr.get(m['mois'], '')}"
-            }
+            return _formater_retour(m, True)
 
     # 2. Sinon, le prochain match dans le calendrier
     prochains = [m for m in tous_matchs if (m["mois"] > date_ref.month) or (m["mois"] == date_ref.month and m["jour"] >= date_ref.day)]
     if prochains:
-        p = prochains[0]
-        return {
-            "receveur": p["receveur"],
-            "visiteur": p["visiteur"],
-            "texte": p["texte"],
-            "est_aujourdhui": False,
-            "date_texte": f"{p['jour']} {mois_fr.get(p['mois'], '')}"
-        }
+        return _formater_retour(prochains[0], False)
     elif tous_matchs:
-        dernier = tous_matchs[-1]
-        return {
-            "receveur": dernier["receveur"],
-            "visiteur": dernier["visiteur"],
-            "texte": dernier["texte"],
-            "est_aujourdhui": False,
-            "date_texte": f"{dernier['jour']} {mois_fr.get(dernier['mois'], '')}"
-        }
+        return _formater_retour(tous_matchs[-1], False)
     return None
 
 def appliquer_match_du_jour(rencontre=None, forcer=False):
@@ -9518,10 +9609,18 @@ with tab_feuille:
     # --- BARRE LATÉRALE : SÉLECTION DU MATCH ET JOUEURS ---
     st.sidebar.header("📋 Paramètres du Match")
     rencontre_active = determiner_match_du_jour()
+    d_match_sb = rencontre_active.get("date_match") if rencontre_active else datetime.today().date()
+    no_sais_sb, type_sais_sb = calculer_numero_saison(d_match_sb)
+    sem_sais_sb = (rencontre_active.get("semaine") if rencontre_active else "") or f"Semaine {calculer_semaine_saison(d_match_sb)}"
+
+    # Badge bien visible sous le titre des Paramètres du Match
+    st.sidebar.info(f"🏆 **Saison {no_sais_sb}** ({type_sais_sb}) • 📅 **{sem_sais_sb}**")
+
     if rencontre_active:
         tag_match = "Aujourd'hui" if rencontre_active.get("est_aujourdhui") else f"Prévu ({rencontre_active.get('date_texte', '')})"
         with st.sidebar.container(border=True):
             st.markdown(f"**📅 Match du jour — {tag_match}**")
+            st.markdown(f"🏆 **Saison {no_sais_sb}** ({type_sais_sb}) • **{sem_sais_sb}**")
             st.markdown(f"🔵 **{rencontre_active['receveur']}** *(Receveur)*<br>vs 🟠 **{rencontre_active['visiteur']}** *(Visiteur)*", unsafe_allow_html=True)
             st.button("🔄 Charger le match du jour et alignements", key="btn_apply_match_jour_sb", on_click=cb_appliquer_match_du_jour_btn, use_container_width=True, help="Configure automatiquement les équipes et les joueurs selon l'horaire officiel")
         if "msg_match_applique" in st.session_state:
@@ -10668,13 +10767,13 @@ with tab_feuille:
             st.button("🔙 Reprendre la saisie", on_click=cb_retour_match_en_cours, type="primary", use_container_width=True, key="btn_reprendre_saisie")
     elif not est_spectateur:
         st.markdown("---")
-        st.markdown("### 🎯 Grille de saisie des 9 manches (Rotation alternée 3 contre 3)")
-        rencontre_info = st.session_state.get("saphir_match_jour")
+        st.markdown(f"### 🎯 Grille de saisie des 9 manches — Saison {no_sais_sb} • {sem_sais_sb} (Rotation 3 contre 3)")
+        rencontre_info = determiner_match_du_jour()
         if rencontre_info:
             txt_rencontre = rencontre_info.get("texte", "")
             est_ajd = rencontre_info.get("est_aujourdhui", False)
             badge_date = "🟢 **Match officiel du jour selon l'horaire :**" if est_ajd else "ℹ️ **Prochain match officiel au calendrier :**"
-            st.info(f"{badge_date} **{equipe_receveur}** (🏠 Receveur) vs **{equipe_visiteur}** (🚗 Visiteur) — *{txt_rencontre}*. Alignements et moyennes officielles des joueurs synchronisés.")
+            st.info(f"{badge_date} **{equipe_receveur}** (🏠 Receveur) vs **{equipe_visiteur}** (🚗 Visiteur) — *{txt_rencontre}* (🏆 **Saison {no_sais_sb} • {sem_sais_sb}**). Alignements et moyennes officielles des joueurs synchronisés.")
 
         st.info(
             "📌 **Règle de rotation :** Aucun joueur ne joue deux manches consécutives.\n\n"
