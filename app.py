@@ -2648,6 +2648,97 @@ def envoyer_post_saphir_import(payload, api_key="UNE_CLE_DEBILEMENT_LONGUE", url
         temps_ms = round((time.time() - t0) * 1000, 1)
         return False, 0, f"Erreur inattendue : {e_gen}", temps_ms
 
+def obtenir_points_reels_joueurs_match(date_cible, eq_rec, eq_vis):
+    """Recherche si des points réels existent pour ce match (dans l'historique archivé ou la session active).
+    Retourne un dict {nom_normalise: points} ou None si aucun point n'a encore été joué.
+    """
+    mois_noms = {1: "janvier", 2: "février", 3: "mars", 4: "avril", 5: "mai", 6: "juin",
+                 7: "juillet", 8: "août", 9: "septembre", 10: "octobre", 11: "novembre", 12: "décembre"}
+
+    # 1. Vérification dans l'historique des matchs archivés
+    historique = charger_historique_matchs()
+    for m in reversed(historique or []):
+        r = m.get("receveur")
+        v = m.get("visiteur")
+        if r != eq_rec or v != eq_vis:
+            continue
+        d_str = str(m.get("date") or m.get("date_enregistrement") or "")
+        match_date_ok = False
+        m_ymd = re.search(r'(\d{4})-(\d{2})-(\d{2})', d_str)
+        if m_ymd:
+            if int(m_ymd.group(1)) == date_cible.year and int(m_ymd.group(2)) == date_cible.month and int(m_ymd.group(3)) == date_cible.day:
+                match_date_ok = True
+        m_dmy = re.search(r'(\d{1,2})/(\d{1,2})/(\d{4})', d_str)
+        if m_dmy:
+            if int(m_dmy.group(3)) == date_cible.year and int(m_dmy.group(2)) == date_cible.month and int(m_dmy.group(1)) == date_cible.day:
+                match_date_ok = True
+        if not match_date_ok:
+            for k_pat in [date_cible.strftime("%d/%m"), f"{date_cible.day} {mois_noms.get(date_cible.month, '')}"]:
+                if k_pat.lower() in d_str.lower():
+                    match_date_ok = True
+                    break
+
+        if match_date_ok:
+            pts = {}
+            for manche in m.get("matchs", {}).values():
+                ja = manche.get("joueur_a")
+                jb = manche.get("joueur_b")
+                sa = int(manche.get("score_a", 0))
+                sb = int(manche.get("score_b", 0))
+                if ja:
+                    pts[normaliser_nom_joueur(ja)] = pts.get(normaliser_nom_joueur(ja), 0) + sa
+                if jb:
+                    pts[normaliser_nom_joueur(jb)] = pts.get(normaliser_nom_joueur(jb), 0) + sb
+            if any(p > 0 for p in pts.values()):
+                return pts
+
+    # 2. Vérification dans la sauvegarde active (sauvegarde_saisie_secours.json)
+    sauv = charger_sauvegarde()
+    if sauv and sauv.get("receveur") == eq_rec and sauv.get("visiteur") == eq_vis:
+        d_sauv = str(sauv.get("date", ""))
+        match_sauv_ok = False
+        m_ymd = re.search(r'(\d{4})-(\d{2})-(\d{2})', d_sauv)
+        if m_ymd and int(m_ymd.group(1)) == date_cible.year and int(m_ymd.group(2)) == date_cible.month and int(m_ymd.group(3)) == date_cible.day:
+            match_sauv_ok = True
+        elif datetime.today().date() == date_cible:
+            match_sauv_ok = True
+        if match_sauv_ok:
+            pts = {}
+            for manche in sauv.get("matchs", {}).values():
+                ja = manche.get("joueur_a")
+                jb = manche.get("joueur_b")
+                sa = int(manche.get("score_a", 0))
+                sb = int(manche.get("score_b", 0))
+                if ja:
+                    pts[normaliser_nom_joueur(ja)] = pts.get(normaliser_nom_joueur(ja), 0) + sa
+                if jb:
+                    pts[normaliser_nom_joueur(jb)] = pts.get(normaliser_nom_joueur(jb), 0) + sb
+            if any(p > 0 for p in pts.values()):
+                return pts
+
+    # 3. Vérification dans st.session_state si match en cours d'édition
+    if hasattr(st, "session_state"):
+        if st.session_state.get("sel_equipe_rec") == eq_rec and st.session_state.get("sel_equipe_vis") == eq_vis and datetime.today().date() == date_cible:
+            matchs_pairs_def = [
+                (1, "j1_rec", "j1_vis"), (2, "j2_rec", "j2_vis"), (3, "j3_rec", "j3_vis"),
+                (4, "j1_rec", "j2_vis"), (5, "j2_rec", "j3_vis"), (6, "j3_rec", "j1_vis"),
+                (7, "j1_rec", "j3_vis"), (8, "j2_rec", "j1_vis"), (9, "j3_rec", "j2_vis")
+            ]
+            pts = {}
+            for num_m, k_a, k_b in matchs_pairs_def:
+                sa = int(st.session_state.get(f"s_a_{num_m}", 0))
+                sb = int(st.session_state.get(f"s_b_{num_m}", 0))
+                nom_a = st.session_state.get(f"last_nom_{k_a}") or st.session_state.get(f"sel_{k_a}")
+                nom_b = st.session_state.get(f"last_nom_{k_b}") or st.session_state.get(f"sel_{k_b}")
+                if nom_a:
+                    pts[normaliser_nom_joueur(nom_a)] = pts.get(normaliser_nom_joueur(nom_a), 0) + sa
+                if nom_b:
+                    pts[normaliser_nom_joueur(nom_b)] = pts.get(normaliser_nom_joueur(nom_b), 0) + sb
+            if any(p > 0 for p in pts.values()):
+                return pts
+
+    return None
+
 def afficher_module_test_post_saphir(key_prefix="saphir_api"):
     """Composant d'interface pour tester et exécuter une requête HTTP POST vers l'API Saphir billardImport."""
     st.markdown("#### 🌐 Test d'envoi POST vers l'API Saphir (`billardImport`)")
@@ -2753,29 +2844,46 @@ def afficher_module_test_post_saphir(key_prefix="saphir_api"):
             roster_r = equipes_data.get(eq_rec, ["Joueur 1", "Joueur 2", "Joueur 3"])[:3]
             roster_v = equipes_data.get(eq_vis, ["Joueur 1", "Joueur 2", "Joueur 3"])[:3]
             
+            pts_reels_dict = obtenir_points_reels_joueurs_match(sel_date_post, eq_rec, eq_vis)
+            a_des_points_reels = bool(pts_reels_dict and any(v > 0 for v in pts_reels_dict.values()))
+            
             payload_joueurs = []
             for j_nom in (roster_r + roster_v):
                 parts = j_nom.strip().split(None, 1)
                 p_prenom = parts[0] if parts else "Joueur"
                 p_nom = parts[1] if len(parts) > 1 else ""
-                score_alea = random.randint(12, 24)
+                
+                # Si des points réels existent pour ce match, on les utilise sans générer au hasard !
+                if a_des_points_reels:
+                    j_cle = normaliser_nom_joueur(j_nom)
+                    score_joueur = int(pts_reels_dict.get(j_cle, 0))
+                else:
+                    score_joueur = random.randint(12, 24)
+                    
                 payload_joueurs.append({
                     "saison": int(sais_num),
                     "semaine": int(sem_num),
                     "prenom": p_prenom,
                     "nom": p_nom,
-                    "pointage": score_alea
+                    "pointage": score_joueur
                 })
             
             json_nouveau = json.dumps(payload_joueurs, ensure_ascii=False, indent=2)
-            # Mise à jour synchrone immédiate de session_payload_key ET du widget area_payload
             st.session_state[session_payload_key] = json_nouveau
             st.session_state[f"{key_prefix}_area_payload"] = json_nouveau
-            st.success(
-                f"✅ **Match du {sel_date_post.strftime('%d/%m/%Y')} identifié :** {eq_rec} vs {eq_vis} "
-                f"(Saison {sais_num}, Semaine {sem_num}).\n\n"
-                f"📦 Payload JSON composé pour les **6 joueurs** avec pointages aléatoires (12 à 24 pts) !"
-            )
+            
+            if a_des_points_reels:
+                st.success(
+                    f"✅ **Match du {sel_date_post.strftime('%d/%m/%Y')} identifié :** {eq_rec} vs {eq_vis} "
+                    f"(Saison {sais_num}, Semaine {sem_num}).\n\n"
+                    f"🎯 **Points réels des 6 joueurs récupérés depuis la feuille de match officielle** (aucun score aléatoire) !"
+                )
+            else:
+                st.success(
+                    f"✅ **Match du {sel_date_post.strftime('%d/%m/%Y')} identifié :** {eq_rec} vs {eq_vis} "
+                    f"(Saison {sais_num}, Semaine {sem_num}).\n\n"
+                    f"🎲 Aucun point enregistré pour ce match : pointages générés aléatoirement (12 à 24 pts) !"
+                )
             st.rerun()
 
     # Lecture de la valeur à jour (priorité à area_payload si édité manuellement, sinon session_payload_key)
