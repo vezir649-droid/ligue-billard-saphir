@@ -2707,7 +2707,7 @@ def afficher_module_test_post_saphir(key_prefix="saphir_api"):
     with col_mode1:
         st.caption("Exemple officiel par défaut :")
         if st.button("📋 Recharger l'exemple officiel", use_container_width=True, key=f"{key_prefix}_btn_load_ex"):
-            st.session_state[session_payload_key] = json.dumps([
+            ex_json = json.dumps([
                 {
                     "saison": 4,
                     "semaine": 21,
@@ -2716,6 +2716,8 @@ def afficher_module_test_post_saphir(key_prefix="saphir_api"):
                     "pointage": 89
                 }
             ], ensure_ascii=False, indent=2)
+            st.session_state[session_payload_key] = ex_json
+            st.session_state[f"{key_prefix}_area_payload"] = ex_json
             st.rerun()
 
     with col_mode2:
@@ -2765,7 +2767,10 @@ def afficher_module_test_post_saphir(key_prefix="saphir_api"):
                     "pointage": score_alea
                 })
             
-            st.session_state[session_payload_key] = json.dumps(payload_joueurs, ensure_ascii=False, indent=2)
+            json_nouveau = json.dumps(payload_joueurs, ensure_ascii=False, indent=2)
+            # Mise à jour synchrone immédiate de session_payload_key ET du widget area_payload
+            st.session_state[session_payload_key] = json_nouveau
+            st.session_state[f"{key_prefix}_area_payload"] = json_nouveau
             st.success(
                 f"✅ **Match du {sel_date_post.strftime('%d/%m/%Y')} identifié :** {eq_rec} vs {eq_vis} "
                 f"(Saison {sais_num}, Semaine {sem_num}).\n\n"
@@ -2773,25 +2778,29 @@ def afficher_module_test_post_saphir(key_prefix="saphir_api"):
             )
             st.rerun()
 
+    # Lecture de la valeur à jour (priorité à area_payload si édité manuellement, sinon session_payload_key)
+    val_payload_affichage = st.session_state.get(f"{key_prefix}_area_payload", st.session_state.get(session_payload_key, "[]"))
+
     payload_saisi = st.text_area(
         "Édition du JSON à expédier :",
-        value=st.session_state[session_payload_key],
-        height=160,
+        value=val_payload_affichage,
+        height=180,
         key=f"{key_prefix}_area_payload",
         help="Liste d'objets JSON avec les clés : saison, semaine, prenom, nom, pointage."
     )
+    # Garder session_payload_key synchronisé avec toute frappe au clavier
     st.session_state[session_payload_key] = payload_saisi
 
     cle_curl = api_key_input if api_key_input else "UNE_CLE_DEBILEMENT_LONGUE"
-    payload_one_line = re.sub(r"\s+", " ", payload_saisi.strip())
+    payload_one_line = re.sub(r"\s+", " ", str(payload_saisi).strip())
     curl_cmd = (
         f'curl -X POST "{api_url_input}" \\\n'
         f'  -H "Content-Type: application/json" \\\n'
         f'  -H "X-API-Key: {cle_curl}" \\\n'
-        f"  -d '{payload_one_line}'"
+        f"  -d '{payload_one_line}'\n"
     )
 
-    with st.expander("💻 Voir la commande cURL équivalente", expanded=False):
+    with st.expander("💻 Voir la commande cURL équivalente", expanded=True):
         st.code(curl_cmd, language="bash")
 
     st.write("")
