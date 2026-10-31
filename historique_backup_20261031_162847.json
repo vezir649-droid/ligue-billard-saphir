@@ -1,0 +1,479 @@
+[
+    {
+        "date": "2026-10-23 18:44",
+        "receveur": "Golf",
+        "visiteur": "Delta",
+        "choix_rec": "Golf",
+        "choix_vis": "Delta",
+        "input_custom_rec": "",
+        "input_custom_vis": "",
+        "sel_j1_rec": "André Lauzon",
+        "sel_j2_rec": "Suzanne Blaquière",
+        "sel_j1_vis": "Serge Nollet",
+        "sel_j2_vis": "Marc Savard",
+        "joueurs": {
+            "j1_rec": {
+                "nom": "André Lauzon",
+                "present": true,
+                "moyenne": 0.0,
+                "pts_absent": 0
+            },
+            "j2_rec": {
+                "nom": "Suzanne Blaquière",
+                "present": true,
+                "moyenne": 0.0,
+                "pts_absent": 0
+            },
+            "j3_rec": {
+                "nom": "Yves Pilon",
+                "present": true,
+                "moyenne": 0.0,
+                "pts_absent": 0
+            },
+            "j1_vis": {
+                "nom": "Serge Nollet",
+                "present": true,
+                "moyenne": 0.0,
+                "pts_absent": 0
+            },
+            "j2_vis": {
+                "nom": "Marc Savard",
+                "present": true,
+                "moyenne": 0.0,
+                "pts_absent": 0
+            },
+            "j3_vis": {
+                "nom": "Alain Bellemare",
+                "present": true,
+                "moyenne": 0.0,
+                "pts_absent": 0
+            }
+        },
+        "matchs": {
+            "1": {
+                "score_a": 7,
+                "score_b": 8,
+                "joueur_a": "André Lauzon",
+                "joueur_b": "Serge Nollet",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "2": {
+                "score_a": 7,
+                "score_b": 8,
+                "joueur_a": "Suzanne Blaquière",
+                "joueur_b": "Marc Savard",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "3": {
+                "score_a": 8,
+                "score_b": 6,
+                "joueur_a": "Yves Pilon",
+                "joueur_b": "Alain Bellemare",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "4": {
+                "score_a": 8,
+                "score_b": 6,
+                "joueur_a": "André Lauzon",
+                "joueur_b": "Marc Savard",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "5": {
+                "score_a": 8,
+                "score_b": 5,
+                "joueur_a": "Suzanne Blaquière",
+                "joueur_b": "Alain Bellemare",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "6": {
+                "score_a": 6,
+                "score_b": 8,
+                "joueur_a": "Yves Pilon",
+                "joueur_b": "Serge Nollet",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "7": {
+                "score_a": 8,
+                "score_b": 7,
+                "joueur_a": "André Lauzon",
+                "joueur_b": "Alain Bellemare",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "8": {
+                "score_a": 7,
+                "score_b": 8,
+                "joueur_a": "Suzanne Blaquière",
+                "joueur_b": "Serge Nollet",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "9": {
+                "score_a": 6,
+                "score_b": 8,
+                "joueur_a": "Yves Pilon",
+                "joueur_b": "Marc Savard",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            }
+        },
+        "total_receveur": 65,
+        "total_visiteur": 64,
+        "points_par_joueur": {
+            "j1_rec": {
+                "nom": "André Lauzon",
+                "equipe": "Golf",
+                "points": 23,
+                "present": true,
+                "moyenne": 0.0
+            },
+            "j2_rec": {
+                "nom": "Suzanne Blaquière",
+                "equipe": "Golf",
+                "points": 22,
+                "present": true,
+                "moyenne": 0.0
+            },
+            "j3_rec": {
+                "nom": "Yves Pilon",
+                "equipe": "Golf",
+                "points": 20,
+                "present": true,
+                "moyenne": 0.0
+            },
+            "j1_vis": {
+                "nom": "Serge Nollet",
+                "equipe": "Delta",
+                "points": 24,
+                "present": true,
+                "moyenne": 0.0
+            },
+            "j2_vis": {
+                "nom": "Marc Savard",
+                "equipe": "Delta",
+                "points": 22,
+                "present": true,
+                "moyenne": 0.0
+            },
+            "j3_vis": {
+                "nom": "Alain Bellemare",
+                "equipe": "Delta",
+                "points": 18,
+                "present": true,
+                "moyenne": 0.0
+            }
+        },
+        "date_enregistrement": "23/10/2026 à 18:45"
+    },
+    {
+        "date": "2026-10-23 19:25",
+        "receveur": "Bravo",
+        "visiteur": "Alpha",
+        "choix_rec": "Bravo",
+        "choix_vis": "Alpha",
+        "input_custom_rec": "",
+        "input_custom_vis": "",
+        "sel_j1_rec": "Richard Vézina",
+        "sel_j2_rec": "Michel Caron",
+        "sel_j1_vis": "Claude Harvey",
+        "sel_j2_vis": "Gaston Lavoie",
+        "joueurs": {
+            "j1_rec": {
+                "nom": "Richard Vézina",
+                "present": true,
+                "moyenne": 0.0,
+                "pts_absent": 0
+            },
+            "j2_rec": {
+                "nom": "Michel Caron",
+                "present": false,
+                "moyenne": 0.625,
+                "pts_absent": 5
+            },
+            "j3_rec": {
+                "nom": "Michel Bouchard",
+                "present": true,
+                "moyenne": 0.0,
+                "pts_absent": 0
+            },
+            "j1_vis": {
+                "nom": "Claude Harvey",
+                "present": true,
+                "moyenne": 0.0,
+                "pts_absent": 0
+            },
+            "j2_vis": {
+                "nom": "Gaston Lavoie",
+                "present": true,
+                "moyenne": 0.0,
+                "pts_absent": 0
+            },
+            "j3_vis": {
+                "nom": "Léon Morin",
+                "present": false,
+                "moyenne": 0.625,
+                "pts_absent": 5
+            }
+        },
+        "matchs": {
+            "1": {
+                "score_a": 8,
+                "score_b": 6,
+                "joueur_a": "Richard Vézina",
+                "joueur_b": "Claude Harvey",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "2": {
+                "score_a": 5,
+                "score_b": 8,
+                "joueur_a": "Michel Caron",
+                "joueur_b": "Gaston Lavoie",
+                "joueur_a_absent": true,
+                "joueur_b_absent": false
+            },
+            "3": {
+                "score_a": 8,
+                "score_b": 5,
+                "joueur_a": "Michel Bouchard",
+                "joueur_b": "Léon Morin",
+                "joueur_a_absent": false,
+                "joueur_b_absent": true
+            },
+            "4": {
+                "score_a": 8,
+                "score_b": 7,
+                "joueur_a": "Richard Vézina",
+                "joueur_b": "Gaston Lavoie",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "5": {
+                "score_a": 5,
+                "score_b": 5,
+                "joueur_a": "Michel Caron",
+                "joueur_b": "Léon Morin",
+                "joueur_a_absent": true,
+                "joueur_b_absent": true
+            },
+            "6": {
+                "score_a": 7,
+                "score_b": 8,
+                "joueur_a": "Michel Bouchard",
+                "joueur_b": "Claude Harvey",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "7": {
+                "score_a": 8,
+                "score_b": 5,
+                "joueur_a": "Richard Vézina",
+                "joueur_b": "Léon Morin",
+                "joueur_a_absent": false,
+                "joueur_b_absent": true
+            },
+            "8": {
+                "score_a": 5,
+                "score_b": 8,
+                "joueur_a": "Michel Caron",
+                "joueur_b": "Claude Harvey",
+                "joueur_a_absent": true,
+                "joueur_b_absent": false
+            },
+            "9": {
+                "score_a": 8,
+                "score_b": 7,
+                "joueur_a": "Michel Bouchard",
+                "joueur_b": "Gaston Lavoie",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            }
+        },
+        "derniere_mise_a_jour": "19:25:44",
+        "ts_modif": 1792783544.6745477,
+        "total_receveur": 62,
+        "total_visiteur": 59,
+        "approbateur_receveur": "Richard Vézina",
+        "approbateur_visiteur": "Claude Harvey",
+        "points_par_joueur": {
+            "j1_rec": {
+                "nom": "Richard Vézina",
+                "equipe": "Bravo",
+                "points": 24,
+                "present": true,
+                "moyenne": 0.0
+            },
+            "j2_rec": {
+                "nom": "Michel Caron",
+                "equipe": "Bravo",
+                "points": 15,
+                "present": false,
+                "moyenne": 0.625
+            },
+            "j3_rec": {
+                "nom": "Michel Bouchard",
+                "equipe": "Bravo",
+                "points": 23,
+                "present": true,
+                "moyenne": 0.0
+            },
+            "j1_vis": {
+                "nom": "Claude Harvey",
+                "equipe": "Alpha",
+                "points": 22,
+                "present": true,
+                "moyenne": 0.0
+            },
+            "j2_vis": {
+                "nom": "Gaston Lavoie",
+                "equipe": "Alpha",
+                "points": 22,
+                "present": true,
+                "moyenne": 0.0
+            },
+            "j3_vis": {
+                "nom": "Léon Morin",
+                "equipe": "Alpha",
+                "points": 15,
+                "present": false,
+                "moyenne": 0.625
+            }
+        },
+        "date_enregistrement": "23/10/2026 à 19:25"
+    },
+    {
+        "date": "29/10/2026 à 19:00",
+        "date_enregistrement": "29/10/2026 à 19:00",
+        "receveur": "Delta",
+        "visiteur": "Hotel",
+        "total_receveur": 43,
+        "total_visiteur": 40,
+        "approbateur_receveur": "Serge Nollet",
+        "approbateur_visiteur": "Richard Théberge",
+        "points_par_joueur": {
+            "j1_rec": {
+                "nom": "Serge Nollet",
+                "equipe": "Delta",
+                "points": 15,
+                "present": true,
+                "moyenne": 0.0
+            },
+            "j2_rec": {
+                "nom": "Marc Savard",
+                "equipe": "Delta",
+                "points": 22,
+                "present": true,
+                "moyenne": 0.0
+            },
+            "j3_rec": {
+                "nom": "Alain Bellemare",
+                "equipe": "Delta",
+                "points": 6,
+                "present": true,
+                "moyenne": 0.0
+            },
+            "j1_vis": {
+                "nom": "Richard Lavoie",
+                "equipe": "Hotel",
+                "points": 18,
+                "present": true,
+                "moyenne": 0.0
+            },
+            "j2_vis": {
+                "nom": "Richard Théberge",
+                "equipe": "Hotel",
+                "points": 21,
+                "present": false,
+                "moyenne": 0.948
+            },
+            "j3_vis": {
+                "nom": "Jean-Yves Brochu",
+                "equipe": "Hotel",
+                "points": 1,
+                "present": true,
+                "moyenne": 0.0
+            }
+        },
+        "matchs": {
+            "1": {
+                "score_a": 8,
+                "score_b": 5,
+                "joueur_a": "Serge Nollet",
+                "joueur_b": "Richard Lavoie",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "2": {
+                "score_a": 6,
+                "score_b": 7,
+                "joueur_a": "Marc Savard",
+                "joueur_b": "Richard Théberge",
+                "joueur_a_absent": false,
+                "joueur_b_absent": true
+            },
+            "3": {
+                "score_a": 0,
+                "score_b": 0,
+                "joueur_a": "Alain Bellemare",
+                "joueur_b": "Jean-Yves Brochu",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "4": {
+                "score_a": 7,
+                "score_b": 7,
+                "joueur_a": "Serge Nollet",
+                "joueur_b": "Richard Théberge",
+                "joueur_a_absent": false,
+                "joueur_b_absent": true
+            },
+            "5": {
+                "score_a": 8,
+                "score_b": 1,
+                "joueur_a": "Marc Savard",
+                "joueur_b": "Jean-Yves Brochu",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "6": {
+                "score_a": 0,
+                "score_b": 8,
+                "joueur_a": "Alain Bellemare",
+                "joueur_b": "Richard Lavoie",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "7": {
+                "score_a": 0,
+                "score_b": 0,
+                "joueur_a": "Serge Nollet",
+                "joueur_b": "Jean-Yves Brochu",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "8": {
+                "score_a": 8,
+                "score_b": 5,
+                "joueur_a": "Marc Savard",
+                "joueur_b": "Richard Lavoie",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "9": {
+                "score_a": 6,
+                "score_b": 7,
+                "joueur_a": "Alain Bellemare",
+                "joueur_b": "Richard Théberge",
+                "joueur_a_absent": false,
+                "joueur_b_absent": true
+            }
+        },
+        "saisi_comme_anterieur": true
+    }
+]
