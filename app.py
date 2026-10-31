@@ -455,24 +455,33 @@ def normaliser_donnees_email(brut):
 
 
 def obtenir_diagnostic_secrets_streamlit():
-    """Génère un bilan complet de l'état de détection des secrets au démarrage pour l'administrateur."""
+    """Génère un bilan complet de l'état de détection des secrets au démarrage pour l'administrateur (100% fail-safe)."""
     from collections.abc import Mapping
     diag = {
         "disponible": False,
         "sections": [],
         "cles_racine": [],
         "erreur": None,
-        "elements": {}
+        "elements": {
+            "mot_de_passe_marqueur": {"configure": False, "est_defaut": True, "source": "défaut (saphir2026)"},
+            "mot_de_passe_admin": {"configure": False, "est_defaut": True, "source": "défaut (admin2026)"},
+            "saphir_api_key": {"configure": False, "est_defaut": True, "source": "défaut"},
+            "github_token": {"configure": False, "source": "non configuré"},
+            "email_smtp": {"configure": False, "source": "non configuré"}
+        }
     }
     try:
         if hasattr(st, "secrets"):
             diag["disponible"] = True
-            for k in st.secrets.keys():
-                val = st.secrets[k]
-                if isinstance(val, (dict, Mapping)) or hasattr(val, "items"):
-                    diag["sections"].append(str(k))
-                else:
-                    diag["cles_racine"].append(str(k))
+            try:
+                for k in st.secrets.keys():
+                    val = st.secrets[k]
+                    if isinstance(val, (dict, Mapping)) or hasattr(val, "items"):
+                        diag["sections"].append(str(k))
+                    else:
+                        diag["cles_racine"].append(str(k))
+            except Exception as e_k:
+                diag["erreur"] = str(e_k)
     except Exception as e:
         diag["erreur"] = str(e)
 
@@ -480,37 +489,47 @@ def obtenir_diagnostic_secrets_streamlit():
         cfg_adm = charger_config_admin()
     except Exception:
         cfg_adm = {}
-    sources_adm = st.session_state.get("sources_config_admin", {})
+    try:
+        sources_adm = st.session_state.get("sources_config_admin", {}) if hasattr(st, "session_state") else {}
+    except Exception:
+        sources_adm = {}
 
     try:
         cfg_em = charger_config_email()
     except Exception:
         cfg_em = {}
-    sources_em = st.session_state.get("sources_config_email", {})
+    try:
+        sources_em = st.session_state.get("sources_config_email", {}) if hasattr(st, "session_state") else {}
+    except Exception:
+        sources_em = {}
 
-    diag["elements"]["mot_de_passe_marqueur"] = {
-        "configure": bool(cfg_adm.get("mot_de_passe")),
-        "est_defaut": cfg_adm.get("mot_de_passe") in (None, "", "saphir2026"),
-        "source": sources_adm.get("mot_de_passe", "défaut (saphir2026)")
-    }
-    diag["elements"]["mot_de_passe_admin"] = {
-        "configure": bool(cfg_adm.get("mot_de_passe_admin")),
-        "est_defaut": cfg_adm.get("mot_de_passe_admin") in (None, "", "admin2026"),
-        "source": sources_adm.get("mot_de_passe_admin", "défaut (admin2026)")
-    }
-    diag["elements"]["saphir_api_key"] = {
-        "configure": bool(cfg_adm.get("saphir_api_key")),
-        "est_defaut": cfg_adm.get("saphir_api_key") in (None, "", "UNE_CLE_DEBILEMENT_LONGUE"),
-        "source": sources_adm.get("saphir_api_key", "défaut")
-    }
-    diag["elements"]["github_token"] = {
-        "configure": bool(cfg_adm.get("github_token")),
-        "source": sources_adm.get("github_token", "non configuré")
-    }
-    diag["elements"]["email_smtp"] = {
-        "configure": bool(cfg_em.get("smtp_expediteur") and cfg_em.get("smtp_mdp")),
-        "source": sources_em.get("smtp_expediteur", "config_email.json ou non configuré")
-    }
+    try:
+        diag["elements"]["mot_de_passe_marqueur"] = {
+            "configure": bool(cfg_adm.get("mot_de_passe")),
+            "est_defaut": cfg_adm.get("mot_de_passe") in (None, "", "saphir2026"),
+            "source": sources_adm.get("mot_de_passe", "défaut (saphir2026)")
+        }
+        diag["elements"]["mot_de_passe_admin"] = {
+            "configure": bool(cfg_adm.get("mot_de_passe_admin")),
+            "est_defaut": cfg_adm.get("mot_de_passe_admin") in (None, "", "admin2026"),
+            "source": sources_adm.get("mot_de_passe_admin", "défaut (admin2026)")
+        }
+        diag["elements"]["saphir_api_key"] = {
+            "configure": bool(cfg_adm.get("saphir_api_key")),
+            "est_defaut": cfg_adm.get("saphir_api_key") in (None, "", "UNE_CLE_DEBILEMENT_LONGUE"),
+            "source": sources_adm.get("saphir_api_key", "défaut")
+        }
+        diag["elements"]["github_token"] = {
+            "configure": bool(cfg_adm.get("github_token")),
+            "source": sources_adm.get("github_token", "non configuré")
+        }
+        diag["elements"]["email_smtp"] = {
+            "configure": bool(cfg_em.get("smtp_expediteur") and cfg_em.get("smtp_mdp")),
+            "source": sources_em.get("smtp_expediteur", "config_email.json ou non configuré")
+        }
+    except Exception:
+        pass
+
     return diag
 
 
@@ -984,7 +1003,7 @@ def obtenir_infos_dernier_commit_github(filename):
         if token:
             headers["Authorization"] = f"Bearer {token}"
         req = urllib.request.Request(api_url, headers=headers, method="GET")
-        with urllib.request.urlopen(req, timeout=6) as resp:
+        with urllib.request.urlopen(req, timeout=2.5) as resp:
             commits = json.loads(resp.read().decode("utf-8"))
             if commits and isinstance(commits, list) and len(commits) > 0:
                 c = commits[0]
@@ -1027,7 +1046,7 @@ def telecharger_fichier_brut_depuis_github(filename, ref_override=None):
         if token:
             headers["Authorization"] = f"Bearer {token}"
         req = urllib.request.Request(api_url, headers=headers, method="GET")
-        with urllib.request.urlopen(req, timeout=7) as resp:
+        with urllib.request.urlopen(req, timeout=2.5) as resp:
             info = json.loads(resp.read().decode("utf-8"))
             b64_c = info.get("content", "")
             if b64_c:
@@ -1046,7 +1065,7 @@ def telecharger_fichier_brut_depuis_github(filename, ref_override=None):
         if token:
             headers_raw["Authorization"] = f"token {token}"
         req_raw = urllib.request.Request(raw_url, headers=headers_raw, method="GET")
-        with urllib.request.urlopen(req_raw, timeout=7) as resp_raw:
+        with urllib.request.urlopen(req_raw, timeout=2.5) as resp_raw:
             return resp_raw.read()
     except Exception:
         pass
@@ -1091,7 +1110,7 @@ def lister_fichiers_depuis_github():
         if token:
             headers["Authorization"] = f"Bearer {token}"
         req = urllib.request.Request(api_url, headers=headers, method="GET")
-        with urllib.request.urlopen(req, timeout=6) as resp:
+        with urllib.request.urlopen(req, timeout=2.5) as resp:
             items = json.loads(resp.read().decode("utf-8"))
             if isinstance(items, list):
                 res = []
@@ -9776,16 +9795,30 @@ def afficher_tableau_de_bord_progression(historique):
 # Injection des balises d'icône pour écran d'accueil mobile et tablette (iOS & Android)
 injecter_meta_icones_mobiles()
 injecter_theme_css_saphir()
-restaurer_depuis_github_au_reveil()
 
-# Notification de détection des secrets au démarrage
-if "secrets_startup_notif_done" not in st.session_state:
-    st.session_state["secrets_startup_notif_done"] = True
-    diag_demarrage = obtenir_diagnostic_secrets_streamlit()
-    if diag_demarrage.get("erreur"):
-        st.toast(f"⚠️ Erreur Secrets Streamlit : {diag_demarrage['erreur']}", icon="⚠️")
-    elif diag_demarrage.get("disponible") and (diag_demarrage.get("sections") or diag_demarrage.get("cles_racine")):
-        st.toast("🔐 Secrets Streamlit Cloud chargés avec succès !", icon="✅")
+# Synchronisation au démarrage en arrière-plan (non bloquante pour un chargement instantané de l'interface)
+try:
+    if not st.session_state.get("github_wake_sync_done", False):
+        st.session_state["github_wake_sync_done"] = True
+        import threading
+        t_wake = threading.Thread(target=restaurer_depuis_github_au_reveil, daemon=True)
+        t_wake.start()
+except Exception:
+    pass
+
+# Notification discrète et sécurisée des secrets au démarrage
+try:
+    if "secrets_startup_notif_done" not in st.session_state:
+        st.session_state["secrets_startup_notif_done"] = True
+        diag_demarrage = obtenir_diagnostic_secrets_streamlit()
+        if hasattr(st, "toast"):
+            if diag_demarrage.get("erreur"):
+                st.toast(f"⚠️ Secrets Streamlit : {diag_demarrage['erreur']}", icon="⚠️")
+            elif diag_demarrage.get("disponible") and (diag_demarrage.get("sections") or diag_demarrage.get("cles_racine")):
+                st.toast("🔐 Secrets Streamlit Cloud chargés avec succès !", icon="✅")
+except Exception:
+    pass
+
 initialiser_donnees_saphir_au_demarrage()
 # Remontée forcée en haut de page désactivée
 
@@ -10071,11 +10104,14 @@ if not est_connecte and not est_spectateur:
                         st.rerun()
                     else:
                         st.error("❌ Mot de passe marqueur incorrect.")
-            diag_l = obtenir_diagnostic_secrets_streamlit()
-            m_mq = diag_l["elements"]["mot_de_passe_marqueur"]
-            if not m_mq["est_defaut"]:
-                st.caption(f"💡 *Mot de passe Marqueur personnalisé chargé depuis `{m_mq['source']}`*")
-            else:
+            try:
+                diag_l = obtenir_diagnostic_secrets_streamlit()
+                m_mq = diag_l.get("elements", {}).get("mot_de_passe_marqueur", {})
+                if not m_mq.get("est_defaut", True):
+                    st.caption(f"💡 *Mot de passe Marqueur personnalisé chargé depuis `{m_mq.get('source', '')}`*")
+                else:
+                    st.caption("💡 *Mot de passe par défaut : `saphir2026`*")
+            except Exception:
                 st.caption("💡 *Mot de passe par défaut : `saphir2026`*")
 
         st.markdown("<div style='text-align:center; font-weight:bold; margin: 16px 0;'>OU</div>", unsafe_allow_html=True)
@@ -10095,11 +10131,14 @@ if not est_connecte and not est_spectateur:
                         st.rerun()
                     else:
                         st.error("❌ Mot de passe administrateur incorrect.")
-            diag_l_adm = obtenir_diagnostic_secrets_streamlit()
-            m_ad = diag_l_adm["elements"]["mot_de_passe_admin"]
-            if not m_ad["est_defaut"]:
-                st.caption(f"💡 *Mot de passe Administrateur personnalisé chargé depuis `{m_ad['source']}`*")
-            else:
+            try:
+                diag_l_adm = obtenir_diagnostic_secrets_streamlit()
+                m_ad = diag_l_adm.get("elements", {}).get("mot_de_passe_admin", {})
+                if not m_ad.get("est_defaut", True):
+                    st.caption(f"💡 *Mot de passe Administrateur personnalisé chargé depuis `{m_ad.get('source', '')}`*")
+                else:
+                    st.caption("💡 *Mot de passe par défaut : `admin2026`*")
+            except Exception:
                 st.caption("💡 *Mot de passe par défaut : `admin2026`*")
 
         st.markdown("<div style='text-align:center; font-weight:bold; margin: 16px 0;'>OU</div>", unsafe_allow_html=True)
