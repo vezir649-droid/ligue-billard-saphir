@@ -1,5 +1,5 @@
 {
-    "date": "2026-10-31 14:11",
+    "date": "2026-10-31 19:48",
     "receveur": "Golf",
     "visiteur": "Hotel",
     "choix_rec": "Golf",
@@ -32,19 +32,19 @@
         "j1_vis": {
             "nom": "Richard Lavoie",
             "present": true,
-            "moyenne": 0.911,
+            "moyenne": 0.891,
             "pts_absent": 7
         },
         "j2_vis": {
             "nom": "Richard Théberge",
             "present": true,
-            "moyenne": 0.958,
+            "moyenne": 0.948,
             "pts_absent": 7
         },
         "j3_vis": {
             "nom": "Jean-Yves Brochu",
             "present": true,
-            "moyenne": 0.685,
+            "moyenne": 0.667,
             "pts_absent": 5
         }
     },
@@ -124,6 +124,6 @@
     },
     "total_receveur": 0,
     "total_visiteur": 0,
-    "derniere_mise_a_jour": "14:11:31",
-    "ts_modif": 1793470291.9236991
+    "derniere_mise_a_jour": "19:48:17",
+    "ts_modif": 1793476097.0343215
 }
