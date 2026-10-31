@@ -1,0 +1,129 @@
+{
+    "date": "2026-10-31 14:11",
+    "receveur": "Golf",
+    "visiteur": "Hotel",
+    "choix_rec": "Golf",
+    "choix_vis": "Hotel",
+    "input_custom_rec": "",
+    "input_custom_vis": "",
+    "sel_j1_rec": "André Lauzon",
+    "sel_j2_rec": "Suzanne Blaquière",
+    "sel_j1_vis": "Richard Lavoie",
+    "sel_j2_vis": "Richard Théberge",
+    "joueurs": {
+        "j1_rec": {
+            "nom": "André Lauzon",
+            "present": true,
+            "moyenne": 0.927,
+            "pts_absent": 7
+        },
+        "j2_rec": {
+            "nom": "Suzanne Blaquière",
+            "present": true,
+            "moyenne": 0.823,
+            "pts_absent": 7
+        },
+        "j3_rec": {
+            "nom": "Yves Pilon",
+            "present": true,
+            "moyenne": 0.766,
+            "pts_absent": 6
+        },
+        "j1_vis": {
+            "nom": "Richard Lavoie",
+            "present": true,
+            "moyenne": 0.911,
+            "pts_absent": 7
+        },
+        "j2_vis": {
+            "nom": "Richard Théberge",
+            "present": true,
+            "moyenne": 0.958,
+            "pts_absent": 7
+        },
+        "j3_vis": {
+            "nom": "Jean-Yves Brochu",
+            "present": true,
+            "moyenne": 0.685,
+            "pts_absent": 5
+        }
+    },
+    "matchs": {
+        "1": {
+            "score_a": 0,
+            "score_b": 0,
+            "joueur_a": "André Lauzon",
+            "joueur_b": "Richard Lavoie",
+            "joueur_a_absent": false,
+            "joueur_b_absent": false
+        },
+        "2": {
+            "score_a": 0,
+            "score_b": 0,
+            "joueur_a": "Suzanne Blaquière",
+            "joueur_b": "Richard Théberge",
+            "joueur_a_absent": false,
+            "joueur_b_absent": false
+        },
+        "3": {
+            "score_a": 0,
+            "score_b": 0,
+            "joueur_a": "Yves Pilon",
+            "joueur_b": "Jean-Yves Brochu",
+            "joueur_a_absent": false,
+            "joueur_b_absent": false
+        },
+        "4": {
+            "score_a": 0,
+            "score_b": 0,
+            "joueur_a": "André Lauzon",
+            "joueur_b": "Richard Théberge",
+            "joueur_a_absent": false,
+            "joueur_b_absent": false
+        },
+        "5": {
+            "score_a": 0,
+            "score_b": 0,
+            "joueur_a": "Suzanne Blaquière",
+            "joueur_b": "Jean-Yves Brochu",
+            "joueur_a_absent": false,
+            "joueur_b_absent": false
+        },
+        "6": {
+            "score_a": 0,
+            "score_b": 0,
+            "joueur_a": "Yves Pilon",
+            "joueur_b": "Richard Lavoie",
+            "joueur_a_absent": false,
+            "joueur_b_absent": false
+        },
+        "7": {
+            "score_a": 0,
+            "score_b": 0,
+            "joueur_a": "André Lauzon",
+            "joueur_b": "Jean-Yves Brochu",
+            "joueur_a_absent": false,
+            "joueur_b_absent": false
+        },
+        "8": {
+            "score_a": 0,
+            "score_b": 0,
+            "joueur_a": "Suzanne Blaquière",
+            "joueur_b": "Richard Lavoie",
+            "joueur_a_absent": false,
+            "joueur_b_absent": false
+        },
+        "9": {
+            "score_a": 0,
+            "score_b": 0,
+            "joueur_a": "Yves Pilon",
+            "joueur_b": "Richard Théberge",
+            "joueur_a_absent": false,
+            "joueur_b_absent": false
+        }
+    },
+    "total_receveur": 0,
+    "total_visiteur": 0,
+    "derniere_mise_a_jour": "14:11:31",
+    "ts_modif": 1793470291.9236991
+}
