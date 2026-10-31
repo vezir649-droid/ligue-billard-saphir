@@ -390,8 +390,11 @@ def injecter_theme_css_saphir():
 
 
 def charger_config_admin():
-    """Charge la configuration des mots de passe depuis config_admin.json et st.secrets."""
+    """Charge la configuration administrateur depuis config_admin.json, st.secrets (Streamlit Cloud) et l'environnement."""
+    from collections.abc import Mapping
     data = {}
+
+    # 1. Lecture depuis config_admin.json local si existant
     if os.path.exists(ADMIN_CONFIG_FILE):
         try:
             with open(ADMIN_CONFIG_FILE, "r", encoding="utf-8") as f:
@@ -400,23 +403,81 @@ def charger_config_admin():
                     data.update(d)
         except Exception:
             pass
-    # Prise en compte prioritaire ou de secours de st.secrets (Streamlit Secrets)
+
+    # 2. Prise en compte prioritaire de st.secrets (Streamlit Secrets / Streamlit Cloud)
     try:
         if hasattr(st, "secrets"):
-            if "admin" in st.secrets and isinstance(st.secrets["admin"], dict):
-                for k, v in st.secrets["admin"].items():
-                    if v is not None and str(v).strip():
-                        data[k] = v
-            if "mot_de_passe" in st.secrets and st.secrets["mot_de_passe"]:
-                data["mot_de_passe"] = str(st.secrets["mot_de_passe"]).strip()
-            if "mot_de_passe_admin" in st.secrets and st.secrets["mot_de_passe_admin"]:
-                data["mot_de_passe_admin"] = str(st.secrets["mot_de_passe_admin"]).strip()
-            if "saphir_api_key" in st.secrets and st.secrets["saphir_api_key"]:
-                data["saphir_api_key"] = str(st.secrets["saphir_api_key"]).strip()
-            if "saphir_api_url" in st.secrets and st.secrets["saphir_api_url"]:
-                data["saphir_api_url"] = str(st.secrets["saphir_api_url"]).strip()
+            # A. Recherche dans les sections [admin], [Admin], [ADMIN] (support complet de Mapping et AttrDict)
+            for sec_name in ["admin", "Admin", "ADMIN"]:
+                if sec_name in st.secrets:
+                    val_sec = st.secrets[sec_name]
+                    if isinstance(val_sec, (dict, Mapping)) or hasattr(val_sec, "items"):
+                        for k, v in val_sec.items():
+                            if v is not None and str(v).strip():
+                                data[k] = str(v).strip()
+
+            # B. Recherche dans la section [github] pour le token, repo et branche
+            for sec_gh in ["github", "Github", "GITHUB"]:
+                if sec_gh in st.secrets:
+                    val_gh = st.secrets[sec_gh]
+                    if isinstance(val_gh, (dict, Mapping)) or hasattr(val_gh, "items"):
+                        if val_gh.get("token"):
+                            data["github_token"] = str(val_gh.get("token")).strip()
+                        if val_gh.get("repo"):
+                            data["github_repo"] = str(val_gh.get("repo")).strip()
+                        if val_gh.get("branch"):
+                            data["github_branch"] = str(val_gh.get("branch")).strip()
+
+            # C. Clés directes à la racine de st.secrets (insensibles à la casse et synonymes usuels)
+            for k_root in [
+                "mot_de_passe", "mot_de_passe_admin", "password", "admin_password",
+                "super_admin_password", "mdp", "mdp_admin", "saphir_api_key",
+                "saphir_api_url", "GITHUB_TOKEN", "github_token", "GITHUB_REPO",
+                "github_repo", "GITHUB_BRANCH", "github_branch"
+            ]:
+                if k_root in st.secrets and st.secrets[k_root]:
+                    v_str = str(st.secrets[k_root]).strip()
+                    if v_str:
+                        if k_root in ("admin_password", "password", "mdp"):
+                            data.setdefault("mot_de_passe", v_str)
+                        elif k_root in ("super_admin_password", "mdp_admin"):
+                            data.setdefault("mot_de_passe_admin", v_str)
+                        elif k_root == "GITHUB_TOKEN":
+                            data["github_token"] = v_str
+                        elif k_root == "GITHUB_REPO":
+                            data["github_repo"] = v_str
+                        elif k_root == "GITHUB_BRANCH":
+                            data["github_branch"] = v_str
+                        else:
+                            data[k_root] = v_str
     except Exception:
         pass
+
+    # 3. Prise en compte de os.environ (Variables d'environnement / GitHub Actions / Codespaces)
+    for env_k, data_k in [
+        ("MOT_DE_PASSE", "mot_de_passe"),
+        ("MOT_DE_PASSE_ADMIN", "mot_de_passe_admin"),
+        ("ADMIN_PASSWORD", "mot_de_passe_admin"),
+        ("SUPER_ADMIN_PASSWORD", "mot_de_passe_admin"),
+        ("SAPHIR_API_KEY", "saphir_api_key"),
+        ("SAPHIR_API_URL", "saphir_api_url"),
+        ("GITHUB_TOKEN", "github_token"),
+        ("GITHUB_REPO", "github_repo"),
+        ("GITHUB_BRANCH", "github_branch"),
+    ]:
+        if os.environ.get(env_k):
+            val_env = os.environ.get(env_k, "").strip()
+            if val_env:
+                data.setdefault(data_k, val_env)
+
+    # 4. Enregistrement automatique de secours dans config_admin.json si manquant sur disque
+    if not os.path.exists(ADMIN_CONFIG_FILE) and data:
+        try:
+            with open(ADMIN_CONFIG_FILE, "w", encoding="utf-8") as f_out:
+                json.dump(data, f_out, ensure_ascii=False, indent=4)
+        except Exception:
+            pass
+
     return data
 
 def charger_mot_de_passe_admin():
@@ -485,6 +546,7 @@ GITHUB_BRANCH_DEFAULT = "main"
 
 def obtenir_parametres_github():
     """Récupère les paramètres de synchronisation GitHub (Token, Repo, Branche) depuis st.secrets, l'environnement, la CLI gh ou config_admin.json."""
+    from collections.abc import Mapping
     token = ""
     repo = GITHUB_REPO_DEFAULT
     branch = GITHUB_BRANCH_DEFAULT
@@ -501,6 +563,10 @@ def obtenir_parametres_github():
     # 2. Variable d'environnement
     if not token and os.environ.get("GITHUB_TOKEN"):
         token = os.environ.get("GITHUB_TOKEN", "").strip()
+    if os.environ.get("GITHUB_REPO"):
+        repo = os.environ.get("GITHUB_REPO", "").strip() or repo
+    if os.environ.get("GITHUB_BRANCH"):
+        branch = os.environ.get("GITHUB_BRANCH", "").strip() or branch
 
     # 3. Récupération via le CLI GitHub local (gh auth token) si disponible
     if not token:
@@ -519,12 +585,27 @@ def obtenir_parametres_github():
                 token = str(st.secrets["GITHUB_TOKEN"]).strip()
             elif "github_token" in st.secrets:
                 token = str(st.secrets["github_token"]).strip()
-            elif "github" in st.secrets and isinstance(st.secrets["github"], dict):
-                token = str(st.secrets["github"].get("token", token)).strip()
-                repo = str(st.secrets["github"].get("repo", repo)).strip() or repo
-                branch = str(st.secrets["github"].get("branch", branch)).strip() or branch
+
+            for sec_gh in ["github", "Github", "GITHUB"]:
+                if sec_gh in st.secrets:
+                    val_gh = st.secrets[sec_gh]
+                    if isinstance(val_gh, (dict, Mapping)) or hasattr(val_gh, "items"):
+                        token = str(val_gh.get("token", token)).strip() or token
+                        repo = str(val_gh.get("repo", repo)).strip() or repo
+                        branch = str(val_gh.get("branch", branch)).strip() or branch
+
+            for sec_adm in ["admin", "Admin", "ADMIN"]:
+                if sec_adm in st.secrets:
+                    val_adm = st.secrets[sec_adm]
+                    if isinstance(val_adm, (dict, Mapping)) or hasattr(val_adm, "items"):
+                        token = str(val_adm.get("github_token", token)).strip() or token
+                        repo = str(val_adm.get("github_repo", repo)).strip() or repo
+                        branch = str(val_adm.get("github_branch", branch)).strip() or branch
+
             if "GITHUB_REPO" in st.secrets:
                 repo = str(st.secrets["GITHUB_REPO"]).strip() or repo
+            if "GITHUB_BRANCH" in st.secrets:
+                branch = str(st.secrets["GITHUB_BRANCH"]).strip() or branch
     except Exception:
         pass
 
@@ -1325,7 +1406,8 @@ def sauvegarder_donnees(data):
         st.error(f"Erreur lors de la sauvegarde automatique : {e}")
 
 def charger_config_email():
-    """Charge la configuration SMTP au démarrage de l'application depuis config_email.json et st.secrets."""
+    """Charge la configuration SMTP au démarrage de l'application depuis config_email.json, st.secrets et l'environnement."""
+    from collections.abc import Mapping
     defaut = {
         "destinataires": "",
         "smtp_serveur": "smtp.gmail.com",
@@ -1337,37 +1419,48 @@ def charger_config_email():
     if os.path.exists(CONFIG_EMAIL_FILE):
         try:
             with open(CONFIG_EMAIL_FILE, "r", encoding="utf-8") as f:
-                donnees = json.load(f)
-                if isinstance(donnees, dict):
-                    defaut.update(donnees)
+                d = json.load(f)
+                if isinstance(d, dict):
+                    defaut.update(d)
         except Exception:
             pass
-    # Prise en compte de st.secrets (Streamlit Secrets)
+
+    # Prise en compte de st.secrets (Streamlit Secrets / Cloud)
     try:
         if hasattr(st, "secrets"):
-            sec_email = None
-            if "email" in st.secrets and isinstance(st.secrets["email"], dict):
-                sec_email = st.secrets["email"]
-            elif "smtp" in st.secrets and isinstance(st.secrets["smtp"], dict):
-                sec_email = st.secrets["smtp"]
-            if sec_email:
-                for k in ["destinataires", "smtp_serveur", "smtp_port", "smtp_expediteur", "smtp_mdp", "smtp_ssl"]:
-                    if k in sec_email and sec_email[k] is not None and str(sec_email[k]).strip():
-                        if k == "smtp_port":
-                            defaut[k] = int(sec_email[k])
-                        elif k == "smtp_ssl":
-                            defaut[k] = bool(sec_email[k])
-                        else:
-                            defaut[k] = str(sec_email[k]).strip()
-            # Clés directes
+            for sec_em in ["email", "Email", "EMAIL", "smtp", "Smtp", "SMTP"]:
+                if sec_em in st.secrets:
+                    sec_val = st.secrets[sec_em]
+                    if isinstance(sec_val, (dict, Mapping)) or hasattr(sec_val, "items"):
+                        for k, v in sec_val.items():
+                            if v is not None and str(v).strip():
+                                defaut[k] = v
+
             if "smtp_mdp" in st.secrets and st.secrets["smtp_mdp"]:
                 defaut["smtp_mdp"] = str(st.secrets["smtp_mdp"]).strip()
             if "smtp_expediteur" in st.secrets and st.secrets["smtp_expediteur"]:
                 defaut["smtp_expediteur"] = str(st.secrets["smtp_expediteur"]).strip()
             if "destinataires" in st.secrets and st.secrets["destinataires"]:
                 defaut["destinataires"] = str(st.secrets["destinataires"]).strip()
+            if "smtp_serveur" in st.secrets and st.secrets["smtp_serveur"]:
+                defaut["smtp_serveur"] = str(st.secrets["smtp_serveur"]).strip()
+            if "smtp_port" in st.secrets and st.secrets["smtp_port"]:
+                defaut["smtp_port"] = int(st.secrets["smtp_port"])
+            if "smtp_ssl" in st.secrets and st.secrets["smtp_ssl"] is not None:
+                defaut["smtp_ssl"] = bool(st.secrets["smtp_ssl"])
     except Exception:
         pass
+
+    # Prise en compte de os.environ
+    for env_k, def_k in [
+        ("SMTP_SERVEUR", "smtp_serveur"),
+        ("SMTP_EXPEDITEUR", "smtp_expediteur"),
+        ("SMTP_MDP", "smtp_mdp"),
+        ("DESTINATAIRES", "destinataires"),
+    ]:
+        if os.environ.get(env_k):
+            defaut[def_k] = os.environ.get(env_k, "").strip()
+
     return defaut
 
 def sauvegarder_config_email(cfg):
@@ -2092,18 +2185,30 @@ def sauvegarder_horaire_json(lignes_horaire):
         pass
 
 def obtenir_date_debut_ligue():
-    """Récupère la date de début de la ligue (Saison 1) depuis st.secrets."""
+    """Récupère la date de début de la ligue (Saison 1) depuis st.secrets ou l'environnement."""
+    from collections.abc import Mapping
     val = None
-    if hasattr(st, "secrets"):
-        try:
-            if "ligue" in st.secrets and isinstance(st.secrets["ligue"], dict):
-                val = st.secrets["ligue"].get("date_debut") or st.secrets["ligue"].get("date_debut_saison_1")
+    try:
+        if hasattr(st, "secrets"):
+            for sec_lig in ["ligue", "Ligue", "LIGUE", "league"]:
+                if sec_lig in st.secrets:
+                    sec_val = st.secrets[sec_lig]
+                    if isinstance(sec_val, (dict, Mapping)) or hasattr(sec_val, "items"):
+                        val = sec_val.get("date_debut") or sec_val.get("date_debut_saison_1")
+                        if val:
+                            break
             if not val and "date_debut_ligue" in st.secrets:
                 val = st.secrets["date_debut_ligue"]
             if not val and "date_debut_saison_1" in st.secrets:
                 val = st.secrets["date_debut_saison_1"]
-        except Exception:
-            pass
+            if not val and "date_debut" in st.secrets:
+                val = st.secrets["date_debut"]
+    except Exception:
+        pass
+
+    if not val and os.environ.get("DATE_DEBUT_LIGUE"):
+        val = os.environ.get("DATE_DEBUT_LIGUE", "").strip()
+
     if val:
         try:
             return datetime.strptime(str(val).strip(), "%Y-%m-%d").date()
