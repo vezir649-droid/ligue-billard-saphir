@@ -389,10 +389,174 @@ def injecter_theme_css_saphir():
     )
 
 
+def normaliser_donnees_admin(brut):
+    """Mappe de façon tolérante tous les alias possibles pour la configuration admin."""
+    from collections.abc import Mapping
+    res = {}
+    if not brut or not isinstance(brut, (dict, Mapping)):
+        return res
+    for k_orig, v in brut.items():
+        if v is None:
+            continue
+        v_str = str(v).strip()
+        if not v_str:
+            continue
+        k_clean = str(k_orig).lower().replace("-", "_").replace(" ", "_")
+        if k_clean in ("mot_de_passe", "motdepasse", "password", "pass", "mdp", "marqueur_password", "mdp_marqueur"):
+            res.setdefault("mot_de_passe", v_str)
+        elif k_clean in ("mot_de_passe_admin", "motdepasse_admin", "admin_password", "super_admin_password", "admin_pass", "mdp_admin", "admin_mdp", "admin"):
+            res.setdefault("mot_de_passe_admin", v_str)
+        elif k_clean in ("saphir_api_key", "saphir_key", "api_key", "apikey", "api_token", "cle_api", "cle_saphir", "x_api_key", "xapikey", "cle_api_saphir"):
+            res.setdefault("saphir_api_key", v_str)
+        elif k_clean in ("saphir_api_url", "saphir_url", "api_url", "url_api", "endpoint", "url", "url_saphir"):
+            res.setdefault("saphir_api_url", v_str)
+        elif k_clean in ("github_token", "gh_token", "token", "pat", "personal_access_token", "access_token"):
+            res.setdefault("github_token", v_str)
+        elif k_clean in ("github_repo", "gh_repo", "repo", "repository"):
+            res.setdefault("github_repo", v_str)
+        elif k_clean in ("github_branch", "gh_branch", "branch", "branche"):
+            res.setdefault("github_branch", v_str)
+        else:
+            res[k_orig] = v_str
+    return res
+
+
+def normaliser_donnees_email(brut):
+    """Mappe de façon tolérante tous les alias possibles pour la configuration SMTP."""
+    from collections.abc import Mapping
+    res = {}
+    if not brut or not isinstance(brut, (dict, Mapping)):
+        return res
+    for k_orig, v in brut.items():
+        if v is None:
+            continue
+        v_str = str(v).strip()
+        if not v_str:
+            continue
+        k_clean = str(k_orig).lower().replace("-", "_").replace(" ", "_")
+        if k_clean in ("smtp_serveur", "serveur_smtp", "server", "smtp_server", "host", "smtp_host"):
+            res["smtp_serveur"] = v_str
+        elif k_clean in ("smtp_port", "port_smtp", "port"):
+            try:
+                res["smtp_port"] = int(v_str)
+            except Exception:
+                res["smtp_port"] = 587
+        elif k_clean in ("smtp_expediteur", "expediteur", "sender", "from", "email", "email_expediteur", "user", "username", "smtp_user"):
+            res["smtp_expediteur"] = v_str
+        elif k_clean in ("smtp_mdp", "mot_de_passe_email", "mdp_email", "password", "app_password", "smtp_password", "mdp"):
+            res["smtp_mdp"] = v_str
+        elif k_clean in ("destinataires", "destinataire", "recipients", "recipient", "to"):
+            res["destinataires"] = v_str
+        elif k_clean in ("smtp_ssl", "ssl", "tls"):
+            res["smtp_ssl"] = str(v).lower() in ("true", "1", "yes")
+        else:
+            res[k_orig] = v
+    return res
+
+
+def obtenir_diagnostic_secrets_streamlit():
+    """Génère un bilan complet de l'état de détection des secrets au démarrage pour l'administrateur."""
+    from collections.abc import Mapping
+    diag = {
+        "disponible": False,
+        "sections": [],
+        "cles_racine": [],
+        "erreur": None,
+        "elements": {}
+    }
+    try:
+        if hasattr(st, "secrets"):
+            diag["disponible"] = True
+            for k in st.secrets.keys():
+                val = st.secrets[k]
+                if isinstance(val, (dict, Mapping)) or hasattr(val, "items"):
+                    diag["sections"].append(str(k))
+                else:
+                    diag["cles_racine"].append(str(k))
+    except Exception as e:
+        diag["erreur"] = str(e)
+
+    try:
+        cfg_adm = charger_config_admin()
+    except Exception:
+        cfg_adm = {}
+    sources_adm = st.session_state.get("sources_config_admin", {})
+
+    try:
+        cfg_em = charger_config_email()
+    except Exception:
+        cfg_em = {}
+    sources_em = st.session_state.get("sources_config_email", {})
+
+    diag["elements"]["mot_de_passe_marqueur"] = {
+        "configure": bool(cfg_adm.get("mot_de_passe")),
+        "est_defaut": cfg_adm.get("mot_de_passe") in (None, "", "saphir2026"),
+        "source": sources_adm.get("mot_de_passe", "défaut (saphir2026)")
+    }
+    diag["elements"]["mot_de_passe_admin"] = {
+        "configure": bool(cfg_adm.get("mot_de_passe_admin")),
+        "est_defaut": cfg_adm.get("mot_de_passe_admin") in (None, "", "admin2026"),
+        "source": sources_adm.get("mot_de_passe_admin", "défaut (admin2026)")
+    }
+    diag["elements"]["saphir_api_key"] = {
+        "configure": bool(cfg_adm.get("saphir_api_key")),
+        "est_defaut": cfg_adm.get("saphir_api_key") in (None, "", "UNE_CLE_DEBILEMENT_LONGUE"),
+        "source": sources_adm.get("saphir_api_key", "défaut")
+    }
+    diag["elements"]["github_token"] = {
+        "configure": bool(cfg_adm.get("github_token")),
+        "source": sources_adm.get("github_token", "non configuré")
+    }
+    diag["elements"]["email_smtp"] = {
+        "configure": bool(cfg_em.get("smtp_expediteur") and cfg_em.get("smtp_mdp")),
+        "source": sources_em.get("smtp_expediteur", "config_email.json ou non configuré")
+    }
+    return diag
+
+
+def afficher_etat_secrets_admin():
+    """Affiche le statut en direct des Secrets Streamlit pour l'administrateur avec bouton de rafraîchissement."""
+    diag = obtenir_diagnostic_secrets_streamlit()
+    with st.container(border=True):
+        col_hdr1, col_hdr2 = st.columns([3, 1])
+        with col_hdr1:
+            st.markdown("##### 🔐 Détection des Secrets Streamlit Cloud (`st.secrets`) au démarrage")
+            if diag.get("erreur"):
+                st.error(f"❌ Erreur lors de la lecture des Secrets : {diag['erreur']}")
+            elif diag.get("disponible") and (diag.get("sections") or diag.get("cles_racine")):
+                secs = ", ".join(diag["sections"]) if diag["sections"] else "racine"
+                st.success(f"🟢 **Secrets Streamlit Cloud actifs.** Sections reconnues : `{secs}`")
+            else:
+                st.warning("🟠 **Aucun secret Streamlit Cloud détecté.** L'application utilise les fichiers locaux ou les valeurs par défaut.")
+        with col_hdr2:
+            if st.button("🔄 Recharger les Secrets", key="btn_reload_secrets_admin", use_container_width=True):
+                charger_config_admin()
+                charger_config_email()
+                st.session_state["secrets_reloaded"] = True
+                st.toast("✅ Configuration rechargée !", icon="🔄")
+                st.rerun()
+
+        el = diag.get("elements", {})
+        col_s1, col_s2, col_s3, col_s4 = st.columns(4)
+        with col_s1:
+            adm_p = el.get("mot_de_passe_admin", {})
+            st.markdown(f"**🛡️ Mdp Admin**<br>{'🟢 Personnalisé' if not adm_p.get('est_defaut') else '🟡 Défaut (admin2026)'}<br><small style='color:gray;'>Source : {adm_p.get('source', '-')}</small>", unsafe_allow_html=True)
+        with col_s2:
+            saph_k = el.get("saphir_api_key", {})
+            st.markdown(f"**🌐 Clé API Saphir**<br>{'🟢 Configurée' if not saph_k.get('est_defaut') else '🟡 Défaut'}<br><small style='color:gray;'>Source : {saph_k.get('source', '-')}</small>", unsafe_allow_html=True)
+        with col_s3:
+            gh_t = el.get("github_token", {})
+            st.markdown(f"**☁️ Token GitHub**<br>{'🟢 Présent' if gh_t.get('configure') else '🟠 Absent'}<br><small style='color:gray;'>Source : {gh_t.get('source', '-')}</small>", unsafe_allow_html=True)
+        with col_s4:
+            em_s = el.get("email_smtp", {})
+            st.markdown(f"**📧 Envoi Courriel (SMTP)**<br>{'🟢 Configuré' if em_s.get('configure') else '🟠 Non configuré'}<br><small style='color:gray;'>Source : {em_s.get('source', '-')}</small>", unsafe_allow_html=True)
+
+
 def charger_config_admin():
-    """Charge la configuration administrateur depuis config_admin.json, st.secrets (Streamlit Cloud) et l'environnement."""
+    """Charge la configuration administrateur depuis config_admin.json, st.secrets (Streamlit Cloud) et l'environnement avec normalisation complète des alias."""
     from collections.abc import Mapping
     data = {}
+    sources = {}
 
     # 1. Lecture depuis config_admin.json local si existant
     if os.path.exists(ADMIN_CONFIG_FILE):
@@ -400,58 +564,64 @@ def charger_config_admin():
             with open(ADMIN_CONFIG_FILE, "r", encoding="utf-8") as f:
                 d = json.load(f)
                 if isinstance(d, dict):
-                    data.update(d)
+                    d_norm = normaliser_donnees_admin(d)
+                    data.update(d_norm)
+                    for k in d_norm:
+                        sources[k] = "config_admin.json"
         except Exception:
             pass
 
     # 2. Prise en compte prioritaire de st.secrets (Streamlit Secrets / Streamlit Cloud)
     try:
         if hasattr(st, "secrets"):
-            # A. Recherche dans les sections [admin], [Admin], [ADMIN] (support complet de Mapping et AttrDict)
+            # A. Recherche dans les sections [admin], [Admin], [ADMIN]
             for sec_name in ["admin", "Admin", "ADMIN"]:
                 if sec_name in st.secrets:
                     val_sec = st.secrets[sec_name]
                     if isinstance(val_sec, (dict, Mapping)) or hasattr(val_sec, "items"):
-                        for k, v in val_sec.items():
-                            if v is not None and str(v).strip():
-                                data[k] = str(v).strip()
+                        norm_sec = normaliser_donnees_admin(dict(val_sec))
+                        for k, v in norm_sec.items():
+                            data[k] = v
+                            sources[k] = f"st.secrets [{sec_name}]"
 
-            # B. Recherche dans la section [github] pour le token, repo et branche
+            # B. Recherche dans les sections [saphir], [api]
+            for sec_saph in ["saphir", "Saphir", "SAPHIR", "api", "Api", "API"]:
+                if sec_saph in st.secrets:
+                    val_saph = st.secrets[sec_saph]
+                    if isinstance(val_saph, (dict, Mapping)) or hasattr(val_saph, "items"):
+                        norm_saph = normaliser_donnees_admin(dict(val_saph))
+                        for k, v in norm_saph.items():
+                            data[k] = v
+                            sources[k] = f"st.secrets [{sec_saph}]"
+
+            # C. Recherche dans la section [github]
             for sec_gh in ["github", "Github", "GITHUB"]:
                 if sec_gh in st.secrets:
                     val_gh = st.secrets[sec_gh]
                     if isinstance(val_gh, (dict, Mapping)) or hasattr(val_gh, "items"):
-                        if val_gh.get("token"):
-                            data["github_token"] = str(val_gh.get("token")).strip()
-                        if val_gh.get("repo"):
-                            data["github_repo"] = str(val_gh.get("repo")).strip()
-                        if val_gh.get("branch"):
-                            data["github_branch"] = str(val_gh.get("branch")).strip()
+                        norm_gh = normaliser_donnees_admin(dict(val_gh))
+                        for k, v in norm_gh.items():
+                            data[k] = v
+                            sources[k] = f"st.secrets [{sec_gh}]"
 
-            # C. Clés directes à la racine de st.secrets (insensibles à la casse et synonymes usuels)
-            for k_root in [
-                "mot_de_passe", "mot_de_passe_admin", "password", "admin_password",
-                "super_admin_password", "mdp", "mdp_admin", "saphir_api_key",
-                "saphir_api_url", "GITHUB_TOKEN", "github_token", "GITHUB_REPO",
-                "github_repo", "GITHUB_BRANCH", "github_branch"
-            ]:
-                if k_root in st.secrets and st.secrets[k_root]:
-                    v_str = str(st.secrets[k_root]).strip()
-                    if v_str:
-                        if k_root in ("admin_password", "password", "mdp"):
-                            data.setdefault("mot_de_passe", v_str)
-                        elif k_root in ("super_admin_password", "mdp_admin"):
-                            data.setdefault("mot_de_passe_admin", v_str)
-                        elif k_root == "GITHUB_TOKEN":
-                            data["github_token"] = v_str
-                        elif k_root == "GITHUB_REPO":
-                            data["github_repo"] = v_str
-                        elif k_root == "GITHUB_BRANCH":
-                            data["github_branch"] = v_str
-                        else:
-                            data[k_root] = v_str
-    except Exception:
-        pass
+            # D. Clés directes à la racine de st.secrets
+            try:
+                racine_dict = {}
+                for r_k in st.secrets.keys():
+                    r_v = st.secrets[r_k]
+                    if not isinstance(r_v, (dict, Mapping)) and not hasattr(r_v, "items"):
+                        racine_dict[r_k] = r_v
+                norm_root = normaliser_donnees_admin(racine_dict)
+                for k, v in norm_root.items():
+                    data[k] = v
+                    sources[k] = "st.secrets [racine]"
+            except Exception:
+                pass
+    except Exception as e_sec:
+        try:
+            st.session_state["derniere_erreur_secrets"] = str(e_sec)
+        except Exception:
+            pass
 
     # 3. Prise en compte de os.environ (Variables d'environnement / GitHub Actions / Codespaces)
     for env_k, data_k in [
@@ -460,6 +630,7 @@ def charger_config_admin():
         ("ADMIN_PASSWORD", "mot_de_passe_admin"),
         ("SUPER_ADMIN_PASSWORD", "mot_de_passe_admin"),
         ("SAPHIR_API_KEY", "saphir_api_key"),
+        ("API_KEY", "saphir_api_key"),
         ("SAPHIR_API_URL", "saphir_api_url"),
         ("GITHUB_TOKEN", "github_token"),
         ("GITHUB_REPO", "github_repo"),
@@ -469,6 +640,13 @@ def charger_config_admin():
             val_env = os.environ.get(env_k, "").strip()
             if val_env:
                 data.setdefault(data_k, val_env)
+                sources.setdefault(data_k, f"os.environ ({env_k})")
+
+    # Mémorisation des sources pour le diagnostic
+    try:
+        st.session_state["sources_config_admin"] = sources
+    except Exception:
+        pass
 
     # 4. Enregistrement automatique de secours dans config_admin.json si manquant sur disque
     if not os.path.exists(ADMIN_CONFIG_FILE) and data:
@@ -1416,38 +1594,45 @@ def charger_config_email():
         "smtp_mdp": "",
         "smtp_ssl": False
     }
+    sources = {}
+
     if os.path.exists(CONFIG_EMAIL_FILE):
         try:
             with open(CONFIG_EMAIL_FILE, "r", encoding="utf-8") as f:
                 d = json.load(f)
                 if isinstance(d, dict):
-                    defaut.update(d)
+                    d_norm = normaliser_donnees_email(d)
+                    defaut.update(d_norm)
+                    for k in d_norm:
+                        sources[k] = "config_email.json"
         except Exception:
             pass
 
     # Prise en compte de st.secrets (Streamlit Secrets / Cloud)
     try:
         if hasattr(st, "secrets"):
-            for sec_em in ["email", "Email", "EMAIL", "smtp", "Smtp", "SMTP"]:
+            for sec_em in ["email", "Email", "EMAIL", "smtp", "Smtp", "SMTP", "mail", "Mail"]:
                 if sec_em in st.secrets:
                     sec_val = st.secrets[sec_em]
                     if isinstance(sec_val, (dict, Mapping)) or hasattr(sec_val, "items"):
-                        for k, v in sec_val.items():
-                            if v is not None and str(v).strip():
-                                defaut[k] = v
+                        norm_em = normaliser_donnees_email(dict(sec_val))
+                        for k, v in norm_em.items():
+                            defaut[k] = v
+                            sources[k] = f"st.secrets [{sec_em}]"
 
-            if "smtp_mdp" in st.secrets and st.secrets["smtp_mdp"]:
-                defaut["smtp_mdp"] = str(st.secrets["smtp_mdp"]).strip()
-            if "smtp_expediteur" in st.secrets and st.secrets["smtp_expediteur"]:
-                defaut["smtp_expediteur"] = str(st.secrets["smtp_expediteur"]).strip()
-            if "destinataires" in st.secrets and st.secrets["destinataires"]:
-                defaut["destinataires"] = str(st.secrets["destinataires"]).strip()
-            if "smtp_serveur" in st.secrets and st.secrets["smtp_serveur"]:
-                defaut["smtp_serveur"] = str(st.secrets["smtp_serveur"]).strip()
-            if "smtp_port" in st.secrets and st.secrets["smtp_port"]:
-                defaut["smtp_port"] = int(st.secrets["smtp_port"])
-            if "smtp_ssl" in st.secrets and st.secrets["smtp_ssl"] is not None:
-                defaut["smtp_ssl"] = bool(st.secrets["smtp_ssl"])
+            # Clés directes à la racine
+            try:
+                racine_em = {}
+                for r_k in st.secrets.keys():
+                    r_v = st.secrets[r_k]
+                    if not isinstance(r_v, (dict, Mapping)) and not hasattr(r_v, "items"):
+                        racine_em[r_k] = r_v
+                norm_root_em = normaliser_donnees_email(racine_em)
+                for k, v in norm_root_em.items():
+                    defaut[k] = v
+                    sources[k] = "st.secrets [racine]"
+            except Exception:
+                pass
     except Exception:
         pass
 
@@ -1460,6 +1645,12 @@ def charger_config_email():
     ]:
         if os.environ.get(env_k):
             defaut[def_k] = os.environ.get(env_k, "").strip()
+            sources[def_k] = f"os.environ ({env_k})"
+
+    try:
+        st.session_state["sources_config_email"] = sources
+    except Exception:
+        pass
 
     return defaut
 
@@ -3031,6 +3222,13 @@ def afficher_module_test_post_saphir(key_prefix="saphir_api"):
 
     with st.container(border=True):
         st.markdown("##### ⚙️ Paramètres de connexion de l'API")
+        src_k = st.session_state.get("sources_config_admin", {}).get("saphir_api_key", "")
+        if src_k and "secrets" in src_k.lower():
+            st.success(f"🟢 **Clé API Saphir chargée automatiquement depuis les Secrets** (`{src_k}`).")
+        elif cfg_key_def and cfg_key_def != "UNE_CLE_DEBILEMENT_LONGUE":
+            st.info(f"ℹ️ **Clé API Saphir configurée** (source : `{src_k or 'config_admin.json'}`).")
+        else:
+            st.caption("ℹ️ *Clé API Saphir par défaut. Pour la sécuriser, définissez `saphir_api_key = '...'` dans Streamlit Secrets.*")
         col_api_u, col_api_k = st.columns([1.5, 1.2])
         with col_api_u:
             api_url_input = st.text_input(
@@ -9579,6 +9777,15 @@ def afficher_tableau_de_bord_progression(historique):
 injecter_meta_icones_mobiles()
 injecter_theme_css_saphir()
 restaurer_depuis_github_au_reveil()
+
+# Notification de détection des secrets au démarrage
+if "secrets_startup_notif_done" not in st.session_state:
+    st.session_state["secrets_startup_notif_done"] = True
+    diag_demarrage = obtenir_diagnostic_secrets_streamlit()
+    if diag_demarrage.get("erreur"):
+        st.toast(f"⚠️ Erreur Secrets Streamlit : {diag_demarrage['erreur']}", icon="⚠️")
+    elif diag_demarrage.get("disponible") and (diag_demarrage.get("sections") or diag_demarrage.get("cles_racine")):
+        st.toast("🔐 Secrets Streamlit Cloud chargés avec succès !", icon="✅")
 initialiser_donnees_saphir_au_demarrage()
 # Remontée forcée en haut de page désactivée
 
@@ -9864,7 +10071,12 @@ if not est_connecte and not est_spectateur:
                         st.rerun()
                     else:
                         st.error("❌ Mot de passe marqueur incorrect.")
-            st.caption("💡 *Mot de passe par défaut : `saphir2026`*")
+            diag_l = obtenir_diagnostic_secrets_streamlit()
+            m_mq = diag_l["elements"]["mot_de_passe_marqueur"]
+            if not m_mq["est_defaut"]:
+                st.caption(f"💡 *Mot de passe Marqueur personnalisé chargé depuis `{m_mq['source']}`*")
+            else:
+                st.caption("💡 *Mot de passe par défaut : `saphir2026`*")
 
         st.markdown("<div style='text-align:center; font-weight:bold; margin: 16px 0;'>OU</div>", unsafe_allow_html=True)
 
@@ -9883,7 +10095,12 @@ if not est_connecte and not est_spectateur:
                         st.rerun()
                     else:
                         st.error("❌ Mot de passe administrateur incorrect.")
-            st.caption("💡 *Mot de passe par défaut : `admin2026`*")
+            diag_l_adm = obtenir_diagnostic_secrets_streamlit()
+            m_ad = diag_l_adm["elements"]["mot_de_passe_admin"]
+            if not m_ad["est_defaut"]:
+                st.caption(f"💡 *Mot de passe Administrateur personnalisé chargé depuis `{m_ad['source']}`*")
+            else:
+                st.caption("💡 *Mot de passe par défaut : `admin2026`*")
 
         st.markdown("<div style='text-align:center; font-weight:bold; margin: 16px 0;'>OU</div>", unsafe_allow_html=True)
 
@@ -12050,6 +12267,7 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
         st.caption("Gérez la composition officielle des équipes, rectifiez un match archivé, démarrez une nouvelle saison ou configurez la messagerie SMTP et la sécurité.")
         if True:
             st.info("📌 **Sections d'administration :** 👥 Équipes & Joueurs | 📝 Match antérieur | ✏️ Rectifications | 🗓️ Nouvelle saison | 💾 Sauvegardes & JSON | 🌐 **Test POST API Saphir** | 📧 SMTP | 🔑 Sécurité")
+            afficher_etat_secrets_admin()
             tab_equipes, tab_saisie_ant, tab_rectif, tab_saison, tab_export, tab_api_saphir, tab_smtp, tab_secu = st.tabs([
                 "👥 Équipes",
                 "📝 Match passé",
