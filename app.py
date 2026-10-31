@@ -1983,6 +1983,39 @@ def calculer_numero_saison(date_match, date_debut_saison_1=None):
             
     return max(1, num), type_saison
 
+def trouver_match_par_date(date_cible, lignes_horaire=None):
+    """Recherche un match dans l'horaire officiel correspondant au jour et mois de date_cible.
+    Retourne un dict avec receveur, visiteur, saison_int, semaine_int, texte ou None si aucun match.
+    """
+    if not lignes_horaire:
+        lignes_horaire = charger_horaire_json()
+    if isinstance(date_cible, datetime):
+        date_cible = date_cible.date()
+    elif not isinstance(date_cible, date):
+        return None
+
+    for row in (lignes_horaire or []):
+        if not row:
+            continue
+        semaine_label = str(row[0]).strip() if len(row) > 0 else ""
+        for cell in row[1:]:
+            res = parser_ligne_horaire_match(cell)
+            if res and res.get("jour") == date_cible.day and res.get("mois") == date_cible.month:
+                m_sem = re.search(r'\d+', semaine_label)
+                if m_sem:
+                    no_semaine = int(m_sem.group())
+                else:
+                    no_semaine = calculer_semaine_saison(date_cible)
+                
+                no_saison, type_saison = calculer_numero_saison(date_cible)
+                res["semaine_int"] = no_semaine
+                res["semaine_str"] = semaine_label or f"Semaine {no_semaine}"
+                res["saison_int"] = no_saison
+                res["saison_type"] = type_saison
+                res["date_match"] = date_cible
+                return res
+    return None
+
 def calculer_semaine_saison(date_match, date_debut_saison_1=None):
     """Calcule le numéro de semaine (1 à 14) dans la saison active."""
     if isinstance(date_match, datetime):
@@ -2670,8 +2703,9 @@ def afficher_module_test_post_saphir(key_prefix="saphir_api"):
             }
         ], ensure_ascii=False, indent=2)
 
-    col_mode1, col_mode2 = st.columns(2)
+    col_mode1, col_mode2 = st.columns([1, 1.4])
     with col_mode1:
+        st.caption("Exemple officiel par défaut :")
         if st.button("📋 Recharger l'exemple officiel", use_container_width=True, key=f"{key_prefix}_btn_load_ex"):
             st.session_state[session_payload_key] = json.dumps([
                 {
@@ -2685,31 +2719,59 @@ def afficher_module_test_post_saphir(key_prefix="saphir_api"):
             st.rerun()
 
     with col_mode2:
-        with st.popover("➕ Composer une entrée manuellement", use_container_width=True):
-            st.markdown("###### Ajouter / Remplacer un pointage")
-            c_p1, c_p2 = st.columns(2)
-            in_saison = c_p1.number_input("Saison :", min_value=1, max_value=99, value=4, step=1, key=f"{key_prefix}_comp_saison")
-            in_semaine = c_p2.number_input("Semaine :", min_value=1, max_value=52, value=21, step=1, key=f"{key_prefix}_comp_semaine")
-            c_p3, c_p4 = st.columns(2)
-            in_prenom = c_p3.text_input("Prénom :", value="Sylvain", key=f"{key_prefix}_comp_prenom").strip()
-            in_nom = c_p4.text_input("Nom :", value="Derasp", key=f"{key_prefix}_comp_nom").strip()
-            in_pts = st.number_input("Pointage :", min_value=0, max_value=300, value=89, step=1, key=f"{key_prefix}_comp_pts")
+        st.caption("Génération automatique d'après le calendrier officiel :")
+        c_dt1, c_dt2 = st.columns([1.6, 1.2])
+        with c_dt1:
+            sel_date_post = st.date_input(
+                "Date du match :",
+                value=datetime.today().date(),
+                key=f"{key_prefix}_date_selecteur",
+                help="Sélectionnez une date pour charger automatiquement le match, la saison, la semaine et les 6 joueurs avec pointages aléatoires (12 à 24 pts)."
+            )
+        with c_dt2:
+            st.write("")
+            btn_charger_match_date = st.button("🎲 Charger le match", type="primary", use_container_width=True, key=f"{key_prefix}_btn_charger_date", help="Génère le JSON des 6 joueurs avec scores aléatoires entre 12 et 24")
+
+    last_date_key = f"{key_prefix}_derniere_date_generee"
+    declencher_generation = btn_charger_match_date or (st.session_state.get(last_date_key) != str(sel_date_post))
+
+    if declencher_generation:
+        st.session_state[last_date_key] = str(sel_date_post)
+        match_trouve = trouver_match_par_date(sel_date_post)
+        if not match_trouve:
+            date_formatee = sel_date_post.strftime("%d/%m/%Y")
+            st.error(f"❌ Aucun match officiel trouvé au calendrier pour le **{date_formatee}**. Veuillez sélectionner une autre date.")
+        else:
+            eq_rec = match_trouve.get("receveur", "")
+            eq_vis = match_trouve.get("visiteur", "")
+            sais_num = match_trouve.get("saison_int", 4)
+            sem_num = match_trouve.get("semaine_int", 1)
             
-            c_add1, c_add2 = st.columns(2)
-            if c_add1.button("Remplacer le JSON", type="primary", use_container_width=True, key=f"{key_prefix}_btn_replace"):
-                obj = [{"saison": int(in_saison), "semaine": int(in_semaine), "prenom": in_prenom, "nom": in_nom, "pointage": int(in_pts)}]
-                st.session_state[session_payload_key] = json.dumps(obj, ensure_ascii=False, indent=2)
-                st.rerun()
-            if c_add2.button("Ajouter à la liste", use_container_width=True, key=f"{key_prefix}_btn_append"):
-                try:
-                    cur_list = json.loads(st.session_state.get(session_payload_key, "[]"))
-                    if not isinstance(cur_list, list):
-                        cur_list = []
-                except Exception:
-                    cur_list = []
-                cur_list.append({"saison": int(in_saison), "semaine": int(in_semaine), "prenom": in_prenom, "nom": in_nom, "pointage": int(in_pts)})
-                st.session_state[session_payload_key] = json.dumps(cur_list, ensure_ascii=False, indent=2)
-                st.rerun()
+            equipes_data = charger_equipes_csv()
+            roster_r = equipes_data.get(eq_rec, ["Joueur 1", "Joueur 2", "Joueur 3"])[:3]
+            roster_v = equipes_data.get(eq_vis, ["Joueur 1", "Joueur 2", "Joueur 3"])[:3]
+            
+            payload_joueurs = []
+            for j_nom in (roster_r + roster_v):
+                parts = j_nom.strip().split(None, 1)
+                p_prenom = parts[0] if parts else "Joueur"
+                p_nom = parts[1] if len(parts) > 1 else ""
+                score_alea = random.randint(12, 24)
+                payload_joueurs.append({
+                    "saison": int(sais_num),
+                    "semaine": int(sem_num),
+                    "prenom": p_prenom,
+                    "nom": p_nom,
+                    "pointage": score_alea
+                })
+            
+            st.session_state[session_payload_key] = json.dumps(payload_joueurs, ensure_ascii=False, indent=2)
+            st.success(
+                f"✅ **Match du {sel_date_post.strftime('%d/%m/%Y')} identifié :** {eq_rec} vs {eq_vis} "
+                f"(Saison {sais_num}, Semaine {sem_num}).\n\n"
+                f"📦 Payload JSON composé pour les **6 joueurs** avec pointages aléatoires (12 à 24 pts) !"
+            )
+            st.rerun()
 
     payload_saisi = st.text_area(
         "Édition du JSON à expédier :",
