@@ -1,0 +1,7 @@
+{
+    "saphir_api_key": "UNE_CLE_DEBILEMENT_LONGUE",
+    "saphir_api_url": "https://saphirbillard.com/index.php?eID=billardImport",
+    "github_token": "",
+    "github_repo": "vezir649-droid/ligue-billard-saphir",
+    "github_branch": "main"
+}
