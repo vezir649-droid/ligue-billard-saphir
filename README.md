@@ -179,9 +179,8 @@ pip install -r requirements.txt
 
 ### 3. Lancement de l'application
 ```bash
-streamlit run billard_app.py
+streamlit run app.py
 ```
-*(ou `streamlit run app.py`)*
 
 L'application est alors accessible dans votre navigateur à l'adresse `http://localhost:8501`.
 
@@ -199,7 +198,7 @@ GITHUB_BRANCH = "main"
 
 | Fichier | Rôle |
 | :--- | :--- |
-| `billard_app.py` / `app.py` | Code source principal de l'application Streamlit |
+| `app.py` | Code source principal de l'application Streamlit |
 | `README.md` | Documentation officielle (affichée et imprimable depuis la page d'ouverture) |
 | `equipes-saphir.csv` | Liste officielle des équipes et de leurs 3 joueurs réguliers |
 | `historique_matchs.json` | Base de données JSON allégée (100 % JSON pur, sans HTML) des feuilles de matchs 3v3 validées (synchronisée sur GitHub) |
