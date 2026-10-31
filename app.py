@@ -2819,11 +2819,11 @@ def afficher_module_test_post_saphir(key_prefix="saphir_api"):
                 "Date du match :",
                 value=datetime.today().date(),
                 key=f"{key_prefix}_date_selecteur",
-                help="Sélectionnez une date pour charger automatiquement le match, la saison, la semaine et les 6 joueurs avec pointages aléatoires (12 à 24 pts)."
+                help="Sélectionnez une date pour charger automatiquement le match, la saison, la semaine et les points des 6 joueurs."
             )
         with c_dt2:
             st.write("")
-            btn_charger_match_date = st.button("🎲 Charger le match", type="primary", use_container_width=True, key=f"{key_prefix}_btn_charger_date", help="Génère le JSON des 6 joueurs avec scores aléatoires entre 12 et 24")
+            btn_charger_match_date = st.button("📋 Charger le match", type="primary", use_container_width=True, key=f"{key_prefix}_btn_charger_date", help="Charge le match officiel de cette date et les points réels des 6 joueurs")
 
     last_date_key = f"{key_prefix}_derniere_date_generee"
     declencher_generation = btn_charger_match_date or (st.session_state.get(last_date_key) != str(sel_date_post))
@@ -2853,12 +2853,12 @@ def afficher_module_test_post_saphir(key_prefix="saphir_api"):
                 p_prenom = parts[0] if parts else "Joueur"
                 p_nom = parts[1] if len(parts) > 1 else ""
                 
-                # Si des points réels existent pour ce match, on les utilise sans générer au hasard !
+                # Utilisation stricte des points réels enregistrés (0 si le match n'a pas encore de points saisis)
                 if a_des_points_reels:
                     j_cle = normaliser_nom_joueur(j_nom)
                     score_joueur = int(pts_reels_dict.get(j_cle, 0))
                 else:
-                    score_joueur = random.randint(12, 24)
+                    score_joueur = 0
                     
                 payload_joueurs.append({
                     "saison": int(sais_num),
@@ -2876,13 +2876,13 @@ def afficher_module_test_post_saphir(key_prefix="saphir_api"):
                 st.success(
                     f"✅ **Match du {sel_date_post.strftime('%d/%m/%Y')} identifié :** {eq_rec} vs {eq_vis} "
                     f"(Saison {sais_num}, Semaine {sem_num}).\n\n"
-                    f"🎯 **Points réels des 6 joueurs récupérés depuis la feuille de match officielle** (aucun score aléatoire) !"
+                    f"🎯 **Points réels des 6 joueurs récupérés depuis la feuille de match officielle !**"
                 )
             else:
-                st.success(
-                    f"✅ **Match du {sel_date_post.strftime('%d/%m/%Y')} identifié :** {eq_rec} vs {eq_vis} "
+                st.info(
+                    f"ℹ️ **Match du {sel_date_post.strftime('%d/%m/%Y')} identifié :** {eq_rec} vs {eq_vis} "
                     f"(Saison {sais_num}, Semaine {sem_num}).\n\n"
-                    f"🎲 Aucun point enregistré pour ce match : pointages générés aléatoirement (12 à 24 pts) !"
+                    f"📝 Aucun pointage saisi pour cette rencontre : pointages initialisés à 0."
                 )
             st.rerun()
 
