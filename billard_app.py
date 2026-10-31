@@ -4577,6 +4577,80 @@ def ajuster_pause_diner(dt, duree):
 
     return dt
 
+def parse_heure_str_vers_time(h_str):
+    """Convertit une chaîne d'heure ('09h30', '9:30', '14h00', etc.) en objet datetime.time."""
+    if not h_str or not isinstance(h_str, str):
+        return dt_time(9, 0)
+    s = h_str.strip().lower().replace("h", ":").replace(" ", "")
+    try:
+        parts = s.split(":")
+        if len(parts) >= 2:
+            h = int(parts[0])
+            m = int(parts[1])
+            return dt_time(max(0, min(23, h)), max(0, min(59, m)))
+        elif len(parts) == 1 and parts[0].isdigit():
+            h = int(parts[0])
+            return dt_time(max(0, min(23, h)), 0)
+    except Exception:
+        pass
+    return dt_time(9, 0)
+
+def recalculer_heure_fin_tournoi(tournoi):
+    """Recalcule et met à jour l'heure de fin estimée du tournoi selon l'horaire de toutes les rencontres."""
+    if not isinstance(tournoi, dict):
+        return
+    duree_m = int(tournoi.get("duree_match_min", 30))
+    duree = timedelta(minutes=duree_m)
+
+    tous_matchs = []
+    if "tours" in tournoi and isinstance(tournoi["tours"], list):
+        for t in tournoi["tours"]:
+            if isinstance(t, dict):
+                tous_matchs.extend(t.get("matchs", []))
+    elif "matchs" in tournoi and isinstance(tournoi["matchs"], list):
+        tous_matchs.extend(tournoi["matchs"])
+
+    max_fin_dt = None
+    for m in tous_matchs:
+        h_str = m.get("heure_estimee", "")
+        if not h_str or h_str == "—":
+            continue
+        t_obj = parse_heure_str_vers_time(h_str)
+        dt = datetime(2026, 1, 1, t_obj.hour, t_obj.minute) + duree
+        if max_fin_dt is None or dt > max_fin_dt:
+            max_fin_dt = dt
+
+    if max_fin_dt:
+        tournoi["heure_fin_estimee"] = max_fin_dt.strftime("%Hh%M")
+
+def decaler_horaires_matchs_suivants(tournoi, m_id_pivot, diff_min):
+    """Décale de diff_min minutes l'horaire des matchs ultérieurs non terminés dans le tournoi."""
+    if not isinstance(tournoi, dict) or diff_min == 0:
+        return
+    tous_matchs = []
+    if "tours" in tournoi and isinstance(tournoi["tours"], list):
+        for t in tournoi["tours"]:
+            if isinstance(t, dict):
+                tous_matchs.extend(t.get("matchs", []))
+    elif "matchs" in tournoi and isinstance(tournoi["matchs"], list):
+        tous_matchs.extend(tournoi["matchs"])
+
+    trouve_pivot = False
+    for m in tous_matchs:
+        if m.get("id") == m_id_pivot:
+            trouve_pivot = True
+            continue
+        if trouve_pivot and not m.get("termine", False):
+            h_str = m.get("heure_estimee", "")
+            if h_str and h_str != "—":
+                t_obj = parse_heure_str_vers_time(h_str)
+                total_min = t_obj.hour * 60 + t_obj.minute + diff_min
+                if 12 * 60 <= total_min < 13 * 60:
+                    total_min = 13 * 60 + (total_min - 12 * 60)
+                new_h = (total_min // 60) % 24
+                new_m = total_min % 60
+                m["heure_estimee"] = f"{new_h:02d}h{new_m:02d}"
+
 def planifier_horaires_elimination(tours, heure_debut="09:00", duree_min=30, nb_tables=2):
     """
     Planifie les heures approximatives de début de chaque match et attribue les tables (1 ou 2).
@@ -8211,6 +8285,41 @@ def afficher_section_tournoi(mode="simple"):
                 else:
                     st.info("⏳ En attente de la fin des rencontres précédentes pour déterminer les prochaines affiches.")
 
+        with st.expander("📅 Tableau récapitulatif des horaires de toutes les rencontres", expanded=False):
+            lignes_horaires = []
+            if "tours" in tournoi and isinstance(tournoi["tours"], list):
+                for t in tournoi["tours"]:
+                    t_nom = t.get("nom", "Tour")
+                    for m_item in t.get("matchs", []):
+                        statut_m = "✅ Terminé" if m_item.get("termine") else "⏳ À jouer"
+                        score_str = f"{m_item.get('score_a', 0)} - {m_item.get('score_b', 0)}" if m_item.get("termine") else "—"
+                        lignes_horaires.append({
+                            "Tour / Phase": t_nom,
+                            "N° Match": m_item.get("id", ""),
+                            "Horaire": m_item.get("heure_estimee", "—"),
+                            "Table": m_item.get("table", "Table 1"),
+                            "Participant 1": m_item.get("equipe_a", ""),
+                            "Participant 2": m_item.get("equipe_b", ""),
+                            "Statut": statut_m,
+                            "Score": score_str
+                        })
+            elif "matchs" in tournoi and isinstance(tournoi["matchs"], list):
+                for m_item in tournoi["matchs"]:
+                    statut_m = "✅ Terminé" if m_item.get("termine") else "⏳ À jouer"
+                    score_str = f"{m_item.get('score_a', 0)} - {m_item.get('score_b', 0)}" if m_item.get("termine") else "—"
+                    lignes_horaires.append({
+                        "N° Match": m_item.get("id", ""),
+                        "Horaire": m_item.get("heure_estimee", "—"),
+                        "Table": m_item.get("table", "Table 1"),
+                        "Participant 1": m_item.get("equipe_a", ""),
+                        "Participant 2": m_item.get("equipe_b", ""),
+                        "Statut": statut_m,
+                        "Score": score_str
+                    })
+            if lignes_horaires:
+                df_horaires = pd.DataFrame(lignes_horaires)
+                st.dataframe(df_horaires, use_container_width=True, hide_index=True)
+
         # Arborescence graphique complète et toujours à jour (ouverte en permanence)
         st.markdown("##### 🌳 Arborescence officielle du tournoi")
         st.components.v1.html(html_tournoi, height=560, scrolling=True)
@@ -8265,6 +8374,39 @@ def afficher_section_tournoi(mode="simple"):
                             else:
                                 st.markdown(f"{badge_b} **{m_id}** : 🎯 **{ea}** vs **{eb}** &nbsp; {badge_horaire}", unsafe_allow_html=True)
                                 st.caption(f"Format officiel : **{m_fmt}** (premier à {m_race} victoires)")
+
+                        if est_editeur:
+                            btn_lbl_h = f"🕒 Modifier l'heure ({m_h})" if (m_h and m_h != "—") else "🕒 Définir l'heure"
+                            with st.popover(btn_lbl_h, use_container_width=False, help="Changer l'heure programmée pour ce match et mettre à jour le tableau"):
+                                st.markdown(f"###### ⏰ Horaire du match **{m_id}**")
+                                st.caption(f"Rencontre : **{ea}** vs **{eb}**")
+                                t_actuel = parse_heure_str_vers_time(m_h)
+                                col_pop_h1, col_pop_h2 = st.columns(2)
+                                with col_pop_h1:
+                                    nouv_t = st.time_input("Nouvelle heure :", value=t_actuel, key=f"t_in_{mode}_{m_id}", step=300)
+                                with col_pop_h2:
+                                    opts_tables = ["Table 1", "Table 2", "Table 3", "Table 4", "Table finale"]
+                                    cur_tbl = m.get("table", "Table 1")
+                                    idx_t = opts_tables.index(cur_tbl) if cur_tbl in opts_tables else 0
+                                    nouv_tbl = st.selectbox("Table :", options=opts_tables, index=idx_t, key=f"tbl_sel_{mode}_{m_id}")
+
+                                decaler_suivants = st.checkbox("Décaler aussi les matchs suivants de ce décalage", value=False, key=f"chk_shift_{mode}_{m_id}", help="Si coché, ajuste automatiquement l'horaire des matchs ultérieurs non terminés")
+
+                                if st.button("💾 Mettre à jour le tableau", type="primary", use_container_width=True, key=f"btn_save_hr_{mode}_{m_id}"):
+                                    str_h = nouv_t.strftime("%Hh%M")
+                                    if decaler_suivants and m_h and m_h != "—":
+                                        old_t = parse_heure_str_vers_time(m_h)
+                                        diff_min = (nouv_t.hour * 60 + nouv_t.minute) - (old_t.hour * 60 + old_t.minute)
+                                        if diff_min != 0:
+                                            decaler_horaires_matchs_suivants(tournoi, m_id, diff_min)
+                                    m["heure_estimee"] = str_h
+                                    m["table"] = nouv_tbl
+                                    m["table_courte"] = "T" + nouv_tbl.split(" ")[-1] if " " in nouv_tbl else nouv_tbl[:2].upper()
+                                    recalculer_heure_fin_tournoi(tournoi)
+                                    sauvegarder_tournois_data(tournois_data)
+                                    st.success(f"✅ Heure du match {m_id} mise à jour à {str_h} ({nouv_tbl}) et tableau actualisé !")
+                                    time.sleep(0.5)
+                                    st.rerun()
 
                     with col_m2:
                         if not termine:
@@ -8430,6 +8572,39 @@ def afficher_section_tournoi(mode="simple"):
                         else:
                             st.markdown(f"**{m_id}** : 🎯 **{ea}** vs **{eb}** &nbsp; {badge_horaire_rr}", unsafe_allow_html=True)
                             st.caption(f"Format officiel : **{rr_fmt}** (premier à {rr_race} victoires)")
+
+                        if est_editeur:
+                            btn_lbl_hrr = f"🕒 Modifier l'heure ({m_h})" if (m_h and m_h != "—") else "🕒 Définir l'heure"
+                            with st.popover(btn_lbl_hrr, use_container_width=False, help="Changer l'heure programmée pour ce match et mettre à jour le calendrier"):
+                                st.markdown(f"###### ⏰ Horaire du match **{m_id}**")
+                                st.caption(f"Rencontre : **{ea}** vs **{eb}**")
+                                t_actuel = parse_heure_str_vers_time(m_h)
+                                col_pop_h1, col_pop_h2 = st.columns(2)
+                                with col_pop_h1:
+                                    nouv_t = st.time_input("Nouvelle heure :", value=t_actuel, key=f"rr_t_in_{mode}_{m_id}", step=300)
+                                with col_pop_h2:
+                                    opts_tables = ["Table 1", "Table 2", "Table 3", "Table 4", "Table finale"]
+                                    cur_tbl = m.get("table", "Table 1")
+                                    idx_t = opts_tables.index(cur_tbl) if cur_tbl in opts_tables else 0
+                                    nouv_tbl = st.selectbox("Table :", options=opts_tables, index=idx_t, key=f"rr_tbl_sel_{mode}_{m_id}")
+
+                                decaler_suivants = st.checkbox("Décaler aussi les matchs suivants de ce décalage", value=False, key=f"chk_shift_rr_{mode}_{m_id}", help="Si coché, ajuste automatiquement l'horaire des matchs ultérieurs non terminés")
+
+                                if st.button("💾 Mettre à jour le calendrier", type="primary", use_container_width=True, key=f"btn_save_hr_rr_{mode}_{m_id}"):
+                                    str_h = nouv_t.strftime("%Hh%M")
+                                    if decaler_suivants and m_h and m_h != "—":
+                                        old_t = parse_heure_str_vers_time(m_h)
+                                        diff_min = (nouv_t.hour * 60 + nouv_t.minute) - (old_t.hour * 60 + old_t.minute)
+                                        if diff_min != 0:
+                                            decaler_horaires_matchs_suivants(tournoi, m_id, diff_min)
+                                    m["heure_estimee"] = str_h
+                                    m["table"] = nouv_tbl
+                                    m["table_courte"] = "T" + nouv_tbl.split(" ")[-1] if " " in nouv_tbl else nouv_tbl[:2].upper()
+                                    recalculer_heure_fin_tournoi(tournoi)
+                                    sauvegarder_tournois_data(tournois_data)
+                                    st.success(f"✅ Rencontre {m_id} reprogrammée à {str_h} ({nouv_tbl}) et calendrier actualisé !")
+                                    time.sleep(0.5)
+                                    st.rerun()
 
                     with col_rm2:
                         if not termine:
