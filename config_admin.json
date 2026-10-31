@@ -1,4 +1,6 @@
 {
+    "mot_de_passe": "saphir2026",
+    "mot_de_passe_admin": "admin2026",
     "saphir_api_key": "UNE_CLE_DEBILEMENT_LONGUE",
     "saphir_api_url": "https://saphirbillard.com/index.php?eID=billardImport",
     "github_token": "",
