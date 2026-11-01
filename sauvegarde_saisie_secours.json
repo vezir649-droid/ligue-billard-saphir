@@ -1,5 +1,5 @@
 {
-    "date": "2026-11-01 16:17",
+    "date": "2026-11-01 16:25",
     "receveur": "Golf",
     "visiteur": "Hotel",
     "choix_rec": "Golf",
@@ -124,6 +124,6 @@
     },
     "total_receveur": 0,
     "total_visiteur": 0,
-    "derniere_mise_a_jour": "16:17:41",
-    "ts_modif": 1793549861.395205
+    "derniere_mise_a_jour": "16:25:11",
+    "ts_modif": 1793550311.1492155
 }
