@@ -212,10 +212,10 @@
                             "id": "T1_M10",
                             "equipe_a": "Sylvain Derasp",
                             "equipe_b": "Claude Harvey",
-                            "score_a": 0,
+                            "score_a": 2,
                             "score_b": 0,
-                            "termine": false,
-                            "vainqueur": null,
+                            "termine": true,
+                            "vainqueur": "Sylvain Derasp",
                             "source_a": null,
                             "source_b": null,
                             "passe_droit": false,
@@ -223,7 +223,8 @@
                             "format_label": "2 de 3",
                             "heure_estimee": "11h00",
                             "table": "Table 2",
-                            "table_courte": "T2"
+                            "table_courte": "T2",
+                            "perdant": "Claude Harvey"
                         },
                         {
                             "id": "T1_M11",
@@ -363,7 +364,7 @@
                         {
                             "id": "T3_M2",
                             "equipe_a": "À déterminer",
-                            "equipe_b": "À déterminer",
+                            "equipe_b": "Sylvain Derasp",
                             "score_a": 0,
                             "score_b": 0,
                             "termine": false,
@@ -489,7 +490,7 @@
             "vainqueur_final": null,
             "finaliste": null,
             "mode": "simple",
-            "date_derniere_sauvegarde": "01/11/2026 à 19:31:08",
+            "date_derniere_sauvegarde": "01/11/2026 à 19:31:27",
             "id_archive": "TOURNOI_SIMPLE_20261101_164312_700",
             "date_archivage": "01/11/2026 à 19:31"
         },
@@ -1393,10 +1394,10 @@
                         "id": "T1_M10",
                         "equipe_a": "Sylvain Derasp",
                         "equipe_b": "Claude Harvey",
-                        "score_a": 0,
+                        "score_a": 2,
                         "score_b": 0,
-                        "termine": false,
-                        "vainqueur": null,
+                        "termine": true,
+                        "vainqueur": "Sylvain Derasp",
                         "source_a": null,
                         "source_b": null,
                         "passe_droit": false,
@@ -1404,7 +1405,8 @@
                         "format_label": "2 de 3",
                         "heure_estimee": "11h00",
                         "table": "Table 2",
-                        "table_courte": "T2"
+                        "table_courte": "T2",
+                        "perdant": "Claude Harvey"
                     },
                     {
                         "id": "T1_M11",
@@ -1544,7 +1546,7 @@
                     {
                         "id": "T3_M2",
                         "equipe_a": "À déterminer",
-                        "equipe_b": "À déterminer",
+                        "equipe_b": "Sylvain Derasp",
                         "score_a": 0,
                         "score_b": 0,
                         "termine": false,
@@ -1670,11 +1672,11 @@
         "vainqueur_final": null,
         "finaliste": null,
         "mode": "simple",
-        "date_derniere_sauvegarde": "01/11/2026 à 19:31:08",
+        "date_derniere_sauvegarde": "01/11/2026 à 19:31:27",
         "id_archive": "TOURNOI_SIMPLE_20261101_164312_700"
     },
     "derniere_sauvegarde": {
-        "date": "01/11/2026 à 19:31:08",
+        "date": "01/11/2026 à 19:31:27",
         "session_id": "marqueur_actif",
         "action": "sauvegarde"
     }
