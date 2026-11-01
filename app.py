@@ -8065,9 +8065,9 @@ def afficher_mode_televiseur_tournoi():
         </style>
     """, unsafe_allow_html=True)
 
-    archive_idx = st.query_params.get("archive")
+    archive_idx = st.query_params.get("archive") or st.session_state.get("mode_tv_archive")
     td_chk = charger_tournois_data()
-    mode_param = st.query_params.get("mode")
+    mode_param = st.query_params.get("mode") or st.session_state.get("mode_tv_mode")
 
     # Si aucun mode n'est forcé et qu'il n'y a pas d'archive, détecter le tournoi actif
     if not mode_param and not archive_idx:
@@ -8081,7 +8081,7 @@ def afficher_mode_televiseur_tournoi():
         mode_param = "simple"
 
     # Bandeau supérieur de contrôle TV
-    col_logo, col_modes, col_statut, col_actions = st.columns([2.0, 1.8, 2.2, 1.8])
+    col_logo, col_modes, col_statut, col_actions = st.columns([1.8, 1.6, 2.0, 2.2])
     with col_logo:
         st.markdown(
             f"<div style='display:flex; align-items:center; gap:8px; font-weight:800; font-size:18px; color:#1e293b; padding-top:4px;'>"
@@ -8094,12 +8094,14 @@ def afficher_mode_televiseur_tournoi():
         c_m1, c_m2 = st.columns(2)
         with c_m1:
             btn_type_s = "primary" if mode_param == "simple" else "secondary"
-            if st.button("🎱 Simple (1v1)", type=btn_type_s, use_container_width=True, key="tv_switch_simple"):
+            if st.button("🎱 Simple", type=btn_type_s, use_container_width=True, key="tv_switch_simple"):
+                st.session_state["mode_tv_mode"] = "simple"
                 st.query_params["mode"] = "simple"
                 st.rerun()
         with c_m2:
             btn_type_d = "primary" if mode_param == "double" else "secondary"
-            if st.button("👥 Double (2v2)", type=btn_type_d, use_container_width=True, key="tv_switch_double"):
+            if st.button("👥 Double", type=btn_type_d, use_container_width=True, key="tv_switch_double"):
+                st.session_state["mode_tv_mode"] = "double"
                 st.query_params["mode"] = "double"
                 st.rerun()
     with col_statut:
@@ -8123,14 +8125,20 @@ def afficher_mode_televiseur_tournoi():
                 unsafe_allow_html=True
             )
     with col_actions:
-        c_act1, c_act2 = st.columns([1, 1])
+        c_act1, c_act2, c_act3 = st.columns([1, 1, 1.2])
         with c_act1:
             if st.button("🔄 Actualiser", use_container_width=True, key="tv_btn_force_refresh"):
                 st.rerun()
         with c_act2:
             if st.button("✖️ Quitter", use_container_width=True, key="tv_btn_exit"):
+                st.session_state["mode_tv_actif"] = False
+                st.session_state.pop("mode_tv_archive", None)
+                st.session_state.pop("mode_tv_mode", None)
                 st.query_params.clear()
                 st.rerun()
+        with c_act3:
+            url_nouvel_onglet = f"?view=tv&mode={mode_param}" + (f"&archive={archive_idx}" if archive_idx else "")
+            st.link_button("↗️ Onglet TV", url_nouvel_onglet, use_container_width=True, help="Ouvrir cette vue TV dans un nouvel onglet dédié")
 
     # Fragment pour auto-actualisation toutes les 20 secondes
     @st.fragment(run_every=20)
@@ -8210,28 +8218,12 @@ def modal_arborescence_tournoi(tournoi_obj, mode_str="simple"):
             height=42
         )
     with col_btn_tv:
-        st.components.v1.html(
-            f"""
-            <button onclick="ouvrirTournoiTVModal()" style="width:100%; height:38px; background-color:#4f46e5; color:white; border:none; border-radius:6px; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif; font-size:13px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;" title="Diffusion TV plein écran avec actualisation automatique">
-                📺 Mode TV
-            </button>
-            <script>
-            function ouvrirTournoiTVModal() {{
-                var origin = window.location.origin;
-                var pathname = window.location.pathname;
-                try {{
-                    if (window.parent && window.parent.location && window.parent.location.origin) {{
-                        origin = window.parent.location.origin;
-                        pathname = window.parent.location.pathname;
-                    }}
-                }} catch(e) {{}}
-                var url = origin + pathname + '?view=tv&mode={mode_str}';
-                window.open(url, '_blank');
-            }}
-            </script>
-            """,
-            height=42
-        )
+        if st.button("📺 Mode TV", use_container_width=True, key=f"btn_tv_modal_{mode_str}", help="Basculer vers l'affichage plein écran optimisé TV"):
+            st.session_state["mode_tv_actif"] = True
+            st.session_state["mode_tv_mode"] = mode_str
+            st.query_params["view"] = "tv"
+            st.query_params["mode"] = mode_str
+            st.rerun()
     with col_btn_mail:
         with st.popover("📧 Envoyer l'arborescence", use_container_width=True, help="Envoyer l'arborescence par courriel"):
             st.markdown("##### 📧 Envoi de l'arborescence")
@@ -8977,28 +8969,12 @@ def afficher_section_tournoi(mode="simple"):
                 modal_arborescence_tournoi(tournoi, mode_str=mode)
 
         with col_top_tv:
-            st.components.v1.html(
-                f"""
-                <button onclick="ouvrirTournoiTVTop()" style="width:100%; height:38px; background-color:#4f46e5; color:white; border:none; border-radius:6px; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif; font-size:13px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;" title="Affichage plein écran 16:9 optimisé pour diffusion TV (avec rafraîchissement automatique)">
-                    📺 Mode TV
-                </button>
-                <script>
-                function ouvrirTournoiTVTop() {{
-                    var origin = window.location.origin;
-                    var pathname = window.location.pathname;
-                    try {{
-                        if (window.parent && window.parent.location && window.parent.location.origin) {{
-                            origin = window.parent.location.origin;
-                            pathname = window.parent.location.pathname;
-                        }}
-                    }} catch(e) {{}}
-                    var url = origin + pathname + '?view=tv&mode={mode}';
-                    window.open(url, '_blank');
-                }}
-                </script>
-                """,
-                height=42
-            )
+            if st.button("📺 Mode TV", key=f"btn_tv_top_{mode}", use_container_width=True, help="Affichage plein écran 16:9 optimisé pour diffusion TV (avec rafraîchissement automatique)"):
+                st.session_state["mode_tv_actif"] = True
+                st.session_state["mode_tv_mode"] = mode
+                st.query_params["view"] = "tv"
+                st.query_params["mode"] = mode
+                st.rerun()
 
         with col_top3:
             st.components.v1.html(
@@ -9698,28 +9674,12 @@ def afficher_section_historique_tournois():
         with col_dt2:
             c_p1, c_p2 = st.columns(2)
             with c_p1:
-                st.components.v1.html(
-                    f"""
-                    <button onclick="ouvrirTournoiArchiveTV()" style="width:100%; height:38px; background-color:#4f46e5; color:white; border:none; border-radius:6px; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif; font-size:12px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;" title="Diffusion TV plein écran de ce tournoi archivé">
-                        📺 Mode TV
-                    </button>
-                    <script>
-                    function ouvrirTournoiArchiveTV() {{
-                        var origin = window.location.origin;
-                        var pathname = window.location.pathname;
-                        try {{
-                            if (window.parent && window.parent.location && window.parent.location.origin) {{
-                                origin = window.parent.location.origin;
-                                pathname = window.parent.location.pathname;
-                            }}
-                        }} catch(e) {{}}
-                        var url = origin + pathname + '?view=tv&archive={choix_idx}';
-                        window.open(url, '_blank');
-                    }}
-                    </script>
-                    """,
-                    height=42
-                )
+                if st.button("📺 Mode TV", key=f"btn_tv_arch_{choix_idx}", use_container_width=True, help="Diffusion TV plein écran de ce tournoi archivé"):
+                    st.session_state["mode_tv_actif"] = True
+                    st.session_state["mode_tv_archive"] = str(choix_idx)
+                    st.query_params["view"] = "tv"
+                    st.query_params["archive"] = str(choix_idx)
+                    st.rerun()
             with c_p2:
                 st.components.v1.html(
                     f"""
@@ -10654,7 +10614,11 @@ def modal_documentation_readme():
 # MODE TÉLÉVISEUR / CASTING TV (Plein écran & Rafraîchissement automatique)
 # Accessible directement sans mot de passe via l'URL ?view=tv ou le bouton « 📺 Mode TV »
 # ==============================================================================
-if st.query_params.get("view") == "tv":
+est_vue_tv = (
+    st.session_state.get("mode_tv_actif", False)
+    or (st.query_params.get("view", "").strip().lower() == "tv")
+)
+if est_vue_tv:
     afficher_mode_televiseur_tournoi()
     st.stop()
 
@@ -10688,12 +10652,19 @@ if not est_connecte and not est_spectateur:
         with st.container(border=True):
             st.markdown("### 👁️ Accès Spectateur")
             st.caption("Consultez en direct les résultats du match en cours, les statistiques et les tournois en mode lecture seule (aucun mot de passe requis).")
-            if st.button("👁️ Entrer en tant que spectateur", type="primary", use_container_width=True):
-                st.session_state["est_spectateur"] = True
-                st.session_state["authentifie"] = False
-                st.session_state["est_admin"] = False
-                st.session_state["mode_consultation"] = True
-                st.rerun()
+            col_sp1, col_sp2 = st.columns([1.2, 1.0])
+            with col_sp1:
+                if st.button("👁️ Entrer en tant que spectateur", type="primary", use_container_width=True):
+                    st.session_state["est_spectateur"] = True
+                    st.session_state["authentifie"] = False
+                    st.session_state["est_admin"] = False
+                    st.session_state["mode_consultation"] = True
+                    st.rerun()
+            with col_sp2:
+                if st.button("📺 Mode Téléviseur (Direct)", use_container_width=True, key="btn_tv_login_page", help="Afficher directement l'arborescence du tournoi plein écran pour téléviseur"):
+                    st.session_state["mode_tv_actif"] = True
+                    st.query_params["view"] = "tv"
+                    st.rerun()
 
         st.markdown("<div style='text-align:center; font-weight:bold; margin: 16px 0;'>OU</div>", unsafe_allow_html=True)
 
@@ -11144,12 +11115,17 @@ with tab_feuille:
         st.button("🔍 Extraire les données du site", key="btn_sb_extract_saphir", on_click=cb_consulter_saphir, use_container_width=True)
     role_badge_sb = "🛡️ Administrateur" if st.session_state.get("est_admin", False) else ("👁️ Spectateur" if est_spectateur else "🔒 Marqueur / Éditeur")
     st.sidebar.caption(f"Profil connecté : **{role_badge_sb}**")
+    if st.sidebar.button("📺 Mode Téléviseur (Tournoi)", use_container_width=True, key="btn_sb_tv_direct", help="Afficher l'arborescence du tournoi plein écran sur téléviseur"):
+        st.session_state["mode_tv_actif"] = True
+        st.query_params["view"] = "tv"
+        st.rerun()
     if st.sidebar.button("🚪 Déconnexion / Accueil", use_container_width=True, help="Sauvegarde les tournois et le match, libère la main et retourne à l'écran d'accueil"):
         ceder_la_main_avec_sauvegarde(my_session_id)
         st.session_state["authentifie"] = False
         st.session_state["est_admin"] = False
         st.session_state["est_spectateur"] = False
         st.session_state["mode_consultation"] = False
+        st.session_state["mode_tv_actif"] = False
         st.rerun()
 
     # --- JUKEBOX / MUSIQUE D'AMBIANCE (LECTEUR AUTONOME SANS COUPURE) ---
