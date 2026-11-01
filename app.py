@@ -7021,7 +7021,7 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
                 h_badge = '<span style="color: #2e7d32; font-weight: bold;">🎟️ Passe-droit</span>'
             elif m_h and m_h != "—":
                 if mode_tv:
-                    h_badge = f'<span class="tv-time-pill" style="background:#0284c7; color:#ffffff; font-weight:800; font-size:12.5px; padding:2px 8px; border-radius:5px; border:1px solid #38bdf8; letter-spacing:0.3px; white-space:nowrap; box-shadow:0 1px 4px rgba(2,132,199,0.35);">⏰ {m_h} [{m_t_court}]</span>'
+                    h_badge = f'<span class="tv-time-pill" style="color:#ffffff !important; font-weight:800; font-size:13px; background:rgba(255,255,255,0.15); padding:2px 8px; border-radius:4px; border:1px solid #ffffff; letter-spacing:0.3px; white-space:nowrap; box-shadow:0 1px 3px rgba(0,0,0,0.5);">⏰ {m_h} [{m_t_court}]</span>'
                 else:
                     h_badge = f'<span style="color: #0b3c5d; font-weight: bold;">⏰ {m_h} [{m_t_court}]</span>'
             else:
@@ -7159,7 +7159,7 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
                     h_badge = '<span style="color: #2e7d32; font-weight: bold;">🎟️ Passe-droit</span>'
                 elif m_h:
                     if mode_tv:
-                        h_badge = f'<span class="tv-time-pill" style="background:#0284c7; color:#ffffff; font-weight:800; font-size:12.5px; padding:2px 8px; border-radius:5px; border:1px solid #38bdf8; letter-spacing:0.3px; white-space:nowrap; box-shadow:0 1px 4px rgba(2,132,199,0.35);">⏰ {m_h} [{m_t_court}]</span>'
+                        h_badge = f'<span class="tv-time-pill" style="color:#ffffff !important; font-weight:800; font-size:13px; background:rgba(255,255,255,0.15); padding:2px 8px; border-radius:4px; border:1px solid #ffffff; letter-spacing:0.3px; white-space:nowrap; box-shadow:0 1px 3px rgba(0,0,0,0.5);">⏰ {m_h} [{m_t_court}]</span>'
                     else:
                         h_badge = f'<span style="color: #0b3c5d; font-weight: bold;">⏰ {m_h} [{m_t_court}]</span>'
                 else:
@@ -7652,24 +7652,36 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
                 if not m.get("termine") and m.get("equipe_a") and m.get("equipe_b"):
                     matchs_actifs.append(m)
 
-        pills_tables = []
-        for m in matchs_actifs[:6]:
-            tc = m.get("table_courte") or "Table"
-            hm = m.get("heure_estimee", "")
-            hm_str = f" • {hm}" if hm and hm != "—" else ""
+        # Identification exclusive des adversaires sur Table 1 et Table 2
+        match_t1 = None
+        match_t2 = None
+        for m in matchs_actifs:
+            t_nom = str(m.get("table", "")).lower()
+            tc = str(m.get("table_courte", "")).upper()
+            if ("1" in t_nom or tc == "T1") and match_t1 is None:
+                match_t1 = m
+            elif ("2" in t_nom or tc == "T2") and match_t2 is None:
+                match_t2 = m
+
+        if not match_t1 and len(matchs_actifs) > 0:
+            match_t1 = matchs_actifs[0]
+        if not match_t2 and len(matchs_actifs) > 1:
+            match_t2 = matchs_actifs[1]
+
+        def formater_adversaires_tv_table(m):
+            if not m:
+                return '<span style="color:#64748b; font-style:italic; font-size:13px;">Libre / En attente</span>'
             p1 = formater_nom_abrege_joueur(m.get("equipe_a", ""))
             p2 = formater_nom_abrege_joueur(m.get("equipe_b", ""))
             s1 = m.get("score_a", 0)
             s2 = m.get("score_b", 0)
-            pills_tables.append(
-                f'<div class="tv-pill-table">'
-                f'<span class="tv-pill-badge">🎱 {tc}{hm_str}</span>'
-                f'<span class="tv-pill-names">{p1} <strong class="tv-pill-score">{s1} - {s2}</strong> {p2}</span>'
-                f'</div>'
-            )
-        tables_ticker_html = "".join(pills_tables) if pills_tables else '<span style="color:#94a3b8; font-size:12px;">Aucun match en cours sur les tables</span>'
+            if s1 > 0 or s2 > 0:
+                score_str = f'<strong style="color:#ffffff; font-size:16px; background:#0284c7; padding:1px 7px; border-radius:4px; margin:0 6px;">{s1} - {s2}</strong>'
+                return f'<span style="color:#ffffff; font-weight:800;">{p1}</span> {score_str} <span style="color:#ffffff; font-weight:800;">{p2}</span>'
+            return f'<span style="color:#ffffff; font-weight:800;">{p1}</span> <span style="color:#38bdf8; font-weight:800; margin:0 6px;">vs</span> <span style="color:#ffffff; font-weight:800;">{p2}</span>'
 
-        badge_statut_tv = '<span class="tv-badge-live">🔴 EN DIRECT</span>' if statut == "en_cours" else '<span class="tv-badge-done">🏆 TERMINÉ</span>'
+        t1_adversaires = formater_adversaires_tv_table(match_t1)
+        t2_adversaires = formater_adversaires_tv_table(match_t2)
 
         html_tv = f"""<!DOCTYPE html>
 <html>
@@ -7681,7 +7693,7 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
     <style>
         html, body {{
             margin: 0;
-            padding: 10px 14px;
+            padding: 3px 6px;
             background: #080d1a !important;
             color: #f8fafc !important;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -7693,98 +7705,54 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
             align-items: center;
             background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
             border: 1px solid #334155;
-            border-radius: 10px;
-            padding: 10px 18px;
-            margin-bottom: 12px;
-            box-shadow: 0 4px 14px rgba(0,0,0,0.5);
-            gap: 15px;
+            border-radius: 8px;
+            padding: 4px 10px;
+            margin-bottom: 5px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.5);
+            gap: 10px;
         }}
-        .tv-brand {{
+        .tv-tables-container {{
             display: flex;
             align-items: center;
             gap: 12px;
-        }}
-        .tv-brand h1 {{
-            margin: 0;
-            font-size: 16px;
-            font-weight: 800;
-            color: #38bdf8;
-            letter-spacing: 0.5px;
-        }}
-        .tv-brand-sub {{
-            font-size: 12px;
-            color: #cbd5e1;
-            font-weight: 600;
-            margin-top: 2px;
-        }}
-        .tv-badge-live {{
-            background: #ef4444;
-            color: white;
-            font-size: 10px;
-            font-weight: 800;
-            padding: 2px 7px;
-            border-radius: 10px;
-            letter-spacing: 0.5px;
-        }}
-        .tv-badge-done {{
-            background: #f59e0b;
-            color: #000;
-            font-size: 10px;
-            font-weight: 800;
-            padding: 2px 7px;
-            border-radius: 10px;
-        }}
-        .tv-active-tables {{
-            display: flex;
-            align-items: center;
-            gap: 8px;
             flex-wrap: wrap;
             flex: 1;
-            justify-content: center;
         }}
-        .tv-pill-table {{
+        .tv-table-card {{
             background: #1e293b;
-            border: 1px solid #475569;
+            border: 1.5px solid #0284c7;
             border-radius: 6px;
-            padding: 4px 10px;
+            padding: 4px 12px;
             display: flex;
             align-items: center;
-            gap: 8px;
-            font-size: 12px;
+            gap: 10px;
         }}
-        .tv-pill-badge {{
+        .tv-table-tag {{
             background: #0284c7;
-            color: white;
+            color: #ffffff;
             font-weight: 800;
             padding: 2px 8px;
-            border-radius: 5px;
-            font-size: 13px;
-            border: 1px solid #38bdf8;
-            letter-spacing: 0.3px;
+            border-radius: 4px;
+            font-size: 12px;
+            letter-spacing: 0.5px;
         }}
-        .tv-pill-names {{
-            color: #f1f5f9;
+        .tv-table-versus {{
+            color: #f8fafc;
             font-weight: 700;
-            font-size: 14px;
-        }}
-        .tv-pill-score {{
-            color: #fbbf24;
-            font-size: 15px;
-            font-weight: 900;
-            padding: 0 4px;
+            font-size: 14.5px;
         }}
         .tv-info-right {{
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
         }}
         .tv-clock {{
-            font-size: 16px;
+            font-size: 15px;
             font-weight: 800;
-            color: #f8fafc;
+            color: #ffffff;
             background: #0f172a;
-            padding: 5px 12px;
-            border-radius: 6px;
+            padding: 3px 10px;
+            border-radius: 5px;
             border: 1px solid #334155;
             letter-spacing: 1px;
         }}
@@ -7797,9 +7765,9 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
             background: #4f46e5;
             color: white;
             border: none;
-            padding: 6px 12px;
-            border-radius: 6px;
-            font-size: 12px;
+            padding: 4px 10px;
+            border-radius: 5px;
+            font-size: 11.5px;
             font-weight: 700;
             cursor: pointer;
             transition: background 0.2s;
@@ -7810,15 +7778,15 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
 
         /* Bracket Styling TV */
         .bracket-section {{
-            margin: 8px 0 16px 0;
+            margin: 2px 0 6px 0;
         }}
         .bracket-section-header {{
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 800;
-            padding: 6px 12px;
-            margin: 14px 0 8px 0;
-            border-radius: 6px;
-            letter-spacing: 0.8px;
+            padding: 3px 8px;
+            margin: 4px 0 4px 0;
+            border-radius: 4px;
+            letter-spacing: 0.6px;
         }}
         .bracket-section-header.winner {{
             background: #1e3a8a;
@@ -7900,14 +7868,17 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
         }}
         .card-header {{
             background: #0f172a;
-            color: #cbd5e1;
-            font-size: 12px;
-            font-weight: 700;
-            padding: 5px 8px;
-            border-bottom: 1.5px solid #233554;
+            color: #ffffff !important;
+            font-size: 12.5px;
+            font-weight: 800;
+            padding: 4px 8px;
+            border-bottom: 1.5px solid #334155;
             display: flex;
             justify-content: space-between;
             align-items: center;
+        }}
+        .card-header span {{
+            color: #ffffff !important;
         }}
         .player-row {{
             display: flex;
@@ -7977,15 +7948,15 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
 </head>
 <body>
     <div class="tv-top-bar">
-        <div class="tv-brand">
-            {f'<img src="{src_val}" style="height:44px; width:44px; object-fit:contain; border-radius:4px;">' if arm_existe else ''}
-            <div>
-                <h1>🎱 LIGUE DE BILLARD BOULE EN MAIN</h1>
-                <div class="tv-brand-sub">{titre_t} — {mode_str} &nbsp;|&nbsp; {badge_statut_tv}</div>
+        <div class="tv-tables-container">
+            <div class="tv-table-card">
+                <span class="tv-table-tag">TABLE 1</span>
+                <span class="tv-table-versus">{t1_adversaires}</span>
             </div>
-        </div>
-        <div class="tv-active-tables">
-            {tables_ticker_html}
+            <div class="tv-table-card">
+                <span class="tv-table-tag">TABLE 2</span>
+                <span class="tv-table-versus">{t2_adversaires}</span>
+            </div>
         </div>
         <div class="tv-info-right">
             <div class="tv-clock" id="tv-clock">--:--:--</div>
@@ -8080,65 +8051,38 @@ def afficher_mode_televiseur_tournoi():
     elif mode_param not in ["simple", "double"]:
         mode_param = "simple"
 
-    # Bandeau supérieur de contrôle TV
-    col_logo, col_modes, col_statut, col_actions = st.columns([1.8, 1.6, 2.0, 2.2])
-    with col_logo:
-        st.markdown(
-            f"<div style='display:flex; align-items:center; gap:8px; font-weight:800; font-size:18px; color:#1e293b; padding-top:4px;'>"
-            f"<span>🎱</span> <span>Ligue Boule en main</span>"
-            f"<span style='background:#4f46e5; color:white; font-size:11px; padding:2px 8px; border-radius:12px; font-weight:700;'>📺 MODE TV</span>"
-            f"</div>",
-            unsafe_allow_html=True
-        )
-    with col_modes:
-        c_m1, c_m2 = st.columns(2)
-        with c_m1:
-            btn_type_s = "primary" if mode_param == "simple" else "secondary"
-            if st.button("🎱 Simple", type=btn_type_s, use_container_width=True, key="tv_switch_simple"):
+    # Tous les boutons sur une seule ligne en haut avec libellé complet
+    # Si en simple : pas de bouton double. Si en double : pas de bouton simple.
+    est_simple = (mode_param == "simple")
+    col_b1, col_b2, col_b3, col_b4 = st.columns([1.3, 1.3, 1.5, 1.2])
+
+    with col_b1:
+        if est_simple:
+            if st.button("🎱 Tournoi Simple (1 contre 1)", type="primary", use_container_width=True, key="tv_btn_mode_simple"):
                 st.session_state["mode_tv_mode"] = "simple"
                 st.query_params["mode"] = "simple"
                 st.rerun()
-        with c_m2:
-            btn_type_d = "primary" if mode_param == "double" else "secondary"
-            if st.button("👥 Double", type=btn_type_d, use_container_width=True, key="tv_switch_double"):
+        else:
+            if st.button("👥 Tournoi Double (2 contre 2)", type="primary", use_container_width=True, key="tv_btn_mode_double"):
                 st.session_state["mode_tv_mode"] = "double"
                 st.query_params["mode"] = "double"
                 st.rerun()
-    with col_statut:
-        td_chk = charger_tournois_data()
-        t_chk = td_chk.get(mode_param)
-        if t_chk:
-            stat_txt = "🟢 En cours" if t_chk.get("statut") == "en_cours" else "🏆 Terminé"
-            titre_court = t_chk.get("titre", "Tournoi officiel")
-            st.markdown(
-                f"<div style='font-size:13px; color:#334155; padding-top:8px;'>"
-                f"<strong>{titre_court}</strong> &nbsp;|&nbsp; {stat_txt} &nbsp;•&nbsp; "
-                f"<span style='color:#64748b;'>🔄 Auto 20s</span>"
-                f"</div>",
-                unsafe_allow_html=True
-            )
-        else:
-            st.markdown(
-                f"<div style='font-size:13px; color:#64748b; padding-top:8px;'>"
-                f"⏳ En attente de tournoi ({mode_param}) &nbsp;•&nbsp; 🔄 Auto 20s"
-                f"</div>",
-                unsafe_allow_html=True
-            )
-    with col_actions:
-        c_act1, c_act2, c_act3 = st.columns([1, 1, 1.2])
-        with c_act1:
-            if st.button("🔄 Actualiser", use_container_width=True, key="tv_btn_force_refresh"):
-                st.rerun()
-        with c_act2:
-            if st.button("✖️ Quitter", use_container_width=True, key="tv_btn_exit"):
-                st.session_state["mode_tv_actif"] = False
-                st.session_state.pop("mode_tv_archive", None)
-                st.session_state.pop("mode_tv_mode", None)
-                st.query_params.clear()
-                st.rerun()
-        with c_act3:
-            url_nouvel_onglet = f"?view=tv&mode={mode_param}" + (f"&archive={archive_idx}" if archive_idx else "")
-            st.link_button("↗️ Onglet TV", url_nouvel_onglet, use_container_width=True, help="Ouvrir cette vue TV dans un nouvel onglet dédié")
+
+    with col_b2:
+        if st.button("🔄 Actualiser le tournoi en direct", use_container_width=True, key="tv_btn_force_refresh"):
+            st.rerun()
+
+    with col_b3:
+        url_nouvel_onglet = f"?view=tv&mode={mode_param}" + (f"&archive={archive_idx}" if archive_idx else "")
+        st.link_button("↗️ Ouvrir le mode Téléviseur dans un nouvel onglet", url_nouvel_onglet, use_container_width=True)
+
+    with col_b4:
+        if st.button("✖️ Quitter le mode Téléviseur", use_container_width=True, key="tv_btn_exit"):
+            st.session_state["mode_tv_actif"] = False
+            st.session_state.pop("mode_tv_archive", None)
+            st.session_state.pop("mode_tv_mode", None)
+            st.query_params.clear()
+            st.rerun()
 
     # Fragment pour auto-actualisation toutes les 20 secondes
     @st.fragment(run_every=20)
@@ -8164,7 +8108,7 @@ def afficher_mode_televiseur_tournoi():
 
         html_tv = generer_html_tournoi(tournoi_cur, mode=m_cur, mode_tv=True)
         cle_rand = f"tv_comp_{m_cur}_{int(time.time() // 20)}"
-        st.components.v1.html(html_tv, height=920, scrolling=True)
+        st.components.v1.html(html_tv, height=1080, scrolling=True)
 
     fragment_affichage_tv(mode_param, archive_idx)
 
