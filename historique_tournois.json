@@ -139,10 +139,10 @@
                         "id": "T1_M6",
                         "equipe_a": "Richard Théberge",
                         "equipe_b": "Léon Morin",
-                        "score_a": 2,
-                        "score_b": 1,
-                        "termine": true,
-                        "vainqueur": "Richard Théberge",
+                        "score_a": 0,
+                        "score_b": 0,
+                        "termine": false,
+                        "vainqueur": null,
                         "source_a": null,
                         "source_b": null,
                         "passe_droit": false,
@@ -150,8 +150,7 @@
                         "format_label": "2 de 3",
                         "heure_estimee": "10h00",
                         "table": "Table 2",
-                        "table_courte": "T2",
-                        "perdant": "Léon Morin"
+                        "table_courte": "T2"
                     },
                     {
                         "id": "T1_M7",
@@ -300,7 +299,7 @@
                     {
                         "id": "T2_M3",
                         "equipe_a": "Valérie Turcotte",
-                        "equipe_b": "Richard Théberge",
+                        "equipe_b": "À déterminer",
                         "score_a": 0,
                         "score_b": 0,
                         "termine": false,
@@ -485,9 +484,9 @@
         "vainqueur_final": null,
         "finaliste": null,
         "mode": "simple",
-        "date_derniere_sauvegarde": "01/11/2026 à 19:24:17",
+        "date_derniere_sauvegarde": "01/11/2026 à 19:11:30",
         "id_archive": "TOURNOI_SIMPLE_20261101_164312_700",
-        "date_archivage": "01/11/2026 à 19:24"
+        "date_archivage": "01/11/2026 à 19:11"
     },
     {
         "titre": "Tournoi Test Duos 6",
