@@ -8188,7 +8188,8 @@ def afficher_mode_televiseur_tournoi():
             st.query_params.clear()
             st.rerun()
 
-    # Affichage du tableau TV (sans rechargement de page intempestif)
+    # Affichage du tableau TV avec actualisation automatique en arrière-plan toutes les 20s (via WebSocket, sans rechargement de page)
+    @st.fragment(run_every=20)
     def fragment_affichage_tv(m_cur, a_idx=None):
         if a_idx is not None:
             hist_list = charger_historique_tournois(inclure_actifs=True)
@@ -12950,16 +12951,18 @@ with tab_feuille:
                     est_deja_valide=est_deja_valide
                 )
 
-        # Sauvegarde automatique en arrière-plan (uniquement par l'éditeur actif et si le match n'est pas validé)
+        # Sauvegarde automatique en arrière-plan (uniquement si les scores de la feuille ont réellement changé et si le match n'est pas validé)
         if est_editeur and not match_valide:
-            st.session_state["donnees_match_courant"] = donnees_a_sauvegarder
-            sauvegarder_donnees(donnees_a_sauvegarder)
-            st.session_state["scores_en_cours_backup"] = {
+            scores_actuels = {
                 f"s_a_{n}": st.session_state.get(f"s_a_{n}", 0) for n in range(1, 10)
             }
-            st.session_state["scores_en_cours_backup"].update({
+            scores_actuels.update({
                 f"s_b_{n}": st.session_state.get(f"s_b_{n}", 0) for n in range(1, 10)
             })
+            if scores_actuels != st.session_state.get("scores_en_cours_backup"):
+                st.session_state["donnees_match_courant"] = donnees_a_sauvegarder
+                sauvegarder_donnees(donnees_a_sauvegarder)
+                st.session_state["scores_en_cours_backup"] = scores_actuels
 
         st.divider()
 
