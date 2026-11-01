@@ -7693,8 +7693,8 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
                 <span class="tv-table-versus">{versus_html}</span>
             </div>'''
 
-        t1_card_html = formater_carte_table_tv(match_t1, "TABLE 1")
-        t2_card_html = formater_carte_table_tv(match_t2, "TABLE 2")
+        t1_card_html = formater_carte_table_tv(match_t1, "T1")
+        t2_card_html = formater_carte_table_tv(match_t2, "T2")
 
         html_tv = f"""<!DOCTYPE html>
 <html>
@@ -7797,9 +7797,6 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
         .tv-p-name {{
             color: #ffffff;
             font-weight: 800;
-            max-width: 140px;
-            overflow: hidden;
-            text-overflow: ellipsis;
             white-space: nowrap !important;
             display: inline-block;
             vertical-align: middle;
@@ -8035,7 +8032,6 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
         </div>
         <div class="tv-info-right">
             <div class="tv-clock" id="tv-clock">--:--</div>
-            <button onclick="toggleFullScreen()" class="tv-btn-fs">⛶ Plein écran</button>
         </div>
     </div>
     {podium_html}
@@ -8109,7 +8105,7 @@ def afficher_mode_televiseur_tournoi():
     # Tous les boutons sur une seule ligne en haut avec libellé complet
     # Si en simple : pas de bouton double. Si en double : pas de bouton simple.
     est_simple = (mode_param == "simple")
-    col_b1, col_b2, col_b3, col_b4 = st.columns([1.3, 1.3, 1.5, 1.2])
+    col_b1, col_b2, col_b3, col_b4, col_b5 = st.columns([1.3, 1.3, 0.9, 1.6, 1.1])
 
     with col_b1:
         if est_simple:
@@ -8128,10 +8124,63 @@ def afficher_mode_televiseur_tournoi():
             st.rerun()
 
     with col_b3:
+        st.components.v1.html(
+            """<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; background: transparent; }
+        .btn-tv-fs {
+            width: 100%;
+            height: 38px;
+            background-color: #1e293b;
+            color: #f8fafc;
+            border: 1px solid #475569;
+            border-radius: 8px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            font-size: 13.5px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            box-sizing: border-box;
+            transition: all 0.2s ease;
+        }
+        .btn-tv-fs:hover {
+            background-color: #334155;
+            border-color: #94a3b8;
+            color: #38bdf8;
+        }
+    </style>
+</head>
+<body>
+    <button class="btn-tv-fs" onclick="basculerPleinEcran()">⛶ Plein écran</button>
+    <script>
+    function basculerPleinEcran() {
+        var doc = window.parent.document;
+        if (!doc.fullscreenElement && !doc.webkitFullscreenElement && !doc.msFullscreenElement) {
+            if (doc.documentElement.requestFullscreen) doc.documentElement.requestFullscreen();
+            else if (doc.documentElement.webkitRequestFullscreen) doc.documentElement.webkitRequestFullscreen();
+            else if (doc.documentElement.msRequestFullscreen) doc.documentElement.msRequestFullscreen();
+        } else {
+            if (doc.exitFullscreen) doc.exitFullscreen();
+            else if (doc.webkitExitFullscreen) doc.webkitExitFullscreen();
+            else if (doc.msExitFullscreen) doc.msExitFullscreen();
+        }
+    }
+    </script>
+</body>
+</html>""",
+            height=40,
+        )
+
+    with col_b4:
         url_nouvel_onglet = f"?view=tv&mode={mode_param}" + (f"&archive={archive_idx}" if archive_idx else "")
         st.link_button("↗️ Ouvrir le mode Téléviseur dans un nouvel onglet", url_nouvel_onglet, use_container_width=True)
 
-    with col_b4:
+    with col_b5:
         if st.button("✖️ Quitter le mode Téléviseur", use_container_width=True, key="tv_btn_exit"):
             st.session_state["mode_tv_actif"] = False
             st.session_state.pop("mode_tv_archive", None)
