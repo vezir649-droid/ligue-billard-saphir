@@ -7671,11 +7671,9 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
         def formater_carte_table_tv(m, table_label):
             if not m:
                 return f'''<div class="tv-table-card">
-                    <div class="tv-table-header">
-                        <span class="tv-table-tag">{table_label}</span>
-                        <span class="tv-table-hour" style="opacity:0.65;">Libre</span>
-                    </div>
-                    <div class="tv-table-versus" style="color:#94a3b8; font-style:italic; font-size:13px;">En attente de match</div>
+                    <span class="tv-table-tag">{table_label}</span>
+                    <span class="tv-table-hour" style="opacity:0.65;">Libre</span>
+                    <span class="tv-table-versus" style="color:#94a3b8; font-style:italic; font-size:13px;">En attente de match</span>
                 </div>'''
             p1 = formater_nom_abrege_joueur(m.get("equipe_a", ""))
             p2 = formater_nom_abrege_joueur(m.get("equipe_b", ""))
@@ -7690,13 +7688,9 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
                 versus_html = f'<span class="tv-p-name">{p1}</span> <span class="tv-vs-badge">VS</span> <span class="tv-p-name">{p2}</span>'
 
             return f'''<div class="tv-table-card">
-                <div class="tv-table-header">
-                    <span class="tv-table-tag">{table_label}</span>
-                    {hm_badge}
-                </div>
-                <div class="tv-table-versus">
-                    {versus_html}
-                </div>
+                <span class="tv-table-tag">{table_label}</span>
+                {hm_badge}
+                <span class="tv-table-versus">{versus_html}</span>
             </div>'''
 
         t1_card_html = formater_carte_table_tv(match_t1, "TABLE 1")
@@ -7737,27 +7731,31 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
         .tv-tables-container {{
             display: flex;
             align-items: center;
-            gap: 14px;
+            gap: 12px;
             flex-wrap: wrap;
             flex: 1;
+        }}
+        .tv-cedule-title {{
+            background: #0284c7;
+            color: #ffffff;
+            font-size: 13.5px;
+            font-weight: 900;
+            padding: 3px 12px;
+            border-radius: 5px;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+            box-shadow: 0 1px 4px rgba(2, 132, 199, 0.4);
+            white-space: nowrap;
         }}
         .tv-table-card {{
             background: #152238;
             border: 1.5px solid #0284c7;
             border-radius: 6px;
-            padding: 4px 12px;
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-            min-width: 250px;
-        }}
-        .tv-table-header {{
+            padding: 3px 10px;
             display: flex;
             align-items: center;
-            justify-content: space-between;
             gap: 8px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.12);
-            padding-bottom: 2px;
+            white-space: nowrap;
         }}
         .tv-table-tag {{
             background: #0284c7;
@@ -7779,14 +7777,12 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
             letter-spacing: 0.3px;
         }}
         .tv-table-versus {{
-            display: flex;
+            display: inline-flex;
             align-items: center;
-            justify-content: center;
             gap: 5px;
             color: #ffffff;
             font-weight: 700;
             font-size: 14px;
-            padding-top: 1px;
         }}
         .tv-p-name {{
             color: #ffffff;
@@ -8016,11 +8012,12 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
 <body>
     <div class="tv-top-bar">
         <div class="tv-tables-container">
+            <div class="tv-cedule-title">📅 Cédule</div>
             {t1_card_html}
             {t2_card_html}
         </div>
         <div class="tv-info-right">
-            <div class="tv-clock" id="tv-clock">--:--:--</div>
+            <div class="tv-clock" id="tv-clock">--:--</div>
             <button onclick="toggleFullScreen()" class="tv-btn-fs">⛶ Plein écran</button>
         </div>
     </div>
@@ -8031,9 +8028,8 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
         var now = new Date();
         var h = String(now.getHours()).padStart(2, '0');
         var m = String(now.getMinutes()).padStart(2, '0');
-        var s = String(now.getSeconds()).padStart(2, '0');
         var el = document.getElementById('tv-clock');
-        if (el) el.innerText = h + ':' + m + ':' + s;
+        if (el) el.innerText = h + ':' + m;
     }}
     setInterval(updateClock, 1000);
     updateClock();
