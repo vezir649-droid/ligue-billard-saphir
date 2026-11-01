@@ -329,9 +329,9 @@
                             "equipe_a": "Alain Bellemare",
                             "equipe_b": "André Lauzon",
                             "score_a": 0,
-                            "score_b": 0,
-                            "termine": false,
-                            "vainqueur": null,
+                            "score_b": 2,
+                            "termine": true,
+                            "vainqueur": "André Lauzon",
                             "source_a": "T1_M7",
                             "source_b": "T1_M8",
                             "passe_droit": false,
@@ -339,7 +339,8 @@
                             "format_label": "2 de 3",
                             "heure_estimee": "13h30",
                             "table": "Table 2",
-                            "table_courte": "T2"
+                            "table_courte": "T2",
+                            "perdant": "Alain Bellemare"
                         }
                     ]
                 },
@@ -402,7 +403,7 @@
                         },
                         {
                             "id": "T3_M4",
-                            "equipe_a": "À déterminer",
+                            "equipe_a": "André Lauzon",
                             "equipe_b": "Richard Vézina",
                             "score_a": 0,
                             "score_b": 0,
@@ -495,9 +496,9 @@
             "vainqueur_final": null,
             "finaliste": null,
             "mode": "simple",
-            "date_derniere_sauvegarde": "01/11/2026 à 19:46:35",
+            "date_derniere_sauvegarde": "01/11/2026 à 19:47:07",
             "id_archive": "TOURNOI_SIMPLE_20261101_164312_700",
-            "date_archivage": "01/11/2026 à 19:46"
+            "date_archivage": "01/11/2026 à 19:47"
         },
         {
             "titre": "Tournoi Test Duos 6",
@@ -1516,9 +1517,9 @@
                         "equipe_a": "Alain Bellemare",
                         "equipe_b": "André Lauzon",
                         "score_a": 0,
-                        "score_b": 0,
-                        "termine": false,
-                        "vainqueur": null,
+                        "score_b": 2,
+                        "termine": true,
+                        "vainqueur": "André Lauzon",
                         "source_a": "T1_M7",
                         "source_b": "T1_M8",
                         "passe_droit": false,
@@ -1526,7 +1527,8 @@
                         "format_label": "2 de 3",
                         "heure_estimee": "13h30",
                         "table": "Table 2",
-                        "table_courte": "T2"
+                        "table_courte": "T2",
+                        "perdant": "Alain Bellemare"
                     }
                 ]
             },
@@ -1589,7 +1591,7 @@
                     },
                     {
                         "id": "T3_M4",
-                        "equipe_a": "À déterminer",
+                        "equipe_a": "André Lauzon",
                         "equipe_b": "Richard Vézina",
                         "score_a": 0,
                         "score_b": 0,
@@ -1682,11 +1684,11 @@
         "vainqueur_final": null,
         "finaliste": null,
         "mode": "simple",
-        "date_derniere_sauvegarde": "01/11/2026 à 19:46:35",
+        "date_derniere_sauvegarde": "01/11/2026 à 19:47:07",
         "id_archive": "TOURNOI_SIMPLE_20261101_164312_700"
     },
     "derniere_sauvegarde": {
-        "date": "01/11/2026 à 19:46:35",
+        "date": "01/11/2026 à 19:47:07",
         "session_id": "marqueur_actif",
         "action": "sauvegarde"
     }
