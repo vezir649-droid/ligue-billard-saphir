@@ -248,10 +248,10 @@
                             "id": "T1_M12",
                             "equipe_a": "Richard Vézina",
                             "equipe_b": "Gaston Lavoie",
-                            "score_a": 0,
+                            "score_a": 2,
                             "score_b": 0,
-                            "termine": false,
-                            "vainqueur": null,
+                            "termine": true,
+                            "vainqueur": "Richard Vézina",
                             "source_a": null,
                             "source_b": null,
                             "passe_droit": false,
@@ -259,7 +259,8 @@
                             "format_label": "2 de 3",
                             "heure_estimee": "11h30",
                             "table": "Table 2",
-                            "table_courte": "T2"
+                            "table_courte": "T2",
+                            "perdant": "Gaston Lavoie"
                         }
                     ]
                 },
@@ -399,7 +400,7 @@
                         {
                             "id": "T3_M4",
                             "equipe_a": "À déterminer",
-                            "equipe_b": "À déterminer",
+                            "equipe_b": "Richard Vézina",
                             "score_a": 0,
                             "score_b": 0,
                             "termine": false,
@@ -491,9 +492,9 @@
             "vainqueur_final": null,
             "finaliste": null,
             "mode": "simple",
-            "date_derniere_sauvegarde": "01/11/2026 à 19:31:52",
+            "date_derniere_sauvegarde": "01/11/2026 à 19:32:32",
             "id_archive": "TOURNOI_SIMPLE_20261101_164312_700",
-            "date_archivage": "01/11/2026 à 19:31"
+            "date_archivage": "01/11/2026 à 19:32"
         },
         {
             "titre": "Tournoi Test Duos 6",
@@ -1431,10 +1432,10 @@
                         "id": "T1_M12",
                         "equipe_a": "Richard Vézina",
                         "equipe_b": "Gaston Lavoie",
-                        "score_a": 0,
+                        "score_a": 2,
                         "score_b": 0,
-                        "termine": false,
-                        "vainqueur": null,
+                        "termine": true,
+                        "vainqueur": "Richard Vézina",
                         "source_a": null,
                         "source_b": null,
                         "passe_droit": false,
@@ -1442,7 +1443,8 @@
                         "format_label": "2 de 3",
                         "heure_estimee": "11h30",
                         "table": "Table 2",
-                        "table_courte": "T2"
+                        "table_courte": "T2",
+                        "perdant": "Gaston Lavoie"
                     }
                 ]
             },
@@ -1582,7 +1584,7 @@
                     {
                         "id": "T3_M4",
                         "equipe_a": "À déterminer",
-                        "equipe_b": "À déterminer",
+                        "equipe_b": "Richard Vézina",
                         "score_a": 0,
                         "score_b": 0,
                         "termine": false,
@@ -1674,11 +1676,11 @@
         "vainqueur_final": null,
         "finaliste": null,
         "mode": "simple",
-        "date_derniere_sauvegarde": "01/11/2026 à 19:31:52",
+        "date_derniere_sauvegarde": "01/11/2026 à 19:32:32",
         "id_archive": "TOURNOI_SIMPLE_20261101_164312_700"
     },
     "derniere_sauvegarde": {
-        "date": "01/11/2026 à 19:31:52",
+        "date": "01/11/2026 à 19:32:32",
         "session_id": "marqueur_actif",
         "action": "sauvegarde"
     }
