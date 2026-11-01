@@ -6935,7 +6935,7 @@ def formater_nom_abrege_joueur(nom_joueur):
     # Joueur individuel (Simple)
     return formater_nom_court_joueur(nom_str, avec_point=True)
 
-def generer_html_tournoi(tournoi, mode="simple"):
+def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
     """Génère la feuille officielle imprimable du tournoi limitée strictement à l'arborescence (Arbre / Matrice)."""
     logo_b64 = charger_armoiries_base64()
     src_val = logo_b64 if logo_b64 else "cid:armoiries_logo"
@@ -7631,7 +7631,490 @@ def generer_html_tournoi(tournoi, mode="simple"):
 </body>
 </html>
 """
+    if mode_tv:
+        # Matchs actuellement assignés / actifs sur les tables
+        matchs_actifs = []
+        if is_double_elim or is_elim:
+            for t in tournoi.get("tours", []):
+                for m in t.get("matchs", []):
+                    ea = m.get("equipe_a", "")
+                    eb = m.get("equipe_b", "")
+                    if not m.get("termine") and ea and eb and ea != "À déterminer" and eb != "À déterminer" and not m.get("passe_droit"):
+                        matchs_actifs.append(m)
+        else:
+            for m in tournoi.get("matchs", []):
+                if not m.get("termine") and m.get("equipe_a") and m.get("equipe_b"):
+                    matchs_actifs.append(m)
+
+        pills_tables = []
+        for m in matchs_actifs[:6]:
+            tc = m.get("table_courte") or "Table"
+            hm = m.get("heure_estimee", "")
+            hm_str = f" • {hm}" if hm and hm != "—" else ""
+            p1 = formater_nom_abrege_joueur(m.get("equipe_a", ""))
+            p2 = formater_nom_abrege_joueur(m.get("equipe_b", ""))
+            s1 = m.get("score_a", 0)
+            s2 = m.get("score_b", 0)
+            pills_tables.append(
+                f'<div class="tv-pill-table">'
+                f'<span class="tv-pill-badge">🎱 {tc}{hm_str}</span>'
+                f'<span class="tv-pill-names">{p1} <strong class="tv-pill-score">{s1} - {s2}</strong> {p2}</span>'
+                f'</div>'
+            )
+        tables_ticker_html = "".join(pills_tables) if pills_tables else '<span style="color:#94a3b8; font-size:12px;">Aucun match en cours sur les tables</span>'
+
+        badge_statut_tv = '<span class="tv-badge-live">🔴 EN DIRECT</span>' if statut == "en_cours" else '<span class="tv-badge-done">🏆 TERMINÉ</span>'
+
+        html_tv = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mode TV - {titre_t}</title>
+    <style>
+        html, body {{
+            margin: 0;
+            padding: 10px 14px;
+            background: #080d1a !important;
+            color: #f8fafc !important;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            color-scheme: dark !important;
+        }}
+        .tv-top-bar {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            border: 1px solid #334155;
+            border-radius: 10px;
+            padding: 10px 18px;
+            margin-bottom: 12px;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+            gap: 15px;
+        }}
+        .tv-brand {{
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }}
+        .tv-brand h1 {{
+            margin: 0;
+            font-size: 16px;
+            font-weight: 800;
+            color: #38bdf8;
+            letter-spacing: 0.5px;
+        }}
+        .tv-brand-sub {{
+            font-size: 12px;
+            color: #cbd5e1;
+            font-weight: 600;
+            margin-top: 2px;
+        }}
+        .tv-badge-live {{
+            background: #ef4444;
+            color: white;
+            font-size: 10px;
+            font-weight: 800;
+            padding: 2px 7px;
+            border-radius: 10px;
+            letter-spacing: 0.5px;
+        }}
+        .tv-badge-done {{
+            background: #f59e0b;
+            color: #000;
+            font-size: 10px;
+            font-weight: 800;
+            padding: 2px 7px;
+            border-radius: 10px;
+        }}
+        .tv-active-tables {{
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            flex: 1;
+            justify-content: center;
+        }}
+        .tv-pill-table {{
+            background: #1e293b;
+            border: 1px solid #475569;
+            border-radius: 6px;
+            padding: 4px 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+        }}
+        .tv-pill-badge {{
+            background: #2563eb;
+            color: white;
+            font-weight: 800;
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+        }}
+        .tv-pill-names {{
+            color: #f1f5f9;
+            font-weight: 600;
+        }}
+        .tv-pill-score {{
+            color: #fbbf24;
+            padding: 0 3px;
+        }}
+        .tv-info-right {{
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }}
+        .tv-clock {{
+            font-size: 16px;
+            font-weight: 800;
+            color: #f8fafc;
+            background: #0f172a;
+            padding: 5px 12px;
+            border-radius: 6px;
+            border: 1px solid #334155;
+            letter-spacing: 1px;
+        }}
+        .tv-countdown {{
+            font-size: 11px;
+            color: #94a3b8;
+            font-weight: 600;
+        }}
+        .tv-btn-fs {{
+            background: #4f46e5;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background 0.2s;
+        }}
+        .tv-btn-fs:hover {{
+            background: #4338ca;
+        }}
+
+        /* Bracket Styling TV */
+        .bracket-section {{
+            margin: 8px 0 16px 0;
+        }}
+        .bracket-section-header {{
+            font-size: 12px;
+            font-weight: 800;
+            padding: 6px 12px;
+            margin: 14px 0 8px 0;
+            border-radius: 6px;
+            letter-spacing: 0.8px;
+        }}
+        .bracket-section-header.winner {{
+            background: #1e3a8a;
+            color: #93c5fd;
+            border-left: 5px solid #3b82f6;
+        }}
+        .bracket-section-header.loser {{
+            background: #78350f;
+            color: #fde68a;
+            border-left: 5px solid #f59e0b;
+        }}
+        .bracket-section-header.finale {{
+            background: #713f12;
+            color: #fef08a;
+            border-left: 5px solid #eab308;
+        }}
+        .bracket-wrapper {{
+            display: flex;
+            flex-direction: row;
+            gap: 14px;
+            align-items: stretch;
+            justify-content: flex-start;
+            overflow-x: auto;
+            padding: 4px 2px 14px 2px;
+        }}
+        .bracket-col {{
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-width: 220px;
+            max-width: 300px;
+            background: #111c35;
+            border-radius: 10px;
+            border: 1.5px solid #233554;
+            padding: 10px 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+        }}
+        .bracket-round-title {{
+            text-align: center;
+            background: #1d4ed8;
+            color: white;
+            padding: 7px 8px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+        }}
+        .bracket-col.loser-col .bracket-round-title {{
+            background: #b45309 !important;
+        }}
+        .bracket-col.finale-col .bracket-round-title {{
+            background: #d97706 !important;
+        }}
+        .r-name {{
+            font-size: 12.5px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+        }}
+        .r-fmt {{
+            font-size: 10px;
+            color: #cbdbee;
+            margin-top: 1px;
+        }}
+        .bracket-round-matches {{
+            display: flex;
+            flex-direction: column;
+            justify-content: space-around;
+            flex: 1;
+            gap: 10px;
+        }}
+        .bracket-card {{
+            background: #182234;
+            border: 1.5px solid #334155;
+            border-radius: 8px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }}
+        .bracket-card.is-done {{
+            border-color: #10b981;
+        }}
+        .card-header {{
+            background: #0f172a;
+            color: #94a3b8;
+            font-size: 9.5px;
+            font-weight: 700;
+            padding: 4px 8px;
+            border-bottom: 1px solid #233554;
+            display: flex;
+            justify-content: space-between;
+        }}
+        .player-row {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 8px;
+            font-size: 13px;
+            border-bottom: 1px solid #1e293b;
+            color: #f1f5f9;
+        }}
+        .player-row:last-child {{
+            border-bottom: none;
+        }}
+        .player-row.winner {{
+            background: rgba(16, 185, 129, 0.22);
+            font-weight: bold;
+            color: #34d399;
+        }}
+        .p-name {{
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            padding-right: 8px;
+            font-weight: 600;
+        }}
+        .p-score {{
+            background: #2563eb;
+            color: white;
+            font-size: 13px;
+            font-weight: 800;
+            padding: 2px 7px;
+            border-radius: 4px;
+            min-width: 22px;
+            text-align: center;
+        }}
+        .player-row.winner .p-score {{
+            background: #10b981;
+        }}
+        .champion-box {{
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(217, 119, 6, 0.35));
+            border: 2px solid #f59e0b;
+            border-radius: 10px;
+            padding: 18px 10px;
+            text-align: center;
+            box-shadow: 0 0 20px rgba(245, 158, 11, 0.4);
+        }}
+        .champ-trophy {{
+            font-size: 32px;
+            line-height: 1;
+            margin-bottom: 6px;
+        }}
+        .champ-title {{
+            font-size: 11px;
+            font-weight: bold;
+            color: #f59e0b;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 4px;
+        }}
+        .champ-name {{
+            font-size: 15px;
+            font-weight: 800;
+            color: #fbbf24;
+        }}
+    </style>
+</head>
+<body>
+    <div class="tv-top-bar">
+        <div class="tv-brand">
+            {f'<img src="{src_val}" style="height:44px; width:44px; object-fit:contain; border-radius:4px;">' if arm_existe else ''}
+            <div>
+                <h1>🎱 LIGUE DE BILLARD BOULE EN MAIN</h1>
+                <div class="tv-brand-sub">{titre_t} — {mode_str} &nbsp;|&nbsp; {badge_statut_tv}</div>
+            </div>
+        </div>
+        <div class="tv-active-tables">
+            {tables_ticker_html}
+        </div>
+        <div class="tv-info-right">
+            <div class="tv-clock" id="tv-clock">--:--:--</div>
+            <div class="tv-countdown">🔄 <span id="tv-countdown">20</span>s</div>
+            <button onclick="toggleFullScreen()" class="tv-btn-fs">⛶ Plein écran</button>
+        </div>
+    </div>
+    {podium_html}
+    {promus_html}
+    {arborescence_html}
+    <script>
+    function updateClock() {{
+        var now = new Date();
+        var h = String(now.getHours()).padStart(2, '0');
+        var m = String(now.getMinutes()).padStart(2, '0');
+        var s = String(now.getSeconds()).padStart(2, '0');
+        var el = document.getElementById('tv-clock');
+        if (el) el.innerText = h + ':' + m + ':' + s;
+    }}
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    var secLeft = 20;
+    var cdEl = document.getElementById('tv-countdown');
+    setInterval(function() {{
+        secLeft--;
+        if (cdEl) cdEl.innerText = secLeft;
+        if (secLeft <= 0) secLeft = 20;
+    }}, 1000);
+
+    function toggleFullScreen() {{
+        var doc = window.parent.document;
+        if (!doc.fullscreenElement) {{
+            if (doc.documentElement.requestFullscreen) doc.documentElement.requestFullscreen();
+            else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+        }} else {{
+            if (doc.exitFullscreen) doc.exitFullscreen();
+            else if (document.exitFullscreen) document.exitFullscreen();
+        }}
+    }}
+    </script>
+</body>
+</html>
+"""
+        return html_tv
     return html
+
+
+def afficher_mode_televiseur_tournoi():
+    """Affichage plein écran ultra-lisible optimisé pour la diffusion sur téléviseur avec rafraîchissement automatique."""
+    st.markdown("""
+        <style>
+            header[data-testid="stHeader"] { display: none !important; }
+            footer { display: none !important; }
+            #MainMenu { display: none !important; }
+            .stDeployButton { display: none !important; }
+            div[data-testid="stToolbar"] { display: none !important; }
+            div[data-testid="stSidebar"] { display: none !important; }
+            .block-container {
+                padding-top: 0.3rem !important;
+                padding-bottom: 0.3rem !important;
+                padding-left: 0.5rem !important;
+                padding-right: 0.5rem !important;
+                max-width: 100% !important;
+            }
+        </style>
+    """, unsafe_allow_html=True)
+
+    mode_param = st.query_params.get("mode", "simple")
+    if mode_param not in ["simple", "double"]:
+        mode_param = "simple"
+
+    # Bandeau supérieur de contrôle TV
+    col_logo, col_modes, col_statut, col_actions = st.columns([2.0, 1.8, 2.2, 1.8])
+    with col_logo:
+        st.markdown(
+            f"<div style='display:flex; align-items:center; gap:8px; font-weight:800; font-size:18px; color:#1e293b; padding-top:4px;'>"
+            f"<span>🎱</span> <span>Ligue Boule en main</span>"
+            f"<span style='background:#4f46e5; color:white; font-size:11px; padding:2px 8px; border-radius:12px; font-weight:700;'>📺 MODE TV</span>"
+            f"</div>",
+            unsafe_allow_html=True
+        )
+    with col_modes:
+        c_m1, c_m2 = st.columns(2)
+        with c_m1:
+            btn_type_s = "primary" if mode_param == "simple" else "secondary"
+            if st.button("🎱 Simple (1v1)", type=btn_type_s, use_container_width=True, key="tv_switch_simple"):
+                st.query_params["mode"] = "simple"
+                st.rerun()
+        with c_m2:
+            btn_type_d = "primary" if mode_param == "double" else "secondary"
+            if st.button("👥 Double (2v2)", type=btn_type_d, use_container_width=True, key="tv_switch_double"):
+                st.query_params["mode"] = "double"
+                st.rerun()
+    with col_statut:
+        td_chk = charger_tournois_data()
+        t_chk = td_chk.get(mode_param)
+        if t_chk:
+            stat_txt = "🟢 En cours" if t_chk.get("statut") == "en_cours" else "🏆 Terminé"
+            titre_court = t_chk.get("titre", "Tournoi officiel")
+            st.markdown(
+                f"<div style='font-size:13px; color:#334155; padding-top:8px;'>"
+                f"<strong>{titre_court}</strong> &nbsp;|&nbsp; {stat_txt} &nbsp;•&nbsp; "
+                f"<span style='color:#64748b;'>🔄 Auto 20s</span>"
+                f"</div>",
+                unsafe_allow_html=True
+            )
+        else:
+            st.markdown(
+                f"<div style='font-size:13px; color:#64748b; padding-top:8px;'>"
+                f"⏳ En attente de tournoi ({mode_param}) &nbsp;•&nbsp; 🔄 Auto 20s"
+                f"</div>",
+                unsafe_allow_html=True
+            )
+    with col_actions:
+        c_act1, c_act2 = st.columns([1, 1])
+        with c_act1:
+            if st.button("🔄 Actualiser", use_container_width=True, key="tv_btn_force_refresh"):
+                st.rerun()
+        with c_act2:
+            if st.button("✖️ Quitter", use_container_width=True, key="tv_btn_exit"):
+                st.query_params.clear()
+                st.rerun()
+
+    # Fragment pour auto-actualisation toutes les 20 secondes
+    @st.fragment(run_every=20)
+    def fragment_affichage_tv(m_cur):
+        td = charger_tournois_data()
+        tournoi_cur = td.get(m_cur)
+        if not tournoi_cur:
+            st.info(
+                f"📺 **Mode Téléviseur actif — En attente du tournoi en {m_cur}**\n\n"
+                f"Aucun tournoi n'est actuellement lancé dans cette catégorie. "
+                f"Dès que le marqueur officiel lancera la compétition, l'arborescence et les résultats en direct apparaîtront automatiquement ici (actualisation automatique toutes les 20 secondes)."
+            )
+            return
+
+        html_tv = generer_html_tournoi(tournoi_cur, mode=m_cur, mode_tv=True)
+        st.components.v1.html(html_tv, height=920, scrolling=True)
+
+    fragment_affichage_tv(mode_param)
+
 
 @st.dialog("🌳 Arborescence officielle du tournoi", width="large")
 def modal_arborescence_tournoi(tournoi_obj, mode_str="simple"):
@@ -7639,7 +8122,7 @@ def modal_arborescence_tournoi(tournoi_obj, mode_str="simple"):
     html_feuille = generer_html_tournoi(tournoi_obj, mode=mode_str)
     html_json_str = json.dumps(html_feuille)
 
-    col_btn_print, col_btn_ext, col_btn_mail, col_btn_refresh, col_btn_close = st.columns([1.1, 1.1, 1.4, 1.0, 0.7])
+    col_btn_print, col_btn_ext, col_btn_tv, col_btn_mail, col_btn_refresh, col_btn_close = st.columns([1.0, 1.0, 1.1, 1.3, 0.9, 0.7])
     with col_btn_print:
         st.components.v1.html(
             f"""
@@ -7676,6 +8159,21 @@ def modal_arborescence_tournoi(tournoi_obj, mode_str="simple"):
                 win.document.close();
                 win.focus();
                 win.document.title = "Feuille de Tournoi";
+            }}
+            </script>
+            """,
+            height=42
+        )
+    with col_btn_tv:
+        st.components.v1.html(
+            f"""
+            <button onclick="ouvrirTournoiTVModal()" style="width:100%; height:38px; background-color:#4f46e5; color:white; border:none; border-radius:6px; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif; font-size:13px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;" title="Diffusion TV plein écran avec actualisation automatique">
+                📺 Mode TV
+            </button>
+            <script>
+            function ouvrirTournoiTVModal() {{
+                var url = window.parent.location.origin + window.parent.location.pathname + '?view=tv&mode={mode_str}';
+                window.open(url, '_blank');
             }}
             </script>
             """,
@@ -8385,9 +8883,9 @@ def afficher_section_tournoi(mode="simple"):
         html_t_json = json.dumps(html_tournoi)
 
         if est_editeur:
-            col_top1, col_top2, col_top3, col_top_mail, col_top_new, col_top4, col_top5 = st.columns([1.5, 0.9, 0.9, 1.1, 1.0, 1.1, 1.1])
+            col_top1, col_top2, col_top_tv, col_top3, col_top_mail, col_top_new, col_top4, col_top5 = st.columns([1.3, 0.85, 0.85, 0.85, 0.95, 0.85, 0.95, 0.95])
         else:
-            col_top1, col_top2, col_top3, col_top_mail, col_top4 = st.columns([1.8, 1.0, 1.0, 1.2, 1.2])
+            col_top1, col_top2, col_top_tv, col_top3, col_top_mail, col_top4 = st.columns([1.5, 0.95, 0.95, 0.95, 1.1, 1.1])
 
         with col_top1:
             st.markdown(f"#### 🏆 **{titre_t}**")
@@ -8424,6 +8922,22 @@ def afficher_section_tournoi(mode="simple"):
         with col_top2:
             if st.button("🌳 Visualiser l'arborescence", key=f"btn_visu_modal_{mode}", type="primary", use_container_width=True, help="Affiche l'arborescence complète, tous les matchs et permet l'impression"):
                 modal_arborescence_tournoi(tournoi, mode_str=mode)
+
+        with col_top_tv:
+            st.components.v1.html(
+                f"""
+                <button onclick="ouvrirTournoiTVTop()" style="width:100%; height:38px; background-color:#4f46e5; color:white; border:none; border-radius:6px; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif; font-size:13px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;" title="Affichage plein écran 16:9 optimisé pour diffusion TV (avec rafraîchissement automatique)">
+                    📺 Mode TV
+                </button>
+                <script>
+                function ouvrirTournoiTVTop() {{
+                    var url = window.parent.location.origin + window.parent.location.pathname + '?view=tv&mode={mode}';
+                    window.open(url, '_blank');
+                }}
+                </script>
+                """,
+                height=42
+            )
 
         with col_top3:
             st.components.v1.html(
@@ -10333,6 +10847,14 @@ def cb_changer_equipe_vis():
             st.session_state["pts_j3_vis"] = calculer_score_absent(st.session_state["moy_j3_vis"])
             st.session_state["pres_j3_vis"] = True
             st.session_state["main_pres_tog_j3_vis"] = True
+
+# ==============================================================================
+# MODE TÉLÉVISEUR / CASTING TV (Plein écran & Rafraîchissement automatique)
+# Accessible directement via l'URL ?view=tv ou le bouton « 📺 Mode TV »
+# ==============================================================================
+if st.query_params.get("view") == "tv":
+    afficher_mode_televiseur_tournoi()
+    st.stop()
 
 # ==============================================================================
 # NAVIGATION PRINCIPALE PAR ONGLETS (FEUILLE DE MATCH vs STATISTIQUES vs TOURNOIS vs ADMINISTRATION)
