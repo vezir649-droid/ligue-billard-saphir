@@ -104,10 +104,10 @@
                             "id": "T1_M4",
                             "equipe_a": "Yves Pilon",
                             "equipe_b": "Richard Lavoie",
-                            "score_a": 0,
-                            "score_b": 0,
-                            "termine": false,
-                            "vainqueur": null,
+                            "score_a": 2,
+                            "score_b": 1,
+                            "termine": true,
+                            "vainqueur": "Yves Pilon",
                             "source_a": null,
                             "source_b": null,
                             "passe_droit": false,
@@ -115,7 +115,8 @@
                             "format_label": "2 de 3",
                             "heure_estimee": "09h30",
                             "table": "Table 2",
-                            "table_courte": "T2"
+                            "table_courte": "T2",
+                            "perdant": "Richard Lavoie"
                         },
                         {
                             "id": "T1_M5",
@@ -281,7 +282,7 @@
                         {
                             "id": "T2_M2",
                             "equipe_a": "Guy Vézina",
-                            "equipe_b": "À déterminer",
+                            "equipe_b": "Yves Pilon",
                             "score_a": 0,
                             "score_b": 0,
                             "termine": false,
@@ -483,9 +484,9 @@
             "vainqueur_final": null,
             "finaliste": null,
             "mode": "simple",
-            "date_derniere_sauvegarde": "01/11/2026 à 17:12:01",
+            "date_derniere_sauvegarde": "01/11/2026 à 17:14:10",
             "id_archive": "TOURNOI_SIMPLE_20261101_164312_700",
-            "date_archivage": "01/11/2026 à 17:12"
+            "date_archivage": "01/11/2026 à 17:14"
         },
         {
             "titre": "Tournoi Test Duos 6",
@@ -1279,10 +1280,10 @@
                         "id": "T1_M4",
                         "equipe_a": "Yves Pilon",
                         "equipe_b": "Richard Lavoie",
-                        "score_a": 0,
-                        "score_b": 0,
-                        "termine": false,
-                        "vainqueur": null,
+                        "score_a": 2,
+                        "score_b": 1,
+                        "termine": true,
+                        "vainqueur": "Yves Pilon",
                         "source_a": null,
                         "source_b": null,
                         "passe_droit": false,
@@ -1290,7 +1291,8 @@
                         "format_label": "2 de 3",
                         "heure_estimee": "09h30",
                         "table": "Table 2",
-                        "table_courte": "T2"
+                        "table_courte": "T2",
+                        "perdant": "Richard Lavoie"
                     },
                     {
                         "id": "T1_M5",
@@ -1456,7 +1458,7 @@
                     {
                         "id": "T2_M2",
                         "equipe_a": "Guy Vézina",
-                        "equipe_b": "À déterminer",
+                        "equipe_b": "Yves Pilon",
                         "score_a": 0,
                         "score_b": 0,
                         "termine": false,
@@ -1658,11 +1660,11 @@
         "vainqueur_final": null,
         "finaliste": null,
         "mode": "simple",
-        "date_derniere_sauvegarde": "01/11/2026 à 17:12:01",
+        "date_derniere_sauvegarde": "01/11/2026 à 17:14:10",
         "id_archive": "TOURNOI_SIMPLE_20261101_164312_700"
     },
     "derniere_sauvegarde": {
-        "date": "01/11/2026 à 17:12:01",
+        "date": "01/11/2026 à 17:14:10",
         "session_id": "marqueur_actif",
         "action": "sauvegarde"
     }
