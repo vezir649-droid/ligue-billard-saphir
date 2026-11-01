@@ -274,10 +274,10 @@
                             "id": "T2_M1",
                             "equipe_a": "Serge Nollet",
                             "equipe_b": "Michel Bouchard",
-                            "score_a": 0,
+                            "score_a": 2,
                             "score_b": 0,
-                            "termine": false,
-                            "vainqueur": null,
+                            "termine": true,
+                            "vainqueur": "Serge Nollet",
                             "source_a": "T1_M1",
                             "source_b": "T1_M2",
                             "passe_droit": false,
@@ -285,7 +285,8 @@
                             "format_label": "2 de 3",
                             "heure_estimee": "13h00",
                             "table": "Table 1",
-                            "table_courte": "T1"
+                            "table_courte": "T1",
+                            "perdant": "Michel Bouchard"
                         },
                         {
                             "id": "T2_M2",
@@ -348,7 +349,7 @@
                     "matchs": [
                         {
                             "id": "T3_M1",
-                            "equipe_a": "À déterminer",
+                            "equipe_a": "Serge Nollet",
                             "equipe_b": "Denis Viens",
                             "score_a": 0,
                             "score_b": 0,
@@ -492,9 +493,9 @@
             "vainqueur_final": null,
             "finaliste": null,
             "mode": "simple",
-            "date_derniere_sauvegarde": "01/11/2026 à 19:32:32",
+            "date_derniere_sauvegarde": "01/11/2026 à 19:45:05",
             "id_archive": "TOURNOI_SIMPLE_20261101_164312_700",
-            "date_archivage": "01/11/2026 à 19:32"
+            "date_archivage": "01/11/2026 à 19:45"
         },
         {
             "titre": "Tournoi Test Duos 6",
@@ -1458,10 +1459,10 @@
                         "id": "T2_M1",
                         "equipe_a": "Serge Nollet",
                         "equipe_b": "Michel Bouchard",
-                        "score_a": 0,
+                        "score_a": 2,
                         "score_b": 0,
-                        "termine": false,
-                        "vainqueur": null,
+                        "termine": true,
+                        "vainqueur": "Serge Nollet",
                         "source_a": "T1_M1",
                         "source_b": "T1_M2",
                         "passe_droit": false,
@@ -1469,7 +1470,8 @@
                         "format_label": "2 de 3",
                         "heure_estimee": "13h00",
                         "table": "Table 1",
-                        "table_courte": "T1"
+                        "table_courte": "T1",
+                        "perdant": "Michel Bouchard"
                     },
                     {
                         "id": "T2_M2",
@@ -1532,7 +1534,7 @@
                 "matchs": [
                     {
                         "id": "T3_M1",
-                        "equipe_a": "À déterminer",
+                        "equipe_a": "Serge Nollet",
                         "equipe_b": "Denis Viens",
                         "score_a": 0,
                         "score_b": 0,
@@ -1676,11 +1678,11 @@
         "vainqueur_final": null,
         "finaliste": null,
         "mode": "simple",
-        "date_derniere_sauvegarde": "01/11/2026 à 19:32:32",
+        "date_derniere_sauvegarde": "01/11/2026 à 19:45:05",
         "id_archive": "TOURNOI_SIMPLE_20261101_164312_700"
     },
     "derniere_sauvegarde": {
-        "date": "01/11/2026 à 19:32:32",
+        "date": "01/11/2026 à 19:45:05",
         "session_id": "marqueur_actif",
         "action": "sauvegarde"
     }
