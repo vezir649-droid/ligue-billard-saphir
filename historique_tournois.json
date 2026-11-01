@@ -291,10 +291,10 @@
                         "id": "T2_M2",
                         "equipe_a": "Guy Vézina",
                         "equipe_b": "Yves Pilon",
-                        "score_a": 0,
-                        "score_b": 0,
-                        "termine": false,
-                        "vainqueur": null,
+                        "score_a": 2,
+                        "score_b": 1,
+                        "termine": true,
+                        "vainqueur": "Guy Vézina",
                         "source_a": "T1_M3",
                         "source_b": "T1_M4",
                         "passe_droit": false,
@@ -302,7 +302,8 @@
                         "format_label": "2 de 3",
                         "heure_estimee": "13h00",
                         "table": "Table 2",
-                        "table_courte": "T2"
+                        "table_courte": "T2",
+                        "perdant": "Yves Pilon"
                     },
                     {
                         "id": "T2_M3",
@@ -365,7 +366,7 @@
                     },
                     {
                         "id": "T3_M2",
-                        "equipe_a": "À déterminer",
+                        "equipe_a": "Guy Vézina",
                         "equipe_b": "Sylvain Derasp",
                         "score_a": 0,
                         "score_b": 0,
@@ -492,7 +493,7 @@
         "vainqueur_final": null,
         "finaliste": null,
         "mode": "simple",
-        "date_derniere_sauvegarde": "01/11/2026 à 19:45:05",
+        "date_derniere_sauvegarde": "01/11/2026 à 19:45:59",
         "id_archive": "TOURNOI_SIMPLE_20261101_164312_700",
         "date_archivage": "01/11/2026 à 19:45"
     },
