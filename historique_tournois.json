@@ -408,9 +408,9 @@
                         "equipe_a": "André Lauzon",
                         "equipe_b": "Richard Vézina",
                         "score_a": 0,
-                        "score_b": 0,
-                        "termine": false,
-                        "vainqueur": null,
+                        "score_b": 2,
+                        "termine": true,
+                        "vainqueur": "Richard Vézina",
                         "source_a": "T2_M4",
                         "source_b": "T1_M12",
                         "passe_droit": false,
@@ -418,7 +418,8 @@
                         "format_label": "2 de 3",
                         "heure_estimee": "14h30",
                         "table": "Table 2",
-                        "table_courte": "T2"
+                        "table_courte": "T2",
+                        "perdant": "André Lauzon"
                     }
                 ]
             },
@@ -448,7 +449,7 @@
                     {
                         "id": "T4_M2",
                         "equipe_a": "Denis Chamberland",
-                        "equipe_b": "À déterminer",
+                        "equipe_b": "Richard Vézina",
                         "score_a": 0,
                         "score_b": 0,
                         "termine": false,
@@ -498,9 +499,9 @@
         "vainqueur_final": null,
         "finaliste": null,
         "mode": "simple",
-        "date_derniere_sauvegarde": "01/11/2026 à 20:07:58",
+        "date_derniere_sauvegarde": "01/11/2026 à 20:08:30",
         "id_archive": "TOURNOI_SIMPLE_20261101_164312_700",
-        "date_archivage": "01/11/2026 à 20:07"
+        "date_archivage": "01/11/2026 à 20:08"
     },
     {
         "titre": "Tournoi Test Duos 6",
