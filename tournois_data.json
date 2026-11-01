@@ -175,10 +175,10 @@
                             "id": "T1_M8",
                             "equipe_a": "André Lauzon",
                             "equipe_b": "Gabriel Labrecque",
-                            "score_a": 0,
+                            "score_a": 2,
                             "score_b": 0,
-                            "termine": false,
-                            "vainqueur": null,
+                            "termine": true,
+                            "vainqueur": "André Lauzon",
                             "source_a": null,
                             "source_b": null,
                             "passe_droit": false,
@@ -186,7 +186,8 @@
                             "format_label": "2 de 3",
                             "heure_estimee": "10h30",
                             "table": "Table 2",
-                            "table_courte": "T2"
+                            "table_courte": "T2",
+                            "perdant": "Gabriel Labrecque"
                         },
                         {
                             "id": "T1_M9",
@@ -318,7 +319,7 @@
                         {
                             "id": "T2_M4",
                             "equipe_a": "À déterminer",
-                            "equipe_b": "À déterminer",
+                            "equipe_b": "André Lauzon",
                             "score_a": 0,
                             "score_b": 0,
                             "termine": false,
@@ -486,9 +487,9 @@
             "vainqueur_final": null,
             "finaliste": null,
             "mode": "simple",
-            "date_derniere_sauvegarde": "01/11/2026 à 19:26:25",
+            "date_derniere_sauvegarde": "01/11/2026 à 19:29:24",
             "id_archive": "TOURNOI_SIMPLE_20261101_164312_700",
-            "date_archivage": "01/11/2026 à 19:26"
+            "date_archivage": "01/11/2026 à 19:29"
         },
         {
             "titre": "Tournoi Test Duos 6",
@@ -1353,10 +1354,10 @@
                         "id": "T1_M8",
                         "equipe_a": "André Lauzon",
                         "equipe_b": "Gabriel Labrecque",
-                        "score_a": 0,
+                        "score_a": 2,
                         "score_b": 0,
-                        "termine": false,
-                        "vainqueur": null,
+                        "termine": true,
+                        "vainqueur": "André Lauzon",
                         "source_a": null,
                         "source_b": null,
                         "passe_droit": false,
@@ -1364,7 +1365,8 @@
                         "format_label": "2 de 3",
                         "heure_estimee": "10h30",
                         "table": "Table 2",
-                        "table_courte": "T2"
+                        "table_courte": "T2",
+                        "perdant": "Gabriel Labrecque"
                     },
                     {
                         "id": "T1_M9",
@@ -1496,7 +1498,7 @@
                     {
                         "id": "T2_M4",
                         "equipe_a": "À déterminer",
-                        "equipe_b": "À déterminer",
+                        "equipe_b": "André Lauzon",
                         "score_a": 0,
                         "score_b": 0,
                         "termine": false,
@@ -1664,11 +1666,11 @@
         "vainqueur_final": null,
         "finaliste": null,
         "mode": "simple",
-        "date_derniere_sauvegarde": "01/11/2026 à 19:26:25",
+        "date_derniere_sauvegarde": "01/11/2026 à 19:29:24",
         "id_archive": "TOURNOI_SIMPLE_20261101_164312_700"
     },
     "derniere_sauvegarde": {
-        "date": "01/11/2026 à 19:26:25",
+        "date": "01/11/2026 à 19:29:24",
         "session_id": "marqueur_actif",
         "action": "sauvegarde"
     }
