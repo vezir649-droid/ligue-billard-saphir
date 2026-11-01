@@ -451,10 +451,10 @@
                         "id": "T4_M2",
                         "equipe_a": "Denis Chamberland",
                         "equipe_b": "Richard Vézina",
-                        "score_a": 0,
-                        "score_b": 0,
-                        "termine": false,
-                        "vainqueur": null,
+                        "score_a": 1,
+                        "score_b": 2,
+                        "termine": true,
+                        "vainqueur": "Richard Vézina",
                         "source_a": "T3_M3",
                         "source_b": "T3_M4",
                         "passe_droit": false,
@@ -462,7 +462,8 @@
                         "format_label": "2 de 3",
                         "heure_estimee": "15h00",
                         "table": "Table 2",
-                        "table_courte": "T2"
+                        "table_courte": "T2",
+                        "perdant": "Denis Chamberland"
                     }
                 ]
             },
@@ -475,7 +476,7 @@
                     {
                         "id": "T5_M1",
                         "equipe_a": "Sylvain Derasp",
-                        "equipe_b": "À déterminer",
+                        "equipe_b": "Richard Vézina",
                         "score_a": 0,
                         "score_b": 0,
                         "termine": false,
@@ -500,7 +501,7 @@
         "vainqueur_final": null,
         "finaliste": null,
         "mode": "simple",
-        "date_derniere_sauvegarde": "01/11/2026 à 20:09:04",
+        "date_derniere_sauvegarde": "01/11/2026 à 20:09:29",
         "id_archive": "TOURNOI_SIMPLE_20261101_164312_700",
         "date_archivage": "01/11/2026 à 20:09"
     },
