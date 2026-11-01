@@ -7721,118 +7721,135 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
             align-items: center;
             background: linear-gradient(135deg, #09101d 0%, #0f1c30 100%) !important;
             border: 1px solid #1e3a5f;
-            border-bottom: 2.5px solid #0284c7;
-            border-radius: 8px;
-            padding: 5px 12px;
-            margin-bottom: 8px;
-            box-shadow: 0 5px 18px rgba(0,0,0,0.75);
-            gap: 12px;
+            border-bottom: 2px solid #0284c7;
+            border-radius: 6px;
+            padding: 3px 8px;
+            margin-bottom: 5px;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.7);
+            gap: 8px;
+            white-space: nowrap !important;
+            flex-wrap: nowrap !important;
         }}
         .tv-tables-container {{
             display: flex;
             align-items: center;
-            gap: 12px;
-            flex-wrap: wrap;
+            gap: 8px;
+            flex-wrap: nowrap !important;
+            white-space: nowrap !important;
             flex: 1;
+            min-width: 0;
+            overflow: hidden;
         }}
         .tv-cedule-title {{
             background: #0284c7;
             color: #ffffff;
-            font-size: 13.5px;
+            font-size: 11.5px;
             font-weight: 900;
-            padding: 3px 12px;
-            border-radius: 5px;
-            letter-spacing: 0.8px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            letter-spacing: 0.6px;
             text-transform: uppercase;
-            box-shadow: 0 1px 4px rgba(2, 132, 199, 0.4);
-            white-space: nowrap;
+            box-shadow: 0 1px 3px rgba(2, 132, 199, 0.4);
+            white-space: nowrap !important;
+            flex-shrink: 0;
         }}
         .tv-table-card {{
             background: #152238;
             border: 1.5px solid #0284c7;
-            border-radius: 6px;
-            padding: 3px 10px;
-            display: flex;
+            border-radius: 5px;
+            padding: 2px 7px;
+            display: inline-flex;
             align-items: center;
-            gap: 8px;
-            white-space: nowrap;
+            gap: 6px;
+            white-space: nowrap !important;
+            flex-shrink: 0;
         }}
         .tv-table-tag {{
             background: #0284c7;
             color: #ffffff;
             font-weight: 900;
-            padding: 1px 7px;
-            border-radius: 4px;
-            font-size: 11.5px;
-            letter-spacing: 0.6px;
+            padding: 1px 5px;
+            border-radius: 3px;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+            flex-shrink: 0;
         }}
         .tv-table-hour {{
             color: #ffffff !important;
             font-weight: 800;
-            font-size: 12px;
+            font-size: 11.5px;
             background: rgba(255, 255, 255, 0.15);
-            padding: 1px 6px;
-            border-radius: 4px;
+            padding: 1px 5px;
+            border-radius: 3px;
             border: 1px solid rgba(255, 255, 255, 0.5);
             letter-spacing: 0.3px;
+            flex-shrink: 0;
         }}
         .tv-table-versus {{
             display: inline-flex;
             align-items: center;
-            gap: 5px;
+            gap: 4px;
             color: #ffffff;
             font-weight: 700;
-            font-size: 14px;
+            font-size: 12.5px;
+            white-space: nowrap !important;
         }}
         .tv-p-name {{
             color: #ffffff;
             font-weight: 800;
+            max-width: 140px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap !important;
+            display: inline-block;
+            vertical-align: middle;
         }}
         .tv-vs-badge {{
             color: #38bdf8;
             font-weight: 900;
-            font-size: 12px;
-            padding: 0 4px;
+            font-size: 11px;
+            padding: 0 2px;
+            flex-shrink: 0;
         }}
         .tv-table-score {{
             color: #ffffff;
             background: #0284c7;
-            font-size: 15px;
+            font-size: 13.5px;
             font-weight: 900;
-            padding: 1px 7px;
-            border-radius: 4px;
-            margin: 0 3px;
-            box-shadow: 0 1px 4px rgba(2, 132, 199, 0.4);
+            padding: 1px 5px;
+            border-radius: 3px;
+            margin: 0 2px;
+            box-shadow: 0 1px 3px rgba(2, 132, 199, 0.4);
+            flex-shrink: 0;
         }}
         .tv-info-right {{
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 6px;
+            flex-shrink: 0;
+            white-space: nowrap !important;
         }}
         .tv-clock {{
-            font-size: 15px;
+            font-size: 13.5px;
             font-weight: 800;
             color: #ffffff;
             background: #0f172a;
-            padding: 3px 10px;
-            border-radius: 5px;
+            padding: 2px 7px;
+            border-radius: 4px;
             border: 1px solid #334155;
-            letter-spacing: 1px;
-        }}
-        .tv-countdown {{
-            font-size: 11px;
-            color: #94a3b8;
-            font-weight: 600;
+            letter-spacing: 0.5px;
+            flex-shrink: 0;
         }}
         .tv-btn-fs {{
             background: #4f46e5;
             color: white;
             border: none;
-            padding: 4px 10px;
-            border-radius: 5px;
-            font-size: 11.5px;
+            padding: 2px 7px;
+            border-radius: 4px;
+            font-size: 11px;
             font-weight: 700;
             cursor: pointer;
+            flex-shrink: 0;
             transition: background 0.2s;
         }}
         .tv-btn-fs:hover {{
