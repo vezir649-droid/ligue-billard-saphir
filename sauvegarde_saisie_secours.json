@@ -1,5 +1,5 @@
 {
-    "date": "2026-11-01 17:39",
+    "date": "2026-11-01 17:59",
     "receveur": "Golf",
     "visiteur": "Hotel",
     "choix_rec": "Golf",
@@ -120,6 +120,6 @@
             "joueur_b_absent": false
         }
     },
-    "derniere_mise_a_jour": "17:39:57",
-    "ts_modif": 1793554797.5332036
+    "derniere_mise_a_jour": "17:59:36",
+    "ts_modif": 1793555976.1329598
 }
