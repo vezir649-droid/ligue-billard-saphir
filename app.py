@@ -7020,8 +7020,10 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
             if m_pd:
                 h_badge = '<span style="color: #2e7d32; font-weight: bold;">🎟️ Passe-droit</span>'
             elif m_h and m_h != "—":
-                color_badge = "#38bdf8" if mode_tv else "#0b3c5d"
-                h_badge = f'<span style="color: {color_badge}; font-weight: bold;">⏰ {m_h} [{m_t_court}]</span>'
+                if mode_tv:
+                    h_badge = f'<span class="tv-time-pill" style="background:#0284c7; color:#ffffff; font-weight:800; font-size:12.5px; padding:2px 8px; border-radius:5px; border:1px solid #38bdf8; letter-spacing:0.3px; white-space:nowrap; box-shadow:0 1px 4px rgba(2,132,199,0.35);">⏰ {m_h} [{m_t_court}]</span>'
+                else:
+                    h_badge = f'<span style="color: #0b3c5d; font-weight: bold;">⏰ {m_h} [{m_t_court}]</span>'
             else:
                 h_badge = f'<span>{m_fmt}</span>'
 
@@ -7156,8 +7158,10 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
                 if m_pd:
                     h_badge = '<span style="color: #2e7d32; font-weight: bold;">🎟️ Passe-droit</span>'
                 elif m_h:
-                    color_badge = "#38bdf8" if mode_tv else "#0b3c5d"
-                    h_badge = f'<span style="color: {color_badge}; font-weight: bold;">⏰ {m_h} [{m_t_court}]</span>'
+                    if mode_tv:
+                        h_badge = f'<span class="tv-time-pill" style="background:#0284c7; color:#ffffff; font-weight:800; font-size:12.5px; padding:2px 8px; border-radius:5px; border:1px solid #38bdf8; letter-spacing:0.3px; white-space:nowrap; box-shadow:0 1px 4px rgba(2,132,199,0.35);">⏰ {m_h} [{m_t_court}]</span>'
+                    else:
+                        h_badge = f'<span style="color: #0b3c5d; font-weight: bold;">⏰ {m_h} [{m_t_court}]</span>'
                 else:
                     h_badge = f'<span>{m_fmt}</span>'
 
@@ -7749,20 +7753,25 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
             font-size: 12px;
         }}
         .tv-pill-badge {{
-            background: #2563eb;
+            background: #0284c7;
             color: white;
             font-weight: 800;
-            padding: 1px 6px;
-            border-radius: 4px;
-            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 5px;
+            font-size: 13px;
+            border: 1px solid #38bdf8;
+            letter-spacing: 0.3px;
         }}
         .tv-pill-names {{
             color: #f1f5f9;
-            font-weight: 600;
+            font-weight: 700;
+            font-size: 14px;
         }}
         .tv-pill-score {{
             color: #fbbf24;
-            padding: 0 3px;
+            font-size: 15px;
+            font-weight: 900;
+            padding: 0 4px;
         }}
         .tv-info-right {{
             display: flex;
@@ -7891,20 +7900,21 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
         }}
         .card-header {{
             background: #0f172a;
-            color: #94a3b8;
-            font-size: 9.5px;
+            color: #cbd5e1;
+            font-size: 12px;
             font-weight: 700;
-            padding: 4px 8px;
-            border-bottom: 1px solid #233554;
+            padding: 5px 8px;
+            border-bottom: 1.5px solid #233554;
             display: flex;
             justify-content: space-between;
+            align-items: center;
         }}
         .player-row {{
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 6px 8px;
-            font-size: 13px;
+            padding: 7px 9px;
+            font-size: 14px;
             border-bottom: 1px solid #1e293b;
             color: #f1f5f9;
         }}
@@ -8207,7 +8217,15 @@ def modal_arborescence_tournoi(tournoi_obj, mode_str="simple"):
             </button>
             <script>
             function ouvrirTournoiTVModal() {{
-                var url = window.parent.location.origin + window.parent.location.pathname + '?view=tv&mode={mode_str}';
+                var origin = window.location.origin;
+                var pathname = window.location.pathname;
+                try {{
+                    if (window.parent && window.parent.location && window.parent.location.origin) {{
+                        origin = window.parent.location.origin;
+                        pathname = window.parent.location.pathname;
+                    }}
+                }} catch(e) {{}}
+                var url = origin + pathname + '?view=tv&mode={mode_str}';
                 window.open(url, '_blank');
             }}
             </script>
@@ -8966,7 +8984,15 @@ def afficher_section_tournoi(mode="simple"):
                 </button>
                 <script>
                 function ouvrirTournoiTVTop() {{
-                    var url = window.parent.location.origin + window.parent.location.pathname + '?view=tv&mode={mode}';
+                    var origin = window.location.origin;
+                    var pathname = window.location.pathname;
+                    try {{
+                        if (window.parent && window.parent.location && window.parent.location.origin) {{
+                            origin = window.parent.location.origin;
+                            pathname = window.parent.location.pathname;
+                        }}
+                    }} catch(e) {{}}
+                    var url = origin + pathname + '?view=tv&mode={mode}';
                     window.open(url, '_blank');
                 }}
                 </script>
@@ -9679,7 +9705,15 @@ def afficher_section_historique_tournois():
                     </button>
                     <script>
                     function ouvrirTournoiArchiveTV() {{
-                        var url = window.parent.location.origin + window.parent.location.pathname + '?view=tv&archive={choix_idx}';
+                        var origin = window.location.origin;
+                        var pathname = window.location.pathname;
+                        try {{
+                            if (window.parent && window.parent.location && window.parent.location.origin) {{
+                                origin = window.parent.location.origin;
+                                pathname = window.parent.location.pathname;
+                            }}
+                        }} catch(e) {{}}
+                        var url = origin + pathname + '?view=tv&archive={choix_idx}';
                         window.open(url, '_blank');
                     }}
                     </script>
@@ -10616,6 +10650,14 @@ def modal_documentation_readme():
     with st.container(border=True):
         st.markdown(contenu_md)
 
+# ==============================================================================
+# MODE TÉLÉVISEUR / CASTING TV (Plein écran & Rafraîchissement automatique)
+# Accessible directement sans mot de passe via l'URL ?view=tv ou le bouton « 📺 Mode TV »
+# ==============================================================================
+if st.query_params.get("view") == "tv":
+    afficher_mode_televiseur_tournoi()
+    st.stop()
+
 est_connecte = st.session_state.get("authentifie", False)
 est_spectateur = st.session_state.get("est_spectateur", False)
 
@@ -10899,14 +10941,6 @@ def cb_changer_equipe_vis():
             st.session_state["pts_j3_vis"] = calculer_score_absent(st.session_state["moy_j3_vis"])
             st.session_state["pres_j3_vis"] = True
             st.session_state["main_pres_tog_j3_vis"] = True
-
-# ==============================================================================
-# MODE TÉLÉVISEUR / CASTING TV (Plein écran & Rafraîchissement automatique)
-# Accessible directement via l'URL ?view=tv ou le bouton « 📺 Mode TV »
-# ==============================================================================
-if st.query_params.get("view") == "tv":
-    afficher_mode_televiseur_tournoi()
-    st.stop()
 
 # ==============================================================================
 # NAVIGATION PRINCIPALE PAR ONGLETS (FEUILLE DE MATCH vs STATISTIQUES vs TOURNOIS vs ADMINISTRATION)
