@@ -9248,6 +9248,17 @@ def afficher_section_tournoi(mode="simple"):
 
         # DÉROULEMENT SELON LE FORMAT
         if format_type in ["elimination", "double_elimination"]:
+            st.markdown("""
+                <style>
+                    div[data-testid="stSelectbox"] div[data-baseweb="select"] {
+                        font-weight: 800 !important;
+                    }
+                    div[data-testid="stSelectbox"] div[data-baseweb="select"] * {
+                        font-size: 15px !important;
+                        font-weight: 800 !important;
+                    }
+                </style>
+            """, unsafe_allow_html=True)
             st.markdown("##### 🎯 Saisie des scores & Déroulement des rencontres")
             if tournoi.get("promus_second_tour"):
                 promus_str_view = ", ".join(tournoi["promus_second_tour"])
@@ -9279,24 +9290,24 @@ def afficher_section_tournoi(mode="simple"):
                 badge_horaire = f"<span style='background:#e8f0fe; color:#0b3c5d; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600;'>⏰ {m_h} • {m_tbl}</span>" if (m_h and m_h != "—") else ""
 
                 with st.container(border=True):
-                    col_m1, col_m2 = st.columns([3, 2])
+                    col_m1, col_m2 = st.columns([1.15, 1.05])
                     with col_m1:
                         if termine:
-                            st.markdown(f"{badge_b} **{m_id}** : **{ea}** ({sa}) vs ({sb}) **{eb}** &nbsp; {badge_horaire}", unsafe_allow_html=True)
+                            st.markdown(f"{badge_b} **{m_id}** : **{ea}** ({sa}) vs ({sb}) **{eb}**", unsafe_allow_html=True)
                             if m.get("passe_droit"):
                                 st.success(f"🎟️ **Passe-droit accordé :** {vainq} est promu au tour suivant !")
                             else:
                                 st.success(f"🏆 **Qualifié :** {vainq} *(score final {sa}-{sb})*")
                         else:
                             if ea == "À déterminer" or eb == "À déterminer":
-                                st.markdown(f"{badge_b} **{m_id}** : `{ea}` vs `{eb}` &nbsp; {badge_horaire}", unsafe_allow_html=True)
+                                st.markdown(f"{badge_b} **{m_id}** : `{ea}` vs `{eb}`", unsafe_allow_html=True)
                                 st.caption("⏳ En attente des vainqueurs / perdants des tours précédents...")
                             else:
-                                st.markdown(f"{badge_b} **{m_id}** : 🎯 **{ea}** vs **{eb}** &nbsp; {badge_horaire}", unsafe_allow_html=True)
+                                st.markdown(f"{badge_b} **{m_id}** : 🎯 **{ea}** vs **{eb}**", unsafe_allow_html=True)
                                 st.caption(f"Format officiel : **{m_fmt}** (premier à {m_race} victoires)")
 
                         if est_editeur:
-                            btn_lbl_h = f"🕒 Modifier l'heure ({m_h})" if (m_h and m_h != "—") else "🕒 Définir l'heure"
+                            btn_lbl_h = f"🕒 Horaire ({m_h} • {m_tbl})" if (m_h and m_h != "—") else "🕒 Définir l'horaire"
                             with st.popover(btn_lbl_h, use_container_width=False, help="Changer l'heure programmée pour ce match et mettre à jour le tableau"):
                                 st.markdown(f"###### ⏰ Horaire du match **{m_id}**")
                                 st.caption(f"Rencontre : **{ea}** vs **{eb}**")
@@ -9331,7 +9342,7 @@ def afficher_section_tournoi(mode="simple"):
                     with col_m2:
                         if not termine:
                             if est_editeur:
-                                col_s1, col_s2, col_s3, col_s4 = st.columns([1, 1, 1.2, 1.4])
+                                col_s1, col_s2, col_s_btns = st.columns([1.1, 1.1, 1.3])
                                 options_sc_m = list(range(int(m_race) + 1))
                                 key_sc_a = f"sc_a_{mode}_{m_id}"
                                 key_sc_b = f"sc_b_{mode}_{m_id}"
@@ -9342,13 +9353,29 @@ def afficher_section_tournoi(mode="simple"):
                                 idx_sc_a = options_sc_m.index(st.session_state[key_sc_a])
                                 idx_sc_b = options_sc_m.index(st.session_state[key_sc_b])
                                 with col_s1:
-                                    sc_a_in = int(st.selectbox(f"{formater_nom_abrege_joueur(ea)}", options=options_sc_m, index=idx_sc_a, key=key_sc_a, help=f"Score de {ea} (0 à {m_race})"))
+                                    sc_a_in = int(st.selectbox(
+                                        f"🎱 {formater_nom_abrege_joueur(ea)}",
+                                        options=options_sc_m,
+                                        index=idx_sc_a,
+                                        key=key_sc_a,
+                                        format_func=lambda x: f"Score : {x}",
+                                        help=f"Score de {ea} (0 à {m_race})"
+                                    ))
+                                    st.markdown(f"<div style='text-align:center; font-size:15px; font-weight:900; background:#0284c7; color:#ffffff; border-radius:6px; padding:2px 0; margin-top:2px;'>Score : {sc_a_in}</div>", unsafe_allow_html=True)
                                 with col_s2:
-                                    sc_b_in = int(st.selectbox(f"{formater_nom_abrege_joueur(eb)}", options=options_sc_m, index=idx_sc_b, key=key_sc_b, help=f"Score de {eb} (0 à {m_race})"))
-                                with col_s3:
+                                    sc_b_in = int(st.selectbox(
+                                        f"🎱 {formater_nom_abrege_joueur(eb)}",
+                                        options=options_sc_m,
+                                        index=idx_sc_b,
+                                        key=key_sc_b,
+                                        format_func=lambda x: f"Score : {x}",
+                                        help=f"Score de {eb} (0 à {m_race})"
+                                    ))
+                                    st.markdown(f"<div style='text-align:center; font-size:15px; font-weight:900; background:#0284c7; color:#ffffff; border-radius:6px; padding:2px 0; margin-top:2px;'>Score : {sc_b_in}</div>", unsafe_allow_html=True)
+                                with col_s_btns:
                                     st.write("")
                                     peut_valider = (ea != "À déterminer" and eb != "À déterminer")
-                                    if st.button("✅ Valider", key=f"btn_v_{mode}_{m_id}", use_container_width=True, disabled=not peut_valider):
+                                    if st.button("✅ Valider", key=f"btn_v_{mode}_{m_id}", type="primary", use_container_width=True, disabled=not peut_valider):
                                         if sc_a_in == sc_b_in:
                                             st.error("Match nul impossible.")
                                         elif sc_a_in < m_race and sc_b_in < m_race:
@@ -9357,18 +9384,17 @@ def afficher_section_tournoi(mode="simple"):
                                             actualiser_score_elimination(tournoi, tour_num, m_id, sc_a_in, sc_b_in)
                                             sauvegarder_tournois_data(tournois_data)
                                             st.rerun()
-                                with col_s4:
-                                    st.write("")
+
                                     candidats_pd = [p for p in [ea, eb] if p and p not in ["À déterminer", "Exempt (Passe-droit)"]]
                                     # Dans le tableau des perdants (Loser Bracket) ou la Grande Finale d'un tournoi à double élimination,
                                     # chaque joueur ou duo doit obligatoirement jouer son match (aucun passe-droit autorisé).
                                     autoriser_pd_match = not (format_type == "double_elimination" and b_type in ("loser", "finale"))
                                     if candidats_pd and autoriser_pd_match:
-                                        with st.popover("🎟️ Passe-droit", use_container_width=True, help="Promouvoir directement un participant au tour suivant"):
-                                            st.markdown(f"##### 🎟️ Accorder un passe-droit")
+                                        with st.popover("🎟️ Promotion", use_container_width=True, help="Promouvoir directement un participant au tour suivant (Passe-droit)"):
+                                            st.markdown(f"##### 🎟️ Accorder une promotion")
                                             st.caption(f"Promouvoir au tour suivant pour la rencontre **{m_id}** :")
                                             choix_promo = st.radio(
-                                                "Bénéficiaire du passe-droit :",
+                                                "Bénéficiaire de la promotion :",
                                                 options=candidats_pd,
                                                 format_func=lambda x: f"🚀 {x}",
                                                 key=f"rad_pd_{mode}_{m_id}"
@@ -9479,22 +9505,22 @@ def afficher_section_tournoi(mode="simple"):
                 badge_horaire_rr = f"<span style='background:#e8f0fe; color:#0b3c5d; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600;'>⏰ {m_h} • {m_tbl}</span>" if m_h else ""
 
                 with st.container(border=True):
-                    col_rm1, col_rm2 = st.columns([3, 2])
+                    col_rm1, col_rm2 = st.columns([1.15, 1.05])
                     rr_race = tournoi.get("race_to", 2)
                     rr_fmt = tournoi.get("format_label", "2 de 3")
                     with col_rm1:
                         if termine:
-                            st.markdown(f"**{m_id}** : **{ea}** ({sa}) vs ({sb}) **{eb}** &nbsp; {badge_horaire_rr}", unsafe_allow_html=True)
+                            st.markdown(f"**{m_id}** : **{ea}** ({sa}) vs ({sb}) **{eb}**", unsafe_allow_html=True)
                             if m.get("passe_droit"):
                                 st.success(f"🎟️ **Passe-droit accordé :** {m['vainqueur']} remporte la rencontre !")
                             else:
                                 st.success(f"🏆 Vainqueur : {m['vainqueur']} *(score final {sa}-{sb})*")
                         else:
-                            st.markdown(f"**{m_id}** : 🎯 **{ea}** vs **{eb}** &nbsp; {badge_horaire_rr}", unsafe_allow_html=True)
+                            st.markdown(f"**{m_id}** : 🎯 **{ea}** vs **{eb}**", unsafe_allow_html=True)
                             st.caption(f"Format officiel : **{rr_fmt}** (premier à {rr_race} victoires)")
 
                         if est_editeur:
-                            btn_lbl_hrr = f"🕒 Modifier l'heure ({m_h})" if (m_h and m_h != "—") else "🕒 Définir l'heure"
+                            btn_lbl_hrr = f"🕒 Horaire ({m_h} • {m_tbl})" if (m_h and m_h != "—") else "🕒 Définir horaire"
                             with st.popover(btn_lbl_hrr, use_container_width=False, help="Changer l'heure programmée pour ce match et mettre à jour le calendrier"):
                                 st.markdown(f"###### ⏰ Horaire du match **{m_id}**")
                                 st.caption(f"Rencontre : **{ea}** vs **{eb}**")
@@ -9529,7 +9555,7 @@ def afficher_section_tournoi(mode="simple"):
                     with col_rm2:
                         if not termine:
                             if est_editeur:
-                                col_s1, col_s2, col_s3, col_s4 = st.columns([1, 1, 1.2, 1.4])
+                                col_s1, col_s2, col_s_btns = st.columns([1.1, 1.1, 1.3])
                                 options_rr_m = list(range(int(rr_race) + 1))
                                 key_rr_a = f"rr_a_{mode}_{m_id}"
                                 key_rr_b = f"rr_b_{mode}_{m_id}"
@@ -9540,12 +9566,28 @@ def afficher_section_tournoi(mode="simple"):
                                 idx_rr_a = options_rr_m.index(st.session_state[key_rr_a])
                                 idx_rr_b = options_rr_m.index(st.session_state[key_rr_b])
                                 with col_s1:
-                                    sc_a_in = int(st.selectbox(f"{formater_nom_abrege_joueur(ea)}", options=options_rr_m, index=idx_rr_a, key=key_rr_a, help=f"Score de {ea} (0 à {rr_race})"))
+                                    sc_a_in = int(st.selectbox(
+                                        f"🎱 {formater_nom_abrege_joueur(ea)}",
+                                        options=options_rr_m,
+                                        index=idx_rr_a,
+                                        key=key_rr_a,
+                                        format_func=lambda x: f"Score : {x}",
+                                        help=f"Score de {ea} (0 à {rr_race})"
+                                    ))
+                                    st.markdown(f"<div style='text-align:center; font-size:15px; font-weight:900; background:#0284c7; color:#ffffff; border-radius:6px; padding:2px 0; margin-top:2px;'>Score : {sc_a_in}</div>", unsafe_allow_html=True)
                                 with col_s2:
-                                    sc_b_in = int(st.selectbox(f"{formater_nom_abrege_joueur(eb)}", options=options_rr_m, index=idx_rr_b, key=key_rr_b, help=f"Score de {eb} (0 à {rr_race})"))
-                                with col_s3:
+                                    sc_b_in = int(st.selectbox(
+                                        f"🎱 {formater_nom_abrege_joueur(eb)}",
+                                        options=options_rr_m,
+                                        index=idx_rr_b,
+                                        key=key_rr_b,
+                                        format_func=lambda x: f"Score : {x}",
+                                        help=f"Score de {eb} (0 à {rr_race})"
+                                    ))
+                                    st.markdown(f"<div style='text-align:center; font-size:15px; font-weight:900; background:#0284c7; color:#ffffff; border-radius:6px; padding:2px 0; margin-top:2px;'>Score : {sc_b_in}</div>", unsafe_allow_html=True)
+                                with col_s_btns:
                                     st.write("")
-                                    if st.button("✅ Valider", key=f"btn_rr_{mode}_{m_id}", use_container_width=True):
+                                    if st.button("✅ Valider", key=f"btn_rr_{mode}_{m_id}", type="primary", use_container_width=True):
                                         if sc_a_in == sc_b_in:
                                             st.error("Match nul impossible.")
                                         elif sc_a_in < rr_race and sc_b_in < rr_race:
@@ -9557,18 +9599,17 @@ def afficher_section_tournoi(mode="simple"):
                                             m["termine"] = True
                                             sauvegarder_tournois_data(tournois_data)
                                             st.rerun()
-                                with col_s4:
-                                    st.write("")
-                                    with st.popover("🎟️ Passe-droit", use_container_width=True, help="Accorder une victoire par passe-droit"):
-                                        st.markdown("##### 🎟️ Victoire par passe-droit")
+
+                                    with st.popover("🎟️ Promotion", use_container_width=True, help="Accorder une victoire par promotion / passe-droit"):
+                                        st.markdown("##### 🎟️ Victoire par promotion")
                                         st.caption(f"Rencontre **{m_id}** :")
                                         choix_promo_rr = st.radio(
-                                            "Bénéficiaire du passe-droit :",
+                                            "Bénéficiaire de la promotion :",
                                             options=[ea, eb],
                                             format_func=lambda x: f"🚀 {x}",
                                             key=f"rad_pd_rr_{mode}_{m_id}"
                                         )
-                                        if st.button("🚀 Accorder la victoire", type="primary", use_container_width=True, key=f"btn_apply_pd_rr_{mode}_{m_id}"):
+                                        if st.button("🚀 Promouvoir / Victoire", type="primary", use_container_width=True, key=f"btn_apply_pd_rr_{mode}_{m_id}"):
                                             attribuer_passe_droit_round_robin(tournoi, m_id, choix_promo_rr)
                                             sauvegarder_tournois_data(tournois_data)
                                             st.success(f"🎟️ Passe-droit accordé à {choix_promo_rr} !")
