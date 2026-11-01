@@ -464,7 +464,7 @@ def obtenir_diagnostic_secrets_streamlit():
         "erreur": None,
         "elements": {
             "mot_de_passe_marqueur": {"configure": False, "est_defaut": True, "source": "défaut (saphir2026)"},
-            "mot_de_passe_admin": {"configure": False, "est_defaut": True, "source": "défaut (admin2026)"},
+            "mot_de_passe_admin": {"configure": False, "est_defaut": True, "source": "défaut"},
             "saphir_api_key": {"configure": False, "est_defaut": True, "source": "défaut"},
             "github_token": {"configure": False, "source": "non configuré"},
             "email_smtp": {"configure": False, "source": "non configuré"}
@@ -512,7 +512,7 @@ def obtenir_diagnostic_secrets_streamlit():
         diag["elements"]["mot_de_passe_admin"] = {
             "configure": bool(cfg_adm.get("mot_de_passe_admin")),
             "est_defaut": cfg_adm.get("mot_de_passe_admin") in (None, "", "admin2026"),
-            "source": sources_adm.get("mot_de_passe_admin", "défaut (admin2026)")
+            "source": sources_adm.get("mot_de_passe_admin", "défaut")
         }
         diag["elements"]["saphir_api_key"] = {
             "configure": bool(cfg_adm.get("saphir_api_key")),
@@ -559,7 +559,7 @@ def afficher_etat_secrets_admin():
         col_s1, col_s2, col_s3, col_s4 = st.columns(4)
         with col_s1:
             adm_p = el.get("mot_de_passe_admin", {})
-            st.markdown(f"**🛡️ Mdp Admin**<br>{'🟢 Personnalisé' if not adm_p.get('est_defaut') else '🟡 Défaut (admin2026)'}<br><small style='color:gray;'>Source : {adm_p.get('source', '-')}</small>", unsafe_allow_html=True)
+            st.markdown(f"**🛡️ Mdp Admin**<br>{'🟢 Personnalisé' if not adm_p.get('est_defaut') else '🟡 Défaut'}<br><small style='color:gray;'>Source : {adm_p.get('source', '-')}</small>", unsafe_allow_html=True)
         with col_s2:
             saph_k = el.get("saphir_api_key", {})
             st.markdown(f"**🌐 Clé API Saphir**<br>{'🟢 Configurée' if not saph_k.get('est_defaut') else '🟡 Défaut'}<br><small style='color:gray;'>Source : {saph_k.get('source', '-')}</small>", unsafe_allow_html=True)
@@ -10108,11 +10108,9 @@ if not est_connecte and not est_spectateur:
                 diag_l = obtenir_diagnostic_secrets_streamlit()
                 m_mq = diag_l.get("elements", {}).get("mot_de_passe_marqueur", {})
                 if not m_mq.get("est_defaut", True):
-                    st.caption(f"💡 *Mot de passe Marqueur personnalisé chargé depuis `{m_mq.get('source', '')}`*")
-                else:
-                    st.caption("💡 *Mot de passe par défaut : `saphir2026`*")
+                    st.caption(f"💡 *Mot de passe Marqueur configuré depuis `{m_mq.get('source', '')}`*")
             except Exception:
-                st.caption("💡 *Mot de passe par défaut : `saphir2026`*")
+                pass
 
         st.markdown("<div style='text-align:center; font-weight:bold; margin: 16px 0;'>OU</div>", unsafe_allow_html=True)
 
@@ -10135,11 +10133,9 @@ if not est_connecte and not est_spectateur:
                 diag_l_adm = obtenir_diagnostic_secrets_streamlit()
                 m_ad = diag_l_adm.get("elements", {}).get("mot_de_passe_admin", {})
                 if not m_ad.get("est_defaut", True):
-                    st.caption(f"💡 *Mot de passe Administrateur personnalisé chargé depuis `{m_ad.get('source', '')}`*")
-                else:
-                    st.caption("💡 *Mot de passe par défaut : `admin2026`*")
+                    st.caption(f"💡 *Mot de passe Administrateur configuré depuis `{m_ad.get('source', '')}`*")
             except Exception:
-                st.caption("💡 *Mot de passe par défaut : `admin2026`*")
+                pass
 
         st.markdown("<div style='text-align:center; font-weight:bold; margin: 16px 0;'>OU</div>", unsafe_allow_html=True)
 
