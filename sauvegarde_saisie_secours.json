@@ -4,6 +4,8 @@
     "visiteur": "Hotel",
     "choix_rec": "Golf",
     "choix_vis": "Hotel",
+    "input_custom_rec": "",
+    "input_custom_vis": "",
     "sel_j1_rec": "André Lauzon",
     "sel_j2_rec": "Suzanne Blaquière",
     "sel_j1_vis": "Richard Lavoie",
@@ -50,76 +52,78 @@
         "1": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "",
-            "joueur_b": "",
+            "joueur_a": "André Lauzon",
+            "joueur_b": "Richard Lavoie",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "2": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "",
-            "joueur_b": "",
+            "joueur_a": "Suzanne Blaquière",
+            "joueur_b": "Richard Théberge",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "3": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "",
-            "joueur_b": "",
+            "joueur_a": "Yves Pilon",
+            "joueur_b": "Jean-Yves Brochu",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "4": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "",
-            "joueur_b": "",
+            "joueur_a": "André Lauzon",
+            "joueur_b": "Richard Théberge",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "5": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "",
-            "joueur_b": "",
+            "joueur_a": "Suzanne Blaquière",
+            "joueur_b": "Jean-Yves Brochu",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "6": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "",
-            "joueur_b": "",
+            "joueur_a": "Yves Pilon",
+            "joueur_b": "Richard Lavoie",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "7": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "",
-            "joueur_b": "",
+            "joueur_a": "André Lauzon",
+            "joueur_b": "Jean-Yves Brochu",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "8": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "",
-            "joueur_b": "",
+            "joueur_a": "Suzanne Blaquière",
+            "joueur_b": "Richard Lavoie",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "9": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "",
-            "joueur_b": "",
+            "joueur_a": "Yves Pilon",
+            "joueur_b": "Richard Théberge",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         }
     },
-    "derniere_mise_a_jour": "19:23:26",
-    "ts_modif": 1793561006.9293401
+    "total_receveur": 0,
+    "total_visiteur": 0,
+    "derniere_mise_a_jour": "19:23:35",
+    "ts_modif": 1793561015.715263
 }
