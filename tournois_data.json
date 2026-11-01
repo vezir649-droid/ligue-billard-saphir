@@ -354,10 +354,10 @@
                             "id": "T3_M1",
                             "equipe_a": "Serge Nollet",
                             "equipe_b": "Denis Viens",
-                            "score_a": 0,
+                            "score_a": 2,
                             "score_b": 0,
-                            "termine": false,
-                            "vainqueur": null,
+                            "termine": true,
+                            "vainqueur": "Serge Nollet",
                             "source_a": "T2_M1",
                             "source_b": "T1_M9",
                             "passe_droit": false,
@@ -365,7 +365,8 @@
                             "format_label": "2 de 3",
                             "heure_estimee": "14h00",
                             "table": "Table 1",
-                            "table_courte": "T1"
+                            "table_courte": "T1",
+                            "perdant": "Denis Viens"
                         },
                         {
                             "id": "T3_M2",
@@ -428,7 +429,7 @@
                     "matchs": [
                         {
                             "id": "T4_M1",
-                            "equipe_a": "À déterminer",
+                            "equipe_a": "Serge Nollet",
                             "equipe_b": "À déterminer",
                             "score_a": 0,
                             "score_b": 0,
@@ -496,9 +497,9 @@
             "vainqueur_final": null,
             "finaliste": null,
             "mode": "simple",
-            "date_derniere_sauvegarde": "01/11/2026 à 19:47:07",
+            "date_derniere_sauvegarde": "01/11/2026 à 20:06:15",
             "id_archive": "TOURNOI_SIMPLE_20261101_164312_700",
-            "date_archivage": "01/11/2026 à 19:47"
+            "date_archivage": "01/11/2026 à 20:06"
         },
         {
             "titre": "Tournoi Test Duos 6",
@@ -1542,10 +1543,10 @@
                         "id": "T3_M1",
                         "equipe_a": "Serge Nollet",
                         "equipe_b": "Denis Viens",
-                        "score_a": 0,
+                        "score_a": 2,
                         "score_b": 0,
-                        "termine": false,
-                        "vainqueur": null,
+                        "termine": true,
+                        "vainqueur": "Serge Nollet",
                         "source_a": "T2_M1",
                         "source_b": "T1_M9",
                         "passe_droit": false,
@@ -1553,7 +1554,8 @@
                         "format_label": "2 de 3",
                         "heure_estimee": "14h00",
                         "table": "Table 1",
-                        "table_courte": "T1"
+                        "table_courte": "T1",
+                        "perdant": "Denis Viens"
                     },
                     {
                         "id": "T3_M2",
@@ -1616,7 +1618,7 @@
                 "matchs": [
                     {
                         "id": "T4_M1",
-                        "equipe_a": "À déterminer",
+                        "equipe_a": "Serge Nollet",
                         "equipe_b": "À déterminer",
                         "score_a": 0,
                         "score_b": 0,
@@ -1684,11 +1686,11 @@
         "vainqueur_final": null,
         "finaliste": null,
         "mode": "simple",
-        "date_derniere_sauvegarde": "01/11/2026 à 19:47:07",
+        "date_derniere_sauvegarde": "01/11/2026 à 20:06:15",
         "id_archive": "TOURNOI_SIMPLE_20261101_164312_700"
     },
     "derniere_sauvegarde": {
-        "date": "01/11/2026 à 19:47:07",
+        "date": "01/11/2026 à 20:06:15",
         "session_id": "marqueur_actif",
         "action": "sauvegarde"
     }
