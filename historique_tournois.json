@@ -477,10 +477,10 @@
                         "id": "T5_M1",
                         "equipe_a": "Sylvain Derasp",
                         "equipe_b": "Richard Vézina",
-                        "score_a": 0,
-                        "score_b": 0,
-                        "termine": false,
-                        "vainqueur": null,
+                        "score_a": 3,
+                        "score_b": 2,
+                        "termine": true,
+                        "vainqueur": "Sylvain Derasp",
                         "source_a": "T4_M1",
                         "source_b": "T4_M2",
                         "passe_droit": false,
@@ -488,7 +488,8 @@
                         "format_label": "3 de 5",
                         "heure_estimee": "15h30",
                         "table": "Table 1",
-                        "table_courte": "T1"
+                        "table_courte": "T1",
+                        "perdant": "Richard Vézina"
                     }
                 ]
             }
@@ -497,13 +498,13 @@
         "duree_match_min": 30,
         "nb_tables": 2,
         "heure_fin_estimee": "16h00",
-        "statut": "en_cours",
-        "vainqueur_final": null,
-        "finaliste": null,
+        "statut": "termine",
+        "vainqueur_final": "Sylvain Derasp",
+        "finaliste": "Richard Vézina",
         "mode": "simple",
         "date_derniere_sauvegarde": "01/11/2026 à 20:09:29",
         "id_archive": "TOURNOI_SIMPLE_20261101_164312_700",
-        "date_archivage": "01/11/2026 à 20:09"
+        "date_archivage": "01/11/2026 à 20:10"
     },
     {
         "titre": "Tournoi Test Duos 6",
