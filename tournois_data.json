@@ -50,10 +50,10 @@
                             "id": "T1_M1",
                             "equipe_a": "Michel Caron",
                             "equipe_b": "Serge Nollet",
-                            "score_a": 0,
-                            "score_b": 0,
-                            "termine": false,
-                            "vainqueur": null,
+                            "score_a": 1,
+                            "score_b": 2,
+                            "termine": true,
+                            "vainqueur": "Serge Nollet",
                             "source_a": null,
                             "source_b": null,
                             "passe_droit": false,
@@ -61,7 +61,8 @@
                             "format_label": "2 de 3",
                             "heure_estimee": "09h00",
                             "table": "Table 1",
-                            "table_courte": "T1"
+                            "table_courte": "T1",
+                            "perdant": "Michel Caron"
                         },
                         {
                             "id": "T1_M2",
@@ -260,7 +261,7 @@
                     "matchs": [
                         {
                             "id": "T2_M1",
-                            "equipe_a": "À déterminer",
+                            "equipe_a": "Serge Nollet",
                             "equipe_b": "À déterminer",
                             "score_a": 0,
                             "score_b": 0,
@@ -480,9 +481,9 @@
             "vainqueur_final": null,
             "finaliste": null,
             "mode": "simple",
-            "date_derniere_sauvegarde": "01/11/2026 à 16:43:12",
+            "date_derniere_sauvegarde": "01/11/2026 à 16:51:56",
             "id_archive": "TOURNOI_SIMPLE_20261101_164312_700",
-            "date_archivage": "01/11/2026 à 16:43"
+            "date_archivage": "01/11/2026 à 16:51"
         },
         {
             "titre": "Tournoi Test Duos 6",
@@ -1222,10 +1223,10 @@
                         "id": "T1_M1",
                         "equipe_a": "Michel Caron",
                         "equipe_b": "Serge Nollet",
-                        "score_a": 0,
-                        "score_b": 0,
-                        "termine": false,
-                        "vainqueur": null,
+                        "score_a": 1,
+                        "score_b": 2,
+                        "termine": true,
+                        "vainqueur": "Serge Nollet",
                         "source_a": null,
                         "source_b": null,
                         "passe_droit": false,
@@ -1233,7 +1234,8 @@
                         "format_label": "2 de 3",
                         "heure_estimee": "09h00",
                         "table": "Table 1",
-                        "table_courte": "T1"
+                        "table_courte": "T1",
+                        "perdant": "Michel Caron"
                     },
                     {
                         "id": "T1_M2",
@@ -1432,7 +1434,7 @@
                 "matchs": [
                     {
                         "id": "T2_M1",
-                        "equipe_a": "À déterminer",
+                        "equipe_a": "Serge Nollet",
                         "equipe_b": "À déterminer",
                         "score_a": 0,
                         "score_b": 0,
@@ -1652,11 +1654,11 @@
         "vainqueur_final": null,
         "finaliste": null,
         "mode": "simple",
-        "date_derniere_sauvegarde": "01/11/2026 à 16:43:12",
+        "date_derniere_sauvegarde": "01/11/2026 à 16:51:56",
         "id_archive": "TOURNOI_SIMPLE_20261101_164312_700"
     },
     "derniere_sauvegarde": {
-        "date": "01/11/2026 à 16:43:12",
+        "date": "01/11/2026 à 16:51:56",
         "session_id": "marqueur_actif",
         "action": "sauvegarde"
     }
