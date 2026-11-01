@@ -157,10 +157,10 @@
                         "id": "T1_M7",
                         "equipe_a": "Alain Bellemare",
                         "equipe_b": "Jean-Yves Brochu",
-                        "score_a": 2,
-                        "score_b": 1,
-                        "termine": true,
-                        "vainqueur": "Alain Bellemare",
+                        "score_a": 0,
+                        "score_b": 0,
+                        "termine": false,
+                        "vainqueur": null,
                         "source_a": null,
                         "source_b": null,
                         "passe_droit": false,
@@ -168,8 +168,7 @@
                         "format_label": "2 de 3",
                         "heure_estimee": "10h30",
                         "table": "Table 1",
-                        "table_courte": "T1",
-                        "perdant": "Jean-Yves Brochu"
+                        "table_courte": "T1"
                     },
                     {
                         "id": "T1_M8",
@@ -317,7 +316,7 @@
                     },
                     {
                         "id": "T2_M4",
-                        "equipe_a": "Alain Bellemare",
+                        "equipe_a": "À déterminer",
                         "equipe_b": "À déterminer",
                         "score_a": 0,
                         "score_b": 0,
@@ -486,9 +485,9 @@
         "vainqueur_final": null,
         "finaliste": null,
         "mode": "simple",
-        "date_derniere_sauvegarde": "01/11/2026 à 19:28:51",
+        "date_derniere_sauvegarde": "01/11/2026 à 19:26:25",
         "id_archive": "TOURNOI_SIMPLE_20261101_164312_700",
-        "date_archivage": "01/11/2026 à 19:28"
+        "date_archivage": "01/11/2026 à 19:26"
     },
     {
         "titre": "Tournoi Test Duos 6",
