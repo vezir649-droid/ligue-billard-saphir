@@ -7668,27 +7668,46 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
         if not match_t2 and len(matchs_actifs) > 1:
             match_t2 = matchs_actifs[1]
 
-        def formater_adversaires_tv_table(m):
+        def formater_carte_table_tv(m, table_label):
             if not m:
-                return '<span style="color:#64748b; font-style:italic; font-size:13px;">Libre / En attente</span>'
+                return f'''<div class="tv-table-card">
+                    <div class="tv-table-header">
+                        <span class="tv-table-tag">{table_label}</span>
+                        <span class="tv-table-hour" style="opacity:0.65;">Libre</span>
+                    </div>
+                    <div class="tv-table-versus" style="color:#94a3b8; font-style:italic; font-size:13px;">En attente de match</div>
+                </div>'''
             p1 = formater_nom_abrege_joueur(m.get("equipe_a", ""))
             p2 = formater_nom_abrege_joueur(m.get("equipe_b", ""))
             s1 = m.get("score_a", 0)
             s2 = m.get("score_b", 0)
+            hm = m.get("heure_estimee", "")
+            hm_badge = f'<span class="tv-table-hour">⏰ {hm}</span>' if hm and hm != "—" else '<span class="tv-table-hour">En direct</span>'
             if s1 > 0 or s2 > 0:
-                score_str = f'<strong style="color:#ffffff; font-size:16px; background:#0284c7; padding:1px 7px; border-radius:4px; margin:0 6px;">{s1} - {s2}</strong>'
-                return f'<span style="color:#ffffff; font-weight:800;">{p1}</span> {score_str} <span style="color:#ffffff; font-weight:800;">{p2}</span>'
-            return f'<span style="color:#ffffff; font-weight:800;">{p1}</span> <span style="color:#38bdf8; font-weight:800; margin:0 6px;">vs</span> <span style="color:#ffffff; font-weight:800;">{p2}</span>'
+                score_html = f'<strong class="tv-table-score">{s1} - {s2}</strong>'
+                versus_html = f'<span class="tv-p-name">{p1}</span> {score_html} <span class="tv-p-name">{p2}</span>'
+            else:
+                versus_html = f'<span class="tv-p-name">{p1}</span> <span class="tv-vs-badge">VS</span> <span class="tv-p-name">{p2}</span>'
 
-        t1_adversaires = formater_adversaires_tv_table(match_t1)
-        t2_adversaires = formater_adversaires_tv_table(match_t2)
+            return f'''<div class="tv-table-card">
+                <div class="tv-table-header">
+                    <span class="tv-table-tag">{table_label}</span>
+                    {hm_badge}
+                </div>
+                <div class="tv-table-versus">
+                    {versus_html}
+                </div>
+            </div>'''
+
+        t1_card_html = formater_carte_table_tv(match_t1, "TABLE 1")
+        t2_card_html = formater_carte_table_tv(match_t2, "TABLE 2")
 
         html_tv = f"""<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="refresh" content="20">
+    
     <title>Mode TV - {titre_t}</title>
     <style>
         html, body {{
@@ -7700,46 +7719,94 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
             color-scheme: dark !important;
         }}
         .tv-top-bar {{
+            position: sticky;
+            top: 0;
+            z-index: 1000;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-            border: 1px solid #334155;
+            background: linear-gradient(135deg, #09101d 0%, #0f1c30 100%) !important;
+            border: 1px solid #1e3a5f;
+            border-bottom: 2.5px solid #0284c7;
             border-radius: 8px;
-            padding: 4px 10px;
-            margin-bottom: 5px;
-            box-shadow: 0 3px 10px rgba(0,0,0,0.5);
-            gap: 10px;
+            padding: 5px 12px;
+            margin-bottom: 8px;
+            box-shadow: 0 5px 18px rgba(0,0,0,0.75);
+            gap: 12px;
         }}
         .tv-tables-container {{
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 14px;
             flex-wrap: wrap;
             flex: 1;
         }}
         .tv-table-card {{
-            background: #1e293b;
+            background: #152238;
             border: 1.5px solid #0284c7;
             border-radius: 6px;
             padding: 4px 12px;
             display: flex;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 250px;
+        }}
+        .tv-table-header {{
+            display: flex;
             align-items: center;
-            gap: 10px;
+            justify-content: space-between;
+            gap: 8px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+            padding-bottom: 2px;
         }}
         .tv-table-tag {{
             background: #0284c7;
             color: #ffffff;
-            font-weight: 800;
-            padding: 2px 8px;
+            font-weight: 900;
+            padding: 1px 7px;
             border-radius: 4px;
+            font-size: 11.5px;
+            letter-spacing: 0.6px;
+        }}
+        .tv-table-hour {{
+            color: #ffffff !important;
+            font-weight: 800;
             font-size: 12px;
-            letter-spacing: 0.5px;
+            background: rgba(255, 255, 255, 0.15);
+            padding: 1px 6px;
+            border-radius: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            letter-spacing: 0.3px;
         }}
         .tv-table-versus {{
-            color: #f8fafc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            color: #ffffff;
             font-weight: 700;
-            font-size: 14.5px;
+            font-size: 14px;
+            padding-top: 1px;
+        }}
+        .tv-p-name {{
+            color: #ffffff;
+            font-weight: 800;
+        }}
+        .tv-vs-badge {{
+            color: #38bdf8;
+            font-weight: 900;
+            font-size: 12px;
+            padding: 0 4px;
+        }}
+        .tv-table-score {{
+            color: #ffffff;
+            background: #0284c7;
+            font-size: 15px;
+            font-weight: 900;
+            padding: 1px 7px;
+            border-radius: 4px;
+            margin: 0 3px;
+            box-shadow: 0 1px 4px rgba(2, 132, 199, 0.4);
         }}
         .tv-info-right {{
             display: flex;
@@ -7949,23 +8016,15 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
 <body>
     <div class="tv-top-bar">
         <div class="tv-tables-container">
-            <div class="tv-table-card">
-                <span class="tv-table-tag">TABLE 1</span>
-                <span class="tv-table-versus">{t1_adversaires}</span>
-            </div>
-            <div class="tv-table-card">
-                <span class="tv-table-tag">TABLE 2</span>
-                <span class="tv-table-versus">{t2_adversaires}</span>
-            </div>
+            {t1_card_html}
+            {t2_card_html}
         </div>
         <div class="tv-info-right">
             <div class="tv-clock" id="tv-clock">--:--:--</div>
-            <div class="tv-countdown">🔄 <span id="tv-countdown">20</span>s</div>
             <button onclick="toggleFullScreen()" class="tv-btn-fs">⛶ Plein écran</button>
         </div>
     </div>
     {podium_html}
-    {promus_html}
     {arborescence_html}
     <script>
     function updateClock() {{
@@ -7979,24 +8038,7 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
     setInterval(updateClock, 1000);
     updateClock();
 
-    var secLeft = 20;
-    var cdEl = document.getElementById('tv-countdown');
-    setInterval(function() {{
-        secLeft--;
-        if (cdEl) cdEl.innerText = secLeft;
-        if (secLeft <= 0) {{
-            secLeft = 20;
-            try {{
-                if (window.parent && window.parent.location) {{
-                    window.parent.location.reload();
-                }} else {{
-                    window.location.reload();
-                }}
-            }} catch(e) {{
-                window.location.reload();
-            }}
-        }}
-    }}, 1000);
+    // Rafraîchissement automatique de la page désactivé (actualisation propre via le bouton Actualiser)
 
     function toggleFullScreen() {{
         var doc = window.parent.document;
@@ -8084,8 +8126,7 @@ def afficher_mode_televiseur_tournoi():
             st.query_params.clear()
             st.rerun()
 
-    # Fragment pour auto-actualisation toutes les 20 secondes
-    @st.fragment(run_every=20)
+    # Affichage du tableau TV (sans rechargement de page intempestif)
     def fragment_affichage_tv(m_cur, a_idx=None):
         if a_idx is not None:
             hist_list = charger_historique_tournois(inclure_actifs=True)
