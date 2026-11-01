@@ -1,6 +1,6 @@
 # 🎱 Ligue de billard Boule en main — Salle Le Saphir
 
-Application web officielle développée avec [Streamlit](https://streamlit.io/) pour la gestion complète de la **Ligue de billard Boule en main (Salle Le Saphir)** : portail d'accueil multi-rôles (**Spectateur**, **Marqueur**, **Administrateur**), saisie en direct des feuilles de matchs réguliers (**3 contre 3**), organisation de **tournois officiels** (Simple 1v1 & Double 2v2), **Statistiques & Classements**, **Administration sécurisée** et **Synchronisation Cloud GitHub anti-veille**.
+Application web officielle développée avec [Streamlit](https://streamlit.io/) pour la gestion complète de la **Ligue de billard Boule en main (Salle Le Saphir)** : portail d'accueil multi-rôles (**Spectateur**, **Marqueur**, **Administrateur**), saisie en direct des feuilles de matchs réguliers (**3 contre 3**), organisation de **tournois officiels** (Simple 1v1 & Double 2v2) avec **Mode Téléviseur / Casting TV auto-actualisé**, **Statistiques & Classements**, **Administration sécurisée** et **Synchronisation Cloud GitHub intégrale anti-veille**.
 
 ---
 
@@ -76,7 +76,7 @@ La barre latérale **« 📋 Paramètres du Match »** regroupe tous les réglag
 
 ---
 
-### 4. 🏆 Module de Tournois Officiels (Simple 1v1 & Double 2v2)
+### 4. 🏆 Module de Tournois Officiels (Simple 1v1 & Double 2v2) & Mode Téléviseur
 * **Deux catégories indépendantes :**
   * **👤 Tournoi en Simple (1 contre 1)** — Joueurs individuels.
   * **👥 Tournoi en Double / Équipes (2 contre 2)** — Duos constitués aléatoirement ou manuellement.
@@ -93,10 +93,17 @@ La barre latérale **« 📋 Paramètres du Match »** regroupe tous les réglag
      * **🟧 Tableau de Repêchage (*Loser Bracket — Seconde chance*)** : *2 de 3* — tout participant perdant un premier match est automatiquement reversé dans le Loser Bracket et **doit obligatoirement jouer contre un adversaire réel (jamais contre un passe-droit)**.
      * **🚫 Règle officielle d'évitement des rematchs (*Anti-Rematch*) :** Les joueurs reversés dans le tableau des perdants (*Loser Bracket*) sont automatiquement croisés et permutés afin de **ne jamais rejouer contre un adversaire déjà affronté dans le tableau des gagnants (*Winner Bracket*)**.
      * **🏆 Grande Finale** : *3 de 5* entre le champion du Winner Bracket et le survivant du Loser Bracket.
-* **Suivi opérationnel en direct & Diffusion :**
+* **📺 Mode Téléviseur / Casting TV (16:9 Plein écran & Rafraîchissement automatique en direct) :**
+  * **Bouton dédié « 📺 Mode TV » :** Présent au sommet de l'onglet Tournois et dans le dialogue d'arborescence. Ouvre instantanément la vue TV dans un **nouvel onglet** prêt à être projeté (Chromecast, Google Cast, écran secondaire HDMI), permettant de continuer à saisir les scores sur votre ordinateur sans perturber l'affichage des spectateurs.
+  * **Thème sombre « Dark Stadium » haute lisibilité :** Design optimisé pour écrans 1080p / 4K avec contrastes renforcés (noms blancs nets, scores en badges vifs, bordures émeraude pour les vainqueurs et encadré d'or pour le Champion), parfaitement lisible à 5–10 mètres de distance dans la salle de billard.
+  * **Bandeau dynamique des tables en cours :** Affichage en temps réel des matchs actifs assignés aux tables (ex. *🎱 Table 1 : Tremblay J. (1 - 0) Gagnon M.*).
+  * **Rafraîchissement automatique toutes les 20 secondes :** Propulsé par un composant fragment Streamlit (`@st.fragment(run_every=20)`) avec décompte visuel en direct (`🔄 MAJ : 20s`) et horloge numérique (`⏰ HH:MM:SS`). Dès qu'un score est mis à jour sur l'ordinateur du marqueur, le téléviseur s'actualise automatiquement sans aucune manipulation.
+  * **Lien direct par URL :** Accessible à tout moment en ajoutant `?view=tv` à l'adresse de l'application (ex. `http://localhost:8501/?view=tv&mode=simple` ou `?view=tv&mode=double`).
+  * **Bouton `⛶ Plein écran`** (ou touche `F11`) et boutons de bascule rapide entre **Simple (1v1)** et **Double (2v2)** directement sur l'écran TV.
+* **Suivi opérationnel & Diffusion standard :**
   * **Affichage automatique du tournoi actif** et ouverture directe de son arborescence à jour lors de l'accès à l'onglet Tournois.
   * **Barre de progression globale** (`matchs terminés / total`) et panneau **« 🎱 En direct / Prochains matchs prêts à appeler aux tables »** avec numéro de table et horaire estimé.
-  * **Arborescence visuelle interactive & Impression A4 :** Affichage plein écran et impression officielle **A4 Paysage** avec code couleur par tableau (Bleu Gagnants, Ambre Seconde chance, Or Grande Finale).
+  * **Arborescence visuelle interactive & Impression A4 :** Affichage grand format et impression officielle **A4 Paysage** avec code couleur par tableau (Bleu Gagnants, Ambre Seconde chance, Or Grande Finale).
   * **📧 Envoi de l'arborescence officielle par courriel :**
     * Option accessible en un clic dans la boîte de dialogue d'arborescence, dans la barre de commandes du tournoi actif et dans l'historique des tournois archivés.
     * Génère et attache la **page HTML complète de l'arborescence** (prête pour affichage sur mobile/tablette ou impression A4) ainsi que le fichier `historique_tournois.json` en pièces jointes.
@@ -143,25 +150,16 @@ Le volet **`⚙️ Administration`** (réservé exclusivement à l'accès **`�
     * Module interactif d'interconnexion avec l'API officielle de la Salle Le Saphir, également accessible en raccourci direct depuis la vue Saphir de la feuille de match.
     * **Point de terminaison officiel :** `POST https://saphirbillard.com/index.php?eID=billardImport`
     * **Authentification sécurisée :** En-têtes HTTP `Content-Type: application/json` et `X-API-Key: UNE_CLE_DEBILEMENT_LONGUE` avec champ de saisie masqué.
-    * **Charge utile JSON structurée :** Modèle prérempli et éditeur en direct validant les données d'importation (saison, semaine, prénom, nom, pointage) :
-      ```json
-      [
-        {
-          "saison": 4,
-          "semaine": 21,
-          "prenom": "Sylvain",
-          "nom": "Derasp",
-          "pointage": 89
-        }
-      ]
-      ```
-    * **Outils d'inspection et de diagnostic :** Validation de syntaxe JSON en direct, génération instantanée de la commande `cURL` équivalente pour exécution en ligne de commande, mesure précise du temps de latence en millisecondes (ms), statut HTTP (`200 OK`, etc.), inspection détaillée des en-têtes et coloration syntaxique de la réponse retournée par le serveur.
+    * **Charge utile JSON structurée :** Modèle prérempli et éditeur en direct validant les données d'importation (saison, semaine, prénom, nom, pointage).
+    * **Outils d'inspection et de diagnostic :** Validation de syntaxe JSON en direct, génération instantanée de la commande `cURL` équivalente, mesure précise du temps de latence en ms, inspection détaillée des en-têtes et coloration syntaxique de la réponse retournée par le serveur.
   * **📧 SMTP (Notifications et bilans officiels) :** Configuration du serveur d'expédition courriel, test d'envoi en direct et routage des alertes administratives.
-  * **🔑 Sécurité (Gestion des accès) :** Modification sécurisée des mots de passe Marqueur et Administrateur avec hachage cryptographique SHA-256 dans `config_auth.json`.
+  * **🔑 Sécurité (Gestion des accès & Secrets) :**
+    * Modification sécurisée des mots de passe Marqueur et Administrateur avec hachage cryptographique SHA-256 dans `config_auth.json`.
+    * **Protection stricte des identifiants sensibles :** Intégration transparente de `st.secrets` (`.streamlit/secrets.toml`) pour stocker en lieu sûr le jeton GitHub, les mots de passe SMTP et administrateur sans jamais les exposer en clair dans les fichiers JSON publics ou dans les bandeaux d'ouverture de l'application.
 
 * **☁️ Synchronisation automatique GitHub intégrale (.json & .csv) & Protection anti-veille :**
   * **Au démarrage / Réveil de l'application :** Récupération et restauration automatiques de **tous les fichiers de données JSON et CSV** depuis GitHub (`historique_matchs.json`, `historique_tournois.json`, `tournois_data.json`, `sauvegarde_saisie_secours.json`, `equipes-saphir.csv`, `config_email.json`, `config_admin.json`). Fusion intelligente sans doublon et prise en compte des dernières modifications horodatées.
-  * **Lors des sauvegardes :** Envoi automatique vers GitHub de **tous les fichiers .json et .csv** dès qu'une sauvegarde est déclenchée (validation de match, mise à jour ou clôture de tournoi, modification des équipes CSV, configuration email SMTP, mots de passe, cession de main et saisie de secours).
+  * **Dès qu'un fichier est modifié :** Déclenchement automatique de la sauvegarde vers GitHub pour **tous les fichiers .json et .csv** (validation de match, mise à jour ou clôture de tournoi, modification des équipes CSV, configuration email SMTP, mots de passe, cession de main et saisie de secours).
   * **Sécurité & Optimisation des flux :** Masquage automatique des jetons d'accès dans `config_admin.json` avant tout envoi pour prévenir les alertes GitHub Secret Scanning, et comparaison par hash SHA1 Git blob pour éviter tout commit redondant inutile.
   * **Écriture atomique locale & Copies `.bak` :** Toutes les écritures locales sont atomiques avec copies de sauvegarde de secours `.bak` pour une résilience absolue.
 
@@ -184,12 +182,18 @@ streamlit run app.py
 
 L'application est alors accessible dans votre navigateur à l'adresse `http://localhost:8501`.
 
-### 4. Configuration de la persistance GitHub sur Streamlit Cloud (optionnel mais recommandé)
-Dans le tableau de bord Streamlit Cloud de votre application (**Settings → Secrets**), ajoutez :
+### 4. Configuration des secrets Streamlit (Local & Streamlit Cloud)
+Créez un fichier `.streamlit/secrets.toml` (ou renseignez les variables dans le panneau **Settings → Secrets** sur Streamlit Cloud) :
 ```toml
+# Synchronisation automatique GitHub
 GITHUB_TOKEN = "ghp_votre_jeton_personnel_github"
 GITHUB_REPO = "vezir649-droid/ligue-billard-saphir"
 GITHUB_BRANCH = "main"
+
+# Sécurité & Notifications SMTP (optionnel)
+ADMIN_PASSWORD = "votre_mot_de_passe_admin"
+SMTP_PASSWORD = "votre_mot_de_passe_smtp"
+SAPHIR_API_KEY = "votre_cle_api_saphir"
 ```
 
 ---
@@ -198,18 +202,19 @@ GITHUB_BRANCH = "main"
 
 | Fichier | Rôle |
 | :--- | :--- |
-| `app.py` | Code source principal de l'application Streamlit |
-| `README.md` | Documentation officielle (affichée et imprimable depuis la page d'ouverture) |
-| `equipes-saphir.csv` | Liste officielle des équipes et de leurs 3 joueurs réguliers |
-| `historique_matchs.json` | Base de données JSON allégée (100 % JSON pur, sans HTML) des feuilles de matchs 3v3 validées (synchronisée sur GitHub) |
+| `app.py` | Code source principal de l'application Streamlit (Saisie, Tournois, Stats, Admin, Mode TV) |
+| `README.md` | Documentation officielle complète (affichée et imprimable depuis la page d'ouverture) |
+| `.streamlit/secrets.toml` | Stockage sécurisé des clés d'accès (jeton GitHub, mots de passe SMTP et Admin) |
+| `equipes-saphir.csv` | Liste officielle des équipes et de leurs 3 joueurs réguliers (synchronisée sur GitHub) |
+| `historique_matchs.json` | Base de données JSON allégée (100 % JSON pur, sans HTML) des feuilles 3v3 validées (synchronisée sur GitHub) |
 | `historique_tournois.json` | Historique officiel complet des tournois Simples & Doubles (synchronisé sur GitHub) |
-| `tournois_data.json` | État en temps réel des tournois actifs et synchronisation d'historique |
-| `sauvegarde_saisie_secours.json` | Sauvegarde temps réel de la feuille de match 3v3 en cours de saisie |
+| `tournois_data.json` | État en temps réel des tournois actifs (synchronisé sur GitHub) |
+| `sauvegarde_saisie_secours.json` | Sauvegarde temps réel de la feuille de match 3v3 en cours de saisie (synchronisée sur GitHub) |
 | `sauvegarde_annulee_secours.json` | Corbeille de secours permettant d'annuler un « Nouveau match » |
 | `session_lock.json` | Verrouillage multi-utilisateurs de la main active (Marqueur / Administrateur) |
 | `config_auth.json` | Empreintes SHA-256 des mots de passe Marqueur et Administrateur |
-| `config_email.json` | Paramètres SMTP pour l'envoi automatique des rapports et sauvegardes |
-| `config_github.json` | Configuration locale de la synchronisation automatique GitHub |
+| `config_email.json` | Paramètres SMTP pour l'envoi automatique des rapports et sauvegardes (synchronisé sur GitHub) |
+| `config_admin.json` | Configuration administrative locale de la synchronisation GitHub |
 
 ---
 
