@@ -7023,7 +7023,7 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
                 if mode_tv:
                     h_badge = f'<span class="tv-time-pill" style="color:#ffffff !important; font-weight:800; font-size:13px; background:rgba(255,255,255,0.15); padding:2px 8px; border-radius:4px; border:1px solid #ffffff; letter-spacing:0.3px; white-space:nowrap; box-shadow:0 1px 3px rgba(0,0,0,0.5);">⏰ {m_h} [{m_t_court}]</span>'
                 else:
-                    h_badge = f'<span style="color: #0b3c5d; font-weight: bold;">⏰ {m_h} [{m_t_court}]</span>'
+                    h_badge = f'<span style="background: #0284c7; color: #ffffff !important; font-weight: 800; font-size: 11.5px; padding: 2px 6px; border-radius: 4px;">⏰ {m_h} [{m_t_court}]</span>'
             else:
                 h_badge = f'<span>{m_fmt}</span>'
 
@@ -7161,7 +7161,7 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
                     if mode_tv:
                         h_badge = f'<span class="tv-time-pill" style="color:#ffffff !important; font-weight:800; font-size:13px; background:rgba(255,255,255,0.15); padding:2px 8px; border-radius:4px; border:1px solid #ffffff; letter-spacing:0.3px; white-space:nowrap; box-shadow:0 1px 3px rgba(0,0,0,0.5);">⏰ {m_h} [{m_t_court}]</span>'
                     else:
-                        h_badge = f'<span style="color: #0b3c5d; font-weight: bold;">⏰ {m_h} [{m_t_court}]</span>'
+                        h_badge = f'<span style="background: #0284c7; color: #ffffff !important; font-weight: 800; font-size: 11.5px; padding: 2px 6px; border-radius: 4px;">⏰ {m_h} [{m_t_court}]</span>'
                 else:
                     h_badge = f'<span>{m_fmt}</span>'
 
@@ -10558,9 +10558,12 @@ def modal_documentation_readme():
 # MODE TÉLÉVISEUR / CASTING TV (Plein écran & Rafraîchissement automatique)
 # Accessible directement sans mot de passe via l'URL ?view=tv ou le bouton « 📺 Mode TV »
 # ==============================================================================
+_q_view = st.query_params.get("view", "")
+if isinstance(_q_view, (list, tuple)):
+    _q_view = _q_view[0] if _q_view else ""
 est_vue_tv = (
     st.session_state.get("mode_tv_actif", False)
-    or (st.query_params.get("view", "").strip().lower() == "tv")
+    or (str(_q_view).strip().lower() == "tv")
 )
 if est_vue_tv:
     afficher_mode_televiseur_tournoi()
