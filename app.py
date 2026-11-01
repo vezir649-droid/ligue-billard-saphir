@@ -7020,7 +7020,8 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
             if m_pd:
                 h_badge = '<span style="color: #2e7d32; font-weight: bold;">🎟️ Passe-droit</span>'
             elif m_h and m_h != "—":
-                h_badge = f'<span style="color: #0b3c5d; font-weight: bold;">⏰ {m_h} [{m_t_court}]</span>'
+                color_badge = "#38bdf8" if mode_tv else "#0b3c5d"
+                h_badge = f'<span style="color: {color_badge}; font-weight: bold;">⏰ {m_h} [{m_t_court}]</span>'
             else:
                 h_badge = f'<span>{m_fmt}</span>'
 
@@ -7155,7 +7156,8 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
                 if m_pd:
                     h_badge = '<span style="color: #2e7d32; font-weight: bold;">🎟️ Passe-droit</span>'
                 elif m_h:
-                    h_badge = f'<span style="color: #0b3c5d; font-weight: bold;">⏰ {m_h} [{m_t_court}]</span>'
+                    color_badge = "#38bdf8" if mode_tv else "#0b3c5d"
+                    h_badge = f'<span style="color: {color_badge}; font-weight: bold;">⏰ {m_h} [{m_t_court}]</span>'
                 else:
                     h_badge = f'<span>{m_fmt}</span>'
 
@@ -7670,6 +7672,7 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="20">
     <title>Mode TV - {titre_t}</title>
     <style>
         html, body {{
@@ -8000,7 +8003,18 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
     setInterval(function() {{
         secLeft--;
         if (cdEl) cdEl.innerText = secLeft;
-        if (secLeft <= 0) secLeft = 20;
+        if (secLeft <= 0) {{
+            secLeft = 20;
+            try {{
+                if (window.parent && window.parent.location) {{
+                    window.parent.location.reload();
+                }} else {{
+                    window.location.reload();
+                }}
+            }} catch(e) {{
+                window.location.reload();
+            }}
+        }}
     }}, 1000);
 
     function toggleFullScreen() {{
@@ -8041,8 +8055,19 @@ def afficher_mode_televiseur_tournoi():
         </style>
     """, unsafe_allow_html=True)
 
-    mode_param = st.query_params.get("mode", "simple")
-    if mode_param not in ["simple", "double"]:
+    archive_idx = st.query_params.get("archive")
+    td_chk = charger_tournois_data()
+    mode_param = st.query_params.get("mode")
+
+    # Si aucun mode n'est forcé et qu'il n'y a pas d'archive, détecter le tournoi actif
+    if not mode_param and not archive_idx:
+        t_s = td_chk.get("simple")
+        t_d = td_chk.get("double")
+        if (not t_s or not (t_s.get("tours") or t_s.get("matchs"))) and (t_d and (t_d.get("tours") or t_d.get("matchs"))):
+            mode_param = "double"
+        else:
+            mode_param = "simple"
+    elif mode_param not in ["simple", "double"]:
         mode_param = "simple"
 
     # Bandeau supérieur de contrôle TV
@@ -8099,9 +8124,18 @@ def afficher_mode_televiseur_tournoi():
 
     # Fragment pour auto-actualisation toutes les 20 secondes
     @st.fragment(run_every=20)
-    def fragment_affichage_tv(m_cur):
-        td = charger_tournois_data()
-        tournoi_cur = td.get(m_cur)
+    def fragment_affichage_tv(m_cur, a_idx=None):
+        if a_idx is not None:
+            hist_list = charger_historique_tournois(inclure_actifs=True)
+            try:
+                tournoi_cur = hist_list[int(a_idx)]
+                m_cur = tournoi_cur.get("mode", m_cur)
+            except Exception:
+                tournoi_cur = None
+        else:
+            td = charger_tournois_data()
+            tournoi_cur = td.get(m_cur)
+
         if not tournoi_cur:
             st.info(
                 f"📺 **Mode Téléviseur actif — En attente du tournoi en {m_cur}**\n\n"
@@ -8111,9 +8145,10 @@ def afficher_mode_televiseur_tournoi():
             return
 
         html_tv = generer_html_tournoi(tournoi_cur, mode=m_cur, mode_tv=True)
+        cle_rand = f"tv_comp_{m_cur}_{int(time.time() // 20)}"
         st.components.v1.html(html_tv, height=920, scrolling=True)
 
-    fragment_affichage_tv(mode_param)
+    fragment_affichage_tv(mode_param, archive_idx)
 
 
 @st.dialog("🌳 Arborescence officielle du tournoi", width="large")
@@ -9635,11 +9670,28 @@ def afficher_section_historique_tournois():
         html_arch_json = json.dumps(html_arch)
 
         with col_dt2:
-            st.components.v1.html(
-                f"""
-                <button onclick="imprimerTournoiArchive()" style="width:100%; height:38px; background-color:#0b3c5d; color:white; border:none; border-radius:6px; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif; font-size:12px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;">
-                    🖨️ Imprimer l'arborescence (A4)
-                </button>
+            c_p1, c_p2 = st.columns(2)
+            with c_p1:
+                st.components.v1.html(
+                    f"""
+                    <button onclick="ouvrirTournoiArchiveTV()" style="width:100%; height:38px; background-color:#4f46e5; color:white; border:none; border-radius:6px; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif; font-size:12px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;" title="Diffusion TV plein écran de ce tournoi archivé">
+                        📺 Mode TV
+                    </button>
+                    <script>
+                    function ouvrirTournoiArchiveTV() {{
+                        var url = window.parent.location.origin + window.parent.location.pathname + '?view=tv&archive={choix_idx}';
+                        window.open(url, '_blank');
+                    }}
+                    </script>
+                    """,
+                    height=42
+                )
+            with c_p2:
+                st.components.v1.html(
+                    f"""
+                    <button onclick="imprimerTournoiArchive()" style="width:100%; height:38px; background-color:#0b3c5d; color:white; border:none; border-radius:6px; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif; font-size:12px; font-weight:600; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:6px;">
+                        🖨️ Imprimer (A4)
+                    </button>
                 <script>
                 function imprimerTournoiArchive() {{
                     var win = window.open('', '_blank');
