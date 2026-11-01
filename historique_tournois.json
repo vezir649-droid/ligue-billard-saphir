@@ -433,10 +433,10 @@
                         "id": "T4_M1",
                         "equipe_a": "Serge Nollet",
                         "equipe_b": "Sylvain Derasp",
-                        "score_a": 0,
-                        "score_b": 0,
-                        "termine": false,
-                        "vainqueur": null,
+                        "score_a": 1,
+                        "score_b": 2,
+                        "termine": true,
+                        "vainqueur": "Sylvain Derasp",
                         "source_a": "T3_M1",
                         "source_b": "T3_M2",
                         "passe_droit": false,
@@ -444,7 +444,8 @@
                         "format_label": "2 de 3",
                         "heure_estimee": "15h00",
                         "table": "Table 1",
-                        "table_courte": "T1"
+                        "table_courte": "T1",
+                        "perdant": "Serge Nollet"
                     },
                     {
                         "id": "T4_M2",
@@ -473,7 +474,7 @@
                 "matchs": [
                     {
                         "id": "T5_M1",
-                        "equipe_a": "À déterminer",
+                        "equipe_a": "Sylvain Derasp",
                         "equipe_b": "À déterminer",
                         "score_a": 0,
                         "score_b": 0,
@@ -499,9 +500,9 @@
         "vainqueur_final": null,
         "finaliste": null,
         "mode": "simple",
-        "date_derniere_sauvegarde": "01/11/2026 à 20:08:30",
+        "date_derniere_sauvegarde": "01/11/2026 à 20:09:04",
         "id_archive": "TOURNOI_SIMPLE_20261101_164312_700",
-        "date_archivage": "01/11/2026 à 20:08"
+        "date_archivage": "01/11/2026 à 20:09"
     },
     {
         "titre": "Tournoi Test Duos 6",
