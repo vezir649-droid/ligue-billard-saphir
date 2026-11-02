@@ -4848,6 +4848,38 @@ def annuler_completement_tournoi(mode):
     sauvegarder_tournois_data(td)
     return True
 
+def obtenir_joueurs_tries_classement(liste_joueurs):
+    """Trie une liste de joueurs selon leur classement officiel (#1 à #24)
+    et leur moyenne issus de joueurs_stats.csv. Les joueurs non classés ou invités sont placés en fin de liste."""
+    stats_dict = charger_joueurs_stats_csv()
+    def cle_tri(nom):
+        c = normaliser_nom_joueur(nom)
+        if c in stats_dict:
+            item = stats_dict[c]
+            r_str = str(item.get("rang", "")).replace("#", "").strip()
+            try:
+                r_num = int(r_str)
+            except Exception:
+                r_num = 999
+            moy = float(item.get("moyenne", 0.625))
+            try:
+                pts = int(item.get("points", 0))
+            except Exception:
+                pts = 0
+            return (r_num, -moy, -pts, nom)
+        return (999, -0.625, 0, nom)
+    return sorted(liste_joueurs, key=cle_tri)
+
+def obtenir_info_classement_joueur(nom_joueur):
+    """Retourne un libellé officiel formaté (ex: '#1 • Moy 0.990') pour affichage."""
+    stats_dict = charger_joueurs_stats_csv()
+    c = normaliser_nom_joueur(nom_joueur)
+    if c in stats_dict:
+        rg = stats_dict[c].get("rang", "")
+        moy = stats_dict[c].get("moyenne", 0.625)
+        return f"{rg} (Moy {moy:.3f})" if rg else f"Moy {moy:.3f}"
+    return "Invité (0.625)"
+
 def obtenir_tous_les_joueurs_tournoi(equipes_dict=None):
     """Récupère l'ensemble des joueurs réguliers inscrits dans la ligue."""
     joueurs_officiels = []
@@ -8551,9 +8583,13 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
         else:
             # Mode DOUBLE : Sélection des duos de joueurs avec drop boxes
             st.markdown("##### 👥 Sélection des duos de joueurs inscrits (Drop boxes)")
-            st.caption("Constituez les équipes de double en sélectionnant les deux joueurs de chaque duo dans les listes déroulantes ci-dessous.")
+            st.info(
+                "⚖️ **Jumelage officiel selon le classement :** Les duos sont automatiquement équilibrés : "
+                "le **1ᵉʳ** est jumelé au **dernier** (Duo #1), le **2ᵉ** avec l'**avant-dernier** (Duo #2), et ainsi de suite. "
+                "Vous pouvez aussi utiliser le bouton de pige au hasard ou ajuster manuellement n'importe quel joueur ci-dessous."
+            )
 
-            col_nb_d1, col_nb_d2 = st.columns([1.5, 3])
+            col_nb_d1, col_nb_d2 = st.columns([1.3, 3])
             with col_nb_d1:
                 options_nb_duos = [12, 11, 10, 9, 8, 6, 4, 16, 14, 2] if len(tous_candidats) >= 24 else [8, 9, 10, 11, 12, 6, 4, 16, 14, 2]
                 nb_duos_choisi = st.selectbox(
@@ -8564,7 +8600,21 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
                     help="12 duos = 24 joueurs (avec équilibrage automatique de 4 duos promus au 2e tour) ; 8 duos = 16 joueurs."
                 )
             with col_nb_d2:
-                col_btn_pige, col_btn_reset = st.columns(2)
+                col_btn_class, col_btn_pige, col_btn_reset = st.columns([1.5, 1.1, 1.0])
+                with col_btn_class:
+                    st.write("")
+                    if st.button("⚖️ Jumeler par classement", key=f"btn_jumelage_class_{mode}{key_suffix}", type="primary", use_container_width=True, help="Jumelle équitablement le 1er avec le dernier, le 2e avec l'avant-dernier, etc."):
+                        pool_class = obtenir_joueurs_tries_classement(tous_candidats)
+                        nb_requis = nb_duos_choisi * 2
+                        pool_j = pool_class[:nb_requis]
+                        len_p = len(pool_j)
+                        for d_idx in range(nb_duos_choisi):
+                            if d_idx < len_p:
+                                st.session_state[f"duo_{d_idx}_j1_{mode}{key_suffix}"] = pool_j[d_idx]
+                            if (len_p - 1 - d_idx) >= 0 and (len_p - 1 - d_idx) < len_p:
+                                st.session_state[f"duo_{d_idx}_j2_{mode}{key_suffix}"] = pool_j[len_p - 1 - d_idx]
+                        st.rerun()
+
                 with col_btn_pige:
                     st.write("")
                     if st.button("🎲 Piger au hasard", key=f"btn_pige_drop_{mode}{key_suffix}", use_container_width=True, help="Remplit aléatoirement les drop boxes avec les joueurs inscrits"):
@@ -8575,15 +8625,21 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
                                 st.session_state[f"duo_{d_idx}_j1_{mode}{key_suffix}"] = pool_pige.pop(0)
                                 st.session_state[f"duo_{d_idx}_j2_{mode}{key_suffix}"] = pool_pige.pop(0)
                         st.rerun()
+
                 with col_btn_reset:
                     st.write("")
-                    if st.button("🔄 Réinitialiser", key=f"btn_reset_duos_{mode}{key_suffix}", use_container_width=True, help="Restaure la sélection séquentielle des joueurs"):
+                    if st.button("🔄 Réinitialiser", key=f"btn_reset_duos_{mode}{key_suffix}", use_container_width=True, help="Restaure le jumelage équilibré officiel selon le classement"):
                         for d_idx in range(16):
                             st.session_state.pop(f"duo_{d_idx}_j1_{mode}{key_suffix}", None)
                             st.session_state.pop(f"duo_{d_idx}_j2_{mode}{key_suffix}", None)
                         st.rerun()
 
-            st.markdown("###### 📋 Choix des joueurs par duo :")
+            st.markdown("###### 📋 Composition des duos (équilibrés selon le classement) :")
+
+            pool_class_def = obtenir_joueurs_tries_classement(tous_candidats)
+            nb_requis_def = nb_duos_choisi * 2
+            pool_j_def = pool_class_def[:nb_requis_def] if len(pool_class_def) >= nb_requis_def else pool_class_def
+            len_pool_def = len(pool_j_def)
 
             duos_selectionnes = []
             joueurs_dans_duos = []
@@ -8594,13 +8650,25 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
                 with cols_duos[i % 2]:
                     with st.container(border=True):
                         st.markdown(f"**🎯 Duo #{i + 1}**")
+
+                        if len_pool_def >= 2:
+                            nom_def1 = pool_j_def[i] if i < len_pool_def else (tous_candidats[0] if tous_candidats else "")
+                            nom_def2 = pool_j_def[len_pool_def - 1 - i] if (len_pool_def - 1 - i) >= 0 else (tous_candidats[-1] if tous_candidats else "")
+                        else:
+                            nom_def1 = tous_candidats[0] if tous_candidats else ""
+                            nom_def2 = tous_candidats[1] if len(tous_candidats) > 1 else nom_def1
+
+                        def_idx1 = tous_candidats.index(nom_def1) if nom_def1 in tous_candidats else 0
+                        def_idx2 = tous_candidats.index(nom_def2) if nom_def2 in tous_candidats else 0
+
+                        cur_j1 = st.session_state.get(f"duo_{i}_j1_{mode}{key_suffix}", nom_def1)
+                        cur_j2 = st.session_state.get(f"duo_{i}_j2_{mode}{key_suffix}", nom_def2)
+                        info_j1 = obtenir_info_classement_joueur(cur_j1)
+                        info_j2 = obtenir_info_classement_joueur(cur_j2)
+
                         col_j1, col_j2 = st.columns(2)
-
-                        def_idx1 = (i * 2) % len(tous_candidats) if tous_candidats else 0
-                        def_idx2 = (i * 2 + 1) % len(tous_candidats) if len(tous_candidats) > 1 else 0
-
                         with col_j1:
-                            st.caption("Joueur 1 :")
+                            st.caption(f"Joueur 1 : **{info_j1}**")
                             j1 = st.selectbox(
                                 f"Joueur 1 (Duo {i+1}){key_suffix}",
                                 options=tous_candidats,
@@ -8609,7 +8677,7 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
                                 label_visibility="collapsed"
                             )
                         with col_j2:
-                            st.caption("Joueur 2 :")
+                            st.caption(f"Joueur 2 : **{info_j2}**")
                             j2 = st.selectbox(
                                 f"Joueur 2 (Duo {i+1}){key_suffix}",
                                 options=tous_candidats,
@@ -8628,8 +8696,12 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
                             doublons.add(j2)
                         joueurs_dans_duos.append(j2)
 
+                        moy_j1 = obtenir_moyenne_joueur(j1)
+                        moy_j2 = obtenir_moyenne_joueur(j2)
+                        moy_comb = (moy_j1 + moy_j2) / 2
+
                         duo_nom = f"{j1} & {j2}"
-                        st.markdown(f"🤝 **Duo #{i+1} :** `{duo_nom}`")
+                        st.markdown(f"🤝 **Duo #{i+1} :** `{duo_nom}` &nbsp;•&nbsp; 📊 *Moyenne combinée :* **{moy_comb:.3f}**")
                         duos_selectionnes.append(duo_nom)
 
             participants_finaux = duos_selectionnes
