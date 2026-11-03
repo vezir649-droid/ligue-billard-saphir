@@ -1,5 +1,5 @@
 {
-    "date": "2026-11-03 21:46",
+    "date": "2026-11-03 21:47",
     "receveur": "Foxtrot",
     "visiteur": "Echo",
     "choix_rec": "Foxtrot",
@@ -60,8 +60,8 @@
             "joueur_b_absent": false
         },
         "2": {
-            "score_a": 0,
-            "score_b": 0,
+            "score_a": 8,
+            "score_b": 6,
             "joueur_a": "Valérie Turcotte",
             "joueur_b": "Guy Vézina",
             "joueur_a_absent": false,
@@ -124,8 +124,8 @@
             "joueur_b_absent": false
         }
     },
-    "total_receveur": 8,
-    "total_visiteur": 5,
-    "derniere_mise_a_jour": "21:46:52",
-    "ts_modif": 1793742412.7055955
+    "total_receveur": 16,
+    "total_visiteur": 11,
+    "derniere_mise_a_jour": "21:47:24",
+    "ts_modif": 1793742444.136266
 }
