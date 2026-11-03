@@ -11,7 +11,11 @@ from email.mime.application import MIMEApplication
 from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from PIL import Image
+import io
+import base64
+import urllib.request
+import urllib.error
+from PIL import Image, ImageOps
 import pandas as pd
 import streamlit as st
 
