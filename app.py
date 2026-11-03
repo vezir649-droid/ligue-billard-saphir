@@ -3167,54 +3167,148 @@ def cb_scanner_feuille():
     st.session_state["pending_choix_match_vue"] = label_scan
 
 
+def envoyer_feuille_et_photo_administrateurs(data_s, photo_bytes=None, destinataires_custom=None):
+    """Constitue la feuille officielle de match en HTML et transmet par courriel le document HTML
+    et la photo manuscrite originale aux administrateurs de la ligue."""
+    if not isinstance(data_s, dict):
+        return False, "Données de match invalides."
+
+    cfg = charger_config_email()
+    destinataires = (destinataires_custom or cfg.get("destinataires", "")).strip()
+
+    # Recherche complémentaire dans st.secrets si absent
+    if not destinataires:
+        try:
+            if hasattr(st, "secrets") and st.secrets:
+                destinataires = (st.secrets.get("EMAIL_DESTINATAIRES") or st.secrets.get("ADMIN_EMAILS") or "").strip()
+        except Exception:
+            pass
+
+    if not destinataires:
+        return False, "Aucune adresse courriel d'administrateur configurée. Veuillez renseigner l'adresse dans l'administration ou dans le champ prévu."
+
+    # 1. Constituer les données du match pour obtenir le HTML officiel
+    matchs_dict = data_s.get("matchs", {})
+    m_scan = {
+        "date": str(data_s.get("date", datetime.today().strftime("%Y-%m-%d"))),
+        "date_enregistrement": str(data_s.get("date", datetime.today().strftime("%Y-%m-%d"))),
+        "receveur": str(data_s.get("receveur", "Receveur")),
+        "visiteur": str(data_s.get("visiteur", "Visiteur")),
+        "total_receveur": _safe_int_val(data_s.get("total_rec", 0)),
+        "total_visiteur": _safe_int_val(data_s.get("total_vis", 0)),
+        "approbateur_receveur": str(data_s.get("approbateur_rec", "")),
+        "approbateur_visiteur": str(data_s.get("approbateur_vis", "")),
+        "matchs": {
+            str(i): {
+                "score_a": _safe_int_val(matchs_dict.get(str(i), {}).get("score_a", 0)),
+                "score_b": _safe_int_val(matchs_dict.get(str(i), {}).get("score_b", 0)),
+                "joueur_a": str(matchs_dict.get(str(i), {}).get("joueur_a", "")),
+                "joueur_b": str(matchs_dict.get(str(i), {}).get("joueur_b", ""))
+            } for i in range(1, 10)
+        }
+    }
+
+    # 2. Reconstitution du HTML officiel
+    html_officiel = obtenir_html_match(m_scan)
+    data_s["html_officiel"] = html_officiel
+
+    # 3. Préparer les pièces jointes : photo originale + fichier HTML
+    pj = []
+    p_bytes = photo_bytes or st.session_state.get("scan_photo_bytes")
+    if p_bytes:
+        try:
+            # Sauvegarder aussi une copie locale sur le serveur
+            p_path = os.path.join(DATA_DIR, "derniere_feuille_scan.jpg")
+            with open(p_path, "wb") as f_p:
+                f_p.write(p_bytes)
+        except Exception:
+            pass
+        pj.append(("photo_feuille_manuscrite.jpg", p_bytes, "image/jpeg"))
+
+    pj.append(("feuille_officielle_match.html", html_officiel.encode("utf-8"), "text/html"))
+
+    # 4. Envoi par courriel
+    rec_m = m_scan["receveur"]
+    vis_m = m_scan["visiteur"]
+    tot_r = m_scan["total_receveur"]
+    tot_v = m_scan["total_visiteur"]
+    date_m = m_scan["date_enregistrement"]
+
+    sujet = f"🎱 Numérisation IA — Feuille officielle : {rec_m} ({tot_r}) vs {vis_m} ({tot_v}) - {date_m}"
+    texte_brut = (
+        f"Ligue de billard Boule en main — Feuille de match officielle numérisée par IA Vision\n"
+        f"Date : {date_m}\n"
+        f"Rencontre : {rec_m} ({tot_r} pts) vs {vis_m} ({tot_v} pts)\n\n"
+        f"Veuillez trouver ci-joint la feuille officielle complète en HTML ainsi que la photo manuscrite originale."
+    )
+
+    return envoyer_courriel(destinataires, sujet, texte_brut, html_officiel, cfg, pieces_jointes=pj)
+
 def cb_injecter_donnees_scanner(data_s, label_direct):
     """Callback on_click execute AVANT l instanciation des widgets Streamlit
-    pour injecter equipes, joueurs officiels actifs et les 9 manches avec succes garanti."""
+    pour injecter equipes, joueurs officiels actifs et les 9 manches avec succes garanti,
+    sans declencher de reboot container et sans perte de session."""
     if not isinstance(data_s, dict):
         return
+
     eq_r_scan = str(data_s.get("receveur", "")).strip()
     eq_v_scan = str(data_s.get("visiteur", "")).strip()
 
-    st.session_state["sel_equipe_rec"] = eq_r_scan
-    st.session_state["sel_equipe_vis"] = eq_v_scan
+    equipes_dict = charger_equipes_csv()
+    noms_eq = list(equipes_dict.keys())
+
+    # 1. Selection securisee des equipes
+    if eq_r_scan in noms_eq:
+        st.session_state["sel_equipe_rec"] = eq_r_scan
+    else:
+        st.session_state["sel_equipe_rec"] = "Autre / Personnalisée"
+        st.session_state["input_custom_rec"] = eq_r_scan
     st.session_state["choix_equipe_receveuse"] = eq_r_scan
+
+    if eq_v_scan in noms_eq:
+        st.session_state["sel_equipe_vis"] = eq_v_scan
+    else:
+        st.session_state["sel_equipe_vis"] = "Autre / Personnalisée"
+        st.session_state["input_custom_vis"] = eq_v_scan
     st.session_state["choix_equipe_visiteuse"] = eq_v_scan
 
-    # Injecter les 3 joueurs actifs officiels
+    # 2. Selection securisee des joueurs receveurs et synchronisation des etats de presence
+    roster_r = equipes_dict.get(eq_r_scan, [])
     j_r_list = data_s.get("joueurs_rec", [])
-    j_v_list = data_s.get("joueurs_vis", [])
-    if len(j_r_list) > 0:
-        st.session_state["sel_j1_rec"] = j_r_list[0]
-        st.session_state["last_nom_j1_rec"] = j_r_list[0]
-        st.session_state["moy_j1_rec"] = obtenir_moyenne_joueur(j_r_list[0])
-    if len(j_r_list) > 1:
-        st.session_state["sel_j2_rec"] = j_r_list[1]
-        st.session_state["last_nom_j2_rec"] = j_r_list[1]
-        st.session_state["moy_j2_rec"] = obtenir_moyenne_joueur(j_r_list[1])
-    if len(j_r_list) > 2:
-        st.session_state["sel_j3_rec"] = j_r_list[2]
-        st.session_state["last_nom_j3_rec"] = j_r_list[2]
-        st.session_state["moy_j3_rec"] = obtenir_moyenne_joueur(j_r_list[2])
-
-    if len(j_v_list) > 0:
-        st.session_state["sel_j1_vis"] = j_v_list[0]
-        st.session_state["last_nom_j1_vis"] = j_v_list[0]
-        st.session_state["moy_j1_vis"] = obtenir_moyenne_joueur(j_v_list[0])
-    if len(j_v_list) > 1:
-        st.session_state["sel_j2_vis"] = j_v_list[1]
-        st.session_state["last_nom_j2_vis"] = j_v_list[1]
-        st.session_state["moy_j2_vis"] = obtenir_moyenne_joueur(j_v_list[1])
-    if len(j_v_list) > 2:
-        st.session_state["sel_j3_vis"] = j_v_list[2]
-        st.session_state["last_nom_j3_vis"] = j_v_list[2]
-        st.session_state["moy_j3_vis"] = obtenir_moyenne_joueur(j_v_list[2])
-
-    # Tous les joueurs presents
-    for p_id in ["j1_rec", "j2_rec", "j3_rec", "j1_vis", "j2_vis", "j3_vis"]:
+    for idx, p_id in enumerate(["j1_rec", "j2_rec", "j3_rec"]):
+        nom = j_r_list[idx] if idx < len(j_r_list) else f"Joueur {idx+1}"
+        if nom in roster_r:
+            st.session_state[f"sel_{p_id}"] = nom
+        else:
+            st.session_state[f"sel_{p_id}"] = "Remplaçant..."
+            st.session_state[f"cust_{p_id}"] = nom
+        st.session_state[f"last_nom_{p_id}"] = nom
+        st.session_state[f"moy_{p_id}"] = obtenir_moyenne_joueur(nom)
+        st.session_state[f"pts_{p_id}"] = 0
         st.session_state[f"pres_{p_id}"] = True
         st.session_state[f"main_pres_tog_{p_id}"] = True
+        st.session_state[f"prev_state_{p_id}"] = True
+        st.session_state[f"prev_pts_{p_id}"] = 0
 
-    # Injecter les scores des 9 manches
+    # 3. Selection securisee des joueurs visiteurs et synchronisation des etats de presence
+    roster_v = equipes_dict.get(eq_v_scan, [])
+    j_v_list = data_s.get("joueurs_vis", [])
+    for idx, p_id in enumerate(["j1_vis", "j2_vis", "j3_vis"]):
+        nom = j_v_list[idx] if idx < len(j_v_list) else f"Joueur {idx+1}"
+        if nom in roster_v:
+            st.session_state[f"sel_{p_id}"] = nom
+        else:
+            st.session_state[f"sel_{p_id}"] = "Remplaçant..."
+            st.session_state[f"cust_{p_id}"] = nom
+        st.session_state[f"last_nom_{p_id}"] = nom
+        st.session_state[f"moy_{p_id}"] = obtenir_moyenne_joueur(nom)
+        st.session_state[f"pts_{p_id}"] = 0
+        st.session_state[f"pres_{p_id}"] = True
+        st.session_state[f"main_pres_tog_{p_id}"] = True
+        st.session_state[f"prev_state_{p_id}"] = True
+        st.session_state[f"prev_pts_{p_id}"] = 0
+
+    # 4. Injection des scores des 9 manches
     matchs_dict = data_s.get("matchs", {})
     scores_dict = {}
     matchs_save = {}
@@ -3226,13 +3320,17 @@ def cb_injecter_donnees_scanner(data_s, label_direct):
         st.session_state[f"s_b_{i}"] = sb
         scores_dict[f"s_a_{i}"] = sa
         scores_dict[f"s_b_{i}"] = sb
-        matchs_save[str(i)] = {"score_a": sa, "score_b": sb}
+        matchs_save[str(i)] = {
+            "score_a": sa,
+            "score_b": sb,
+            "joueur_a": m_i.get("joueur_a", ""),
+            "joueur_b": m_i.get("joueur_b", "")
+        }
 
-    # IMPORTANTISSIME: desactiver venant_de_archive et mettre a jour scores_en_cours_backup
     st.session_state["venant_de_archive"] = False
     st.session_state["scores_en_cours_backup"] = scores_dict
 
-    # Sauvegarder sur le disque de secours
+    # 5. Sauvegarde locale atomique SANS declencher de push GitHub (evite le redemarrage de l'app sur Streamlit Cloud)
     try:
         dict_j_inj = {
             "j1_rec": {"nom": j_r_list[0] if len(j_r_list) > 0 else "Joueur 1", "present": True, "moyenne": float(st.session_state.get("moy_j1_rec", 0.625)), "pts_absent": 0},
@@ -3244,6 +3342,8 @@ def cb_injecter_donnees_scanner(data_s, label_direct):
         }
         data_inj = {
             "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "derniere_mise_a_jour": datetime.now().strftime("%H:%M:%S"),
+            "ts_modif": time.time(),
             "receveur": eq_r_scan,
             "visiteur": eq_v_scan,
             "choix_rec": eq_r_scan,
@@ -3251,14 +3351,31 @@ def cb_injecter_donnees_scanner(data_s, label_direct):
             "joueurs": dict_j_inj,
             "matchs": matchs_save
         }
-        sauvegarder_donnees(data_inj)
+        with open(BACKUP_FILE, "w", encoding="utf-8") as f:
+            json.dump(data_inj, f, ensure_ascii=False, indent=4)
     except Exception:
         pass
 
-    st.session_state["choix_match_vue"] = label_direct
-    st.session_state["pending_choix_match_vue"] = label_direct
-    st.session_state["toast_scan_injecte"] = True
+    # 6. Maintenir active l'authentification et les droits de saisie pour eviter de basculer sur l'ecran d'accueil
+    st.session_state["authentifie"] = True
+    st.session_state["est_spectateur"] = False
+    st.session_state["mode_consultation"] = False
+    st.session_state["app_initialisee"] = True
 
+    # Prendre le verrou pour afficher directement la grille d'edition
+    user_sess = st.session_state.get("user_session_id")
+    if not user_sess:
+        user_sess = str(uuid.uuid4())
+        st.session_state["user_session_id"] = user_sess
+    try:
+        prendre_le_verrou(user_sess)
+    except Exception:
+        pass
+
+    lbl_direct = "🔴 Saisie du match en direct (En cours)"
+    st.session_state["choix_match_vue"] = lbl_direct
+    st.session_state["pending_choix_match_vue"] = lbl_direct
+    st.session_state["toast_scan_injecte"] = True
 
 def cb_archiver_match_scanner(data_s):
     """Callback on_click pour archiver directement le match depuis le scanner."""
@@ -3486,6 +3603,44 @@ def afficher_vue_scanner_feuille_match(label_direct):
                             # Correlation immediate avec les equipes et joueurs officiels
                             res_sc = correler_donnees_feuille_avec_ligue(res_sc)
                             st.session_state["scan_result_data"] = res_sc
+                            st.session_state["scan_photo_bytes"] = img_data
+
+                            # Constitution automatique de la feuille officielle HTML
+                            try:
+                                match_dict_init = res_sc.get("matchs", {})
+                                m_scan_init = {
+                                    "date": str(res_sc.get("date", datetime.today().strftime("%Y-%m-%d"))),
+                                    "date_enregistrement": str(res_sc.get("date", datetime.today().strftime("%Y-%m-%d"))),
+                                    "receveur": str(res_sc.get("receveur", "Receveur")),
+                                    "visiteur": str(res_sc.get("visiteur", "Visiteur")),
+                                    "total_receveur": _safe_int_val(res_sc.get("total_rec", 0)),
+                                    "total_visiteur": _safe_int_val(res_sc.get("total_vis", 0)),
+                                    "approbateur_receveur": str(res_sc.get("approbateur_rec", "")),
+                                    "approbateur_visiteur": str(res_sc.get("approbateur_vis", "")),
+                                    "matchs": {
+                                        str(i): {
+                                            "score_a": _safe_int_val(match_dict_init.get(str(i), {}).get("score_a", 0)),
+                                            "score_b": _safe_int_val(match_dict_init.get(str(i), {}).get("score_b", 0)),
+                                            "joueur_a": str(match_dict_init.get(str(i), {}).get("joueur_a", "")),
+                                            "joueur_b": str(match_dict_init.get(str(i), {}).get("joueur_b", ""))
+                                        } for i in range(1, 10)
+                                    }
+                                }
+                                res_sc["html_officiel"] = obtenir_html_match(m_scan_init)
+                                st.session_state["scan_result_data"] = res_sc
+                            except Exception:
+                                pass
+
+                            # Envoi automatique aux administrateurs si configure
+                            cfg_em = charger_config_email()
+                            dest_adm = (cfg_em.get("destinataires") or "").strip()
+                            if dest_adm and cfg_em.get("smtp_serveur"):
+                                ok_m, msg_m = envoyer_feuille_et_photo_administrateurs(res_sc, photo_bytes=img_data)
+                                if ok_m:
+                                    st.session_state["scan_email_notif"] = ("success", f"📧 Feuille officielle et photo transmises aux administrateurs ({dest_adm}) !")
+                                else:
+                                    st.session_state["scan_email_notif"] = ("warning", f"⚠️ Envoi courriel admin : {msg_m}")
+
                             st.success("✅ Analyse et corrélation des joueurs actifs réussies avec succès !")
                             time.sleep(0.5)
                             st.rerun()
@@ -3672,24 +3827,102 @@ def afficher_vue_scanner_feuille_match(label_direct):
                     })
                 st.dataframe(pd.DataFrame(duels_data), use_container_width=True, hide_index=True)
 
-                col_act1, col_act2 = st.columns(2)
+                # Section Feuille officielle HTML & Transmission aux administrateurs
+                st.divider()
+                st.markdown("### 📜 Feuille officielle du match & Transmission aux Administrateurs")
+
+                matchs_dict = data_s.get("matchs", {})
+                m_scan = {
+                    "date": str(data_s.get("date", datetime.today().strftime("%Y-%m-%d"))),
+                    "date_enregistrement": str(data_s.get("date", datetime.today().strftime("%Y-%m-%d"))),
+                    "receveur": str(data_s.get("receveur", "Receveur")),
+                    "visiteur": str(data_s.get("visiteur", "Visiteur")),
+                    "total_receveur": _safe_int_val(data_s.get("total_rec", 0)),
+                    "total_visiteur": _safe_int_val(data_s.get("total_vis", 0)),
+                    "approbateur_receveur": str(data_s.get("approbateur_rec", "")),
+                    "approbateur_visiteur": str(data_s.get("approbateur_vis", "")),
+                    "matchs": {
+                        str(i): {
+                            "score_a": _safe_int_val(matchs_dict.get(str(i), {}).get("score_a", 0)),
+                            "score_b": _safe_int_val(matchs_dict.get(str(i), {}).get("score_b", 0)),
+                            "joueur_a": str(matchs_dict.get(str(i), {}).get("joueur_a", "")),
+                            "joueur_b": str(matchs_dict.get(str(i), {}).get("joueur_b", ""))
+                        } for i in range(1, 10)
+                    }
+                }
+                html_officiel = data_s.get("html_officiel") or obtenir_html_match(m_scan)
+                data_s["html_officiel"] = html_officiel
+
+                if "scan_email_notif" in st.session_state:
+                    typ_n, msg_n = st.session_state.pop("scan_email_notif")
+                    if typ_n == "success":
+                        st.success(msg_n)
+                    else:
+                        st.warning(msg_n)
+
+                with st.expander("👁️ Prévisualiser la feuille officielle de match (Format A4 officiel)", expanded=False):
+                    st.components.v1.html(html_officiel, height=520, scrolling=True)
+
+                with st.container(border=True):
+                    st.markdown("#### 📧 Envoyer la photo originale et la feuille HTML aux administrateurs")
+                    st.caption("Transmet par courriel officiel la feuille de match mise en page (HTML) et la photo originale prise par la caméra aux administrateurs.")
+                    cfg_em = charger_config_email()
+                    dest_def = cfg_em.get("destinataires", "")
+                    col_em1, col_em2 = st.columns([2.8, 1.2])
+                    with col_em1:
+                        dest_saisi = st.text_input(
+                            "Adresse(s) courriel des administrateurs :",
+                            value=dest_def,
+                            placeholder="admin@ligue.com, secretaire@ligue.com",
+                            key="input_dest_admin_scan",
+                            help="Séparez plusieurs adresses par des virgules."
+                        )
+                    with col_em2:
+                        st.write("")
+                        btn_send_admin = st.button("📤 Envoyer aux administrateurs", type="primary", use_container_width=True, key="btn_send_admin_scan_action")
+
+                    if btn_send_admin:
+                        if not dest_saisi.strip():
+                            st.error("⚠️ Veuillez renseigner au moins une adresse courriel de destinataire.")
+                        else:
+                            with st.spinner("Envoi du courriel avec la feuille HTML et la photo en pièce jointe..."):
+                                ok_env, msg_env = envoyer_feuille_et_photo_administrateurs(data_s, photo_bytes=st.session_state.get("scan_photo_bytes"), destinataires_custom=dest_saisi.strip())
+                                if ok_env:
+                                    st.success(f"✅ Feuille officielle et photo transmises avec succès à `{dest_saisi.strip()}` !")
+                                else:
+                                    st.error(f"❌ Échec de l'envoi : {msg_env}")
+
+                st.markdown("#### ⚡ Actions sur la feuille de match")
+                col_act1, col_act2, col_act3 = st.columns([1.6, 1.4, 1.0])
                 with col_act1:
-                    st.button(
+                    if st.button(
                         "📥 Injecter dans la saisie du match en direct",
                         use_container_width=True,
                         type="primary",
-                        on_click=cb_injecter_donnees_scanner,
-                        args=(data_s, label_direct),
+                        key="btn_injecter_saisie_directe",
                         help="Pré-remplit la feuille de match en direct avec ces équipes, joueurs actifs et pointages"
-                    )
+                    ):
+                        cb_injecter_donnees_scanner(data_s, label_direct)
+                        st.rerun()
 
                 with col_act2:
-                    st.button(
+                    if st.button(
                         "💾 Archiver directement dans l'historique officiel",
                         use_container_width=True,
-                        on_click=cb_archiver_match_scanner,
-                        args=(data_s,),
+                        key="btn_archiver_match_direct",
                         help="Enregistre officiellement ce match avec les noms complets des joueurs dans l'historique"
+                    ):
+                        cb_archiver_match_scanner(data_s)
+                        st.rerun()
+
+                with col_act3:
+                    st.download_button(
+                        "📥 Télécharger HTML",
+                        data=html_officiel,
+                        file_name=f"feuille_{rec_nom}_vs_{vis_nom}.html",
+                        mime="text/html",
+                        use_container_width=True,
+                        help="Télécharger le document HTML officiel pour vos archives"
                     )
         except Exception as e_res_ui:
             st.error(f"Erreur d'affichage des résultats extraits : {e_res_ui}")
@@ -5129,19 +5362,27 @@ def envoyer_courriel(destinataires_str, sujet, texte_brut, html_contenu, config,
 
     msg.attach(msg_related)
 
-    # Ajout des pièces jointes demandées
+    # Ajout des pièces jointes demandées (supporte chemins de fichiers et tuples (nom, bytes))
     if pieces_jointes:
-        for pj_path in pieces_jointes:
-            if os.path.exists(pj_path):
-                try:
-                    nom_fichier = os.path.basename(pj_path)
-                    with open(pj_path, "rb") as f:
+        for pj_item in pieces_jointes:
+            try:
+                if isinstance(pj_item, tuple) and len(pj_item) >= 2:
+                    nom_fichier = str(pj_item[0])
+                    pj_data = pj_item[1]
+                    if isinstance(pj_data, str):
+                        pj_data = pj_data.encode("utf-8")
+                    part_pj = MIMEApplication(pj_data, Name=nom_fichier)
+                    part_pj.add_header("Content-Disposition", "attachment", filename=nom_fichier)
+                    msg.attach(part_pj)
+                elif isinstance(pj_item, str) and os.path.exists(pj_item):
+                    nom_fichier = os.path.basename(pj_item)
+                    with open(pj_item, "rb") as f:
                         pj_data = f.read()
                     part_pj = MIMEApplication(pj_data, Name=nom_fichier)
                     part_pj.add_header("Content-Disposition", "attachment", filename=nom_fichier)
                     msg.attach(part_pj)
-                except Exception as e_pj:
-                    st.warning(f"⚠️ Impossible de joindre la pièce {pj_path} : {e_pj}")
+            except Exception as e_pj:
+                st.warning(f"⚠️ Impossible de joindre la pièce : {e_pj}")
 
     try:
         if mode_ssl or port == 465:
