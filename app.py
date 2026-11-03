@@ -3223,7 +3223,25 @@ def envoyer_feuille_et_photo_administrateurs(data_s, photo_bytes=None, destinata
                 f_p.write(p_bytes)
         except Exception:
             pass
-        pj.append(("photo_feuille_manuscrite.jpg", p_bytes, "image/jpeg"))
+        # Optimisation haute résolution de la photo pour courriel (max 1600x1600, ~250-350 Ko)
+        try:
+            from PIL import Image, ImageOps
+            import io
+            im_scan = Image.open(io.BytesIO(p_bytes))
+            try:
+                im_scan = ImageOps.exif_transpose(im_scan)
+            except Exception:
+                pass
+            if im_scan.mode != "RGB":
+                im_scan = im_scan.convert("RGB")
+            im_scan.thumbnail((1600, 1600), Image.Resampling.LANCZOS)
+            buf_opt = io.BytesIO()
+            im_scan.save(buf_opt, format="JPEG", quality=82, optimize=True)
+            p_bytes_email = buf_opt.getvalue()
+        except Exception:
+            p_bytes_email = p_bytes
+
+        pj.append(("photo_feuille_manuscrite.jpg", p_bytes_email, "image/jpeg"))
 
     pj.append(("feuille_officielle_match.html", html_officiel.encode("utf-8"), "text/html"))
 
@@ -5384,24 +5402,52 @@ def envoyer_courriel(destinataires_str, sujet, texte_brut, html_contenu, config,
             except Exception as e_pj:
                 st.warning(f"⚠️ Impossible de joindre la pièce : {e_pj}")
 
-    try:
-        if mode_ssl or port == 465:
-            with smtplib.SMTP_SSL(serveur_smtp, port, timeout=15) as server:
-                if mot_de_passe:
-                    server.login(expediteur, mot_de_passe)
-                server.sendmail(expediteur, destinataires, msg.as_string())
-        else:
-            with smtplib.SMTP(serveur_smtp, port, timeout=15) as server:
-                server.ehlo()
-                if port == 587:
-                    server.starttls()
+    # Envoi robuste multi-stratégie avec gestion intelligente des ports 465 (SSL) et 587 (STARTTLS)
+    # et basculement automatique de secours en cas de fermeture inattendue de connexion
+    import ssl
+
+    ctx = ssl.create_default_context()
+    port_int = int(port) if str(port).isdigit() else 587
+    tentatives = []
+
+    # Si le serveur est configuré en SSL ou sur port 465
+    if port_int == 465 or (mode_ssl and port_int != 587):
+        tentatives.append(("SSL", serveur_smtp, 465))
+        tentatives.append(("TLS", serveur_smtp, 587))
+    else:
+        # Port 587 TLS en premier, repli automatique sur SSL 465 si le port 587 est bloqué ou fermé inopinément
+        tentatives.append(("TLS", serveur_smtp, 587 if port_int in (587, 25, 2525) else port_int))
+        tentatives.append(("SSL", serveur_smtp, 465))
+
+    dernier_err = None
+    msg_str = msg.as_string()
+
+    for methode, host, p_tentative in tentatives:
+        try:
+            if methode == "SSL":
+                with smtplib.SMTP_SSL(host, p_tentative, timeout=40, context=ctx) as server:
                     server.ehlo()
-                if mot_de_passe:
-                    server.login(expediteur, mot_de_passe)
-                server.sendmail(expediteur, destinataires, msg.as_string())
-        return True, "Courriel envoyé avec succès !"
-    except Exception as e:
-        return False, f"Échec de l'envoi du courriel : {str(e)}"
+                    if mot_de_passe:
+                        server.login(expediteur, mot_de_passe)
+                    server.sendmail(expediteur, destinataires, msg_str)
+                    return True, "Courriel envoyé avec succès !"
+            else:
+                with smtplib.SMTP(host, p_tentative, timeout=40) as server:
+                    server.ehlo()
+                    try:
+                        server.starttls(context=ctx)
+                        server.ehlo()
+                    except Exception:
+                        pass
+                    if mot_de_passe:
+                        server.login(expediteur, mot_de_passe)
+                    server.sendmail(expediteur, destinataires, msg_str)
+                    return True, "Courriel envoyé avec succès !"
+        except Exception as e_att:
+            dernier_err = e_att
+            continue
+
+    return False, f"Échec de l'envoi du courriel : {str(dernier_err)}"
 
 
 # ==============================================================================
