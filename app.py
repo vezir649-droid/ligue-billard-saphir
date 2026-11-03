@@ -2836,12 +2836,16 @@ Structure JSON attendue :
   "totaux_joueurs_rec": [21, 21, 24],
   "totaux_joueurs_vis": [18, 20, 20],
   "approbateur_rec": "Signature ou nom capitaine receveur",
-  "approbateur_vis": "Signature ou nom capitaine visiteur"
+  "approbateur_vis": "Signature ou nom capitaine visiteur",
+  "est_partiel": false,
+  "incertitudes": []
 }
 Consignes strictes :
 - joueurs_rec DOIT contenir les 3 joueurs de l'équipe receveuse dans l'ordre exact des manches 1, 2 et 3.
 - joueurs_vis DOIT contenir les 3 joueurs de l'équipe visiteuse dans l'ordre exact des manches 1, 2 et 3.
-- score_a et score_b sont des entiers compris entre 0 et 8 inclusivement.
+- score_a et score_b sont des entiers compris entre 0 et 8 inclusivement (mets 0 si une manche n'est pas encore jouée / case vide).
+- est_partiel vaut true si certaines manches ne sont pas encore jouées (cases vides) ou si la feuille est incomplète, sinon false.
+- incertitudes est une liste de chaînes signalant toute rature, chiffre manuscrit ambigu (ex: hésitation entre 5 et 6), nom difficile à lire ou case manquante.
 - Vérifie que les scores des 9 manches correspondent aux totaux par joueur et aux totaux d'équipe (total_rec et total_vis).
 - Renvoie UNIQUEMENT le bloc JSON valide, sans formatage markdown, sans texte additionnel."""
 
@@ -3289,14 +3293,132 @@ def correler_donnees_feuille_avec_ligue(data_s):
         data_s["raw_total_rec"] = _safe_int_val(data_s.get("total_rec", somme_rec))
     if "raw_total_vis" not in data_s:
         data_s["raw_total_vis"] = _safe_int_val(data_s.get("total_vis", somme_vis))
+    if "raw_incertitudes" not in data_s:
+        inc_brut = data_s.get("incertitudes", [])
+        data_s["raw_incertitudes"] = [str(x).strip() for x in inc_brut if str(x).strip()] if isinstance(inc_brut, list) else []
+
     # Toujours garantir que total_rec et total_vis correspondent exactement a la somme des 9 manches
     data_s["total_rec"] = somme_rec
     data_s["total_vis"] = somme_vis
+
+    # 8. Detection automatique d'un scan partiel et des incertitudes de lecture
+    incertitudes_liste = list(data_s.get("raw_incertitudes", []))
+    manches_vides = []
+    manches_atypiques = []
+    for i in range(1, 10):
+        m_i = matchs_alignes.get(str(i), {})
+        sa = _safe_int_val(m_i.get("score_a", 0))
+        sb = _safe_int_val(m_i.get("score_b", 0))
+        if sa == 0 and sb == 0:
+            manches_vides.append(i)
+        elif max(sa, sb) < 8:
+            manches_atypiques.append((i, sa, sb))
+
+    nb_manches_jouees = 9 - len(manches_vides)
+    est_partiel = (len(manches_vides) > 0) or bool(data_s.get("est_partiel", False) and len(manches_vides) > 0)
+    data_s["nb_manches_jouees"] = nb_manches_jouees
+    data_s["manches_vides"] = manches_vides
+    data_s["est_partiel"] = est_partiel
+
+    if manches_vides:
+        m_str = ", ".join(str(m) for m in manches_vides)
+        incertitudes_liste.append(f"Feuille partielle : {len(manches_vides)} manche(s) sans pointage (0 — 0) détectée(s) [Manche(s) {m_str}].")
+
+    for m_num, sa, sb in manches_atypiques:
+        incertitudes_liste.append(f"Manche {m_num} : pointage ({sa} — {sb}) sans joueur à 8 pts (vérifiez s'il s'agit d'un score d'absence ou d'un chiffre manuscrit ambigu).")
+
+    # Verification des totaux individuels manuscrits vs somme des 3 manches
+    tot_j_rec_lu = data_s.get("totaux_joueurs_rec", [])
+    if isinstance(tot_j_rec_lu, list):
+        for idx_r in range(min(3, len(tot_j_rec_lu))):
+            t_lu = _safe_int_val(tot_j_rec_lu[idx_r], -1)
+            t_calc = stats_rec[idx_r]["total_points"]
+            if t_lu > 0 and t_lu != t_calc:
+                incertitudes_liste.append(f"Écart sur le total individuel de {stats_rec[idx_r]['nom']} ({eq_rec_off}) : somme des 3 manches = {t_calc} pts vs total manuscrit lu = {t_lu} pts.")
+
+    tot_j_vis_lu = data_s.get("totaux_joueurs_vis", [])
+    if isinstance(tot_j_vis_lu, list):
+        for idx_v in range(min(3, len(tot_j_vis_lu))):
+            t_lu = _safe_int_val(tot_j_vis_lu[idx_v], -1)
+            t_calc = stats_vis[idx_v]["total_points"]
+            if t_lu > 0 and t_lu != t_calc:
+                incertitudes_liste.append(f"Écart sur le total individuel de {stats_vis[idx_v]['nom']} ({eq_vis_off}) : somme des 3 manches = {t_calc} pts vs total manuscrit lu = {t_lu} pts.")
+
+    raw_tr = data_s.get("raw_total_rec", 0)
+    raw_tv = data_s.get("raw_total_vis", 0)
+    if raw_tr > 0 and raw_tr != somme_rec:
+        incertitudes_liste.append(f"Écart sur le total d'équipe {eq_rec_off} : somme des 9 manches = {somme_rec} pts vs total manuscrit lu = {raw_tr} pts.")
+    if raw_tv > 0 and raw_tv != somme_vis:
+        incertitudes_liste.append(f"Écart sur le total d'équipe {eq_vis_off} : somme des 9 manches = {somme_vis} pts vs total manuscrit lu = {raw_tv} pts.")
+
+    for nom_r in joueurs_rec_corr:
+        if cands_rec and nom_r not in cands_rec:
+            incertitudes_liste.append(f"Joueur « {nom_r} » non présent dans l'alignement régulier de {eq_rec_off} (traité comme remplaçant ou nom manuscrit à vérifier).")
+    for nom_v in joueurs_vis_corr:
+        if cands_vis and nom_v not in cands_vis:
+            incertitudes_liste.append(f"Joueur « {nom_v} » non présent dans l'alignement régulier de {eq_vis_off} (traité comme remplaçant ou nom manuscrit à vérifier).")
+
+    # Deduplication tout en conservant l'ordre
+    inc_uniques = []
+    for item_inc in incertitudes_liste:
+        if item_inc and item_inc not in inc_uniques:
+            inc_uniques.append(item_inc)
+    data_s["incertitudes"] = inc_uniques
 
     data_s["stats_joueurs_rec"] = stats_rec
     data_s["stats_joueurs_vis"] = stats_vis
     data_s["correspondances"] = correspondances
     return data_s
+
+
+def verifier_match_scan_dans_historique(data_s, historique=None):
+    """Vérifie si le match issu du scan existe déjà dans l'historique officiel des matchs.
+    Retourne (existe: bool, index_hist: int, match_hist: dict)."""
+    if not isinstance(data_s, dict):
+        return False, -1, None
+    if historique is None:
+        historique = charger_historique_matchs()
+    if not historique or not isinstance(historique, list):
+        return False, -1, None
+
+    eq_r = str(data_s.get("receveur", "")).strip().lower()
+    eq_v = str(data_s.get("visiteur", "")).strip().lower()
+    if not eq_r or not eq_v:
+        return False, -1, None
+
+    date_scan = str(data_s.get("date", "")).strip()
+    m_ymd_s = re.search(r"(\d{4})-(\d{2})-(\d{2})", date_scan)
+    m_dmy_s = re.search(r"(\d{1,2})/(\d{1,2})/(\d{4})", date_scan)
+    jour_s, mois_s = None, None
+    if m_ymd_s:
+        mois_s, jour_s = int(m_ymd_s.group(2)), int(m_ymd_s.group(3))
+    elif m_dmy_s:
+        jour_s, mois_s = int(m_dmy_s.group(1)), int(m_dmy_s.group(2))
+
+    for idx, m_h in enumerate(historique):
+        if not isinstance(m_h, dict):
+            continue
+        h_r = str(m_h.get("receveur", m_h.get("equipe_receveur", ""))).strip().lower()
+        h_v = str(m_h.get("visiteur", m_h.get("equipe_visiteur", ""))).strip().lower()
+
+        # 1. Même receveur et même visiteur dans l'historique de la saison
+        if h_r == eq_r and h_v == eq_v:
+            return True, idx, m_h
+
+        # 2. Même paire d'équipes (inversées par erreur sur la feuille) à la même date
+        if {h_r, h_v} == {eq_r, eq_v} and jour_s and mois_s:
+            d_h = str(m_h.get("date_enregistrement", m_h.get("date", "")))
+            m_ymd_h = re.search(r"(\d{4})-(\d{2})-(\d{2})", d_h)
+            m_dmy_h = re.search(r"(\d{1,2})/(\d{1,2})/(\d{4})", d_h)
+            j_h, mo_h = None, None
+            if m_ymd_h:
+                mo_h, j_h = int(m_ymd_h.group(2)), int(m_ymd_h.group(3))
+            elif m_dmy_h:
+                j_h, mo_h = int(m_dmy_h.group(1)), int(m_dmy_h.group(2))
+            if j_h == jour_s and mo_h == mois_s:
+                return True, idx, m_h
+
+    return False, -1, None
 
 
 def _safe_int_val(val, default=0):
@@ -3581,6 +3703,10 @@ def cb_archiver_match_scanner(data_s):
     """Callback on_click pour archiver directement le match depuis le scanner."""
     if not isinstance(data_s, dict):
         return
+    existe_h, idx_h, _ = verifier_match_scan_dans_historique(data_s)
+    if existe_h:
+        st.session_state["select_match_to_rectify"] = idx_h
+        return
     matchs_dict = data_s.get("matchs", {})
     nouveau_match = {
         "date": str(data_s.get("date", datetime.today().strftime("%Y-%m-%d"))),
@@ -3831,15 +3957,24 @@ def afficher_vue_scanner_feuille_match(label_direct):
                             except Exception:
                                 pass
 
-                            # Envoi automatique aux administrateurs si configure
-                            cfg_em = charger_config_email()
-                            dest_adm = (cfg_em.get("destinataires") or "").strip()
-                            if dest_adm and cfg_em.get("smtp_serveur"):
-                                ok_m, msg_m = envoyer_feuille_et_photo_administrateurs(res_sc, photo_bytes=img_data)
-                                if ok_m:
-                                    st.session_state["scan_email_notif"] = ("success", f"📧 Feuille officielle et photo transmises aux administrateurs ({dest_adm}) !")
-                                else:
-                                    st.session_state["scan_email_notif"] = ("warning", f"⚠️ Envoi courriel admin : {msg_m}")
+                            # Verification immediate dans l'historique officiel des matchs
+                            existe_deja_scan, idx_deja_scan, _ = verifier_match_scan_dans_historique(res_sc)
+                            if existe_deja_scan:
+                                st.session_state["select_match_to_rectify"] = idx_deja_scan
+                                st.session_state["scan_email_notif"] = (
+                                    "warning",
+                                    "⚠️ Ce match existe déjà dans l'historique officiel : aucun courriel en doublon n'a été envoyé. Veuillez utiliser la fonction « ✏️ Rectifications » du volet « ⚙️ Administration »."
+                                )
+                            else:
+                                # Envoi automatique aux administrateurs si configure et si le match n'est pas deja dans l'historique
+                                cfg_em = charger_config_email()
+                                dest_adm = (cfg_em.get("destinataires") or "").strip()
+                                if dest_adm and cfg_em.get("smtp_serveur"):
+                                    ok_m, msg_m = envoyer_feuille_et_photo_administrateurs(res_sc, photo_bytes=img_data)
+                                    if ok_m:
+                                        st.session_state["scan_email_notif"] = ("success", f"📧 Feuille officielle et photo transmises aux administrateurs ({dest_adm}) !")
+                                    else:
+                                        st.session_state["scan_email_notif"] = ("warning", f"⚠️ Envoi courriel admin : {msg_m}")
 
                             st.success("✅ Analyse et corrélation des joueurs actifs réussies avec succès !")
                             time.sleep(0.5)
@@ -3872,11 +4007,63 @@ def afficher_vue_scanner_feuille_match(label_direct):
                 vis_nom = data_s.get("visiteur", "Visiteur")
                 vainqueur = rec_nom if tot_r > tot_v else (vis_nom if tot_v > tot_r else "Égalité")
 
+                # 1. Verification si le match existe deja dans l'historique officiel des matchs
+                existe_hist, idx_hist, match_hist = verifier_match_scan_dans_historique(data_s)
+                if existe_hist and isinstance(match_hist, dict):
+                    st.session_state["select_match_to_rectify"] = idx_hist
+                    d_hist = match_hist.get("date_enregistrement", match_hist.get("date", "Date inconnue"))
+                    r_hist = match_hist.get("receveur", rec_nom)
+                    v_hist = match_hist.get("visiteur", vis_nom)
+                    tr_hist = match_hist.get("total_receveur", 0)
+                    tv_hist = match_hist.get("total_visiteur", 0)
+                    with st.container(border=True):
+                        st.error(
+                            f"🚨 **Ce match existe déjà dans l'historique officiel des matchs !**\n\n"
+                            f"- **Match archivé #{idx_hist + 1} :** `{r_hist}` (**{tr_hist} pts**) vs `{v_hist}` (**{tv_hist} pts**) — *Enregistré le {d_hist}*\n"
+                            f"- **Action requise :** Pour modifier ou corriger ce match, veuillez utiliser la fonction **« ✏️ Rectifications »** située dans le volet **« ⚙️ Administration »** (ce match y a été pré-sélectionné automatiquement)."
+                        )
+                        col_al_btn1, col_al_btn2 = st.columns([1.6, 1.4])
+                        with col_al_btn1:
+                            st.button(
+                                "🔙 Retour à la saisie du match",
+                                on_click=cb_retour_match_en_cours,
+                                type="primary",
+                                use_container_width=True,
+                                key="btn_retour_saisie_depuis_alerte_doublon"
+                            )
+                        with col_al_btn2:
+                            if st.button("🔄 Scanner une autre feuille", use_container_width=True, key="btn_reset_scan_doublon"):
+                                st.session_state.pop("scan_result_data", None)
+                                st.rerun()
+
                 col_r1, col_r2, col_r3, col_r4 = st.columns(4)
                 col_r1.metric("📅 Date du match", str(data_s.get("date", "Inconnue")))
                 col_r2.metric("🔴 Receveur", f"{rec_nom}", f"{tot_r} pts")
                 col_r3.metric("🔵 Visiteur", f"{vis_nom}", f"{tot_v} pts")
                 col_r4.metric("🏆 Vainqueur", f"{vainqueur}", f"{abs(tot_r - tot_v)} pts d'écart" if tot_r != tot_v else "Match nul")
+
+                # 2. Diagnostic de completude (Scan partiel) et signalement des incertitudes
+                est_partiel = bool(data_s.get("est_partiel", False))
+                nb_jouees = int(data_s.get("nb_manches_jouees", 9))
+                incertitudes = data_s.get("incertitudes", [])
+                with st.container(border=True):
+                    st.markdown("##### 🔍 Diagnostic de complétude & Incertitudes de lecture")
+                    if est_partiel:
+                        st.warning(
+                            f"⏳ **Scan partiel détecté ({nb_jouees}/9 manches complétées) :** "
+                            f"Certaines manches n'ont pas encore de pointage inscrit (`0 — 0`). "
+                            f"Vous pouvez injecter ce scan partiel dans **« 🔴 Saisie du match en direct »** pour poursuivre la saisie des manches restantes."
+                        )
+                    else:
+                        st.success("✅ **Feuille complète :** Les **9/9 manches** comportent des pointages.")
+
+                    if incertitudes:
+                        st.warning("⚠️ **Incertitudes ou points d'attention signalés lors de l'analyse :**")
+                        for inc_msg in incertitudes:
+                            st.markdown(f"- 🔸 {inc_msg}")
+                        st.caption("💡 *Astuce : Après avoir cliqué sur « 📥 Injecter dans la saisie du match en direct », vous pouvez ajuster manuellement n'importe quel score ou joueur dans le formulaire.*")
+                    else:
+                        st.caption("✨ *Aucune incertitude d'écriture ni anomalie arithmétique détectée sur les 9 manches.*")
 
                 # Recuperation des statistiques individuelles des joueurs (ou recalcul si besoin)
                 stats_rec = data_s.get("stats_joueurs_rec", [])
@@ -4095,6 +4282,8 @@ def afficher_vue_scanner_feuille_match(label_direct):
                                     st.error(f"❌ Échec de l'envoi : {msg_env}")
 
                 st.markdown("#### ⚡ Actions sur la feuille de match")
+                if existe_hist:
+                    st.warning("🔒 **Injection et archivage direct verrouillés :** Ce match figure déjà dans l'historique officiel. Utilisez le bouton **« 🔙 Retour à la saisie du match »** ou rendez-vous dans **« ⚙️ Administration → ✏️ Rectifications »** pour le modifier.")
                 col_act1, col_act2, col_act3 = st.columns([1.6, 1.4, 1.0])
                 with col_act1:
                     st.button(
@@ -4104,7 +4293,8 @@ def afficher_vue_scanner_feuille_match(label_direct):
                         key="btn_injecter_saisie_directe",
                         on_click=cb_injecter_donnees_scanner,
                         args=(data_s, label_direct),
-                        help="Pré-remplit la feuille de match en direct avec ces équipes, joueurs actifs et pointages"
+                        disabled=existe_hist,
+                        help="Ce match existe déjà dans l'historique (utilisez ⚙️ Administration → ✏️ Rectifications)" if existe_hist else "Pré-remplit la feuille de match en direct avec ces équipes, joueurs actifs et pointages"
                     )
 
                 with col_act2:
@@ -4114,7 +4304,8 @@ def afficher_vue_scanner_feuille_match(label_direct):
                         key="btn_archiver_match_direct",
                         on_click=cb_archiver_match_scanner,
                         args=(data_s,),
-                        help="Enregistre officiellement ce match avec les noms complets des joueurs dans l'historique"
+                        disabled=(existe_hist or est_partiel),
+                        help="Ce match existe déjà dans l'historique (utilisez ⚙️ Administration → ✏️ Rectifications)" if existe_hist else ("Impossible d'archiver un scan partiel (manches non jouées)" if est_partiel else "Enregistre officiellement ce match avec les noms complets des joueurs dans l'historique")
                     )
 
                 with col_act3:
