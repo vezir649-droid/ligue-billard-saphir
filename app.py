@@ -2776,15 +2776,28 @@ def sauvegarder_cle_gemini(cle_api):
 
 def analyser_photo_feuille_match(image_bytes, cle_api=None):
     """Envoie une photo de feuille de match manuscrite à Google Gemini Vision et extrait le JSON complet des 9 duels."""
+    import io
+    import base64
+    import json
+    import urllib.request
+    import urllib.error
+    from PIL import Image, ImageOps
+
     if not image_bytes:
         return False, "Aucune image fournie."
     api_k = cle_api or obtenir_cle_gemini()
     if not api_k:
         return False, "Clé API Gemini non configurée. Veuillez renseigner votre clé dans l'administration."
     
-    # 1. Redimensionnement optimisé pour vitesse maximale
+    # 1. Redimensionnement optimisé pour vitesse maximale avec rotation EXIF
     try:
         im = Image.open(io.BytesIO(image_bytes))
+        try:
+            im = ImageOps.exif_transpose(im)
+        except Exception:
+            pass
+        if im.mode != "RGB":
+            im = im.convert("RGB")
         im.thumbnail((1200, 1200), Image.Resampling.LANCZOS)
         buf = io.BytesIO()
         im.save(buf, format="JPEG", quality=85)
