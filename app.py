@@ -2882,14 +2882,189 @@ def cb_scanner_feuille():
     st.session_state["choix_match_vue"] = "📷 Numériser une feuille de match (Scanner IA)"
 
 
+def correler_nom_joueur(nom_brut, cands_equipe, tous_joueurs_list):
+    """Associe intelligemment un prénom ou surnom manuscrit (ex. 'Gille', 'Léon M')
+    au nom officiel complet d'un joueur dans l'équipe ou dans la ligue."""
+    import unicodedata
+    def _norm(s):
+        if not s:
+            return ""
+        s = unicodedata.normalize("NFD", str(s))
+        s = "".join(c for c in s if unicodedata.category(c) != "Mn")
+        return s.lower().strip()
+
+    nom_n = _norm(nom_brut)
+    if not nom_n:
+        return nom_brut
+
+    # 1. Match exact dans l'équipe
+    for c in cands_equipe:
+        if _norm(c) == nom_n:
+            return c
+
+    # 2. Match Prénom + Initiale Nom dans l'équipe (ex: 'leon m' vs 'Léon Morin', 'claude h' vs 'Claude Harvey')
+    parts = nom_n.split()
+    if len(parts) >= 2:
+        prenom_q, nom_init = parts[0], parts[1][0]
+        for c in cands_equipe:
+            c_parts = _norm(c).split()
+            if len(c_parts) >= 2:
+                if (c_parts[0].startswith(prenom_q) or prenom_q.startswith(c_parts[0])) and c_parts[-1].startswith(nom_init):
+                    return c
+
+    # 3. Match Prénom seul dans l'équipe (ex: 'gille' vs 'Gilles Dumais', 'guy' vs 'Guy Vézina')
+    for c in cands_equipe:
+        c_parts = _norm(c).split()
+        if c_parts:
+            c_prenom = c_parts[0]
+            if c_prenom == nom_n or nom_n.startswith(c_prenom) or c_prenom.startswith(nom_n):
+                return c
+
+    # 4. Élargissement à tous les joueurs de la ligue (remplaçant officiel)
+    for c in tous_joueurs_list:
+        if _norm(c) == nom_n:
+            return c
+    if len(parts) >= 2:
+        prenom_q, nom_init = parts[0], parts[1][0]
+        for c in tous_joueurs_list:
+            c_parts = _norm(c).split()
+            if len(c_parts) >= 2:
+                if (c_parts[0].startswith(prenom_q) or prenom_q.startswith(c_parts[0])) and c_parts[-1].startswith(nom_init):
+                    return c
+    for c in tous_joueurs_list:
+        c_parts = _norm(c).split()
+        if c_parts:
+            c_prenom = c_parts[0]
+            if c_prenom == nom_n or (len(nom_n) >= 4 and (nom_n.startswith(c_prenom) or c_prenom.startswith(nom_n))):
+                return c
+
+    return nom_brut
+
+
+def correler_donnees_feuille_avec_ligue(data_s):
+    """Effectue la corrélation automatique des noms manuscrits extraits par l'IA
+    avec les équipes et joueurs officiels (equipes-saphir.csv et joueurs_stats.csv)."""
+    if not isinstance(data_s, dict):
+        return data_s
+
+    import unicodedata
+    def _norm(s):
+        if not s:
+            return ""
+        s = unicodedata.normalize("NFD", str(s))
+        s = "".join(c for c in s if unicodedata.category(c) != "Mn")
+        return s.lower().strip()
+
+    equipes_dict = charger_equipes_csv()
+    tous_joueurs = set()
+    for _, j_list in equipes_dict.items():
+        for j in j_list:
+            if j:
+                tous_joueurs.add(j)
+    try:
+        if os.path.exists(JOUEURS_CSV_FILE):
+            import csv
+            with open(JOUEURS_CSV_FILE, "r", encoding="utf-8") as f_j:
+                r_j = csv.DictReader(f_j)
+                for row_j in r_j:
+                    nom_j = (row_j.get("Nom") or "").strip()
+                    if nom_j:
+                        tous_joueurs.add(nom_j)
+    except Exception:
+        pass
+    tous_joueurs_list = sorted(list(tous_joueurs))
+
+    # 1. Corrélation des équipes
+    eq_rec_raw = str(data_s.get("receveur", "")).strip()
+    eq_vis_raw = str(data_s.get("visiteur", "")).strip()
+    eq_rec_off = eq_rec_raw
+    eq_vis_off = eq_vis_raw
+    for eq_nom in equipes_dict.keys():
+        if _norm(eq_nom) == _norm(eq_rec_raw) or _norm(eq_nom) in _norm(eq_rec_raw) or _norm(eq_rec_raw) in _norm(eq_nom):
+            eq_rec_off = eq_nom
+        if _norm(eq_nom) == _norm(eq_vis_raw) or _norm(eq_nom) in _norm(eq_vis_raw) or _norm(eq_vis_raw) in _norm(eq_nom):
+            eq_vis_off = eq_nom
+
+    data_s["receveur"] = eq_rec_off
+    data_s["visiteur"] = eq_vis_off
+
+    cands_rec = equipes_dict.get(eq_rec_off, [])
+    cands_vis = equipes_dict.get(eq_vis_off, [])
+
+    correspondances = {}
+
+    # 2. Corrélation des 3 joueurs receveurs
+    joueurs_rec_raw = data_s.get("joueurs_rec", [])
+    joueurs_rec_corr = []
+    for j_raw in joueurs_rec_raw:
+        j_corr = correler_nom_joueur(j_raw, cands_rec, tous_joueurs_list)
+        joueurs_rec_corr.append(j_corr)
+        correspondances[str(j_raw)] = j_corr
+
+    while len(joueurs_rec_corr) < 3 and len(joueurs_rec_corr) < len(cands_rec):
+        joueurs_rec_corr.append(cands_rec[len(joueurs_rec_corr)])
+    data_s["joueurs_rec"] = joueurs_rec_corr
+
+    # 3. Corrélation des 3 joueurs visiteurs
+    joueurs_vis_raw = data_s.get("joueurs_vis", [])
+    joueurs_vis_corr = []
+    for j_raw in joueurs_vis_raw:
+        j_corr = correler_nom_joueur(j_raw, cands_vis, tous_joueurs_list)
+        joueurs_vis_corr.append(j_corr)
+        correspondances[str(j_raw)] = j_corr
+
+    while len(joueurs_vis_corr) < 3 and len(joueurs_vis_corr) < len(cands_vis):
+        joueurs_vis_corr.append(cands_vis[len(joueurs_vis_corr)])
+    data_s["joueurs_vis"] = joueurs_vis_corr
+
+    # 4. Corrélation des joueurs dans chaque duel (1 à 9) selon la grille officielle
+    grille_rot = {
+        1: (0, 0), 2: (1, 1), 3: (2, 2),
+        4: (0, 1), 5: (1, 2), 6: (2, 0),
+        7: (0, 2), 8: (1, 0), 9: (2, 1)
+    }
+
+    matchs_dict = data_s.get("matchs", {})
+    for i in range(1, 10):
+        m_i = matchs_dict.get(str(i), {})
+        idx_r, idx_v = grille_rot.get(i, (0, 0))
+
+        ja_raw = str(m_i.get("joueur_a", "")).strip()
+        jb_raw = str(m_i.get("joueur_b", "")).strip()
+
+        ja_corr = correspondances.get(ja_raw) or correler_nom_joueur(ja_raw, cands_rec, tous_joueurs_list)
+        if not ja_corr and idx_r < len(joueurs_rec_corr):
+            ja_corr = joueurs_rec_corr[idx_r]
+
+        jb_corr = correspondances.get(jb_raw) or correler_nom_joueur(jb_raw, cands_vis, tous_joueurs_list)
+        if not jb_corr and idx_v < len(joueurs_vis_corr):
+            jb_corr = joueurs_vis_corr[idx_v]
+
+        m_i["joueur_a"] = ja_corr
+        m_i["joueur_b"] = jb_corr
+        matchs_dict[str(i)] = m_i
+
+    data_s["matchs"] = matchs_dict
+
+    # 5. Corrélation des approbateurs / capitaines
+    app_r_raw = str(data_s.get("approbateur_rec", "")).strip()
+    app_v_raw = str(data_s.get("approbateur_vis", "")).strip()
+    data_s["approbateur_rec"] = correspondances.get(app_r_raw) or correler_nom_joueur(app_r_raw, cands_rec, tous_joueurs_list)
+    data_s["approbateur_vis"] = correspondances.get(app_v_raw) or correler_nom_joueur(app_v_raw, cands_vis, tous_joueurs_list)
+
+    data_s["correspondances"] = correspondances
+    return data_s
+
+
 def afficher_vue_scanner_feuille_match(label_direct):
-    """Vue dédiée à la numérisation intelligente de feuille de match par photo (Gemini Vision)."""
+    """Vue dédiée à la numérisation intelligente de feuille de match par photo (Gemini Vision)
+    avec corrélation automatique des noms de joueurs officiels."""
     st.session_state["venant_de_archive"] = True
     
     col_h1, col_h2 = st.columns([3, 1])
     with col_h1:
         st.markdown("### 📷 Numérisation intelligente de feuille de match (IA Vision)")
-        st.caption("Prenez une photo de votre feuille de match manuscrite (ou téléversez un fichier image). L'IA extrait automatiquement les scores, les joueurs et les équipes.")
+        st.caption("Prenez une photo de votre feuille de match manuscrite (ou téléversez un fichier image). L'IA extrait automatiquement les scores, corrèle les noms officiels des joueurs et prépare le match.")
     with col_h2:
         st.button("🔙 Revenir au match en cours", on_click=cb_retour_match_en_cours, use_container_width=True, type="primary")
 
@@ -2911,13 +3086,15 @@ def afficher_vue_scanner_feuille_match(label_direct):
             st.image(img_data, caption="Photo de la feuille à numériser", use_container_width=True)
         with col_act:
             st.markdown("#### 🔍 Prêt pour l'analyse IA")
-            st.info("💡 L'IA détectera l'écriture manuscrite, les 9 duels, les noms des joueurs et vérifiera les totaux.")
+            st.info("💡 L'IA détectera l'écriture manuscrite, les 9 duels, vérifiera les totaux et fera la corrélation avec les noms officiels des joueurs de la ligue.")
             if st.button("🚀 Lancer la numérisation avec l'IA", type="primary", use_container_width=True, key="btn_run_scan_ia"):
-                with st.spinner("Analyse de la feuille de match en cours par Gemini Vision..."):
+                with st.spinner("Analyse de la feuille et corrélation des joueurs en cours par Gemini Vision..."):
                     ok_sc, res_sc = analyser_photo_feuille_match(img_data)
                     if ok_sc:
+                        # Corrélation immédiate avec les équipes et joueurs officiels
+                        res_sc = correler_donnees_feuille_avec_ligue(res_sc)
                         st.session_state["scan_result_data"] = res_sc
-                        st.success("✅ Analyse réussie avec succès !")
+                        st.success("✅ Analyse et corrélation des joueurs réussies avec succès !")
                     else:
                         st.error(res_sc)
 
@@ -2925,14 +3102,35 @@ def afficher_vue_scanner_feuille_match(label_direct):
     if st.session_state.get("scan_result_data"):
         data_s = st.session_state["scan_result_data"]
         st.divider()
-        st.markdown("### 📋 Résultats extraits de la feuille")
+        st.markdown("### 📋 Résultats extraits & Joueurs officiels corrélés")
         
         col_r1, col_r2, col_r3 = st.columns(3)
-        col_r1.metric("📅 Date", str(data_s.get("date", "Inconnue")))
-        col_r2.metric("🔴 Receveur", f"{data_s.get('receveur', 'Receveur')} ({data_s.get('total_rec', 0)} pts)")
-        col_r3.metric("🔵 Visiteur", f"{data_s.get('visiteur', 'Visiteur')} ({data_s.get('total_vis', 0)} pts)")
+        col_r1.metric("📅 Date du match", str(data_s.get("date", "Inconnue")))
+        col_r2.metric("🔴 Équipe Receveuse", f"{data_s.get('receveur', 'Receveur')} ({data_s.get('total_rec', 0)} pts)")
+        col_r3.metric("🔵 Équipe Visiteuse", f"{data_s.get('visiteur', 'Visiteur')} ({data_s.get('total_vis', 0)} pts)")
 
-        st.markdown("##### 🎱 Détail des 9 manches")
+        # Section corrélation des joueurs détectés -> noms complets
+        st.markdown("##### 👥 Alignement officiel des joueurs détectés sur la feuille")
+        col_jr, col_jv = st.columns(2)
+        with col_jr:
+            st.markdown(f"**🔴 {data_s.get('receveur', 'Receveur')} :**")
+            j_rec_list = data_s.get("joueurs_rec", [])
+            for idx_jr, jr_nom in enumerate(j_rec_list):
+                st.write(f"• **Joueur {idx_jr+1} :** `{jr_nom}`")
+            app_r = data_s.get("approbateur_rec")
+            if app_r:
+                st.caption(f"✍️ Signature / Capitaine : **{app_r}**")
+
+        with col_jv:
+            st.markdown(f"**🔵 {data_s.get('visiteur', 'Visiteur')} :**")
+            j_vis_list = data_s.get("joueurs_vis", [])
+            for idx_jv, jv_nom in enumerate(j_vis_list):
+                st.write(f"• **Joueur {idx_jv+1} :** `{jv_nom}`")
+            app_v = data_s.get("approbateur_vis")
+            if app_v:
+                st.caption(f"✍️ Signature / Capitaine : **{app_v}**")
+
+        st.markdown("##### 🎱 Détail des 9 manches avec noms complets")
         duels_data = []
         matchs_dict = data_s.get("matchs", {})
         for i in range(1, 10):
@@ -2953,25 +3151,41 @@ def afficher_vue_scanner_feuille_match(label_direct):
 
         col_act1, col_act2 = st.columns(2)
         with col_act1:
-            if st.button("📥 Injecter dans la saisie du match en direct", use_container_width=True, help="Pré-remplit la feuille de match en direct avec ces équipes et ces pointages"):
+            if st.button("📥 Injecter dans la saisie du match en direct", use_container_width=True, help="Pré-remplit la feuille de match en direct avec ces équipes, joueurs et pointages"):
                 eq_r_scan = str(data_s.get("receveur", "")).strip()
                 eq_v_scan = str(data_s.get("visiteur", "")).strip()
-                for eq_nom in charger_liste_equipes_base():
-                    if eq_r_scan.lower() in eq_nom.lower() or eq_nom.lower() in eq_r_scan.lower():
-                        st.session_state["choix_equipe_receveuse"] = eq_nom
-                    if eq_v_scan.lower() in eq_nom.lower() or eq_nom.lower() in eq_v_scan.lower():
-                        st.session_state["choix_equipe_visiteuse"] = eq_nom
+                st.session_state["choix_equipe_receveuse"] = eq_r_scan
+                st.session_state["choix_equipe_visiteuse"] = eq_v_scan
+
+                # Injecter les 3 joueurs officiels
+                j_r_list = data_s.get("joueurs_rec", [])
+                j_v_list = data_s.get("joueurs_vis", [])
+                if len(j_r_list) > 0:
+                    st.session_state["sel_j1_rec"] = j_r_list[0]
+                if len(j_r_list) > 1:
+                    st.session_state["sel_j2_rec"] = j_r_list[1]
+                if len(j_r_list) > 2:
+                    st.session_state["sel_j3_rec"] = j_r_list[2]
+
+                if len(j_v_list) > 0:
+                    st.session_state["sel_j1_vis"] = j_v_list[0]
+                if len(j_v_list) > 1:
+                    st.session_state["sel_j2_vis"] = j_v_list[1]
+                if len(j_v_list) > 2:
+                    st.session_state["sel_j3_vis"] = j_v_list[2]
+
+                # Injecter les scores
                 for i in range(1, 10):
                     m_i = matchs_dict.get(str(i), {})
                     st.session_state[f"s_a_{i}"] = int(m_i.get("score_a", 0))
                     st.session_state[f"s_b_{i}"] = int(m_i.get("score_b", 0))
                 st.session_state["choix_match_vue"] = label_direct
-                st.success("✅ Données injectées dans la saisie du match en direct !")
+                st.success("✅ Données et joueurs officiels injectés dans la saisie du match en direct !")
                 time.sleep(1.0)
                 st.rerun()
 
         with col_act2:
-            if st.button("💾 Archiver directement dans l'historique officiel", type="primary", use_container_width=True, help="Enregistre officiellement ce match dans l'historique sans repasser par la saisie"):
+            if st.button("💾 Archiver directement dans l'historique officiel", type="primary", use_container_width=True, help="Enregistre officiellement ce match avec les noms complets dans l'historique"):
                 nouveau_match = {
                     "date": str(data_s.get("date", datetime.today().strftime("%Y-%m-%d"))),
                     "date_enregistrement": str(data_s.get("date", datetime.today().strftime("%Y-%m-%d"))),
@@ -2998,9 +3212,10 @@ def afficher_vue_scanner_feuille_match(label_direct):
                 hist_courant.append(nouveau_match)
                 sauvegarder_historique_matchs(hist_courant)
                 st.session_state.pop("scan_result_data", None)
-                st.success("🎉 Match archivé avec succès dans l'historique officiel et synchronisé sur GitHub !")
+                st.success("🎉 Match archivé avec succès dans l'historique avec les noms complets des joueurs !")
                 time.sleep(1.2)
                 st.rerun()
+
 
 
 def initialiser_donnees_saphir_au_demarrage():
