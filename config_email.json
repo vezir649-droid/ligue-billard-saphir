@@ -2,7 +2,7 @@
     "destinataires": "vezir649@gmail.com",
     "smtp_serveur": "smtp.gmail.com",
     "smtp_port": 587,
-    "smtp_expediteur": "vezir649@l@gmail.com",
+    "smtp_expediteur": "vezir649@gmail.com",
     "smtp_mdp": "guvuiffkjgnqfvtj",
     "smtp_ssl": false
 }
