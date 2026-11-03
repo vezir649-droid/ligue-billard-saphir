@@ -6,18 +6,18 @@
     "choix_vis": "Echo",
     "input_custom_rec": "",
     "input_custom_vis": "",
-    "sel_j1_rec": "Sylvain Derasp",
+    "sel_j1_rec": "Gabriel Labrecque",
     "sel_j2_rec": "Valérie Turcotte",
-    "sel_j3_rec": "Gabriel Labrecque",
+    "sel_j3_rec": "Sylvain Derasp",
     "sel_j1_vis": "Gilles Dumais",
     "sel_j2_vis": "Guy Vézina",
     "sel_j3_vis": "André St-Pierre",
     "joueurs": {
         "j1_rec": {
-            "nom": "Sylvain Derasp",
+            "nom": "Gabriel Labrecque",
             "present": true,
-            "moyenne": 0.99,
-            "pts_absent": 7
+            "moyenne": 0.677,
+            "pts_absent": 5
         },
         "j2_rec": {
             "nom": "Valérie Turcotte",
@@ -26,14 +26,14 @@
             "pts_absent": 6
         },
         "j3_rec": {
-            "nom": "Gabriel Labrecque",
+            "nom": "Sylvain Derasp",
             "present": true,
-            "moyenne": 0.677,
-            "pts_absent": 5
+            "moyenne": 0.99,
+            "pts_absent": 7
         },
         "j1_vis": {
             "nom": "Gilles Dumais",
-            "present": true,
+            "present": false,
             "moyenne": 0.833,
             "pts_absent": 7
         },
@@ -52,12 +52,12 @@
     },
     "matchs": {
         "1": {
-            "score_a": 0,
-            "score_b": 0,
-            "joueur_a": "Sylvain Derasp",
+            "score_a": 5,
+            "score_b": 7,
+            "joueur_a": "Gabriel Labrecque",
             "joueur_b": "Gilles Dumais",
             "joueur_a_absent": false,
-            "joueur_b_absent": false
+            "joueur_b_absent": true
         },
         "2": {
             "score_a": 6,
@@ -70,7 +70,7 @@
         "3": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "Gabriel Labrecque",
+            "joueur_a": "Sylvain Derasp",
             "joueur_b": "André St-Pierre",
             "joueur_a_absent": false,
             "joueur_b_absent": false
@@ -78,7 +78,7 @@
         "4": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "Sylvain Derasp",
+            "joueur_a": "Gabriel Labrecque",
             "joueur_b": "Guy Vézina",
             "joueur_a_absent": false,
             "joueur_b_absent": false
@@ -92,17 +92,17 @@
             "joueur_b_absent": false
         },
         "6": {
-            "score_a": 0,
-            "score_b": 0,
-            "joueur_a": "Gabriel Labrecque",
+            "score_a": 7,
+            "score_b": 7,
+            "joueur_a": "Sylvain Derasp",
             "joueur_b": "Gilles Dumais",
             "joueur_a_absent": false,
-            "joueur_b_absent": false
+            "joueur_b_absent": true
         },
         "7": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "Sylvain Derasp",
+            "joueur_a": "Gabriel Labrecque",
             "joueur_b": "André St-Pierre",
             "joueur_a_absent": false,
             "joueur_b_absent": false
@@ -113,19 +113,19 @@
             "joueur_a": "Valérie Turcotte",
             "joueur_b": "Gilles Dumais",
             "joueur_a_absent": true,
-            "joueur_b_absent": false
+            "joueur_b_absent": true
         },
         "9": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "Gabriel Labrecque",
+            "joueur_a": "Sylvain Derasp",
             "joueur_b": "Guy Vézina",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         }
     },
-    "total_receveur": 18,
-    "total_visiteur": 21,
-    "derniere_mise_a_jour": "21:53:02",
-    "ts_modif": 1793742782.505983
+    "total_receveur": 30,
+    "total_visiteur": 35,
+    "derniere_mise_a_jour": "21:53:31",
+    "ts_modif": 1793742811.0940983
 }
