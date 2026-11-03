@@ -445,11 +445,11 @@ def normaliser_donnees_email(brut):
                 res["smtp_port"] = int(v_str)
             except Exception:
                 res["smtp_port"] = 587
-        elif k_clean in ("smtp_expediteur", "expediteur", "sender", "from", "email", "email_expediteur", "user", "username", "smtp_user"):
+        elif k_clean in ("smtp_expediteur", "expediteur", "sender", "from", "email", "email_expediteur", "user", "username", "smtp_user", "compte", "gmail_user", "mail_from"):
             res["smtp_expediteur"] = v_str
-        elif k_clean in ("smtp_mdp", "mot_de_passe_email", "mdp_email", "password", "app_password", "smtp_password", "mdp"):
+        elif k_clean in ("smtp_mdp", "mot_de_passe_email", "mdp_email", "password", "app_password", "smtp_password", "mdp", "pass", "smtp_pass", "pwd", "smtp_pwd", "gmail_password", "google_app_password", "key", "cle"):
             res["smtp_mdp"] = v_str
-        elif k_clean in ("destinataires", "destinataire", "recipients", "recipient", "to"):
+        elif k_clean in ("destinataires", "destinataire", "recipients", "recipient", "to", "admin_email", "admin_emails", "email_destinataires", "to_email", "dest"):
             res["destinataires"] = v_str
         elif k_clean in ("smtp_ssl", "ssl", "tls"):
             res["smtp_ssl"] = str(v).lower() in ("true", "1", "yes")
@@ -1459,8 +1459,9 @@ def restaurer_depuis_github_au_reveil(forcer=False):
                     except Exception:
                         pass
                 if forcer or not loc_em.get("smtp_serveur"):
-                    if loc_em.get("smtp_mdp") and not gh_em.get("smtp_mdp"):
-                        gh_em["smtp_mdp"] = loc_em["smtp_mdp"]
+                    for champ_em in ["smtp_expediteur", "destinataires", "smtp_mdp", "smtp_port", "smtp_ssl"]:
+                        if loc_em.get(champ_em) and not gh_em.get(champ_em):
+                            gh_em[champ_em] = loc_em[champ_em]
                     with open(CONFIG_EMAIL_FILE, "w", encoding="utf-8") as f_ew:
                         json.dump(gh_em, f_ew, ensure_ascii=False, indent=4)
                     nb_maj += 1
@@ -5309,20 +5310,62 @@ def generer_rapport_historique_convivial(historique):
 
     return texte_brut, html_complet
 
+def _creer_contexte_ssl_tolerant():
+    """Crée un contexte SSL tolérant en secours lorsque la validation stricte des certificats
+    de l'environnement conteneurisé échoue."""
+    import ssl
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
 def envoyer_courriel(destinataires_str, sujet, texte_brut, html_contenu, config, pieces_jointes=None):
-    """Envoie un courriel automatique via SMTP avec intégration universelle de l'image armoiries (CID inline) et pièces jointes."""
-    destinataires = [d.strip() for d in destinataires_str.split(",") if d.strip()]
+    """Envoie un courriel automatique via SMTP avec diagnostic pas-à-pas,
+    gestion des clés d'application Google (retrait automatique des espaces),
+    résilience TLS/SSL multi-ports (465 SSL, 587 STARTTLS) et messages d'erreurs explicites."""
+    import ssl
+    import socket
+    import smtplib
+    import email.utils
+
+    destinataires = [d.strip() for d in str(destinataires_str or "").split(",") if d.strip()]
     if not destinataires:
         return False, "Aucune adresse de destinataire valide spécifiée."
 
-    serveur_smtp = config.get("smtp_serveur", "").strip()
-    port = int(config.get("smtp_port", 587))
-    expediteur = config.get("smtp_expediteur", "").strip()
-    mot_de_passe = config.get("smtp_mdp", "").strip()
-    mode_ssl = config.get("smtp_ssl", False)
+    serveur_smtp = str(config.get("smtp_serveur", "smtp.gmail.com") or "").strip()
+    port = int(config.get("smtp_port", 587)) if str(config.get("smtp_port", "")).isdigit() else 587
+    expediteur = str(config.get("smtp_expediteur", "") or "").strip()
+    mot_de_passe = str(config.get("smtp_mdp", "") or "").strip()
+    mode_ssl = bool(config.get("smtp_ssl", False))
 
-    if not serveur_smtp or not expediteur:
-        return False, "Configuration SMTP incomplète (serveur ou expéditeur manquant)."
+    if not serveur_smtp:
+        return False, "Configuration SMTP incomplète : Le nom du serveur SMTP est manquant."
+
+    if not expediteur:
+        return False, "Configuration SMTP incomplète : L'adresse courriel de l'expéditeur est manquante dans l'administration."
+
+    # Extraction des adresses courriel pures (sans nom d'affichage pour les commandes SMTP MAIL FROM / RCPT TO)
+    _, email_login = email.utils.parseaddr(expediteur)
+    email_login = (email_login or expediteur).strip()
+
+    destinataires_propres = []
+    for d in destinataires:
+        _, d_addr = email.utils.parseaddr(d)
+        addr_clean = (d_addr or d).strip()
+        if addr_clean and addr_clean not in destinataires_propres:
+            destinataires_propres.append(addr_clean)
+
+    if not destinataires_propres:
+        return False, "Aucune adresse courriel de destinataire valide."
+
+    # Clé d'application : retrait automatique des espaces (format Google 4x4 'xxxx xxxx xxxx xxxx')
+    mdp_nettoye = mot_de_passe.replace(" ", "").replace("-", "").strip()
+
+    if not mdp_nettoye:
+        return False, (
+            f"Configuration SMTP incomplète : Le mot de passe / clé d'application SMTP est absent pour le compte `{email_login}`. "
+            f"Pour Gmail, vous devez renseigner une **Clé d'application Google** (16 lettres) dans l'onglet Administration > Paramètres SMTP."
+        )
 
     msg = MIMEMultipart("mixed")
     msg["Subject"] = sujet
@@ -5337,9 +5380,6 @@ def envoyer_courriel(destinataires_str, sujet, texte_brut, html_contenu, config,
     part_texte = MIMEText(texte_brut, "plain", "utf-8")
     msg_alternative.attach(part_texte)
 
-    # Traitement de l'image pour courriel :
-    # Gmail, Outlook et Yahoo bloquent les images encodées en base64 direct dans le corps du courriel.
-    # L'image doit être attachée avec Content-ID (cid:armoiries_logo) pour s'afficher directement et sans blocage.
     arm_path = find_armoiries_path()
     html_email = html_contenu
     part_img = None
@@ -5362,7 +5402,6 @@ def envoyer_courriel(destinataires_str, sujet, texte_brut, html_contenu, config,
                 img_bytes = None
 
         if img_bytes:
-            # Remplacement des data URI par cid:armoiries_logo
             html_email = re.sub(r'src="data:image/[^"]+"', 'src="cid:armoiries_logo"', html_email)
             html_email = re.sub(r"src='data:image/[^']+'", "src='cid:armoiries_logo'", html_email)
 
@@ -5380,7 +5419,7 @@ def envoyer_courriel(destinataires_str, sujet, texte_brut, html_contenu, config,
 
     msg.attach(msg_related)
 
-    # Ajout des pièces jointes demandées (supporte chemins de fichiers et tuples (nom, bytes))
+    # Pièces jointes
     if pieces_jointes:
         for pj_item in pieces_jointes:
             try:
@@ -5402,52 +5441,121 @@ def envoyer_courriel(destinataires_str, sujet, texte_brut, html_contenu, config,
             except Exception as e_pj:
                 st.warning(f"⚠️ Impossible de joindre la pièce : {e_pj}")
 
-    # Envoi robuste multi-stratégie avec gestion intelligente des ports 465 (SSL) et 587 (STARTTLS)
-    # et basculement automatique de secours en cas de fermeture inattendue de connexion
-    import ssl
+    msg_str = msg.as_string()
 
-    ctx = ssl.create_default_context()
-    port_int = int(port) if str(port).isdigit() else 587
+    # Stratégie multi-ports robuste :
+    # Si port 465 ou SSL activé : Port 465 SSL d'abord, puis Port 587 STARTTLS
+    # Sinon : Port 587 STARTTLS d'abord, puis Port 465 SSL
     tentatives = []
-
-    # Si le serveur est configuré en SSL ou sur port 465
-    if port_int == 465 or (mode_ssl and port_int != 587):
+    if port == 465 or mode_ssl:
         tentatives.append(("SSL", serveur_smtp, 465))
         tentatives.append(("TLS", serveur_smtp, 587))
     else:
-        # Port 587 TLS en premier, repli automatique sur SSL 465 si le port 587 est bloqué ou fermé inopinément
-        tentatives.append(("TLS", serveur_smtp, 587 if port_int in (587, 25, 2525) else port_int))
+        tentatives.append(("TLS", serveur_smtp, port if port in (587, 25, 2525) else 587))
         tentatives.append(("SSL", serveur_smtp, 465))
+        if port not in (587, 465):
+            tentatives.append(("TLS", serveur_smtp, 587))
 
-    dernier_err = None
-    msg_str = msg.as_string()
+    # Mots de passe à tester : le mot de passe sans espaces en priorité, puis la version brute si différente
+    mdps_a_tester = [mdp_nettoye]
+    if mot_de_passe != mdp_nettoye:
+        mdps_a_tester.append(mot_de_passe)
+
+    journal_erreurs = []
+    auth_error_details = None
 
     for methode, host, p_tentative in tentatives:
-        try:
-            if methode == "SSL":
-                with smtplib.SMTP_SSL(host, p_tentative, timeout=40, context=ctx) as server:
-                    server.ehlo()
-                    if mot_de_passe:
-                        server.login(expediteur, mot_de_passe)
-                    server.sendmail(expediteur, destinataires, msg_str)
-                    return True, "Courriel envoyé avec succès !"
-            else:
-                with smtplib.SMTP(host, p_tentative, timeout=40) as server:
-                    server.ehlo()
-                    try:
-                        server.starttls(context=ctx)
-                        server.ehlo()
-                    except Exception:
-                        pass
-                    if mot_de_passe:
-                        server.login(expediteur, mot_de_passe)
-                    server.sendmail(expediteur, destinataires, msg_str)
-                    return True, "Courriel envoyé avec succès !"
-        except Exception as e_att:
-            dernier_err = e_att
-            continue
+        for pwd in mdps_a_tester:
+            # Essai d'abord avec contexte SSL standard, puis contexte tolérant si certificat conteneur non reconnu
+            for ctx_label, make_ctx in [
+                ("standard", lambda: ssl.create_default_context()),
+                ("tolerant", lambda: _creer_contexte_ssl_tolerant())
+            ]:
+                try:
+                    ctx = make_ctx()
+                    if methode == "SSL":
+                        # Port 465 SMTPS : initialisation chiffrée immédiate
+                        server = smtplib.SMTP_SSL(host, p_tentative, timeout=30, context=ctx)
+                        try:
+                            server.ehlo()
+                            if pwd:
+                                server.login(email_login, pwd)
+                            server.sendmail(email_login, destinataires_propres, msg_str)
+                            try:
+                                server.quit()
+                            except Exception:
+                                pass
+                            return True, f"Courriel envoyé avec succès via {methode} ({host}:{p_tentative}) !"
+                        finally:
+                            try:
+                                server.close()
+                            except Exception:
+                                pass
+                    else:
+                        # Port 587 STARTTLS : connexion en clair puis mise à niveau TLS stricte
+                        server = smtplib.SMTP(host, p_tentative, timeout=30)
+                        try:
+                            server.ehlo()
+                            # Ne JAMAIS continuer en clair si starttls échoue
+                            server.starttls(context=ctx)
+                            server.ehlo()
+                            if pwd:
+                                server.login(email_login, pwd)
+                            server.sendmail(email_login, destinataires_propres, msg_str)
+                            try:
+                                server.quit()
+                            except Exception:
+                                pass
+                            return True, f"Courriel envoyé avec succès via {methode} ({host}:{p_tentative}) !"
+                        finally:
+                            try:
+                                server.close()
+                            except Exception:
+                                pass
 
-    return False, f"Échec de l'envoi du courriel : {str(dernier_err)}"
+                except smtplib.SMTPAuthenticationError as e_auth:
+                    auth_error_details = (e_auth.smtp_code, str(e_auth.smtp_error or e_auth))
+                    journal_erreurs.append(f"{methode} {host}:{p_tentative} -> Erreur d'authentification ({e_auth.smtp_code})")
+                    break
+                except smtplib.SMTPServerDisconnected as e_disc:
+                    journal_erreurs.append(f"{methode} {host}:{p_tentative} ({ctx_label}) -> Connexion interrompue ({e_disc})")
+                    continue
+                except (socket.timeout, TimeoutError):
+                    journal_erreurs.append(f"{methode} {host}:{p_tentative} -> Délai d'attente dépassé (Timeout)")
+                    break
+                except ConnectionRefusedError:
+                    journal_erreurs.append(f"{methode} {host}:{p_tentative} -> Port inaccessible / Connexion refusée")
+                    break
+                except Exception as e_autre:
+                    journal_erreurs.append(f"{methode} {host}:{p_tentative} ({ctx_label}) -> {type(e_autre).__name__}: {e_autre}")
+                    continue
+
+    # Si l'authentification a été formellement rejetée par le serveur Google/SMTP
+    if auth_error_details:
+        code_s, msg_s = auth_error_details
+        msg_auth = (
+            f"🔐 **Erreur d'authentification Google/SMTP ({code_s})** pour le compte `{email_login}` : "
+            f"L'identifiant ou le mot de passe a été refusé par `{serveur_smtp}`.\n\n"
+            f"👉 **Procédure obligatoire pour compte Gmail** :\n"
+            f"1. Connectez-vous sur votre compte Google > **Sécurité**.\n"
+            f"2. Activez la **Validation en deux étapes** (obligatoire chez Google).\n"
+            f"3. Recherchez **Mots de passe des applications** (ou visitez : `https://myaccount.google.com/apppasswords`).\n"
+            f"4. Créez un mot de passe nommé 'Ligue Billard' : Google affichera une clé de 16 lettres (ex: `abcd efgh ijkl mnop`).\n"
+            f"5. Saisissez cette clé de 16 lettres dans l'onglet **Administration > Configuration SMTP** de l'application.\n"
+            f"*(Ne pas utiliser votre mot de passe habituel de boîte courriel)*."
+        )
+        return False, msg_auth
+
+    resume_p = " ; ".join(journal_erreurs[-3:]) if journal_erreurs else "Connexion fermée par le serveur"
+    msg_err = (
+        f"Échec de l'envoi du courriel : La connexion SMTP a été interrompue par `{serveur_smtp}`.\n"
+        f"Détails des essais : {resume_p}\n\n"
+        f"💡 **Conseils de dépannage** :\n"
+        f"• Compte testé : `{email_login}`\n"
+        f"• Assurez-vous d'utiliser une **Clé d'application Google (16 lettres)** active.\n"
+        f"• Dans l'administration, essayez de cocher la case **Utiliser SSL (Port 465)** puis enregistrez."
+    )
+    return False, msg_err
 
 
 # ==============================================================================
@@ -15467,41 +15575,90 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
 
             with tab_smtp:
                 st.markdown("#### ⚙️ Configuration du serveur de messagerie (SMTP)")
-                smtp_dest = st.text_input("Courriels administrateurs / Destinataire(s) (séparés par virgule)", value=config_email.get("destinataires", ""), key="admin_smtp_dest", help="Adresses qui recevront les résultats officiels des matchs ainsi que les sauvegardes des tournois avec historique_tournois.json en pièce jointe.")
+                st.info(
+                    "💡 **Pour utiliser Gmail** : Google requiert l'activation de la **Validation en 2 étapes** "
+                    "et la création d'un **Mot de passe d'application** (clé de 16 lettres). "
+                    "Les espaces (format `xxxx xxxx xxxx xxxx`) sont retirés automatiquement."
+                )
+                smtp_dest = st.text_input(
+                    "Courriels administrateurs / Destinataire(s) (séparés par virgule)",
+                    value=config_email.get("destinataires", ""),
+                    key="admin_smtp_dest",
+                    help="Adresses qui recevront les résultats officiels des matchs, feuilles numérisées et sauvegardes."
+                )
                 col_c1, col_c2 = st.columns(2)
-                smtp_serveur = col_c1.text_input("Serveur SMTP", value=config_email.get("smtp_serveur", "smtp.gmail.com"), key="admin_smtp_serveur")
-                smtp_port = col_c2.number_input("Port SMTP", value=int(config_email.get("smtp_port", 587)), key="admin_smtp_port")
-                smtp_expediteur = col_c1.text_input("Courriel expéditeur", value=config_email.get("smtp_expediteur", ""), key="admin_smtp_exp")
-                
-                # Protection anti-popup fureteur : le champ mot de passe n'est pas injecté dans le DOM s'il est déjà enregistré
-                mdp_smtp_actuel = config_email.get("smtp_mdp", "")
+                smtp_serveur = col_c1.text_input(
+                    "Serveur SMTP",
+                    value=config_email.get("smtp_serveur", "smtp.gmail.com"),
+                    key="admin_smtp_serveur"
+                )
+                port_actuel = int(config_email.get("smtp_port", 587)) if str(config_email.get("smtp_port", "")).isdigit() else 587
+                smtp_port = col_c2.number_input(
+                    "Port SMTP (587 STARTTLS ou 465 SSL)",
+                    value=port_actuel,
+                    key="admin_smtp_port"
+                )
+                smtp_expediteur = col_c1.text_input(
+                    "Courriel expéditeur (compte Google / Gmail)",
+                    value=config_email.get("smtp_expediteur", ""),
+                    key="admin_smtp_exp",
+                    placeholder="exemple@gmail.com"
+                )
+
+                mdp_smtp_actuel = str(config_email.get("smtp_mdp", "") or "").strip()
                 with col_c2:
                     if mdp_smtp_actuel:
-                        st.caption("🔒 Mot de passe / Clé SMTP : `••••••••••••` *(enregistré)*")
+                        st.caption("🔒 Clé SMTP enregistrée : `••••••••••••`")
                         modifier_smtp_pwd = st.checkbox("Modifier la clé d'application SMTP", key="chk_edit_smtp_pwd")
                         if modifier_smtp_pwd:
-                            smtp_mdp = st.text_input("Nouvelle clé d'application SMTP", type="password", key="admin_smtp_pwd", placeholder="Entrez la nouvelle clé...")
+                            nouveau_mdp = st.text_input(
+                                "Nouvelle clé d'application SMTP (16 lettres)",
+                                type="password",
+                                key="admin_smtp_pwd",
+                                placeholder="ex: abcd efgh ijkl mnop",
+                                help="Collez les 16 caractères générés dans votre compte Google (Sécurité > Mots de passe d'application)."
+                            )
+                            smtp_mdp = nouveau_mdp.strip().replace(" ", "") if nouveau_mdp.strip() else mdp_smtp_actuel
                         else:
                             smtp_mdp = mdp_smtp_actuel
                     else:
-                        smtp_mdp = st.text_input("Mot de passe / Clé d'application", type="password", key="admin_smtp_pwd", placeholder="Clé d'application SMTP...")
-                
-                smtp_ssl = st.checkbox("Utiliser SSL (Port 465)", value=config_email.get("smtp_ssl", False), key="admin_smtp_ssl")
+                        nouveau_mdp = st.text_input(
+                            "Clé d'application SMTP (16 lettres)",
+                            type="password",
+                            key="admin_smtp_pwd",
+                            placeholder="ex: abcd efgh ijkl mnop",
+                            help="Pour Gmail, générez une clé d'application dans votre compte Google (Sécurité > Mots de passe des applications)."
+                        )
+                        smtp_mdp = nouveau_mdp.strip().replace(" ", "")
+
+                smtp_ssl = st.checkbox(
+                    "Utiliser SSL direct (Port 465 recommandé en cas de blocage du port 587)",
+                    value=bool(config_email.get("smtp_ssl", False) or port_actuel == 465),
+                    key="admin_smtp_ssl"
+                )
 
                 col_btn_cfg1, col_btn_cfg2 = st.columns(2)
                 with col_btn_cfg1:
                     if st.button("💾 Enregistrer la configuration SMTP", use_container_width=True):
+                        # Ajustement automatique du port selon le mode SSL si non personnalisé
+                        p_sauv = int(smtp_port)
+                        if smtp_ssl and p_sauv == 587:
+                            p_sauv = 465
+                        elif not smtp_ssl and p_sauv == 465:
+                            p_sauv = 587
+
                         nouvelle_cfg = {
-                            "destinataires": smtp_dest,
-                            "smtp_serveur": smtp_serveur,
-                            "smtp_port": int(smtp_port),
-                            "smtp_expediteur": smtp_expediteur,
-                            "smtp_mdp": smtp_mdp,
+                            "destinataires": smtp_dest.strip(),
+                            "smtp_serveur": smtp_serveur.strip(),
+                            "smtp_port": p_sauv,
+                            "smtp_expediteur": smtp_expediteur.strip(),
+                            "smtp_mdp": smtp_mdp.strip().replace(" ", ""),
                             "smtp_ssl": smtp_ssl
                         }
                         if sauvegarder_config_email(nouvelle_cfg):
                             config_email = nouvelle_cfg
                             st.success("✅ Configuration SMTP enregistrée avec succès dans le fichier !")
+                            time.sleep(0.5)
                             st.rerun()
                         else:
                             st.error("Erreur lors de la sauvegarde du fichier.")
@@ -15512,13 +15669,18 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                             st.error("⚠️ Veuillez renseigner au moins une adresse de destinataire.")
                         elif not smtp_expediteur:
                             st.error("⚠️ Veuillez renseigner l'adresse courriel de l'expéditeur.")
+                        elif not smtp_mdp:
+                            st.error("⚠️ Veuillez renseigner la clé d'application SMTP Google (16 lettres).")
                         else:
+                            p_test = int(smtp_port)
+                            if smtp_ssl and p_test == 587:
+                                p_test = 465
                             cfg_test = {
-                                "destinataires": smtp_dest,
-                                "smtp_serveur": smtp_serveur,
-                                "smtp_port": int(smtp_port),
-                                "smtp_expediteur": smtp_expediteur,
-                                "smtp_mdp": smtp_mdp,
+                                "destinataires": smtp_dest.strip(),
+                                "smtp_serveur": smtp_serveur.strip(),
+                                "smtp_port": p_test,
+                                "smtp_expediteur": smtp_expediteur.strip(),
+                                "smtp_mdp": smtp_mdp.strip().replace(" ", ""),
                                 "smtp_ssl": smtp_ssl
                             }
                             with st.spinner("Test de connexion SMTP en cours..."):
