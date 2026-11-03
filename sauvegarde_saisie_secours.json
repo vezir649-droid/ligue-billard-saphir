@@ -1,5 +1,5 @@
 {
-    "date": "2026-11-03 21:51",
+    "date": "2026-11-03 21:53",
     "receveur": "Foxtrot",
     "visiteur": "Echo",
     "choix_rec": "Foxtrot",
@@ -21,7 +21,7 @@
         },
         "j2_rec": {
             "nom": "Valérie Turcotte",
-            "present": true,
+            "present": false,
             "moyenne": 0.771,
             "pts_absent": 6
         },
@@ -60,11 +60,11 @@
             "joueur_b_absent": false
         },
         "2": {
-            "score_a": 0,
-            "score_b": 0,
+            "score_a": 6,
+            "score_b": 7,
             "joueur_a": "Valérie Turcotte",
             "joueur_b": "Guy Vézina",
-            "joueur_a_absent": false,
+            "joueur_a_absent": true,
             "joueur_b_absent": false
         },
         "3": {
@@ -84,11 +84,11 @@
             "joueur_b_absent": false
         },
         "5": {
-            "score_a": 0,
-            "score_b": 0,
+            "score_a": 6,
+            "score_b": 7,
             "joueur_a": "Valérie Turcotte",
             "joueur_b": "André St-Pierre",
-            "joueur_a_absent": false,
+            "joueur_a_absent": true,
             "joueur_b_absent": false
         },
         "6": {
@@ -108,11 +108,11 @@
             "joueur_b_absent": false
         },
         "8": {
-            "score_a": 0,
-            "score_b": 0,
+            "score_a": 6,
+            "score_b": 7,
             "joueur_a": "Valérie Turcotte",
             "joueur_b": "Gilles Dumais",
-            "joueur_a_absent": false,
+            "joueur_a_absent": true,
             "joueur_b_absent": false
         },
         "9": {
@@ -124,8 +124,8 @@
             "joueur_b_absent": false
         }
     },
-    "total_receveur": 0,
-    "total_visiteur": 0,
-    "derniere_mise_a_jour": "21:51:34",
-    "ts_modif": 1793742694.130855
+    "total_receveur": 18,
+    "total_visiteur": 21,
+    "derniere_mise_a_jour": "21:53:02",
+    "ts_modif": 1793742782.505983
 }
