@@ -3239,21 +3239,35 @@ def afficher_vue_scanner_feuille_match(label_direct):
     with col_h2:
         st.button("🔙 Revenir au match en cours", on_click=cb_retour_match_en_cours, use_container_width=True, type="primary")
 
-    # Choix du mode d'acquisition sans forcer la caméra en arrière-plan
+    # Choix du mode d'acquisition optimisé pour tablette et ordinateur
     mode_photo = st.radio(
         "Mode d'acquisition de la photo :",
-        ["📁 Téléverser un fichier image (JPG, PNG, WebP)", "📸 Utiliser l'appareil photo / caméra"],
+        [
+            "📱 Appareil photo de la tablette / Téléverser une photo (Recommandé sur mobile)",
+            "📸 Caméra directe dans le navigateur (WebRTC)"
+        ],
         horizontal=True,
         key="mode_source_scan"
     )
 
     img_data = None
-    if mode_photo == "📸 Utiliser l'appareil photo / caméra":
+    if "Caméra directe" in mode_photo:
+        st.info(
+            "💡 **Dépannage Tablette Android :**\n\n"
+            "• **Sécurité HTTPS :** Chrome Android exige impérativement que l'adresse commence par **https://** pour autoriser la vidéo en direct.\n"
+            "• **Permission Chrome :** Touchez le cadenas 🔒 ou l'icône de réglages à gauche de l'adresse web ➔ *Autorisations* ➔ Activez *Appareil photo*.\n"
+            "• **Alternative recommandée :** Basculez sur l'option ci-dessus *« Appareil photo de la tablette »* : elle ouvre directement votre application caméra Android officielle avec flash et autofocus sans aucun blocage WebRTC."
+        )
         cam_file = st.camera_input("Prendre une photo nette et bien éclairée de la feuille", key="cam_feuille_input")
         if cam_file:
             img_data = cam_file.getvalue()
     else:
-        upl_file = st.file_uploader("Sélectionner un fichier image (JPG, PNG, WebP)", type=["jpg", "jpeg", "png", "webp"], key="upload_feuille_input")
+        st.info("💡 **Sur votre tablette Android :** Touchez le bouton **« Browse files / Parcourir »** ci-dessous, puis choisissez **« 📷 Appareil photo »**. Vous pourrez prendre une photo nette en pleine résolution avec l'autofocus et le flash de votre tablette.")
+        upl_file = st.file_uploader(
+            "Prendre une photo ou sélectionner une image de la feuille",
+            type=["jpg", "jpeg", "png", "webp", "heic"],
+            key="upload_feuille_input"
+        )
         if upl_file:
             img_data = upl_file.getvalue()
 
@@ -11835,12 +11849,12 @@ with tab_feuille:
 
     if not est_spectateur:
         if a_corbeille:
-            col_h1, col_h2, col_h3, col_h4 = st.columns([2, 1.2, 1.5, 1.2])
+            col_h1, col_h2, col_h3, col_h_scan, col_h4 = st.columns([1.6, 1.1, 1.2, 1.4, 1.1])
         else:
-            col_h1, col_h2, col_h4 = st.columns([2, 1.2, 1.2])
+            col_h1, col_h2, col_h_scan, col_h4 = st.columns([1.8, 1.1, 1.5, 1.1])
 
         if date_sauv_str:
-            col_h1.caption(f"💾 *Dernière sauvegarde automatique : {date_sauv_str}*")
+            col_h1.caption(f"💾 *Dernière sauvegarde : {date_sauv_str}*")
 
         with col_h2:
             with st.popover(
@@ -11881,6 +11895,15 @@ with tab_feuille:
                     except Exception as e:
                         st.error(f"Erreur lors de la récupération : {e}")
     
+        with col_h_scan:
+            st.button(
+                "📷 Scanner photo IA",
+                key="btn_top_open_scanner_ia",
+                on_click=cb_scanner_feuille,
+                use_container_width=True,
+                help="Numériser une feuille de match papier avec l'appareil photo ou une image"
+            )
+
         with col_h4:
             with st.popover("🗑️ Nouveau match", use_container_width=True, disabled=not est_editeur):
                 st.markdown("### ⚠️ Réinitialisation")
@@ -12754,7 +12777,7 @@ with tab_feuille:
     cur_choix = st.session_state.get("choix_match_vue", label_direct)
     idx_choix = options_matchs.index(cur_choix) if cur_choix in options_matchs else 0
 
-    col_sel1, col_sel2 = st.columns([3, 1])
+    col_sel1, col_sel2 = st.columns([2.5, 1.5])
     with col_sel1:
         choix_vue = st.selectbox(
             "📜 **Consulter les résultats d'un match :**",
@@ -12770,6 +12793,8 @@ with tab_feuille:
                 if st.button("🔄 Actualiser les résultats", use_container_width=True, help="Recharge les derniers scores saisis par le marqueur"):
                     st.session_state["forcer_rechargement"] = True
                     st.rerun()
+            else:
+                st.button("📷 Scanner photo IA", key="btn_direct_scanner_feuille", on_click=cb_scanner_feuille, use_container_width=True, help="Ouvrir le scanner photo IA")
         else:
             st.button("🔙 Revenir au match en cours", on_click=cb_retour_match_en_cours, use_container_width=True, help="Retourner à la saisie du match actuel")
 
