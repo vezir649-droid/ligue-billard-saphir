@@ -890,12 +890,16 @@ def synchroniser_fichier_github(filepath, commit_message=None):
             with open(filepath, "rb") as f:
                 raw_bytes = f.read()
 
-            # Sécurité anti-fuite de token pour config_admin.json
+            # Sécurité anti-fuite de secrets pour config_admin.json
             if filename == "config_admin.json":
                 try:
                     cfg_dict = json.loads(raw_bytes.decode("utf-8"))
-                    if "github_token" in cfg_dict and cfg_dict["github_token"]:
-                        cfg_dict["github_token"] = ""
+                    modifie = False
+                    for secret_cle in ["github_token", "gemini_api_key"]:
+                        if secret_cle in cfg_dict and cfg_dict[secret_cle]:
+                            cfg_dict[secret_cle] = ""
+                            modifie = True
+                    if modifie:
                         raw_bytes = json.dumps(cfg_dict, ensure_ascii=False, indent=4).encode("utf-8")
                 except Exception:
                     pass
