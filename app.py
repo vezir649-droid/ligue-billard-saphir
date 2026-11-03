@@ -12131,19 +12131,40 @@ def afficher_onglet_tournois():
 # CONTRÔLE D'ACCÈS À L'ENTRÉE (AUTHENTIFICATION MARQUEUR OU SPECTATEUR)
 
 # ==============================================================================
-# MODULE DE STATISTIQUES & PROGRESSION (ÉQUIPES ET JOUEURS)
+# MODULE DE STATISTIQUES & PROGRESSION (ÉQUIPES ET JOUEURS — VERSION AVANCÉE)
 # ==============================================================================
 def calculer_statistiques_et_progression(historique):
     """
-    Calcule l'ensemble des indicateurs de performance et de progression
-    pour les équipes et les joueurs à partir de l'historique complet des matchs.
+    Calcule l'ensemble des indicateurs avancés de performance et de progression
+    pour les équipes et les joueurs à partir de l'historique complet des matchs,
+    croisés avec equipes-saphir.csv, joueurs_stats.csv et horaire_saphir.json.
     """
     if not historique:
-        return {}, pd.DataFrame(), {}
+        return {}, pd.DataFrame(), {}, {}
+
+    equipes_officielles = charger_equipes_csv() or {}
+    joueurs_csv_stats = charger_joueurs_stats_csv() or {}
+    horaire_brut = charger_horaire_json() or []
+
+    # Table de correspondance joueur normalisé -> équipe officielle et nom canonique
+    joueur_vers_equipe_off = {}
+    joueur_vers_nom_off = {}
+    for eq_nom, j_list in equipes_officielles.items():
+        for j_item in (j_list or []):
+            j_c = normaliser_nom_joueur(j_item)
+            if j_c:
+                joueur_vers_equipe_off[j_c] = eq_nom
+                joueur_vers_nom_off[j_c] = j_item.strip()
+
+    for j_c, info_csv in joueurs_csv_stats.items():
+        if info_csv.get("equipe") and j_c not in joueur_vers_equipe_off:
+            joueur_vers_equipe_off[j_c] = info_csv["equipe"]
+        if info_csv.get("nom") and j_c not in joueur_vers_nom_off:
+            joueur_vers_nom_off[j_c] = info_csv["nom"]
 
     stats_equipes = {}
     stats_joueurs = {}
-    all_teams = set()
+    all_teams = set(equipes_officielles.keys())
 
     for m in historique:
         rec = (m.get("receveur") or m.get("equipe_receveur") or "Receveur").strip()
@@ -12153,36 +12174,83 @@ def calculer_statistiques_et_progression(historique):
         if vis:
             all_teams.add(vis)
 
-    timeline_data = {t: [] for t in all_teams}
-    running_totals = {t: 0 for t in all_teams}
+    def _init_equipe(nom_eq):
+        return {
+            "nom": nom_eq,
+            "pj": 0, "v": 0, "d": 0, "n": 0,
+            "pour": 0, "contre": 0, "diff": 0,
+            "rec_pj": 0, "rec_v": 0, "rec_d": 0, "rec_n": 0, "rec_pour": 0, "rec_contre": 0,
+            "vis_pj": 0, "vis_v": 0, "vis_d": 0, "vis_n": 0, "vis_pour": 0, "vis_contre": 0,
+            "manches_gagnees": 0, "manches_jouees": 0, "pct_manches_gagnees": 0.0,
+            "ronde_1_pour": 0, "ronde_1_contre": 0, "ronde_1_nb": 0,
+            "ronde_2_pour": 0, "ronde_2_contre": 0, "ronde_2_nb": 0,
+            "ronde_3_pour": 0, "ronde_3_contre": 0, "ronde_3_nb": 0,
+            "contributions": {},
+            "forme": [],
+            "matchs": []
+        }
+
+    for t in sorted(all_teams):
+        stats_equipes[t] = _init_equipe(t)
+
+    # Matrice 8x8 H2H Équipes
+    h2h_equipes = {
+        t1: {t2: {"pj": 0, "v": 0, "d": 0, "n": 0, "pour": 0, "contre": 0, "scores": []} for t2 in sorted(all_teams)}
+        for t1 in sorted(all_teams)
+    }
+
+    timeline_data = {t: [] for t in sorted(all_teams)}
+    running_totals = {t: 0 for t in sorted(all_teams)}
     match_labels = []
+
+    records_saison = {
+        "meilleur_score_equipe": None,   # (pts, eq, adv, date, idx)
+        "match_plus_serre": None,        # (ecart, rec, tr, vis, tv, date, idx)
+        "plus_large_victoire": None,     # (ecart, gagnant, sc_g, perdant, sc_p, date, idx)
+        "plus_longue_serie_8": None,     # (nb, joueur, equipe)
+        "derniere_date": "",
+        "matchs_derniere_journee": []
+    }
 
     for idx, m in enumerate(historique, 1):
         rec = (m.get("receveur") or m.get("equipe_receveur") or "Receveur").strip()
         vis = (m.get("visiteur") or m.get("equipe_visiteur") or "Visiteur").strip()
-        d_m = m.get("date_enregistrement", m.get("date", f"Match #{idx}"))
+        d_m = str(m.get("date_enregistrement") or m.get("date") or f"Match #{idx}").strip()
         lbl = f"M{idx}"
         match_labels.append(lbl)
 
+        matchs_dict = m.get("matchs", {}) or {}
         tr = m.get("total_receveur")
         tv = m.get("total_visiteur")
         if tr is None or tv is None:
-            tr = sum(m.get("matchs", {}).get(str(i), {}).get("score_a", 0) for i in range(1, 10))
-            tv = sum(m.get("matchs", {}).get(str(i), {}).get("score_b", 0) for i in range(1, 10))
+            tr = sum(int(matchs_dict.get(str(i), {}).get("score_a", 0) or 0) for i in range(1, 10))
+            tv = sum(int(matchs_dict.get(str(i), {}).get("score_b", 0) or 0) for i in range(1, 10))
+        tr = int(tr or 0)
+        tv = int(tv or 0)
 
         # Progression cumulée par match
-        running_totals[rec] += tr
-        running_totals[vis] += tv
-        for t in all_teams:
+        running_totals[rec] = running_totals.get(rec, 0) + tr
+        running_totals[vis] = running_totals.get(vis, 0) + tv
+        for t in sorted(all_teams):
             timeline_data[t].append(running_totals[t])
 
-        # Initialisation équipes
         for eq in [rec, vis]:
             if eq not in stats_equipes:
-                stats_equipes[eq] = {
-                    "nom": eq, "pj": 0, "v": 0, "d": 0, "n": 0,
-                    "pour": 0, "contre": 0, "forme": [], "matchs": []
-                }
+                stats_equipes[eq] = _init_equipe(eq)
+
+        # Records d'équipe sur ce match
+        if tr > 0 or tv > 0:
+            for eq_cand, sc_cand, adv_cand in [(rec, tr, vis), (vis, tv, rec)]:
+                if records_saison["meilleur_score_equipe"] is None or sc_cand > records_saison["meilleur_score_equipe"][0]:
+                    records_saison["meilleur_score_equipe"] = (sc_cand, eq_cand, adv_cand, d_m, idx)
+            ecart_m = abs(tr - tv)
+            if records_saison["match_plus_serre"] is None or ecart_m < records_saison["match_plus_serre"][0]:
+                records_saison["match_plus_serre"] = (ecart_m, rec, tr, vis, tv, d_m, idx)
+            gagnant_m = rec if tr >= tv else vis
+            perdant_m = vis if tr >= tv else rec
+            sc_g, sc_p = (tr, tv) if tr >= tv else (tv, tr)
+            if records_saison["plus_large_victoire"] is None or ecart_m > records_saison["plus_large_victoire"][0]:
+                records_saison["plus_large_victoire"] = (ecart_m, gagnant_m, sc_g, perdant_m, sc_p, d_m, idx)
 
         stats_equipes[rec]["pj"] += 1
         stats_equipes[vis]["pj"] += 1
@@ -12191,85 +12259,370 @@ def calculer_statistiques_et_progression(historique):
         stats_equipes[vis]["pour"] += tv
         stats_equipes[vis]["contre"] += tr
 
+        stats_equipes[rec]["rec_pj"] += 1
+        stats_equipes[rec]["rec_pour"] += tr
+        stats_equipes[rec]["rec_contre"] += tv
+        stats_equipes[vis]["vis_pj"] += 1
+        stats_equipes[vis]["vis_pour"] += tv
+        stats_equipes[vis]["vis_contre"] += tr
+
         if tr > tv:
             stats_equipes[rec]["v"] += 1
+            stats_equipes[rec]["rec_v"] += 1
             stats_equipes[rec]["forme"].append("V")
             stats_equipes[vis]["d"] += 1
+            stats_equipes[vis]["vis_d"] += 1
             stats_equipes[vis]["forme"].append("D")
             res_rec, res_vis = "Victoire", "Défaite"
         elif tv > tr:
             stats_equipes[vis]["v"] += 1
+            stats_equipes[vis]["vis_v"] += 1
             stats_equipes[vis]["forme"].append("V")
             stats_equipes[rec]["d"] += 1
+            stats_equipes[rec]["rec_d"] += 1
             stats_equipes[rec]["forme"].append("D")
             res_rec, res_vis = "Défaite", "Victoire"
         else:
             stats_equipes[rec]["n"] += 1
+            stats_equipes[rec]["rec_n"] += 1
             stats_equipes[rec]["forme"].append("N")
             stats_equipes[vis]["n"] += 1
+            stats_equipes[vis]["vis_n"] += 1
             stats_equipes[vis]["forme"].append("N")
             res_rec, res_vis = "Match nul", "Match nul"
 
-        stats_equipes[rec]["matchs"].append({
-            "idx": idx, "date": d_m, "role": "Receveur", "adversaire": vis,
-            "pour": tr, "contre": tv, "resultat": res_rec, "diff": tr - tv
-        })
-        stats_equipes[vis]["matchs"].append({
-            "idx": idx, "date": d_m, "role": "Visiteur", "adversaire": rec,
-            "pour": tv, "contre": tr, "resultat": res_vis, "diff": tv - tr
-        })
+        # Mise à jour H2H Équipes
+        if rec in h2h_equipes and vis in h2h_equipes[rec]:
+            h2h_equipes[rec][vis]["pj"] += 1
+            h2h_equipes[rec][vis]["pour"] += tr
+            h2h_equipes[rec][vis]["contre"] += tv
+            h2h_equipes[rec][vis]["scores"].append(f"{tr}-{tv}")
+            h2h_equipes[vis][rec]["pj"] += 1
+            h2h_equipes[vis][rec]["pour"] += tv
+            h2h_equipes[vis][rec]["contre"] += tr
+            h2h_equipes[vis][rec]["scores"].append(f"{tv}-{tr}")
+            if tr > tv:
+                h2h_equipes[rec][vis]["v"] += 1
+                h2h_equipes[vis][rec]["d"] += 1
+            elif tv > tr:
+                h2h_equipes[vis][rec]["v"] += 1
+                h2h_equipes[rec][vis]["d"] += 1
+            else:
+                h2h_equipes[rec][vis]["n"] += 1
+                h2h_equipes[vis][rec]["n"] += 1
 
-        # Traitement des 9 manches pour les joueurs
-        for num_str, manche in m.get("matchs", {}).items():
+        # Traitement des 9 manches (Rondes 1-3, 4-6, 7-9 + Joueurs)
+        manches_g_rec = 0
+        manches_g_vis = 0
+        for num_int in range(1, 10):
+            num_str = str(num_int)
+            manche = matchs_dict.get(num_str, {})
+            if not manche:
+                continue
             ja = (manche.get("joueur_a") or "").strip()
             jb = (manche.get("joueur_b") or "").strip()
             sa = int(manche.get("score_a", 0) or 0)
             sb = int(manche.get("score_b", 0) or 0)
+            abs_a = bool(manche.get("joueur_a_absent", False))
+            abs_b = bool(manche.get("joueur_b_absent", False))
 
-            for j_nom, sc, sc_adv, adv in [(ja, sa, sb, jb), (jb, sb, sa, ja)]:
+            if sa > 0 or sb > 0:
+                stats_equipes[rec]["manches_jouees"] += 1
+                stats_equipes[vis]["manches_jouees"] += 1
+                if sa > sb:
+                    stats_equipes[rec]["manches_gagnees"] += 1
+                    manches_g_rec += 1
+                elif sb > sa:
+                    stats_equipes[vis]["manches_gagnees"] += 1
+                    manches_g_vis += 1
+
+                # Rondes par tiers de match
+                if num_int in (1, 2, 3):
+                    stats_equipes[rec]["ronde_1_pour"] += sa
+                    stats_equipes[rec]["ronde_1_contre"] += sb
+                    stats_equipes[rec]["ronde_1_nb"] += 1
+                    stats_equipes[vis]["ronde_1_pour"] += sb
+                    stats_equipes[vis]["ronde_1_contre"] += sa
+                    stats_equipes[vis]["ronde_1_nb"] += 1
+                elif num_int in (4, 5, 6):
+                    stats_equipes[rec]["ronde_2_pour"] += sa
+                    stats_equipes[rec]["ronde_2_contre"] += sb
+                    stats_equipes[rec]["ronde_2_nb"] += 1
+                    stats_equipes[vis]["ronde_2_pour"] += sb
+                    stats_equipes[vis]["ronde_2_contre"] += sa
+                    stats_equipes[vis]["ronde_2_nb"] += 1
+                else:
+                    stats_equipes[rec]["ronde_3_pour"] += sa
+                    stats_equipes[rec]["ronde_3_contre"] += sb
+                    stats_equipes[rec]["ronde_3_nb"] += 1
+                    stats_equipes[vis]["ronde_3_pour"] += sb
+                    stats_equipes[vis]["ronde_3_contre"] += sa
+                    stats_equipes[vis]["ronde_3_nb"] += 1
+
+            # Contribution du joueur à son équipe
+            for eq_curr, j_curr, sc_curr, sc_opp in [(rec, ja, sa, sb), (vis, jb, sb, sa)]:
+                if j_curr:
+                    c_dict = stats_equipes[eq_curr]["contributions"].setdefault(
+                        j_curr, {"pts": 0, "manches": 0, "v": 0}
+                    )
+                    c_dict["pts"] += sc_curr
+                    c_dict["manches"] += 1
+                    if sc_curr > sc_opp:
+                        c_dict["v"] += 1
+
+            # Statistiques individuelles des joueurs
+            for j_nom, sc, sc_adv, adv, est_abs, eq_j in [
+                (ja, sa, sb, jb, abs_a, rec),
+                (jb, sb, sa, ja, abs_b, vis)
+            ]:
                 if not j_nom:
                     continue
                 if j_nom not in stats_joueurs:
+                    j_norm = normaliser_nom_joueur(j_nom)
+                    eq_off = joueur_vers_equipe_off.get(j_norm, eq_j)
+                    info_off = joueurs_csv_stats.get(j_norm, {})
+                    try:
+                        moy_off = float(info_off.get("moyenne", 0.625))
+                    except Exception:
+                        moy_off = 0.625
+                    rang_off = str(info_off.get("rang", "")).strip()
+                    est_regulier = j_norm in joueur_vers_equipe_off
                     stats_joueurs[j_nom] = {
-                        "nom": j_nom, "manches": 0, "total_pts": 0, "nb_8pts": 0,
-                        "matchs_joues": set(), "chronologie": [], "matchs_synthese": {}
+                        "nom": j_nom,
+                        "equipe": eq_off or eq_j,
+                        "est_regulier": est_regulier,
+                        "rang_officiel": rang_off,
+                        "moyenne_officielle": moy_off,
+                        "objectif_soiree": round(moy_off * 24.0, 1),
+                        "objectif_manche": round(moy_off * 8.0, 2),
+                        "manches": 0,
+                        "total_pts": 0,
+                        "manches_reelles": 0,
+                        "pts_reels": 0,
+                        "manches_abs": 0,
+                        "pts_abs": 0,
+                        "nb_8pts": 0,
+                        "nb_blanchissages": 0,
+                        "clutch_v": 0,
+                        "clutch_d": 0,
+                        "serie_8_courante": 0,
+                        "serie_8_max": 0,
+                        "matchs_joues": set(),
+                        "chronologie": [],
+                        "matchs_synthese": {},
+                        "adversaires_bilan": {}
                     }
-                stats_joueurs[j_nom]["manches"] += 1
-                stats_joueurs[j_nom]["total_pts"] += sc
+
+                sj = stats_joueurs[j_nom]
+                sj["manches"] += 1
+                sj["total_pts"] += sc
+                if est_abs:
+                    sj["manches_abs"] += 1
+                    sj["pts_abs"] += sc
+                else:
+                    sj["manches_reelles"] += 1
+                    sj["pts_reels"] += sc
+
                 if sc == 8:
-                    stats_joueurs[j_nom]["nb_8pts"] += 1
-                stats_joueurs[j_nom]["matchs_joues"].add(idx)
+                    sj["nb_8pts"] += 1
+                    sj["serie_8_courante"] += 1
+                    if sj["serie_8_courante"] > sj["serie_8_max"]:
+                        sj["serie_8_max"] = sj["serie_8_courante"]
+                    if sc_adv == 0 and not est_abs:
+                        sj["nb_blanchissages"] += 1
+                else:
+                    sj["serie_8_courante"] = 0
+
+                if not est_abs:
+                    if sc == 8 and sc_adv in (6, 7):
+                        sj["clutch_v"] += 1
+                    elif sc_adv == 8 and sc in (6, 7):
+                        sj["clutch_d"] += 1
+
+                sj["matchs_joues"].add(idx)
 
                 res_m = "Victoire" if sc > sc_adv else ("Défaite" if sc < sc_adv else "Nul")
-                stats_joueurs[j_nom]["chronologie"].append({
-                    "match_idx": idx, "date": d_m, "manche": int(num_str) if num_str.isdigit() else num_str,
-                    "adversaire": adv, "score": sc, "score_adv": sc_adv, "resultat": res_m
+                sj["chronologie"].append({
+                    "match_idx": idx,
+                    "date": d_m,
+                    "manche": num_int,
+                    "equipe": eq_j,
+                    "adversaire": adv,
+                    "score": sc,
+                    "score_adv": sc_adv,
+                    "absent": est_abs,
+                    "resultat": res_m
                 })
 
-                if idx not in stats_joueurs[j_nom]["matchs_synthese"]:
-                    stats_joueurs[j_nom]["matchs_synthese"][idx] = {
-                        "date": d_m, "pts": 0, "manches": 0, "adversaires": []
+                if idx not in sj["matchs_synthese"]:
+                    sj["matchs_synthese"][idx] = {
+                        "date": d_m,
+                        "equipe": eq_j,
+                        "pts": 0,
+                        "manches": 0,
+                        "nb_8": 0,
+                        "absent": False,
+                        "adversaires": []
                     }
-                stats_joueurs[j_nom]["matchs_synthese"][idx]["pts"] += sc
-                stats_joueurs[j_nom]["matchs_synthese"][idx]["manches"] += 1
-                if adv and adv not in stats_joueurs[j_nom]["matchs_synthese"][idx]["adversaires"]:
-                    stats_joueurs[j_nom]["matchs_synthese"][idx]["adversaires"].append(adv)
+                sj["matchs_synthese"][idx]["pts"] += sc
+                sj["matchs_synthese"][idx]["manches"] += 1
+                if sc == 8:
+                    sj["matchs_synthese"][idx]["nb_8"] += 1
+                if est_abs:
+                    sj["matchs_synthese"][idx]["absent"] = True
+                if adv and adv not in sj["matchs_synthese"][idx]["adversaires"]:
+                    sj["matchs_synthese"][idx]["adversaires"].append(adv)
 
-    # Calcul des ratios équipes
+                if adv:
+                    b_adv = sj["adversaires_bilan"].setdefault(
+                        adv, {"adversaire": adv, "duels": 0, "v": 0, "d": 0, "n": 0, "pour": 0, "contre": 0, "diff": 0, "details": []}
+                    )
+                    b_adv["duels"] += 1
+                    b_adv["pour"] += sc
+                    b_adv["contre"] += sc_adv
+                    b_adv["diff"] = b_adv["pour"] - b_adv["contre"]
+                    if sc > sc_adv:
+                        b_adv["v"] += 1
+                    elif sc < sc_adv:
+                        b_adv["d"] += 1
+                    else:
+                        b_adv["n"] += 1
+                    b_adv["details"].append({
+                        "match_idx": idx,
+                        "date": d_m,
+                        "manche": num_int,
+                        "score": sc,
+                        "score_adv": sc_adv,
+                        "resultat": res_m
+                    })
+
+        stats_equipes[rec]["matchs"].append({
+            "idx": idx, "date": d_m, "role": "🏠 Receveur", "adversaire": vis,
+            "pour": tr, "contre": tv, "manches_g": manches_g_rec, "resultat": res_rec, "diff": tr - tv
+        })
+        stats_equipes[vis]["matchs"].append({
+            "idx": idx, "date": d_m, "role": "🚗 Visiteur", "adversaire": rec,
+            "pour": tv, "contre": tr, "manches_g": manches_g_vis, "resultat": res_vis, "diff": tv - tr
+        })
+
+    # Post-traitement des Équipes (Séries, Forme 5, Rondes, Homogénéité)
     for eq, st_e in stats_equipes.items():
         pj = st_e["pj"]
         st_e["diff"] = st_e["pour"] - st_e["contre"]
         st_e["moy_pour"] = (st_e["pour"] / pj) if pj > 0 else 0.0
         st_e["moy_contre"] = (st_e["contre"] / pj) if pj > 0 else 0.0
+        st_e["pct_manches_gagnees"] = (st_e["manches_gagnees"] / st_e["manches_jouees"] * 100.0) if st_e["manches_jouees"] > 0 else 0.0
+
+        forme_list = st_e["forme"]
+        if not forme_list:
+            st_e["serie_str"] = "—"
+            st_e["forme_5_str"] = "Aucun match"
+        else:
+            last_res = forme_list[-1]
+            cnt_s = 0
+            for r_it in reversed(forme_list):
+                if r_it == last_res:
+                    cnt_s += 1
+                else:
+                    break
+            if last_res == "V":
+                st_e["serie_str"] = f"🔥 {cnt_s}V"
+            elif last_res == "D":
+                st_e["serie_str"] = f"❄️ {cnt_s}D"
+            else:
+                st_e["serie_str"] = f"🤝 {cnt_s}N"
+
+            map_pastille = {"V": "🟢V", "D": "🔴D", "N": "🟡N"}
+            st_e["forme_5_str"] = " ".join(map_pastille.get(x, x) for x in forme_list[-5:])
+
+        tot_eq_pts = max(1, st_e["pour"])
+        parts_j = sorted(st_e["contributions"].values(), key=lambda x: x["pts"], reverse=True)
+        if len(parts_j) >= 3 and st_e["pour"] > 0:
+            top_share = (parts_j[0]["pts"] / tot_eq_pts) * 100.0
+            min_share = (parts_j[2]["pts"] / tot_eq_pts) * 100.0
+            ecart_trio = top_share - min_share
+            if ecart_trio <= 8.0:
+                st_e["indice_trio"] = f"⚖️ Trio très homogène (écart {ecart_trio:.1f}%)"
+            elif ecart_trio <= 15.0:
+                st_e["indice_trio"] = f"🤝 Trio équilibré (écart {ecart_trio:.1f}%)"
+            else:
+                st_e["indice_trio"] = f"⭐ Leader prédominant ({top_share:.1f}% des pts)"
+        else:
+            st_e["indice_trio"] = "📊 Données en cours"
 
     df_prog_equipes = pd.DataFrame(timeline_data, index=match_labels) if match_labels else pd.DataFrame()
 
-    # Post-traitement joueurs
+    # Post-traitement des Joueurs
     for j_nom, sj in stats_joueurs.items():
         sj["nb_matchs"] = len(sj["matchs_joues"])
         m_count = sj["manches"]
+        m_reelles = sj["manches_reelles"]
         sj["moyenne"] = (sj["total_pts"] / m_count) if m_count > 0 else 0.0
-        sj["pct_8pts"] = (sj["nb_8pts"] / m_count * 100) if m_count > 0 else 0.0
+        sj["moyenne_reelle"] = (sj["pts_reels"] / m_reelles) if m_reelles > 0 else sj["moyenne"]
+        sj["moyenne_soiree"] = sj["moyenne"] * 3.0
+        sj["pct_8pts"] = (sj["nb_8pts"] / m_count * 100.0) if m_count > 0 else 0.0
+
+        pts_attendus_reels = m_reelles * sj["objectif_manche"]
+        sj["pts_attendus"] = round(pts_attendus_reels, 1)
+        sj["surperformance_pts"] = round(sj["pts_reels"] - pts_attendus_reels, 1)
+        sj["delta_vs_objectif_soiree"] = round(sj["moyenne_soiree"] - sj["objectif_soiree"], 2)
+
+        scores_soirees = []
+        soirees_parfaites = 0
+        soirees_present = 0
+        soirees_absent = 0
+        for idx_m, sm in sj["matchs_synthese"].items():
+            if sm["absent"]:
+                soirees_absent += 1
+            else:
+                soirees_present += 1
+            pts_s = sm["pts"]
+            scores_soirees.append(pts_s)
+            if pts_s >= 24 and sm["manches"] == 3 and not sm["absent"]:
+                soirees_parfaites += 1
+
+        sj["soirees_parfaites"] = soirees_parfaites
+        sj["soirees_present"] = soirees_present
+        sj["soirees_absent"] = soirees_absent
+        sj["taux_presence"] = (soirees_present / len(scores_soirees) * 100.0) if scores_soirees else 100.0
+
+        if scores_soirees:
+            sj["plafond_soiree"] = max(scores_soirees)
+            sj["plancher_soiree"] = min(scores_soirees)
+            if len(scores_soirees) >= 2:
+                moy_s = sum(scores_soirees) / len(scores_soirees)
+                var_s = sum((x - moy_s) ** 2 for x in scores_soirees) / len(scores_soirees)
+                sj["ecart_type_soiree"] = round(math.sqrt(var_s), 2)
+            else:
+                sj["ecart_type_soiree"] = 0.0
+        else:
+            sj["plafond_soiree"] = 0
+            sj["plancher_soiree"] = 0
+            sj["ecart_type_soiree"] = 0.0
+
+        if sj["ecart_type_soiree"] <= 2.0:
+            sj["label_constance"] = "🎯 Métronome"
+        elif sj["ecart_type_soiree"] <= 3.8:
+            sj["label_constance"] = "⚖️ Régulier"
+        else:
+            sj["label_constance"] = "⚡ Variable"
+
+        clutch_tot = sj["clutch_v"] + sj["clutch_d"]
+        sj["clutch_pct"] = (sj["clutch_v"] / clutch_tot * 100.0) if clutch_tot > 0 else 0.0
+        sj["clutch_bilan_str"] = f"{sj['clutch_v']}V - {sj['clutch_d']}D ({sj['clutch_pct']:.0f}%)" if clutch_tot > 0 else "0V - 0D"
+
+        if records_saison["plus_longue_serie_8"] is None or sj["serie_8_max"] > records_saison["plus_longue_serie_8"][0]:
+            records_saison["plus_longue_serie_8"] = (sj["serie_8_max"], j_nom, sj["equipe"])
+
+        adv_list = list(sj["adversaires_bilan"].values())
+        if adv_list:
+            proie = max(adv_list, key=lambda x: (x["diff"], x["v"], x["pour"]))
+            bete = min(adv_list, key=lambda x: (x["diff"], -x["d"], -x["contre"]))
+            sj["proie_favorite"] = proie if proie["diff"] > 0 or proie["v"] > 0 else None
+            sj["bete_noire"] = bete if bete["diff"] < 0 or bete["d"] > 0 else None
+        else:
+            sj["proie_favorite"] = None
+            sj["bete_noire"] = None
 
         sorted_m_indices = sorted(sj["matchs_synthese"].keys())
         if len(sorted_m_indices) >= 2:
@@ -12291,48 +12644,234 @@ def calculer_statistiques_et_progression(historique):
             sj["delta_dernier_match"] = 0.0
             sj["tendance"] = "➡️ Stable"
 
-    return stats_equipes, df_prog_equipes, stats_joueurs
+    # Tableau d'Honneur de la dernière journée enregistrée
+    if historique:
+        derniere_date = str(historique[-1].get("date_enregistrement") or historique[-1].get("date") or "").split()[0]
+        records_saison["derniere_date"] = derniere_date
+        indices_derniere_journee = []
+        for idx_h in range(len(historique), 0, -1):
+            m_h = historique[idx_h - 1]
+            d_h = str(m_h.get("date_enregistrement") or m_h.get("date") or "").split()[0]
+            if d_h == derniere_date or len(indices_derniere_journee) == 0:
+                indices_derniere_journee.append(idx_h)
+            elif len(indices_derniere_journee) < 4 and not derniere_date:
+                indices_derniere_journee.append(idx_h)
+            else:
+                break
+
+        records_saison["indices_derniere_journee"] = sorted(indices_derniere_journee)
+
+        meilleure_eq_sem = None
+        for idx_j in records_saison["indices_derniere_journee"]:
+            m_j = historique[idx_j - 1]
+            r_j = (m_j.get("receveur") or "Receveur").strip()
+            v_j = (m_j.get("visiteur") or "Visiteur").strip()
+            tr_j = int(m_j.get("total_receveur") or sum(int(m_j.get("matchs", {}).get(str(k), {}).get("score_a", 0) or 0) for k in range(1, 10)))
+            tv_j = int(m_j.get("total_visiteur") or sum(int(m_j.get("matchs", {}).get(str(k), {}).get("score_b", 0) or 0) for k in range(1, 10)))
+            for eq_c, sc_c, adv_c in [(r_j, tr_j, v_j), (v_j, tv_j, r_j)]:
+                if meilleure_eq_sem is None or sc_c > meilleure_eq_sem["pts"]:
+                    meilleure_eq_sem = {"equipe": eq_c, "pts": sc_c, "adversaire": adv_c, "date": derniere_date}
+        records_saison["equipe_semaine"] = meilleure_eq_sem
+
+        etoiles_candidats = []
+        for j_nom, sj in stats_joueurs.items():
+            for idx_j in records_saison["indices_derniere_journee"]:
+                if idx_j in sj["matchs_synthese"]:
+                    sm = sj["matchs_synthese"][idx_j]
+                    if not sm["absent"]:
+                        delta_obj = round(sm["pts"] - sj["objectif_soiree"], 1)
+                        etoiles_candidats.append({
+                            "nom": j_nom,
+                            "equipe": sm["equipe"],
+                            "pts": sm["pts"],
+                            "nb_8": sm["nb_8"],
+                            "objectif": sj["objectif_soiree"],
+                            "delta_obj": delta_obj
+                        })
+        etoiles_candidats.sort(key=lambda x: (x["pts"], x["delta_obj"], x["nb_8"]), reverse=True)
+        records_saison["etoiles_semaine"] = etoiles_candidats[:3]
+
+    # Force du Calendrier Restant (Strength of Schedule) sur 14 semaines
+    calendrier_equipes = {t: {"restants": [], "joues": 0} for t in sorted(all_teams)}
+    paires_jouees = {}
+    for m in historique:
+        r_m = (m.get("receveur") or "").strip()
+        v_m = (m.get("visiteur") or "").strip()
+        if r_m and v_m:
+            paires_jouees[(r_m, v_m)] = paires_jouees.get((r_m, v_m), 0) + 1
+
+    paires_vues_horaire = {}
+    for row in horaire_brut:
+        if not row or not isinstance(row, list):
+            continue
+        sem_lbl = str(row[0]).strip() if len(row) > 0 else "Semaine"
+        for cell in row[1:]:
+            parsed = parser_ligne_horaire_match(str(cell))
+            if parsed:
+                r_h = parsed["receveur"]
+                v_h = parsed["visiteur"]
+                cle_p = (r_h, v_h)
+                paires_vues_horaire[cle_p] = paires_vues_horaire.get(cle_p, 0) + 1
+                deja_fait = paires_vues_horaire[cle_p] <= paires_jouees.get(cle_p, 0)
+                if not deja_fait:
+                    if r_h in calendrier_equipes:
+                        calendrier_equipes[r_h]["restants"].append({"semaine": sem_lbl, "adversaire": v_h, "role": "🏠 Receveur", "date_txt": f"{parsed['jour']}/{parsed['mois']}"})
+                    if v_h in calendrier_equipes:
+                        calendrier_equipes[v_h]["restants"].append({"semaine": sem_lbl, "adversaire": r_h, "role": "🚗 Visiteur", "date_txt": f"{parsed['jour']}/{parsed['mois']}"})
+
+    for eq, st_e in stats_equipes.items():
+        restants_list = calendrier_equipes.get(eq, {}).get("restants", [])
+        nb_restants = max(0, 14 - st_e["pj"]) if not restants_list else len(restants_list)
+        st_e["matchs_restants_liste"] = restants_list
+        st_e["nb_matchs_restants"] = nb_restants
+
+        if restants_list:
+            taux_v_adv = []
+            moy_pts_adv = []
+            for item_r in restants_list:
+                adv_n = item_r["adversaire"]
+                st_adv = stats_equipes.get(adv_n, {})
+                pj_a = st_adv.get("pj", 0)
+                taux_a = (st_adv.get("v", 0) / pj_a * 100.0) if pj_a > 0 else 50.0
+                moy_a = st_adv.get("moy_pour", 45.0) if pj_a > 0 else 45.0
+                taux_v_adv.append(taux_a)
+                moy_pts_adv.append(moy_a)
+            sos_pct = sum(taux_v_adv) / len(taux_v_adv)
+            sos_pts = sum(moy_pts_adv) / len(moy_pts_adv)
+        else:
+            sos_pct = 50.0
+            sos_pts = 45.0
+
+        st_e["sos_pct"] = round(sos_pct, 1)
+        st_e["sos_pts"] = round(sos_pts, 1)
+        if sos_pct >= 58.0:
+            st_e["difficulte_calendrier"] = f"🔴 Relevé (Adv. {sos_pct:.0f}% V)"
+        elif sos_pct <= 42.0:
+            st_e["difficulte_calendrier"] = f"🟢 Favorable (Adv. {sos_pct:.0f}% V)"
+        else:
+            st_e["difficulte_calendrier"] = f"🟡 Équilibré (Adv. {sos_pct:.0f}% V)"
+
+        moy_actuelle = st_e["moy_pour"] if st_e["pj"] > 0 else 45.0
+        st_e["projection_pts_14_sem"] = int(round(st_e["pour"] + (nb_restants * moy_actuelle)))
+        taux_v_actuel = (st_e["v"] / st_e["pj"]) if st_e["pj"] > 0 else 0.5
+        st_e["projection_v_14_sem"] = int(round(st_e["v"] + (nb_restants * taux_v_actuel)))
+
+    meta_global = {
+        "h2h_equipes": h2h_equipes,
+        "records_saison": records_saison,
+        "equipes_officielles": equipes_officielles,
+        "joueurs_csv_stats": joueurs_csv_stats
+    }
+
+    return stats_equipes, df_prog_equipes, stats_joueurs, meta_global
 
 
 def afficher_tableau_de_bord_progression(historique):
     """
-    Rendu interactif complet du tableau de bord de progression
-    avec sous-onglets Équipes et Joueurs.
+    Rendu interactif complet du tableau de bord de progression :
+    - Bandeau Tableau d'Honneur de la Semaine & Records de la Saison
+    - Onglet 1 : 🏆 Équipes & Collectif (Momentum, Domicile/Extérieur, Courbe cumulée, Trio J1/J2/J3, Rondes M1-3/M4-6/M7-9)
+    - Onglet 2 : 👤 Joueurs & Individuel (Objectif officiel, Soirées 24/24, 8-0, Clutch, Constance, Assiduité, Bête noire/Proie)
+    - Onglet 3 : ⚔️ Face-à-Face & Matrice 8×8 (Comparateur Joueur A vs Joueur B & Matrice 8×8 des Équipes)
+    - Onglet 4 : 🔮 Calendrier Restant & Projections (Force du calendrier sur 14 semaines & Classement final projeté)
     """
     st.markdown("### 📈 Tableau de bord — Progression & Statistiques de la Ligue")
-    st.caption("Consultez les bilans complets, les graphiques d'évolution et les classements détaillés des équipes et des joueurs.")
+    st.caption("Analyses complètes 3 contre 3 : forme récente, objectifs personnalisés, indice « Clutch », face-à-face, homogénéité des trios et projections de fin de saison.")
 
     if not historique:
         st.info("ℹ️ Aucun match n'est encore archivé dans l'historique. Le tableau de bord et les graphiques de progression s'activeront dès l'enregistrement de votre première rencontre.")
         return
 
-    stats_equipes, df_prog_equipes, stats_joueurs = calculer_statistiques_et_progression(historique)
+    stats_equipes, df_prog_equipes, stats_joueurs, meta_global = calculer_statistiques_et_progression(historique)
+    records_saison = meta_global.get("records_saison", {})
+    h2h_equipes = meta_global.get("h2h_equipes", {})
 
-    subtab_eq, subtab_jo = st.tabs([
-        "🏆 Progression des Équipes",
-        "👤 Progression des Joueurs"
+    # =========================================================================
+    # VOLET 3 : BANDEAU « TABLEAU D'HONNEUR DE LA SEMAINE & RECORDS »
+    # =========================================================================
+    with st.expander("🌟 Tableau d'Honneur de la Dernière Semaine & Records de la Saison", expanded=True):
+        etoiles_sem = records_saison.get("etoiles_semaine", [])
+        eq_sem = records_saison.get("equipe_semaine")
+        derniere_dt = records_saison.get("derniere_date") or "Dernière journée"
+
+        if etoiles_sem or eq_sem:
+            st.markdown(f"##### ⭐ Faits saillants de la dernière journée enregistrée ({derniere_dt})")
+            cols_et = st.columns(4)
+            ic_et = ["🥇 1re Étoile", "🥈 2e Étoile", "🥉 3e Étoile"]
+            cls_et = ["saphir-podium-1", "saphir-podium-2", "saphir-podium-3"]
+            for i_et in range(3):
+                with cols_et[i_et]:
+                    if i_et < len(etoiles_sem):
+                        et = etoiles_sem[i_et]
+                        sign_d = f"+{et['delta_obj']}" if et["delta_obj"] > 0 else f"{et['delta_obj']}"
+                        st.markdown(
+                            f"<div class='saphir-podium-card {cls_et[i_et]}' style='padding:10px;'>"
+                            f"<div class='podium-sub' style='font-size:12px; font-weight:700;'>{ic_et[i_et]}</div>"
+                            f"<div class='podium-title' style='font-size:15.5px; font-weight:800; margin:3px 0;'>{et['nom']} ({et['equipe']})</div>"
+                            f"<div class='podium-sub' style='font-size:12px;'><strong>{et['pts']} / 24 pts</strong> ({et['nb_8']}× 8pts)<br>"
+                            f"<span style='font-size:11px;'>Obj. {et['objectif']} pts ({sign_d} vs moy.)</span></div>"
+                            f"</div>",
+                            unsafe_allow_html=True
+                        )
+                    else:
+                        st.caption("—")
+            with cols_et[3]:
+                if eq_sem:
+                    st.markdown(
+                        f"<div class='saphir-podium-card saphir-podium-1' style='padding:10px; border-color:#0284c7 !important; background:linear-gradient(135deg,#e0f2fe 0%,#bae6fd 100%) !important;'>"
+                        f"<div class='podium-sub' style='font-size:12px; font-weight:700;'>🚀 Équipe de la Semaine</div>"
+                        f"<div class='podium-title' style='font-size:16px; font-weight:800; margin:3px 0;'>{eq_sem['equipe']}</div>"
+                        f"<div class='podium-sub' style='font-size:12px;'><strong>{eq_sem['pts']} / 72 pts</strong><br>"
+                        f"<span style='font-size:11px;'>contre {eq_sem['adversaire']}</span></div>"
+                        f"</div>",
+                        unsafe_allow_html=True
+                    )
+
+        rec_eq = records_saison.get("meilleur_score_equipe")
+        rec_serre = records_saison.get("match_plus_serre")
+        rec_large = records_saison.get("plus_large_victoire")
+        rec_s8 = records_saison.get("plus_longue_serie_8")
+
+        r_c1, r_c2, r_c3, r_c4 = st.columns(4)
+        if rec_eq:
+            r_c1.metric("💥 Record d'équipe (/72)", f"{rec_eq[1]} ({rec_eq[0]} pts)", f"vs {rec_eq[2]} ({rec_eq[3]})")
+        if rec_serre:
+            r_c2.metric("🔥 Duel le plus serré", f"{rec_serre[1]} {rec_serre[2]} - {rec_serre[4]} {rec_serre[3]}", f"Écart de {rec_serre[0]} pt(s)")
+        if rec_large:
+            r_c3.metric("⚡ Plus large victoire", f"+{rec_large[0]} pts ({rec_large[1]})", f"{rec_large[2]}-{rec_large[4]} vs {rec_large[3]}")
+        if rec_s8 and rec_s8[0] > 0:
+            r_c4.metric("🎯 Série de manches à 8 pts", f"{rec_s8[0]} consécutives", f"{rec_s8[1]} ({rec_s8[2]})")
+
+    subtab_eq, subtab_jo, subtab_h2h, subtab_proj = st.tabs([
+        "🏆 Équipes & Collectif",
+        "👤 Joueurs & Individuel",
+        "⚔️ Face-à-Face & Matrice 8×8",
+        "🔮 Calendrier Restant & Projections"
     ])
 
     # =========================================================================
-    # SOUS-ONGLET 1 : PROGRESSION DES ÉQUIPES
+    # SOUS-ONGLET 1 : PROGRESSION DES ÉQUIPES & ANALYSE COLLECTIVE
     # =========================================================================
     with subtab_eq:
-        if not stats_equipes:
+        equipes_actives = [e for e in stats_equipes.values() if e["pj"] > 0] or list(stats_equipes.values())
+        if not equipes_actives:
             st.info("ℹ️ Aucune donnée d'équipe disponible.")
         else:
             classement_equipes = sorted(
                 stats_equipes.values(),
-                key=lambda x: (x["v"], x["diff"], x["pour"]),
+                key=lambda x: (x["pour"], x["v"], x["diff"]),
                 reverse=True
             )
             leader = classement_equipes[0]
-            max_attaque = max(stats_equipes.values(), key=lambda x: x["pour"])
+            max_v = max(stats_equipes.values(), key=lambda x: (x["v"], x["pour"]))
+            max_manches = max(stats_equipes.values(), key=lambda x: x["pct_manches_gagnees"])
 
             # 1. Cartes KPI Équipes
-            k1, k2, k3 = st.columns(3)
-            k1.metric("🏁 Matchs joués", f"{len(historique)} rencontres")
-            k2.metric("🥇 Leader actuel", leader["nom"], f"{leader['v']}V - {leader['d']}D")
-            k3.metric("🔥 Meilleure attaque", max_attaque["nom"], f"{max_attaque['pour']} pts ({max_attaque['moy_pour']:.1f}/m)")
+            k1, k2, k3, k4 = st.columns(4)
+            k1.metric("🏁 Rencontres archivées", f"{len(historique)} matchs", f"{len(historique) * 9} manches disputées")
+            k2.metric("🥇 1er aux Points (Saphir)", leader["nom"], f"{leader['pour']} pts ({leader['moy_pour']:.1f}/72)")
+            k3.metric("🏆 Plus de victoires", max_v["nom"], f"{max_v['v']}V - {max_v['d']}D ({max_v['serie_str']})")
+            k4.metric("🎱 Efficacité Manches", max_manches["nom"], f"{max_manches['pct_manches_gagnees']:.1f}% gagnées")
 
             # Podium visuel Top 3 Équipes
             if classement_equipes:
@@ -12345,40 +12884,61 @@ def afficher_tableau_de_bord_progression(historique):
                         f"<div class='saphir-podium-card {classes_pod[idx_p]}'>"
                         f"<div class='podium-sub' style='font-size:13px; font-weight:700; margin-bottom:4px;'>{ic_pod[idx_p]}</div>"
                         f"<div class='podium-title' style='font-size:17px; font-weight:800; margin-bottom:4px;'>{eq_p['nom']}</div>"
-                        f"<div class='podium-sub' style='font-size:12.5px;'><strong>{eq_p['v']}V - {eq_p['d']}D</strong> &nbsp;•&nbsp; {eq_p['pour']} pts (Diff {diff_p})</div>"
+                        f"<div class='podium-sub' style='font-size:12.5px;'><strong>{eq_p['pour']} pts</strong> ({eq_p['v']}V - {eq_p['d']}D) &nbsp;•&nbsp; Diff {diff_p} &nbsp;•&nbsp; {eq_p['serie_str']}</div>"
                         f"</div>"
                     )
                 st.markdown(f"<div class='saphir-podium-grid'>{''.join(cartes_podium_eq)}</div>", unsafe_allow_html=True)
 
             st.markdown("---")
 
-            # 2. Tableau de classement avec forme
-            st.markdown("#### 🏆 Classement général & Forme récente")
-            
+            # 2. Tableau de classement enrichi (Momentum, Domicile vs Extérieur, % Manches)
+            st.markdown("#### 🏆 Classement Général, Momentum & Bilan Domicile / Extérieur")
+            c_tri_eq1, c_tri_eq2 = st.columns([1.5, 2.5])
+            with c_tri_eq1:
+                mode_tri_eq = st.radio(
+                    "Critère de tri du classement :",
+                    ["Total des Points (Officiel Saphir)", "Nombre de Victoires (V - D)"],
+                    horizontal=True,
+                    key="radio_tri_classement_eq"
+                )
+            if mode_tri_eq == "Nombre de Victoires (V - D)":
+                classement_equipes_aff = sorted(stats_equipes.values(), key=lambda x: (x["v"], x["pour"], x["diff"]), reverse=True)
+            else:
+                classement_equipes_aff = classement_equipes
+
             medailles = {1: "🥇", 2: "🥈", 3: "🥉"}
             lignes_tab = []
-            for rang, eq_data in enumerate(classement_equipes, start=1):
+            for rang, eq_data in enumerate(classement_equipes_aff, start=1):
                 badge_rang = medailles.get(rang, f"#{rang}")
-
+                diff_str = f"+{eq_data['diff']}" if eq_data["diff"] > 0 else str(eq_data["diff"])
                 lignes_tab.append({
                     "Rang": badge_rang,
                     "Équipe": eq_data["nom"],
                     "PJ": eq_data["pj"],
-                    "V": eq_data["v"],
-                    "D": eq_data["d"],
-                    "Points Pour (BP)": eq_data["pour"],
-                    "Moy. Pts/Match": f"{eq_data['moy_pour']:.1f}"
+                    "V - D": f"{eq_data['v']}V - {eq_data['d']}D" + (f" - {eq_data['n']}N" if eq_data["n"] else ""),
+                    "Points Pour": eq_data["pour"],
+                    "Points Contre": eq_data["contre"],
+                    "Diff": diff_str,
+                    "Moy. / 72": f"{eq_data['moy_pour']:.1f}",
+                    "% Manches": f"{eq_data['pct_manches_gagnees']:.1f}%",
+                    "🏠 Receveur": f"{eq_data['rec_v']}V-{eq_data['rec_d']}D",
+                    "🚗 Visiteur": f"{eq_data['vis_v']}V-{eq_data['vis_d']}D",
+                    "Série": eq_data["serie_str"],
+                    "5 Derniers": eq_data["forme_5_str"]
                 })
 
-            df_standings = pd.DataFrame(lignes_tab)
-            st.dataframe(df_standings, use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(lignes_tab), use_container_width=True, hide_index=True)
 
-
+            # 3. Courbe d'évolution cumulée des équipes
+            if not df_prog_equipes.empty and len(df_prog_equipes) >= 1:
+                with st.expander("📈 Voir la courbe d'évolution cumulée des points des équipes", expanded=True):
+                    st.caption("Progression cumulative des points d'équipe au fil des rencontres enregistrées.")
+                    st.line_chart(df_prog_equipes, height=320)
 
             st.markdown("---")
 
-            # 4. Fiche détaillée par équipe
-            st.markdown("#### 🔍 Fiche détaillée & Performances par équipe")
+            # 4. Fiche détaillée par équipe (Homogénéité du Trio + Rondes M1-3 / M4-6 / M7-9)
+            st.markdown("#### 🔍 Fiche Détaillée, Homogénéité du Trio & Performance par Ronde")
             noms_equipes_liste = [eq["nom"] for eq in classement_equipes]
             choix_eq = st.selectbox(
                 "Choisir une équipe à analyser :",
@@ -12391,11 +12951,72 @@ def afficher_tableau_de_bord_progression(historique):
                 rang_eq = next((i for i, x in enumerate(classement_equipes, 1) if x["nom"] == choix_eq), 1)
 
                 f1, f2, f3, f4 = st.columns(4)
-                f1.metric("Position au classement", f"#{rang_eq} sur {len(classement_equipes)}", f"{f_eq['v']}V - {f_eq['d']}D - {f_eq['n']}N")
-                f2.metric("Points marqués", f"{f_eq['pour']} pts", f"Moyenne : {f_eq['moy_pour']:.1f} / match")
-                f3.metric("Points concédés", f"{f_eq['contre']} pts", f"Moyenne : {f_eq['moy_contre']:.1f} / match")
-                diff_val_str = f"+{f_eq['diff']}" if f_eq['diff'] > 0 else str(f_eq['diff'])
-                f4.metric("Différentiel global", diff_val_str)
+                f1.metric("Position au classement", f"#{rang_eq} sur {len(classement_equipes)}", f"{f_eq['v']}V - {f_eq['d']}D ({f_eq['serie_str']})")
+                f2.metric("Points marqués", f"{f_eq['pour']} pts", f"Moyenne : {f_eq['moy_pour']:.1f} / 72 pts")
+                f3.metric("Bilan 🏠 Dom. / 🚗 Ext.", f"🏠 {f_eq['rec_v']}V-{f_eq['rec_d']}D", f"🚗 Visiteur : {f_eq['vis_v']}V-{f_eq['vis_d']}D")
+                f4.metric("Profil du Trio", f_eq["indice_trio"].split("(")[0].strip(), f"{f_eq['pct_manches_gagnees']:.1f}% manches gagnées")
+
+                col_trio, col_rondes = st.columns([1.25, 1.0])
+
+                # A. Homogénéité & Répartition des points du Trio (J1 / J2 / J3 / Remplaçants)
+                with col_trio:
+                    with st.container(border=True):
+                        st.markdown(f"##### 👥 Répartition & Contribution du Trio ({choix_eq})")
+                        st.caption(f"Diagnostic collectif : **{f_eq['indice_trio']}**")
+                        contribs = f_eq.get("contributions", {})
+                        if contribs and f_eq["pour"] > 0:
+                            roster_off = meta_global.get("equipes_officielles", {}).get(choix_eq, [])
+                            roster_norms = {normaliser_nom_joueur(p) for p in roster_off}
+                            lignes_contrib = []
+                            for j_c_nom, c_val in sorted(contribs.items(), key=lambda x: x[1]["pts"], reverse=True):
+                                part_pct = (c_val["pts"] / f_eq["pour"] * 100.0) if f_eq["pour"] > 0 else 0.0
+                                moy_j_eq = (c_val["pts"] / c_val["manches"]) if c_val["manches"] > 0 else 0.0
+                                statut_j = "Titulaire" if normaliser_nom_joueur(j_c_nom) in roster_norms else "Remplaçant"
+                                lignes_contrib.append({
+                                    "Joueur": j_c_nom,
+                                    "Rôle": statut_j,
+                                    "Manches": c_val["manches"],
+                                    "Victoires": f"{c_val['v']}V",
+                                    "Points": c_val["pts"],
+                                    "Moy. /8": f"{moy_j_eq:.2f}",
+                                    "% Équipe": f"{part_pct:.1f}%"
+                                })
+                            st.dataframe(pd.DataFrame(lignes_contrib), use_container_width=True, hide_index=True)
+                        else:
+                            st.info("Aucune manche enregistrée pour cette équipe.")
+
+                # B. Performance par Ronde (Manches 1-3 vs 4-6 vs 7-9)
+                with col_rondes:
+                    with st.container(border=True):
+                        st.markdown(f"##### ⏱️ Performance par Ronde ({choix_eq})")
+                        st.caption("Analyse du rythme de l'équipe entre le début, le milieu et la fin de soirée (sur 24 pts max par ronde).")
+                        r1_nb = max(1, f_eq["ronde_1_nb"] // 3) if f_eq["ronde_1_nb"] >= 3 else 1
+                        r2_nb = max(1, f_eq["ronde_2_nb"] // 3) if f_eq["ronde_2_nb"] >= 3 else 1
+                        r3_nb = max(1, f_eq["ronde_3_nb"] // 3) if f_eq["ronde_3_nb"] >= 3 else 1
+                        lignes_rondes = [
+                            {
+                                "Ronde": "1re Ronde (Manches 1 à 3)",
+                                "Pts Marqués": f_eq["ronde_1_pour"],
+                                "Pts Concédés": f_eq["ronde_1_contre"],
+                                "Diff.": f"{f_eq['ronde_1_pour'] - f_eq['ronde_1_contre']:+d}",
+                                "Moy. /24": f"{(f_eq['ronde_1_pour'] / r1_nb):.1f}" if f_eq["ronde_1_nb"] else "0.0"
+                            },
+                            {
+                                "Ronde": "2e Ronde (Manches 4 à 6)",
+                                "Pts Marqués": f_eq["ronde_2_pour"],
+                                "Pts Concédés": f_eq["ronde_2_contre"],
+                                "Diff.": f"{f_eq['ronde_2_pour'] - f_eq['ronde_2_contre']:+d}",
+                                "Moy. /24": f"{(f_eq['ronde_2_pour'] / r2_nb):.1f}" if f_eq["ronde_2_nb"] else "0.0"
+                            },
+                            {
+                                "Ronde": "3e Ronde (Manches 7 à 9 — Finition)",
+                                "Pts Marqués": f_eq["ronde_3_pour"],
+                                "Pts Concédés": f_eq["ronde_3_contre"],
+                                "Diff.": f"{f_eq['ronde_3_pour'] - f_eq['ronde_3_contre']:+d}",
+                                "Moy. /24": f"{(f_eq['ronde_3_pour'] / r3_nb):.1f}" if f_eq["ronde_3_nb"] else "0.0"
+                            }
+                        ]
+                        st.dataframe(pd.DataFrame(lignes_rondes), use_container_width=True, hide_index=True)
 
                 # Graphique en barres Pour vs Contre par match
                 if f_eq["matchs"]:
@@ -12405,19 +13026,20 @@ def afficher_tableau_de_bord_progression(historique):
                         "Points marqués": [m["pour"] for m in f_eq["matchs"]],
                         "Points concédés": [m["contre"] for m in f_eq["matchs"]]
                     }, index=labels_bar)
-                    st.bar_chart(df_bar, height=300)
+                    st.bar_chart(df_bar, height=280)
 
                     # Tableau chronologique des matchs de l'équipe
-                    st.markdown(f"##### 📋 Liste des rencontres disputées ({choix_eq})")
+                    st.markdown(f"##### 📋 Historique des rencontres disputées ({choix_eq})")
                     df_eq_matchs = pd.DataFrame([
                         {
                             "Match #": f"#{m['idx']}",
                             "Date": m["date"],
-                            "Rôle": m["role"],
+                            "Lieu / Rôle": m["role"],
                             "Adversaire": m["adversaire"],
                             "Score Pour": m["pour"],
                             "Score Contre": m["contre"],
-                            "Diff": f"+{m['diff']}" if m['diff'] > 0 else str(m['diff']),
+                            "Manches gagnées": f"{m.get('manches_g', 0)} / 9",
+                            "Diff": f"+{m['diff']}" if m["diff"] > 0 else str(m["diff"]),
                             "Résultat": "🏆 Victoire" if m["resultat"] == "Victoire" else ("❌ Défaite" if m["resultat"] == "Défaite" else "🤝 Nul")
                         }
                         for m in f_eq["matchs"]
@@ -12425,29 +13047,55 @@ def afficher_tableau_de_bord_progression(historique):
                     st.dataframe(df_eq_matchs, use_container_width=True, hide_index=True)
 
     # =========================================================================
-    # SOUS-ONGLET 2 : PROGRESSION DES JOUEURS
+    # SOUS-ONGLET 2 : PROGRESSION DES JOUEURS & INDICATEURS INDIVIDUELS
     # =========================================================================
     with subtab_jo:
         if not stats_joueurs:
             st.info("ℹ️ Aucune donnée de joueur disponible.")
         else:
-            classement_joueurs = sorted(
-                stats_joueurs.values(),
-                key=lambda x: (x["moyenne"], x["total_pts"], x["nb_8pts"]),
-                reverse=True
-            )
+            c_filtre_j1, c_filtre_j2 = st.columns([1.4, 2.6])
+            with c_filtre_j1:
+                filtre_eq_j = st.selectbox(
+                    "Filtrer par équipe :",
+                    options=["Toutes les équipes"] + sorted(list(stats_equipes.keys())),
+                    key="stats_filtre_equipe_joueurs"
+                )
+            with c_filtre_j2:
+                mode_tri_j = st.radio(
+                    "Classer les joueurs par :",
+                    ["Moyenne par manche (/8)", "Total de Points cumulés", "Surperformance vs Objectif (Δ pts)", "Indice Clutch (Manches serrées)"],
+                    horizontal=True,
+                    key="stats_tri_joueurs_mode"
+                )
 
-            # Cartes KPI
-            top_moyenne = classement_joueurs[0]
-            top_pts = max(stats_joueurs.values(), key=lambda x: x["total_pts"])
-            top_8pts = max(stats_joueurs.values(), key=lambda x: x["nb_8pts"])
-            total_manches_ligue = sum(x["manches"] for x in stats_joueurs.values()) // 2
+            joueurs_filtres = [
+                j for j in stats_joueurs.values()
+                if filtre_eq_j == "Toutes les équipes" or j["equipe"] == filtre_eq_j
+            ]
+            if not joueurs_filtres:
+                joueurs_filtres = list(stats_joueurs.values())
+
+            if mode_tri_j == "Total de Points cumulés":
+                classement_joueurs = sorted(joueurs_filtres, key=lambda x: (x["total_pts"], x["moyenne"], x["nb_8pts"]), reverse=True)
+            elif mode_tri_j == "Surperformance vs Objectif (Δ pts)":
+                classement_joueurs = sorted(joueurs_filtres, key=lambda x: (x["surperformance_pts"], x["moyenne"]), reverse=True)
+            elif mode_tri_j == "Indice Clutch (Manches serrées)":
+                classement_joueurs = sorted(joueurs_filtres, key=lambda x: (x["clutch_v"], x["clutch_pct"], x["moyenne"]), reverse=True)
+            else:
+                classement_joueurs = sorted(joueurs_filtres, key=lambda x: (x["moyenne"], x["total_pts"], x["nb_8pts"]), reverse=True)
+
+            # Cartes KPI Globales Joueurs
+            tous_j = list(stats_joueurs.values())
+            top_moyenne = max(tous_j, key=lambda x: (x["moyenne"], x["total_pts"]))
+            top_pts = max(tous_j, key=lambda x: x["total_pts"])
+            top_surperf = max(tous_j, key=lambda x: x["surperformance_pts"])
+            top_clutch = max(tous_j, key=lambda x: (x["clutch_v"], x["clutch_pct"]))
 
             jk1, jk2, jk3, jk4 = st.columns(4)
-            jk1.metric("🎯 Meilleure moyenne", top_moyenne["nom"], f"{top_moyenne['moyenne']:.2f} / 8.00")
-            jk2.metric("👑 Meilleur marqueur", top_pts["nom"], f"{top_pts['total_pts']} pts cumulés")
-            jk3.metric("🎯 Spécialiste 8 pts", top_8pts["nom"], f"{top_8pts['nb_8pts']} manches gagnées à 8")
-            jk4.metric("🎱 Manches disputées", f"{total_manches_ligue} manches", f"{len(stats_joueurs)} joueurs actifs")
+            jk1.metric("🎯 Meilleure moyenne", top_moyenne["nom"], f"{top_moyenne['moyenne']:.2f}/8 ({top_moyenne['moyenne_soiree']:.1f}/24)")
+            jk2.metric("👑 Meilleur marqueur", top_pts["nom"], f"{top_pts['total_pts']} pts ({top_pts['soirees_parfaites']}× 24/24)")
+            jk3.metric("🚀 Plus forte surperformance", top_surperf["nom"], f"{top_surperf['surperformance_pts']:+.1f} pts vs objectif")
+            jk4.metric("🔥 Roi du « Clutch » (8-6 / 8-7)", top_clutch["nom"], top_clutch["clutch_bilan_str"])
 
             # Podium visuel Top 3 Joueurs
             if classement_joueurs:
@@ -12458,17 +13106,20 @@ def afficher_tableau_de_bord_progression(historique):
                     cartes_podium_jo.append(
                         f"<div class='saphir-podium-card {classes_pod[idx_p]}'>"
                         f"<div class='podium-sub' style='font-size:13px; font-weight:700; margin-bottom:4px;'>{ic_pod[idx_p]}</div>"
-                        f"<div class='podium-title' style='font-size:17px; font-weight:800; margin-bottom:4px;'>{jo_p['nom']}</div>"
-                        f"<div class='podium-sub' style='font-size:12.5px;'><strong>Moy. {jo_p['moyenne']:.2f}/8</strong> &nbsp;•&nbsp; {jo_p['total_pts']} pts ({jo_p['nb_8pts']}x 8pts)</div>"
+                        f"<div class='podium-title' style='font-size:17px; font-weight:800; margin-bottom:4px;'>{jo_p['nom']} ({jo_p['equipe']})</div>"
+                        f"<div class='podium-sub' style='font-size:12.5px;'><strong>Moy. {jo_p['moyenne']:.2f}/8</strong> ({jo_p['moyenne_soiree']:.1f}/24) &nbsp;•&nbsp; {jo_p['total_pts']} pts &nbsp;•&nbsp; Δ Obj: {jo_p['surperformance_pts']:+.1f} pts</div>"
                         f"</div>"
                     )
                 st.markdown(f"<div class='saphir-podium-grid'>{''.join(cartes_podium_jo)}</div>", unsafe_allow_html=True)
 
             st.markdown("---")
 
-            # Leaderboard complet
-            st.markdown("#### 🥇 Tableau des meneurs individuels (Leaderboard)")
-            st.caption("Classement établi selon la moyenne de points par manche disputée, le total de points et le nombre de manches parfaites à 8 points.")
+            # Leaderboard complet enrichi
+            st.markdown("#### 🥇 Tableau des Meneurs Individuels (Leaderboard Enrichi)")
+            st.caption(
+                "Inclut l'**Objectif personnel /24** (basé sur la moyenne officielle `joueurs_stats.csv`), l'**Indice de surperformance (Δ Obj.)**, "
+                "les **Soirées parfaites (👑 24/24)**, les **Blanchissages (🧹 8-0)**, le bilan **Clutch (8-6 / 8-7)** et la **Constance**."
+            )
 
             lignes_lead = []
             medailles_j = {1: "🥇", 2: "🥈", 3: "🥉"}
@@ -12477,22 +13128,27 @@ def afficher_tableau_de_bord_progression(historique):
                 lignes_lead.append({
                     "Rang": badge_rang,
                     "Joueur": j_data["nom"],
-                    "Matchs": j_data["nb_matchs"],
-                    "Manches": j_data["manches"],
-                    "Total Points": j_data["total_pts"],
-                    "Moyenne / 8": f"{j_data['moyenne']:.2f}",
-                    "Manches à 8 pts 🎯": j_data["nb_8pts"],
-                    "% Victoires à 8": f"{j_data['pct_8pts']:.1f}%",
-                    "Tendance récente": j_data["tendance"]
+                    "Équipe": j_data["equipe"],
+                    "Soirées": j_data["nb_matchs"],
+                    "Total Pts": j_data["total_pts"],
+                    "Moy. /8": f"{j_data['moyenne']:.2f}",
+                    "Moy. /24": f"{j_data['moyenne_soiree']:.1f}",
+                    "Obj. /24": f"{j_data['objectif_soiree']:.1f}",
+                    "Δ vs Obj.": f"{j_data['surperformance_pts']:+.1f} pts",
+                    "🎯 8 pts": f"{j_data['nb_8pts']} ({j_data['pct_8pts']:.0f}%)",
+                    "👑 24/24": j_data["soirees_parfaites"],
+                    "🧹 8-0": j_data["nb_blanchissages"],
+                    "🔥 Clutch": j_data["clutch_bilan_str"],
+                    "Constance": f"{j_data['label_constance']} ({j_data['plancher_soiree']}-{j_data['plafond_soiree']})",
+                    "Tendance": j_data["tendance"]
                 })
 
-            df_lead = pd.DataFrame(lignes_lead)
-            st.dataframe(df_lead, use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(lignes_lead), use_container_width=True, hide_index=True)
 
             st.markdown("---")
 
-            # Fiche individuelle et progression
-            st.markdown("#### 🔍 Fiche individuelle & Évolution d'un joueur")
+            # Fiche individuelle complète d'un joueur
+            st.markdown("#### 🔍 Fiche Individuelle, Objectif Personnel & Bête Noire / Proie Favorite")
             noms_joueurs_liste = [j["nom"] for j in classement_joueurs]
             choix_j = st.selectbox(
                 "Sélectionner un joueur pour afficher son analyse complète :",
@@ -12505,32 +13161,61 @@ def afficher_tableau_de_bord_progression(historique):
                 rang_j = next((i for i, x in enumerate(classement_joueurs, 1) if x["nom"] == choix_j), 1)
 
                 p1, p2, p3, p4 = st.columns(4)
-                delta_str = f"{fj['delta_dernier_match']:+.2f} vs matchs préc." if fj['delta_dernier_match'] != 0 else "Stable"
+                delta_str = f"{fj['delta_dernier_match']:+.2f}/8 au dernier match" if fj["delta_dernier_match"] != 0 else "Stable"
                 p1.metric(
-                    "Moyenne par manche",
-                    f"{fj['moyenne']:.2f} / 8.00",
-                    delta=delta_str,
-                    help="Moyenne de points marqués sur 8 points possibles par manche"
+                    "Moyenne par manche & soirée",
+                    f"{fj['moyenne']:.2f}/8 ({fj['moyenne_soiree']:.1f}/24)",
+                    delta=delta_str
                 )
                 p2.metric(
-                    "Total des points",
-                    f"{fj['total_pts']} pts",
-                    f"#{rang_j} au classement général"
+                    "Objectif officiel (Saphir)",
+                    f"{fj['objectif_soiree']:.1f} pts / soirée",
+                    delta=f"{fj['surperformance_pts']:+.1f} pts cumulés vs attendu",
+                    help="Calculé selon la moyenne officielle du joueur (Moyenne × 24)"
                 )
                 p3.metric(
-                    "Victoires à 8 pts (🎯)",
-                    f"{fj['nb_8pts']} manches",
-                    f"{fj['pct_8pts']:.1f}% de réussite"
+                    "Finition : 👑 24/24 & 🧹 8-0",
+                    f"{fj['soirees_parfaites']} soirée(s) 24/24",
+                    f"{fj['nb_blanchissages']} blanchissage(s) 8-0 • {fj['nb_8pts']}× 8pts"
                 )
                 p4.metric(
-                    "Assiduité",
-                    f"{fj['nb_matchs']} matchs joués",
-                    f"{fj['manches']} manches au total"
+                    "🔥 Indice Clutch & Constance",
+                    fj["clutch_bilan_str"],
+                    f"{fj['label_constance']} (Plancher {fj['plancher_soiree']} / Plafond {fj['plafond_soiree']})"
                 )
 
-                # Graphique de pointage et moyenne du joueur par match (Bar chart fixe 0 à 24)
+                col_assid, col_rivaux = st.columns([1.05, 1.35])
+                with col_assid:
+                    with st.container(border=True):
+                        st.markdown("###### 📋 Assiduité & Points sur table vs Forfait absence")
+                        st.write(
+                            f"• **Présence effective :** `{fj['soirees_present']}` soirée(s) jouée(s) sur `{fj['nb_matchs']}` (`{fj['taux_presence']:.0f}%`)\n\n"
+                            f"• **Points joués à la table :** **{fj['pts_reels']} pts** en {fj['manches_reelles']} manches (Moy. réelle : **{fj['moyenne_reelle']:.2f}/8**)\n\n"
+                            f"• **Points forfaitaires d'absence :** `{fj['pts_abs']} pts` ({fj['manches_abs']} manche(s) d'absence)"
+                        )
+                with col_rivaux:
+                    with st.container(border=True):
+                        st.markdown("###### 🎯 Relations d'adversité (Proie favorite & Bête noire)")
+                        proie = fj.get("proie_favorite")
+                        bete = fj.get("bete_noire")
+                        if proie:
+                            st.success(
+                                f"🟢 **Adversaire favori :** **{proie['adversaire']}** — "
+                                f"Bilan `{proie['v']}V - {proie['d']}D` • Score cumulé `{proie['pour']} - {proie['contre']}` (Diff. **{proie['diff']:+d} pts**)"
+                            )
+                        else:
+                            st.caption("🟢 *Adversaire favori : données insuffisantes*")
+                        if bete and (not proie or bete["adversaire"] != proie["adversaire"] or bete["diff"] < 0):
+                            st.error(
+                                f"🔴 **Bête noire :** **{bete['adversaire']}** — "
+                                f"Bilan `{bete['v']}V - {bete['d']}D` • Score cumulé `{bete['pour']} - {bete['contre']}` (Diff. **{bete['diff']:+d} pts**)"
+                            )
+                        else:
+                            st.caption("🔴 *Aucune bête noire identifiée (différentiel positif ou neutre contre tous les adversaires)*")
+
+                # Graphique de pointage match par match (0 à 24) superposé à la ligne d'objectif personnel
                 if fj["matchs_synthese"]:
-                    st.markdown(f"##### 📊 Pointage et moyenne match par match ({choix_j}) — Échelle fixe 0 à 24")
+                    st.markdown(f"##### 📊 Évolution soirée par soirée vs Objectif personnel ({fj['objectif_soiree']:.1f} pts / 24)")
                     indices_m = sorted(fj["matchs_synthese"].keys())
 
                     rows_chart = []
@@ -12546,12 +13231,16 @@ def afficher_tableau_de_bord_progression(historique):
                         if len(parts_d) == 3 and len(parts_d[0]) == 4:
                             d_clean = f"{parts_d[2]}/{parts_d[1]}/{parts_d[0]}"
 
-                        label_m = f"M#{im} • {d_clean} ({pts_m} pts)"
+                        tag_abs = " [Absent]" if sm.get("absent") else ""
+                        label_m = f"M#{im} • {d_clean} ({pts_m} pts){tag_abs}"
                         advs_str = ", ".join(sm.get("adversaires", [])) or "Adversaires"
 
                         rows_chart.append({
                             "Match": label_m,
                             "Pointage": pts_m,
+                            "Objectif": fj["objectif_soiree"],
+                            "EcartObj": round(pts_m - fj["objectif_soiree"], 1),
+                            "Statut": "Au-dessus de l'objectif" if pts_m >= fj["objectif_soiree"] else "Sous l'objectif",
                             "Date": d_clean,
                             "Moyenne": f"{moy_m:.2f} / 8.00",
                             "Adversaires": advs_str
@@ -12562,21 +13251,30 @@ def afficher_tableau_de_bord_progression(historique):
                     try:
                         import altair as alt
                         bars = alt.Chart(df_chart_j).mark_bar(
-                            color="#0b3c5d",
                             cornerRadiusTopLeft=5,
                             cornerRadiusTopRight=5
                         ).encode(
-                            x=alt.X("Match:N", sort=None, title="Rencontre, Date & Pointage", axis=alt.Axis(labelAngle=-25)),
-                            y=alt.Y("Pointage:Q", scale=alt.Scale(domain=[0, 24]), title="Pointage du match (Fixe de 0 à 24 pts)"),
+                            x=alt.X("Match:N", sort=None, title="Rencontre, Date & Pointage", axis=alt.Axis(labelAngle=-20)),
+                            y=alt.Y("Pointage:Q", scale=alt.Scale(domain=[0, 24]), title="Pointage de la soirée (sur 24 pts)"),
+                            color=alt.Color(
+                                "Statut:N",
+                                scale=alt.Scale(
+                                    domain=["Au-dessus de l'objectif", "Sous l'objectif"],
+                                    range=["#16a34a", "#0b3c5d"]
+                                ),
+                                legend=alt.Legend(title="Performance vs Objectif", orient="top")
+                            ),
                             tooltip=[
                                 alt.Tooltip("Match:N", title="Rencontre"),
-                                alt.Tooltip("Date:N", title="Date du match"),
+                                alt.Tooltip("Date:N", title="Date"),
                                 alt.Tooltip("Pointage:Q", title="Pointage (/24 pts)"),
+                                alt.Tooltip("Objectif:Q", title="Objectif personnel (/24)"),
+                                alt.Tooltip("EcartObj:Q", title="Écart vs Objectif"),
                                 alt.Tooltip("Moyenne:N", title="Moyenne par manche (/8)"),
                                 alt.Tooltip("Adversaires:N", title="Adversaires affrontés")
                             ]
                         )
-                        text_labels = bars.mark_text(
+                        text_labels = alt.Chart(df_chart_j).mark_text(
                             align="center",
                             baseline="bottom",
                             dy=-5,
@@ -12584,32 +13282,197 @@ def afficher_tableau_de_bord_progression(historique):
                             fontWeight="bold",
                             color="#0b3c5d"
                         ).encode(
+                            x=alt.X("Match:N", sort=None),
+                            y=alt.Y("Pointage:Q"),
                             text="Pointage:Q"
                         )
-                        chart_final = (bars + text_labels).properties(height=340)
+                        rule_obj = alt.Chart(df_chart_j).mark_rule(
+                            color="#d97706",
+                            strokeDash=[6, 4],
+                            size=2.5
+                        ).encode(
+                            y="Objectif:Q"
+                        )
+                        chart_final = (bars + text_labels + rule_obj).properties(height=340)
                         st.altair_chart(chart_final, use_container_width=True)
+                        st.caption(f"🟧 **Ligne pointillée orange :** Objectif personnel de **{choix_j}** (`{fj['objectif_soiree']:.1f} pts / 24`, basé sur sa moyenne officielle `{fj['moyenne_officielle']:.3f}`). Les barres vertes indiquent les soirées où l'objectif est atteint ou dépassé.")
                     except Exception:
                         df_fallback = pd.DataFrame({
-                            "Pointage du match (/24)": [r["Pointage"] for r in rows_chart]
+                            "Pointage du match (/24)": [r["Pointage"] for r in rows_chart],
+                            "Objectif (/24)": [r["Objectif"] for r in rows_chart]
                         }, index=[r["Match"] for r in rows_chart])
                         st.bar_chart(df_fallback, height=320)
 
-                # Historique détaillé de toutes ses manches
                 if fj["chronologie"]:
-                    st.markdown(f"##### 📜 Historique détaillé de chaque manche disputée ({choix_j})")
-                    df_chron_j = pd.DataFrame([
+                    with st.expander(f"📜 Voir l'historique détaillé des {len(fj['chronologie'])} manches disputées par {choix_j}", expanded=False):
+                        df_chron_j = pd.DataFrame([
+                            {
+                                "Match #": f"#{c['match_idx']}",
+                                "Date": c["date"],
+                                "Manche": f"M{c['manche']}",
+                                "Adversaire": c["adversaire"] if c["adversaire"] else "Adversaire",
+                                "Score Joueur": f"{c['score']} (Absent)" if c.get("absent") else str(c["score"]),
+                                "Score Adversaire": c["score_adv"],
+                                "Type": "🧹 Blanchissage 8-0" if (c["score"] == 8 and c["score_adv"] == 0) else ("🔥 Clutch" if (c["score"] == 8 and c["score_adv"] in (6, 7)) or (c["score_adv"] == 8 and c["score"] in (6, 7)) else "Régulier"),
+                                "Résultat": "🏆 Victoire" if c["resultat"] == "Victoire" else ("❌ Défaite" if c["resultat"] == "Défaite" else "🤝 Nul")
+                            }
+                            for c in fj["chronologie"]
+                        ])
+                        st.dataframe(df_chron_j, use_container_width=True, hide_index=True)
+
+    # =========================================================================
+    # SOUS-ONGLET 3 : FACE-À-FACE (DUELS JOUEURS & MATRICE 8×8 ÉQUIPES)
+    # =========================================================================
+    with subtab_h2h:
+        st.markdown("#### ⚔️ Comparateur Face-à-Face entre Deux Joueurs (Head-to-Head)")
+        st.caption("Comparez deux joueurs de la ligue et consultez l'historique exact de leurs affrontements directs manche par manche.")
+
+        liste_j_h2h = sorted(list(stats_joueurs.keys()))
+        if len(liste_j_h2h) >= 2:
+            c_h2h_1, c_h2h_2 = st.columns(2)
+            with c_h2h_1:
+                j_duel_a = st.selectbox("🔴 Joueur A :", options=liste_j_h2h, index=0, key="h2h_sel_joueur_a")
+            with c_h2h_2:
+                idx_b_def = 1 if len(liste_j_h2h) > 1 else 0
+                j_duel_b = st.selectbox("🔵 Joueur B :", options=liste_j_h2h, index=idx_b_def, key="h2h_sel_joueur_b")
+
+            sja = stats_joueurs.get(j_duel_a, {})
+            sjb = stats_joueurs.get(j_duel_b, {})
+            bilan_direct = sja.get("adversaires_bilan", {}).get(j_duel_b)
+
+            with st.container(border=True):
+                col_comp_a, col_comp_mid, col_comp_b = st.columns([1.2, 1.2, 1.2])
+                with col_comp_a:
+                    st.markdown(f"##### 🔴 {j_duel_a} ({sja.get('equipe', '')})")
+                    st.write(
+                        f"• **Moyenne :** `{sja.get('moyenne', 0):.2f}/8` (`{sja.get('moyenne_soiree', 0):.1f}/24`)\n\n"
+                        f"• **Objectif officiel :** `{sja.get('objectif_soiree', 0):.1f}/24` (Δ `{sja.get('surperformance_pts', 0):+.1f} pts`)\n\n"
+                        f"• **Manches à 8 pts :** `{sja.get('nb_8pts', 0)}` (`{sja.get('pct_8pts', 0):.0f}%`)\n\n"
+                        f"• **Indice Clutch :** `{sja.get('clutch_bilan_str', '0V-0D')}`"
+                    )
+                with col_comp_mid:
+                    st.markdown("##### ⚔️ Bilan Direct Face-à-Face")
+                    if bilan_direct and bilan_direct["duels"] > 0:
+                        st.metric(
+                            "Duels directs disputés",
+                            f"{bilan_direct['duels']} manche(s)",
+                            f"Score cumulé : {bilan_direct['pour']} — {bilan_direct['contre']}"
+                        )
+                        st.write(
+                            f"🏆 **{j_duel_a} :** `{bilan_direct['v']}` victoire(s)\n\n"
+                            f"🏆 **{j_duel_b} :** `{bilan_direct['d']}` victoire(s)"
+                        )
+                    else:
+                        st.info("Ces deux joueurs ne se sont pas encore affrontés directement dans l'historique archivé.")
+                with col_comp_b:
+                    st.markdown(f"##### 🔵 {j_duel_b} ({sjb.get('equipe', '')})")
+                    st.write(
+                        f"• **Moyenne :** `{sjb.get('moyenne', 0):.2f}/8` (`{sjb.get('moyenne_soiree', 0):.1f}/24`)\n\n"
+                        f"• **Objectif officiel :** `{sjb.get('objectif_soiree', 0):.1f}/24` (Δ `{sjb.get('surperformance_pts', 0):+.1f} pts`)\n\n"
+                        f"• **Manches à 8 pts :** `{sjb.get('nb_8pts', 0)}` (`{sjb.get('pct_8pts', 0):.0f}%`)\n\n"
+                        f"• **Indice Clutch :** `{sjb.get('clutch_bilan_str', '0V-0D')}`"
+                    )
+
+                if bilan_direct and bilan_direct.get("details"):
+                    st.markdown("###### 📋 Détail des manches jouées l'un contre l'autre")
+                    df_duels_j = pd.DataFrame([
                         {
-                            "Match #": f"#{c['match_idx']}",
-                            "Date": c["date"],
-                            "Manche": f"M{c['manche']}",
-                            "Adversaire": c["adversaire"] if c["adversaire"] else "Adversaire",
-                            "Score Joueur": c["score"],
-                            "Score Adversaire": c["score_adv"],
-                            "Résultat": "🏆 Victoire" if c["resultat"] == "Victoire" else ("❌ Défaite" if c["resultat"] == "Défaite" else "🤝 Nul")
+                            "Match #": f"#{d['match_idx']}",
+                            "Date": d["date"],
+                            "Manche": f"Manche {d['manche']}",
+                            f"Pts {j_duel_a}": d["score"],
+                            f"Pts {j_duel_b}": d["score_adv"],
+                            "Vainqueur du duel": f"🔴 {j_duel_a}" if d["score"] > d["score_adv"] else (f"🔵 {j_duel_b}" if d["score_adv"] > d["score"] else "Égalité")
                         }
-                        for c in fj["chronologie"]
+                        for d in bilan_direct["details"]
                     ])
-                    st.dataframe(df_chron_j, use_container_width=True, hide_index=True)
+                    st.dataframe(df_duels_j, use_container_width=True, hide_index=True)
+
+        st.markdown("---")
+        st.markdown("#### 🏁 Matrice Croisée 8×8 des Confrontations Directes entre Équipes")
+        st.caption("Lecture horizontale : chaque ligne indique le bilan et les scores de l'équipe de gauche contre l'équipe en colonne.")
+
+        equipes_mat = sorted(list(h2h_equipes.keys()))
+        if equipes_mat:
+            lignes_mat = []
+            for eq_row in equipes_mat:
+                row_dict = {"Équipe \\ Adversaire": f"🎱 {eq_row}"}
+                for eq_col in equipes_mat:
+                    if eq_row == eq_col:
+                        row_dict[eq_col] = "—"
+                    else:
+                        cell_h = h2h_equipes.get(eq_row, {}).get(eq_col, {})
+                        if cell_h and cell_h.get("pj", 0) > 0:
+                            sc_str = " / ".join(cell_h["scores"])
+                            diff_c = cell_h["pour"] - cell_h["contre"]
+                            ic_c = "🟢" if cell_h["v"] > cell_h["d"] else ("🔴" if cell_h["d"] > cell_h["v"] else "🟡")
+                            row_dict[eq_col] = f"{ic_c} {cell_h['v']}V-{cell_h['d']}D ({sc_str} | {diff_c:+d})"
+                        else:
+                            row_dict[eq_col] = "⏳ À jouer"
+                lignes_mat.append(row_dict)
+            st.dataframe(pd.DataFrame(lignes_mat), use_container_width=True, hide_index=True)
+
+    # =========================================================================
+    # SOUS-ONGLET 4 : CALENDRIER RESTANT & PROJECTIONS DE FIN DE SAISON (14 SEM.)
+    # =========================================================================
+    with subtab_proj:
+        st.markdown("#### 🔮 Course aux Séries, Force du Calendrier Restant & Projection Finale (14 Semaines)")
+        st.caption(
+            "Croisement de l'historique des matchs avec le calendrier officiel (`horaire_saphir.json`) : "
+            "évalue la difficulté des adversaires restants à affronter et projette le classement final au terme des 14 semaines."
+        )
+
+        classement_proj = sorted(
+            stats_equipes.values(),
+            key=lambda x: (x["projection_pts_14_sem"], x["projection_v_14_sem"], x["pour"]),
+            reverse=True
+        )
+
+        lignes_proj = []
+        med_p = {1: "🥇", 2: "🥈", 3: "🥉"}
+        for r_p, eq_p in enumerate(classement_proj, start=1):
+            prochains_adv = [f"{m_r['adversaire']} ({m_r['role'].split()[0]})" for m_r in eq_p.get("matchs_restants_liste", [])[:3]]
+            prochains_txt = ", ".join(prochains_adv) if prochains_adv else "Saison complétée"
+            lignes_proj.append({
+                "Rang Projeté": med_p.get(r_p, f"#{r_p}"),
+                "Équipe": eq_p["nom"],
+                "MJ Actuels": eq_p["pj"],
+                "Points Actuels": eq_p["pour"],
+                "Moy. Actuelle (/72)": f"{eq_p['moy_pour']:.1f}",
+                "Matchs Restants": eq_p["nb_matchs_restants"],
+                "Difficulté Calendrier": eq_p["difficulte_calendrier"],
+                "Prochains Adversaires (3)": prochains_txt,
+                "🔮 Victoires Projetées": f"{eq_p['projection_v_14_sem']}V",
+                "🔮 Points Projetés (14 sem.)": f"{eq_p['projection_pts_14_sem']} pts"
+            })
+
+        st.dataframe(pd.DataFrame(lignes_proj), use_container_width=True, hide_index=True)
+
+        # Détail du calendrier restant d'une équipe
+        st.markdown("##### 📅 Consulter la feuille de route restante d'une équipe")
+        eq_cal_choix = st.selectbox(
+            "Sélectionner une équipe pour voir ses rencontres restantes :",
+            options=[e["nom"] for e in classement_proj],
+            key="stats_sel_eq_calendrier_restant"
+        )
+        if eq_cal_choix and eq_cal_choix in stats_equipes:
+            rest_eq = stats_equipes[eq_cal_choix].get("matchs_restants_liste", [])
+            if rest_eq:
+                rows_rest = []
+                for item_r in rest_eq:
+                    adv_nom = item_r["adversaire"]
+                    st_adv = stats_equipes.get(adv_nom, {})
+                    rows_rest.append({
+                        "Semaine": item_r["semaine"],
+                        "Date": item_r["date_txt"],
+                        "Rôle": item_r["role"],
+                        "Adversaire": adv_nom,
+                        "Bilan actuel de l'adversaire": f"{st_adv.get('v', 0)}V - {st_adv.get('d', 0)}D",
+                        "Moyenne de l'adversaire (/72)": f"{st_adv.get('moy_pour', 0.0):.1f} pts"
+                    })
+                st.dataframe(pd.DataFrame(rows_rest), use_container_width=True, hide_index=True)
+            else:
+                st.success(f"✅ Toutes les rencontres programmées pour **{eq_cal_choix}** dans le calendrier actuel ont été disputées.")
 
 
 # ==============================================================================
