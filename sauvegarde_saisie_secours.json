@@ -1,5 +1,5 @@
 {
-    "date": "2026-11-03 21:47",
+    "date": "2026-11-03 21:48",
     "receveur": "Foxtrot",
     "visiteur": "Echo",
     "choix_rec": "Foxtrot",
@@ -76,8 +76,8 @@
             "joueur_b_absent": false
         },
         "4": {
-            "score_a": 0,
-            "score_b": 0,
+            "score_a": 8,
+            "score_b": 4,
             "joueur_a": "Sylvain Derasp",
             "joueur_b": "Guy Vézina",
             "joueur_a_absent": false,
@@ -124,8 +124,8 @@
             "joueur_b_absent": false
         }
     },
-    "total_receveur": 24,
-    "total_visiteur": 16,
-    "derniere_mise_a_jour": "21:47:55",
-    "ts_modif": 1793742475.7613676
+    "total_receveur": 32,
+    "total_visiteur": 20,
+    "derniere_mise_a_jour": "21:48:40",
+    "ts_modif": 1793742520.675937
 }
