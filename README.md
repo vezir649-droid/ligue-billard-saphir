@@ -27,12 +27,11 @@ Dès l'ouverture de l'application, la page d'accueil présente trois modes d'acc
 L'application intègre un module de pointe basé sur l'IA de vision de Google (**Gemini 2.5 / 3.1 Flash**) capable de lire, corréler et retranscrire automatiquement des feuilles de match papier manuscrites :
 
 * **Ergonomie de prise de vue optimisée (Mobile, Tablette & Ordinateur) :**
-  * **Viseur plein cadre adapté à l'écran (`48vh`, `object-fit: contain`)** avec **guide de cadrage vert pointillé** superposé pour aligner facilement les 4 coins de la feuille sans défilement vertical.
-  * **4 modes de déclenchement ergonomiques** pour prendre la photo d'une seule main :
+  * **Viseur plein cadre adapté à l'écran (`48vh`, `object-fit: contain`)** sans défilement vertical ni bandeau superposé sur l'image.
+  * **3 modes de déclenchement ergonomiques** pour prendre la photo facilement :
     1. **Tap direct sur l'image vidéo** (un toucher n'importe où sur l'aperçu caméra déclenche la photo).
-    2. **Boutons flottants gauche/droite (`🎯`)** à hauteur de pouce sur les bords latéraux de l'image.
-    3. **Retardateur 3 secondes (`⏱️ Retardateur 3s`)** avec décompte visuel plein écran (`3… 2… 1… 📸`) pour stabiliser l'appareil à deux mains avant le déclenchement automatique.
-    4. **Grands boutons de capture (`📸 PRENDRE LA PHOTO`, `58px`)** placés à la fois **au-dessus et en dessous** du viseur.
+    2. **Gros bouton de capture (`📸 PRENDRE LA PHOTO`)** placé **au-dessus** du viseur.
+    3. **Gros bouton vert de capture (`58px`)** placé **en dessous** du viseur.
   * **Contrôles matériels en direct :** Sélecteur de **zoom numérique (`1x`, `1.25x`, `1.5x`, `2x`)** et activation de la **torche / flash LED (`🔦 Torche LED`)** sur les appareils compatibles.
   * **Barre d'outils de retouche rapide après capture (en 1 clic) :** Rotation **↺ 90° Gauche**, **↻ 90° Droite**, **↕️ 180°**, et **✨ Netteté & Contraste Auto** (optimise la lisibilité des chiffres manuscrits au crayon ou stylo pâle avant l'analyse IA).
   * **Alternative universelle :** Prise de photo via l'application **Appareil photo natif** du téléphone ou téléversement par glisser-déposer (`JPG`, `PNG`, `WebP`).

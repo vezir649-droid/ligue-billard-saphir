@@ -3762,23 +3762,19 @@ def afficher_vue_scanner_feuille_match(label_direct):
     img_data = None
     if "Caméra directe" in mode_photo:
         st.info(
-            "💡 **Ergonomie Tablette optimisée :** Vous pouvez déclencher la photo de **4 façons** sans bouger la tablette : "
+            "💡 **Ergonomie Tablette optimisée :** Vous pouvez déclencher la photo "
             "1️⃣ en **touchant directement l'image vidéo**, "
-            "2️⃣ avec les **gros boutons latéraux (pouce gauche/droit)** sur les bords du viseur, "
-            "3️⃣ avec le **⏱️ Retardateur 3s** (idéal pour tenir la tablette à 2 mains et cadrer), ou "
-            "4️⃣ avec le **gros bouton vert** sous l'image."
+            "2️⃣ avec le bouton **📸 PRENDRE LA PHOTO** au-dessus du viseur, ou "
+            "3️⃣ avec le **gros bouton vert** sous l'image."
         )
 
-        # Contrôleur ergonomique complet : Cadrage compact sans défilement, Zoom, Retardateur 3s, Tap-to-Shot et Boutons de pouce latéraux
+        # Contrôleur ergonomique complet : Cadrage compact sans défilement, Zoom et Tap-to-Shot
         html_controleur_cam = """
         <div id="cam-ctrl-wrap" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 12px 14px; margin-bottom: 6px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #f8fafc; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
-          <!-- Ligne 1 : Gros boutons de déclenchement rapide et Retardateur 3s -->
-          <div style="display: grid; grid-template-columns: 1.4fr 1.2fr 1fr; gap: 10px; margin-bottom: 10px;">
+          <!-- Ligne 1 : Gros boutons de déclenchement rapide et bascule Caméra -->
+          <div style="display: grid; grid-template-columns: 1.6fr 1fr; gap: 10px; margin-bottom: 10px;">
             <button id="saphir-btn-shoot-now" type="button" style="background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); color: #ffffff; border: 2px solid #4ade80; padding: 12px 14px; border-radius: 10px; font-weight: 800; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 4px 10px rgba(22,163,74,0.4); touch-action: manipulation;">
               📸 PRENDRE LA PHOTO
-            </button>
-            <button id="saphir-btn-timer3" type="button" style="background: linear-gradient(135deg, #d97706 0%, #b45309 100%); color: #ffffff; border: 2px solid #fbbf24; padding: 12px 14px; border-radius: 10px; font-weight: 800; font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 4px 10px rgba(217,119,6,0.35); touch-action: manipulation;">
-              ⏱️ RETARDATEUR 3s (2 mains)
             </button>
             <button id="saphir-btn-switch" type="button" style="background: #2563eb; color: #ffffff; border: 1.5px solid #60a5fa; padding: 10px 12px; border-radius: 10px; font-weight: 700; font-size: 13.5px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; touch-action: manipulation;">
               🔄 Caméra Arrière / Avant
@@ -3830,11 +3826,16 @@ def afficher_vue_scanner_feuille_match(label_direct):
           const status = document.getElementById("saphir-cam-status");
           const btnSwitch = document.getElementById("saphir-btn-switch");
           const btnShootNow = document.getElementById("saphir-btn-shoot-now");
-          const btnTimer3 = document.getElementById("saphir-btn-timer3");
           const btnFit = document.getElementById("saphir-btn-fit");
           const btnTapToggle = document.getElementById("saphir-btn-tap-toggle");
           const btnTorch = document.getElementById("saphir-btn-torch");
           const zoomBtns = document.querySelectorAll(".saphir-zoom-btn");
+
+          // Nettoyer tout ancien bandeau ou bouton superposé résiduel dans le DOM parent
+          ["saphir-thumb-left", "saphir-thumb-right", "saphir-countdown-overlay", "saphir-frame-guide"].forEach(id => {
+            const oldEl = pDoc.getElementById(id);
+            if (oldEl) oldEl.remove();
+          });
 
           // 1. Injecter le style ergonomique dans le document parent pour le composant stCameraInput
           function injecterStylesCameraParent() {
@@ -3866,6 +3867,7 @@ def afficher_vue_scanner_feuille_match(label_direct):
                 cursor: ${pWin.__saphir_tap_shot ? 'pointer' : 'default'} !important;
               }
               /* Gros bouton natif sous la caméra ultra-accessible */
+              div[data-testid="stCameraInput"] button[data-testid="stCameraInputButton"],
               div[data-testid="stCameraInput"] button {
                 min-height: 58px !important;
                 width: 100% !important;
@@ -3890,92 +3892,21 @@ def afficher_vue_scanner_feuille_match(label_direct):
 
           // 2. Déclencher le bouton natif de prise de photo / réinitialisation de Streamlit
           function declencherCaptureNative() {
-            const nativeBtn = pDoc.querySelector('div[data-testid="stCameraInput"] button');
+            const nativeBtn = pDoc.querySelector('div[data-testid="stCameraInput"] button[data-testid="stCameraInputButton"]')
+                           || pDoc.querySelector('div[data-testid="stCameraInput"] button');
             if (nativeBtn) {
               nativeBtn.click();
             }
           }
 
-          // 3. Déclenchement avec retardateur de 3 secondes (stabilisation 2 mains)
-          let timerActif = false;
-          function declencherRetardateur3s() {
-            if (timerActif) return;
-            const camBox = pDoc.querySelector('div[data-testid="stCameraInput"]');
-            if (!camBox) {
-              declencherCaptureNative();
-              return;
-            }
-            timerActif = true;
-            let overlay = pDoc.getElementById("saphir-countdown-overlay");
-            if (!overlay) {
-              overlay = pDoc.createElement("div");
-              overlay.id = "saphir-countdown-overlay";
-              overlay.style.cssText = "position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; background:rgba(15,23,42,0.45); z-index:9999; border-radius:12px; pointer-events:none; font-family:sans-serif;";
-              camBox.appendChild(overlay);
-            }
-            overlay.style.display = "flex";
-            let sec = 3;
-            overlay.innerHTML = `<div style="font-size:84px; font-weight:900; color:#4ade80; text-shadow:0 4px 20px rgba(0,0,0,0.9);">${sec}</div><div style="font-size:18px; font-weight:700; color:#ffffff; background:rgba(0,0,0,0.7); padding:6px 16px; border-radius:20px;">Tenez la tablette stable à 2 mains...</div>`;
-            const iv = setInterval(() => {
-              sec--;
-              if (sec > 0) {
-                overlay.innerHTML = `<div style="font-size:84px; font-weight:900; color:#fbbf24; text-shadow:0 4px 20px rgba(0,0,0,0.9);">${sec}</div><div style="font-size:18px; font-weight:700; color:#ffffff; background:rgba(0,0,0,0.7); padding:6px 16px; border-radius:20px;">Ne bougez plus...</div>`;
-              } else {
-                clearInterval(iv);
-                overlay.innerHTML = `<div style="font-size:64px; font-weight:900; color:#22c55e;">📸 CAPTURE !</div>`;
-                declencherCaptureNative();
-                setTimeout(() => {
-                  if (overlay) overlay.style.display = "none";
-                  timerActif = false;
-                }, 500);
-              }
-            }, 950);
-          }
-
-          // 4. Ajouter le cadre de visée (4 coins) et les boutons latéraux de pouce directement sur le viseur
+          // 3. Activer uniquement le Tap-to-shot sur la vidéo (sans bandeaux superposés)
           function installerOverlayViseur() {
+            ["saphir-thumb-left", "saphir-thumb-right", "saphir-countdown-overlay", "saphir-frame-guide"].forEach(id => {
+              const el = pDoc.getElementById(id);
+              if (el) el.remove();
+            });
             const camBox = pDoc.querySelector('div[data-testid="stCameraInput"]');
             if (!camBox) return;
-
-            if (!pDoc.getElementById("saphir-frame-guide")) {
-              const guide = pDoc.createElement("div");
-              guide.id = "saphir-frame-guide";
-              guide.style.cssText = "position:absolute; top:38px; left:12%; right:12%; bottom:78px; border:2px dashed rgba(74,222,128,0.65); border-radius:10px; pointer-events:none; z-index:20; display:flex; align-items:flex-start; justify-content:center;";
-              guide.innerHTML = `<span style="background:rgba(15,23,42,0.75); color:#4ade80; font-size:12px; font-weight:700; padding:3px 10px; border-radius:0 0 8px 8px; font-family:sans-serif;">🎯 Alignez la feuille dans ce cadre (ou touchez l'image pour capturer)</span>`;
-              camBox.appendChild(guide);
-            }
-
-            // Bouton flottant Pouce DROIT (prise immédiate)
-            if (!pDoc.getElementById("saphir-thumb-right")) {
-              const thumbR = pDoc.createElement("button");
-              thumbR.id = "saphir-thumb-right";
-              thumbR.type = "button";
-              thumbR.title = "Déclencheur Pouce Droit (Prise immédiate)";
-              thumbR.style.cssText = "position:absolute; right:14px; top:45%; transform:translateY(-50%); width:66px; height:66px; border-radius:50%; background:radial-gradient(circle, #22c55e 0%, #15803d 100%); color:white; border:4px solid #ffffff; font-size:26px; font-weight:bold; cursor:pointer; z-index:35; box-shadow:0 4px 16px rgba(0,0,0,0.65); display:flex; align-items:center; justify-content:center; touch-action:manipulation;";
-              thumbR.innerHTML = "📸";
-              thumbR.onclick = function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                declencherCaptureNative();
-              };
-              camBox.appendChild(thumbR);
-            }
-
-            // Bouton flottant Pouce GAUCHE (Retardateur 3s)
-            if (!pDoc.getElementById("saphir-thumb-left")) {
-              const thumbL = pDoc.createElement("button");
-              thumbL.id = "saphir-thumb-left";
-              thumbL.type = "button";
-              thumbL.title = "Déclencheur Pouce Gauche (Retardateur 3s)";
-              thumbL.style.cssText = "position:absolute; left:14px; top:45%; transform:translateY(-50%); width:62px; height:62px; border-radius:50%; background:radial-gradient(circle, #f59e0b 0%, #b45309 100%); color:white; border:3px solid #ffffff; font-size:15px; font-weight:800; cursor:pointer; z-index:35; box-shadow:0 4px 16px rgba(0,0,0,0.65); display:flex; flex-direction:column; align-items:center; justify-content:center; line-height:1.1; touch-action:manipulation;";
-              thumbL.innerHTML = "<span>⏱️</span><span style='font-size:12px;'>3s</span>";
-              thumbL.onclick = function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                declencherRetardateur3s();
-              };
-              camBox.appendChild(thumbL);
-            }
 
             // Tap-to-shot directement sur la vidéo
             const video = camBox.querySelector("video");
@@ -4064,7 +3995,6 @@ def afficher_vue_scanner_feuille_match(label_direct):
           });
 
           if (btnShootNow) btnShootNow.onclick = function() { declencherCaptureNative(); };
-          if (btnTimer3) btnTimer3.onclick = function() { declencherRetardateur3s(); };
           if (btnFit) {
             btnFit.onclick = function() {
               pWin.__saphir_fit = (pWin.__saphir_fit === "contain") ? "cover" : "contain";
@@ -4125,7 +4055,7 @@ def afficher_vue_scanner_feuille_match(label_direct):
             };
           }
 
-          // Surveillance périodique pour maintenir le cadre de visée, les boutons de pouce et la caméra arrière
+          // Surveillance périodique pour maintenir le tap-to-shot et la caméra arrière
           let count = 0;
           const poll = setInterval(() => {
             count++;
@@ -4146,7 +4076,7 @@ def afficher_vue_scanner_feuille_match(label_direct):
         """
         st.components.v1.html(html_controleur_cam, height=118)
 
-        cam_file = st.camera_input("🎯 Visez la feuille de match (touchez l'image, les boutons latéraux 📸 ou le gros bouton vert ci-dessous)", key="cam_feuille_input")
+        cam_file = st.camera_input("🎯 Visez la feuille de match (touchez l'image ou le gros bouton vert ci-dessous pour prendre la photo)", key="cam_feuille_input")
         if cam_file:
             img_data = cam_file.getvalue()
     else:
