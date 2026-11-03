@@ -3101,6 +3101,82 @@ def cb_scanner_feuille():
     st.session_state["pending_choix_match_vue"] = label_scan
 
 
+def cb_injecter_donnees_scanner(data_s, label_direct):
+    """Callback on_click execute AVANT l instanciation des widgets Streamlit
+    pour eviter toute exception de modification apres instanciation."""
+    if not isinstance(data_s, dict):
+        return
+    eq_r_scan = str(data_s.get("receveur", "")).strip()
+    eq_v_scan = str(data_s.get("visiteur", "")).strip()
+
+    st.session_state["sel_equipe_rec"] = eq_r_scan
+    st.session_state["sel_equipe_vis"] = eq_v_scan
+    st.session_state["choix_equipe_receveuse"] = eq_r_scan
+    st.session_state["choix_equipe_visiteuse"] = eq_v_scan
+
+    # Injecter les 3 joueurs actifs officiels
+    j_r_list = data_s.get("joueurs_rec", [])
+    j_v_list = data_s.get("joueurs_vis", [])
+    if len(j_r_list) > 0:
+        st.session_state["sel_j1_rec"] = j_r_list[0]
+    if len(j_r_list) > 1:
+        st.session_state["sel_j2_rec"] = j_r_list[1]
+    if len(j_r_list) > 2:
+        st.session_state["sel_j3_rec"] = j_r_list[2]
+
+    if len(j_v_list) > 0:
+        st.session_state["sel_j1_vis"] = j_v_list[0]
+    if len(j_v_list) > 1:
+        st.session_state["sel_j2_vis"] = j_v_list[1]
+    if len(j_v_list) > 2:
+        st.session_state["sel_j3_vis"] = j_v_list[2]
+
+    # Injecter les scores des 9 manches
+    matchs_dict = data_s.get("matchs", {})
+    for i in range(1, 10):
+        m_i = matchs_dict.get(str(i), {})
+        st.session_state[f"s_a_{i}"] = _safe_int_val(m_i.get("score_a", 0))
+        st.session_state[f"s_b_{i}"] = _safe_int_val(m_i.get("score_b", 0))
+
+    st.session_state["choix_match_vue"] = label_direct
+    st.session_state["pending_choix_match_vue"] = label_direct
+    st.session_state["msg_succes_injection"] = True
+
+
+def cb_archiver_match_scanner(data_s):
+    """Callback on_click pour archiver directement le match depuis le scanner."""
+    if not isinstance(data_s, dict):
+        return
+    matchs_dict = data_s.get("matchs", {})
+    nouveau_match = {
+        "date": str(data_s.get("date", datetime.today().strftime("%Y-%m-%d"))),
+        "date_enregistrement": str(data_s.get("date", datetime.today().strftime("%Y-%m-%d"))),
+        "receveur": str(data_s.get("receveur", "Receveur")),
+        "visiteur": str(data_s.get("visiteur", "Visiteur")),
+        "total_receveur": _safe_int_val(data_s.get("total_rec", 0)),
+        "total_visiteur": _safe_int_val(data_s.get("total_vis", 0)),
+        "approbateur_receveur": str(data_s.get("approbateur_rec", "")),
+        "approbateur_visiteur": str(data_s.get("approbateur_vis", "")),
+        "matchs": {
+            str(i): {
+                "score_a": _safe_int_val(matchs_dict.get(str(i), {}).get("score_a", 0)),
+                "score_b": _safe_int_val(matchs_dict.get(str(i), {}).get("score_b", 0)),
+                "joueur_a": str(matchs_dict.get(str(i), {}).get("joueur_a", "")),
+                "joueur_b": str(matchs_dict.get(str(i), {}).get("joueur_b", "")),
+                "joueur_a_absent": False,
+                "joueur_b_absent": False
+            }
+            for i in range(1, 10)
+        },
+        "saisi_via_scanner_ia": True
+    }
+    hist_courant = charger_historique_matchs()
+    hist_courant.append(nouveau_match)
+    sauvegarder_historique_matchs(hist_courant)
+    st.session_state.pop("scan_result_data", None)
+    st.session_state["msg_succes_archive_scan"] = True
+
+
 def afficher_vue_scanner_feuille_match(label_direct):
     """Vue dédiée à la numérisation intelligente de feuille de match par photo (Gemini Vision)
     avec corrélation automatique des noms de joueurs officiels actifs et présentation détaillée."""
@@ -3242,71 +3318,23 @@ def afficher_vue_scanner_feuille_match(label_direct):
 
                 col_act1, col_act2 = st.columns(2)
                 with col_act1:
-                    if st.button("📥 Injecter dans la saisie du match en direct", use_container_width=True, help="Pré-remplit la feuille de match en direct avec ces équipes, joueurs actifs et pointages"):
-                        eq_r_scan = str(data_s.get("receveur", "")).strip()
-                        eq_v_scan = str(data_s.get("visiteur", "")).strip()
-                        st.session_state["choix_equipe_receveuse"] = eq_r_scan
-                        st.session_state["choix_equipe_visiteuse"] = eq_v_scan
-
-                        # Injecter les 3 joueurs actifs officiels
-                        j_r_list = data_s.get("joueurs_rec", [])
-                        j_v_list = data_s.get("joueurs_vis", [])
-                        if len(j_r_list) > 0:
-                            st.session_state["sel_j1_rec"] = j_r_list[0]
-                        if len(j_r_list) > 1:
-                            st.session_state["sel_j2_rec"] = j_r_list[1]
-                        if len(j_r_list) > 2:
-                            st.session_state["sel_j3_rec"] = j_r_list[2]
-
-                        if len(j_v_list) > 0:
-                            st.session_state["sel_j1_vis"] = j_v_list[0]
-                        if len(j_v_list) > 1:
-                            st.session_state["sel_j2_vis"] = j_v_list[1]
-                        if len(j_v_list) > 2:
-                            st.session_state["sel_j3_vis"] = j_v_list[2]
-
-                        # Injecter les scores des 9 manches
-                        for i in range(1, 10):
-                            m_i = matchs_dict.get(str(i), {})
-                            st.session_state[f"s_a_{i}"] = _safe_int_val(m_i.get("score_a", 0))
-                            st.session_state[f"s_b_{i}"] = _safe_int_val(m_i.get("score_b", 0))
-                        st.session_state["choix_match_vue"] = label_direct
-                        st.session_state["pending_choix_match_vue"] = label_direct
-                        st.success("✅ Match et joueurs actifs officiels injectés dans la saisie en direct !")
-                        time.sleep(1.0)
-                        st.rerun()
+                    st.button(
+                        "📥 Injecter dans la saisie du match en direct",
+                        use_container_width=True,
+                        type="primary",
+                        on_click=cb_injecter_donnees_scanner,
+                        args=(data_s, label_direct),
+                        help="Pré-remplit la feuille de match en direct avec ces équipes, joueurs actifs et pointages"
+                    )
 
                 with col_act2:
-                    if st.button("💾 Archiver directement dans l'historique officiel", type="primary", use_container_width=True, help="Enregistre officiellement ce match avec les noms complets des joueurs dans l'historique"):
-                        nouveau_match = {
-                            "date": str(data_s.get("date", datetime.today().strftime("%Y-%m-%d"))),
-                            "date_enregistrement": str(data_s.get("date", datetime.today().strftime("%Y-%m-%d"))),
-                            "receveur": str(data_s.get("receveur", "Receveur")),
-                            "visiteur": str(data_s.get("visiteur", "Visiteur")),
-                            "total_receveur": _safe_int_val(data_s.get("total_rec", 0)),
-                            "total_visiteur": _safe_int_val(data_s.get("total_vis", 0)),
-                            "approbateur_receveur": str(data_s.get("approbateur_rec", "")),
-                            "approbateur_visiteur": str(data_s.get("approbateur_vis", "")),
-                            "matchs": {
-                                str(i): {
-                                    "score_a": _safe_int_val(matchs_dict.get(str(i), {}).get("score_a", 0)),
-                                    "score_b": _safe_int_val(matchs_dict.get(str(i), {}).get("score_b", 0)),
-                                    "joueur_a": str(matchs_dict.get(str(i), {}).get("joueur_a", "")),
-                                    "joueur_b": str(matchs_dict.get(str(i), {}).get("joueur_b", "")),
-                                    "joueur_a_absent": False,
-                                    "joueur_b_absent": False
-                                }
-                                for i in range(1, 10)
-                            },
-                            "saisi_via_scanner_ia": True
-                        }
-                        hist_courant = charger_historique_matchs()
-                        hist_courant.append(nouveau_match)
-                        sauvegarder_historique_matchs(hist_courant)
-                        st.session_state.pop("scan_result_data", None)
-                        st.success("🎉 Match archivé avec succès dans l'historique avec les noms complets des joueurs actifs !")
-                        time.sleep(1.2)
-                        st.rerun()
+                    st.button(
+                        "💾 Archiver directement dans l'historique officiel",
+                        use_container_width=True,
+                        on_click=cb_archiver_match_scanner,
+                        args=(data_s,),
+                        help="Enregistre officiellement ce match avec les noms complets des joueurs dans l'historique"
+                    )
         except Exception as e_res_ui:
             st.error(f"Erreur d'affichage des résultats extraits : {e_res_ui}")
             if st.button("🔄 Réinitialiser les données du scanner", key="btn_reset_scan_err"):
