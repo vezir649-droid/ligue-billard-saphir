@@ -1178,18 +1178,37 @@ def restaurer_depuis_github_au_reveil(forcer=False):
                         loc_matchs = []
 
                 doit_restaurer = False
+                def _cle_match(m):
+                    if not isinstance(m, dict):
+                        return ""
+                    r = str(m.get("receveur") or "").strip().lower()
+                    v = str(m.get("visiteur") or "").strip().lower()
+                    d = str(m.get("date") or m.get("date_enregistrement") or "").strip()[:10]
+                    return f"{r}|{v}|{d}"
+
                 if forcer:
+                    # En cas de forçage explicite, préserver tout match local unique non présent sur GitHub
+                    cles_gh = {_cle_match(m) for m in gh_matchs if _cle_match(m)}
+                    locaux_a_garder = [m for m in loc_matchs if isinstance(m, dict) and _cle_match(m) not in cles_gh]
+                    if locaux_a_garder:
+                        gh_matchs = gh_matchs + locaux_a_garder
+                        gh_raw_m = json.dumps(gh_matchs, ensure_ascii=False, indent=4).encode("utf-8")
                     doit_restaurer = True
                 elif not os.path.exists(HISTORIQUE_FILE) or len(loc_matchs) == 0:
                     doit_restaurer = True
                 elif _sha1_blob(loc_raw_m) != _sha1_blob(gh_raw_m):
-                    # Contenu différent : la version GitHub la plus récente fait autorité
                     dt_gh = _parse_iso_to_utc_dt(commit_m.get("date")) if commit_m else None
                     dt_loc = _local_file_mtime_utc(HISTORIQUE_FILE)
-                    if dt_gh and dt_loc:
-                        if dt_gh >= dt_loc or len(gh_matchs) >= len(loc_matchs):
-                            doit_restaurer = True
+                    # Si le fichier local a été modifié plus récemment que le commit GitHub, conserver le local
+                    if dt_gh and dt_loc and dt_loc >= dt_gh:
+                        doit_restaurer = False
                     else:
+                        # Fusion sécurisée : restaurer GitHub tout en conservant impérativement les matchs locaux non poussés
+                        cles_gh = {_cle_match(m) for m in gh_matchs if _cle_match(m)}
+                        locaux_a_garder = [m for m in loc_matchs if isinstance(m, dict) and _cle_match(m) not in cles_gh]
+                        if locaux_a_garder:
+                            gh_matchs = gh_matchs + locaux_a_garder
+                            gh_raw_m = json.dumps(gh_matchs, ensure_ascii=False, indent=4).encode("utf-8")
                         doit_restaurer = True
 
                 if doit_restaurer:
@@ -1239,17 +1258,33 @@ def restaurer_depuis_github_au_reveil(forcer=False):
                         loc_tournois = []
 
                 doit_restaurer_t = False
+                def _cle_tournoi(t):
+                    if not isinstance(t, dict):
+                        return ""
+                    d = str(t.get("date") or t.get("date_enregistrement") or t.get("timestamp") or "").strip()[:10]
+                    n = str(t.get("nom") or t.get("titre") or t.get("type") or "").strip().lower()
+                    return f"{n}|{d}"
+
                 if forcer:
+                    cles_gh_t = {_cle_tournoi(t) for t in gh_tournois if _cle_tournoi(t)}
+                    tournois_loc_a_garder = [t for t in loc_tournois if isinstance(t, dict) and _cle_tournoi(t) not in cles_gh_t]
+                    if tournois_loc_a_garder:
+                        gh_tournois = gh_tournois + tournois_loc_a_garder
+                        gh_raw_t = json.dumps(gh_tournois, ensure_ascii=False, indent=4).encode("utf-8")
                     doit_restaurer_t = True
                 elif not os.path.exists(HISTORIQUE_TOURNOIS_FILE) or len(loc_tournois) == 0:
                     doit_restaurer_t = True
                 elif _sha1_blob(loc_raw_t) != _sha1_blob(gh_raw_t):
                     dt_gh = _parse_iso_to_utc_dt(commit_t.get("date")) if commit_t else None
                     dt_loc = _local_file_mtime_utc(HISTORIQUE_TOURNOIS_FILE)
-                    if dt_gh and dt_loc:
-                        if dt_gh >= dt_loc or len(gh_tournois) >= len(loc_tournois):
-                            doit_restaurer_t = True
+                    if dt_gh and dt_loc and dt_loc >= dt_gh:
+                        doit_restaurer_t = False
                     else:
+                        cles_gh_t = {_cle_tournoi(t) for t in gh_tournois if _cle_tournoi(t)}
+                        tournois_loc_a_garder = [t for t in loc_tournois if isinstance(t, dict) and _cle_tournoi(t) not in cles_gh_t]
+                        if tournois_loc_a_garder:
+                            gh_tournois = gh_tournois + tournois_loc_a_garder
+                            gh_raw_t = json.dumps(gh_tournois, ensure_ascii=False, indent=4).encode("utf-8")
                         doit_restaurer_t = True
 
                 if doit_restaurer_t:
@@ -2693,6 +2728,259 @@ def appliquer_match_du_jour(rencontre=None, forcer=False):
     st.session_state["match_du_jour_applique_date"] = datetime.today().strftime("%Y-%m-%d")
     st.session_state["match_du_jour_initialise_session"] = True
     return True
+
+# ==============================================================================
+# MODULE DE NUMÉRISATION ET RECONNAISSANCE DE FEUILLE DE MATCH (GEMINI VISION)
+# ==============================================================================
+def obtenir_cle_gemini():
+    """Récupère la clé API Google Gemini pour la vision multimodale."""
+    try:
+        if "gemini" in st.secrets and "api_key" in st.secrets["gemini"]:
+            k = str(st.secrets["gemini"]["api_key"]).strip()
+            if k:
+                return k
+        if "GEMINI_API_KEY" in st.secrets:
+            k = str(st.secrets["GEMINI_API_KEY"]).strip()
+            if k:
+                return k
+    except Exception:
+        pass
+    try:
+        cfg = charger_config_admin()
+        if cfg.get("gemini_api_key"):
+            return str(cfg.get("gemini_api_key")).strip()
+    except Exception:
+        pass
+    return os.environ.get("GEMINI_API_KEY", "AIzaSyCvwssYsBBucuRt7iQr9kXOrbujHr3D7bg")
+
+def sauvegarder_cle_gemini(cle_api):
+    """Enregistre la clé API Gemini dans config_admin.json et synchronise sur GitHub."""
+    cle_propre = (cle_api or "").strip()
+    cfg = charger_config_admin()
+    cfg["gemini_api_key"] = cle_propre
+    try:
+        with open(ADMIN_CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=4)
+        declencher_sync_github_arriere_plan(delai=1.0, commit_prefix="Mise a jour cle Gemini API")
+        return True
+    except Exception:
+        return False
+
+def analyser_photo_feuille_match(image_bytes, cle_api=None):
+    """Envoie une photo de feuille de match manuscrite à Google Gemini Vision et extrait le JSON complet des 9 duels."""
+    if not image_bytes:
+        return False, "Aucune image fournie."
+    api_k = cle_api or obtenir_cle_gemini()
+    if not api_k:
+        return False, "Clé API Gemini non configurée. Veuillez renseigner votre clé dans l'administration."
+    
+    # 1. Redimensionnement optimisé pour vitesse maximale
+    try:
+        im = Image.open(io.BytesIO(image_bytes))
+        im.thumbnail((1200, 1200), Image.Resampling.LANCZOS)
+        buf = io.BytesIO()
+        im.save(buf, format="JPEG", quality=85)
+        b64_img = base64.b64encode(buf.getvalue()).decode("ascii")
+    except Exception as e_im:
+        return False, f"Erreur de traitement de l'image : {e_im}"
+
+    # 2. Modèles disponibles par ordre de priorité
+    models_vision = ["gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-flash-latest"]
+    
+    prompt = """Tu es un expert officiel de la Ligue de Billard du Saphir.
+Analyse cette photo de feuille de match manuscrite et extrait rigoureusement les données en JSON STRICT.
+Structure JSON attendue :
+{
+  "date": "AAAA-MM-JJ",
+  "receveur": "Nom equipe receveuse",
+  "visiteur": "Nom equipe visiteuse",
+  "joueurs_rec": ["Joueur 1", "Joueur 2", "Joueur 3"],
+  "joueurs_vis": ["Joueur 1", "Joueur 2", "Joueur 3"],
+  "matchs": {
+    "1": {"score_a": 8, "score_b": 4, "joueur_a": "Gille", "joueur_b": "Léon M"},
+    "2": {"score_a": 7, "score_b": 8, "joueur_a": "Guy", "joueur_b": "Gaston L"},
+    "3": {"score_a": 8, "score_b": 4, "joueur_a": "André", "joueur_b": "Claude H"},
+    "4": {"score_a": 7, "score_b": 8, "joueur_a": "Gille", "joueur_b": "Gaston L"},
+    "5": {"score_a": 7, "score_b": 8, "joueur_a": "Guy", "joueur_b": "Claude H"},
+    "6": {"score_a": 8, "score_b": 6, "joueur_a": "André", "joueur_b": "Léon M"},
+    "7": {"score_a": 6, "score_b": 8, "joueur_a": "Gille", "joueur_b": "Claude H"},
+    "8": {"score_a": 7, "score_b": 8, "joueur_a": "Guy", "joueur_b": "Léon M"},
+    "9": {"score_a": 8, "score_b": 4, "joueur_a": "André", "joueur_b": "Gaston L"}
+  },
+  "total_rec": 66,
+  "total_vis": 58,
+  "approbateur_rec": "Signature ou nom capitaine receveur",
+  "approbateur_vis": "Signature ou nom capitaine visiteur"
+}
+Consignes strictes :
+- score_a et score_b sont des entiers (0 à 8).
+- total_rec et total_vis sont des entiers.
+- Renvoie UNIQUEMENT le bloc JSON valide, sans formatage markdown, sans texte additionnel."""
+
+    dernier_err = ""
+    for m in models_vision:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={api_k}"
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {"inline_data": {"mime_type": "image/jpeg", "data": b64_img}},
+                        {"text": prompt}
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.0,
+                "maxOutputTokens": 2048
+            }
+        }
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"}
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                raw_text = data["candidates"][0]["content"]["parts"][0]["text"]
+                clean = re.sub(r"^```(?:json)?\s*", "", raw_text.strip(), flags=re.IGNORECASE)
+                clean = re.sub(r"\s*```$", "", clean).strip()
+                m_json = re.search(r"\{.*\}", clean, re.DOTALL)
+                if m_json:
+                    clean = m_json.group(0)
+                res_dict = json.loads(clean)
+                return True, res_dict
+        except Exception as e:
+            dernier_err = str(e)
+            continue
+            
+    return False, f"Impossible d'analyser la photo avec Gemini Vision ({dernier_err})"
+
+
+def cb_scanner_feuille():
+    st.session_state["choix_match_vue"] = "📷 Numériser une feuille de match (Scanner IA)"
+
+
+def afficher_vue_scanner_feuille_match(label_direct):
+    """Vue dédiée à la numérisation intelligente de feuille de match par photo (Gemini Vision)."""
+    st.session_state["venant_de_archive"] = True
+    
+    col_h1, col_h2 = st.columns([3, 1])
+    with col_h1:
+        st.markdown("### 📷 Numérisation intelligente de feuille de match (IA Vision)")
+        st.caption("Prenez une photo de votre feuille de match manuscrite (ou téléversez un fichier image). L'IA extrait automatiquement les scores, les joueurs et les équipes.")
+    with col_h2:
+        st.button("🔙 Revenir au match en cours", on_click=cb_retour_match_en_cours, use_container_width=True, type="primary")
+
+    tab_photo, tab_upload = st.tabs(["📸 Prendre une photo (Caméra / Mobile)", "📁 Téléverser une image (Fichier)"])
+    img_data = None
+    with tab_photo:
+        cam_file = st.camera_input("Prendre une photo nette et bien éclairée de la feuille", key="cam_feuille_input")
+        if cam_file:
+            img_data = cam_file.getvalue()
+    with tab_upload:
+        upl_file = st.file_uploader("Sélectionner un fichier image (JPG, PNG, WebP)", type=["jpg", "jpeg", "png", "webp"], key="upload_feuille_input")
+        if upl_file:
+            img_data = upl_file.getvalue()
+
+    if img_data:
+        st.divider()
+        col_prev, col_act = st.columns([1.5, 2])
+        with col_prev:
+            st.image(img_data, caption="Photo de la feuille à numériser", use_container_width=True)
+        with col_act:
+            st.markdown("#### 🔍 Prêt pour l'analyse IA")
+            st.info("💡 L'IA détectera l'écriture manuscrite, les 9 duels, les noms des joueurs et vérifiera les totaux.")
+            if st.button("🚀 Lancer la numérisation avec l'IA", type="primary", use_container_width=True, key="btn_run_scan_ia"):
+                with st.spinner("Analyse de la feuille de match en cours par Gemini Vision..."):
+                    ok_sc, res_sc = analyser_photo_feuille_match(img_data)
+                    if ok_sc:
+                        st.session_state["scan_result_data"] = res_sc
+                        st.success("✅ Analyse réussie avec succès !")
+                    else:
+                        st.error(res_sc)
+
+    # Si un résultat est disponible en session
+    if st.session_state.get("scan_result_data"):
+        data_s = st.session_state["scan_result_data"]
+        st.divider()
+        st.markdown("### 📋 Résultats extraits de la feuille")
+        
+        col_r1, col_r2, col_r3 = st.columns(3)
+        col_r1.metric("📅 Date", str(data_s.get("date", "Inconnue")))
+        col_r2.metric("🔴 Receveur", f"{data_s.get('receveur', 'Receveur')} ({data_s.get('total_rec', 0)} pts)")
+        col_r3.metric("🔵 Visiteur", f"{data_s.get('visiteur', 'Visiteur')} ({data_s.get('total_vis', 0)} pts)")
+
+        st.markdown("##### 🎱 Détail des 9 manches")
+        duels_data = []
+        matchs_dict = data_s.get("matchs", {})
+        for i in range(1, 10):
+            m_i = matchs_dict.get(str(i), {})
+            sa = m_i.get("score_a", 0)
+            sb = m_i.get("score_b", 0)
+            ja = m_i.get("joueur_a", f"J{((i-1)%3)+1}")
+            jb = m_i.get("joueur_b", f"J{((i-1)%3)+1}")
+            gagnant = data_s.get("receveur", "Receveur") if sa > sb else (data_s.get("visiteur", "Visiteur") if sb > sa else "Égalité")
+            duels_data.append({
+                "Manche": f"M{i}",
+                "Joueur Receveur": ja,
+                "Score": f"{sa} — {sb}",
+                "Joueur Visiteur": jb,
+                "Gagnant": gagnant
+            })
+        st.dataframe(pd.DataFrame(duels_data), use_container_width=True, hide_index=True)
+
+        col_act1, col_act2 = st.columns(2)
+        with col_act1:
+            if st.button("📥 Injecter dans la saisie du match en direct", use_container_width=True, help="Pré-remplit la feuille de match en direct avec ces équipes et ces pointages"):
+                eq_r_scan = str(data_s.get("receveur", "")).strip()
+                eq_v_scan = str(data_s.get("visiteur", "")).strip()
+                for eq_nom in charger_liste_equipes_base():
+                    if eq_r_scan.lower() in eq_nom.lower() or eq_nom.lower() in eq_r_scan.lower():
+                        st.session_state["choix_equipe_receveuse"] = eq_nom
+                    if eq_v_scan.lower() in eq_nom.lower() or eq_nom.lower() in eq_v_scan.lower():
+                        st.session_state["choix_equipe_visiteuse"] = eq_nom
+                for i in range(1, 10):
+                    m_i = matchs_dict.get(str(i), {})
+                    st.session_state[f"s_a_{i}"] = int(m_i.get("score_a", 0))
+                    st.session_state[f"s_b_{i}"] = int(m_i.get("score_b", 0))
+                st.session_state["choix_match_vue"] = label_direct
+                st.success("✅ Données injectées dans la saisie du match en direct !")
+                time.sleep(1.0)
+                st.rerun()
+
+        with col_act2:
+            if st.button("💾 Archiver directement dans l'historique officiel", type="primary", use_container_width=True, help="Enregistre officiellement ce match dans l'historique sans repasser par la saisie"):
+                nouveau_match = {
+                    "date": str(data_s.get("date", datetime.today().strftime("%Y-%m-%d"))),
+                    "date_enregistrement": str(data_s.get("date", datetime.today().strftime("%Y-%m-%d"))),
+                    "receveur": str(data_s.get("receveur", "Receveur")),
+                    "visiteur": str(data_s.get("visiteur", "Visiteur")),
+                    "total_receveur": int(data_s.get("total_rec", 0)),
+                    "total_visiteur": int(data_s.get("total_vis", 0)),
+                    "approbateur_receveur": str(data_s.get("approbateur_rec", "")),
+                    "approbateur_visiteur": str(data_s.get("approbateur_vis", "")),
+                    "matchs": {
+                        str(i): {
+                            "score_a": int(matchs_dict.get(str(i), {}).get("score_a", 0)),
+                            "score_b": int(matchs_dict.get(str(i), {}).get("score_b", 0)),
+                            "joueur_a": str(matchs_dict.get(str(i), {}).get("joueur_a", "")),
+                            "joueur_b": str(matchs_dict.get(str(i), {}).get("joueur_b", "")),
+                            "joueur_a_absent": False,
+                            "joueur_b_absent": False
+                        }
+                        for i in range(1, 10)
+                    },
+                    "saisi_via_scanner_ia": True
+                }
+                hist_courant = charger_historique_matchs()
+                hist_courant.append(nouveau_match)
+                sauvegarder_historique_matchs(hist_courant)
+                st.session_state.pop("scan_result_data", None)
+                st.success("🎉 Match archivé avec succès dans l'historique officiel et synchronisé sur GitHub !")
+                time.sleep(1.2)
+                st.rerun()
+
 
 def initialiser_donnees_saphir_au_demarrage():
     """Au démarrage de l'application, applique immédiatement le match du jour selon l'horaire
@@ -11274,6 +11562,10 @@ with tab_feuille:
         if "msg_match_applique" in st.session_state:
             st.sidebar.success(st.session_state.pop("msg_match_applique"))
 
+    with st.sidebar.expander("📷 Numériser une feuille (IA)", expanded=False):
+        st.caption("Prenez une photo de votre feuille de match manuscrite pour importer et calculer les scores automatiquement.")
+        st.button("📸 Ouvrir le scanner photo IA", key="btn_sb_open_scanner_ia", on_click=cb_scanner_feuille, use_container_width=True)
+
     with st.sidebar.expander("🌐 Consulter https://saphirbillard.com", expanded=False):
         st.caption("Consultez en direct les joueurs, moyennes, équipes et l'horaire officiel extraits de https://saphirbillard.com.")
         st.button("🔍 Extraire les données du site", key="btn_sb_extract_saphir", on_click=cb_consulter_saphir, use_container_width=True)
@@ -12014,8 +12306,9 @@ with tab_feuille:
     historique_matchs = charger_historique_matchs()
 
     label_direct = "🔴 Saisie du match en direct (En cours)" if not est_spectateur else "🔴 Match en direct (En cours)"
+    label_scan = "📷 Numériser une feuille de match (Scanner IA)"
     label_saphir = "🌐 Consulter https://saphirbillard.com (Joueurs, Équipes, Horaire)"
-    options_matchs = [label_direct, label_saphir]
+    options_matchs = [label_direct, label_scan, label_saphir]
     mapping_matchs = {}
     nb_total_m = len(historique_matchs or [])
     for idx_m, m in enumerate(reversed(historique_matchs or [])):
@@ -12069,8 +12362,12 @@ with tab_feuille:
         else:
             st.button("🔙 Revenir au match en cours", on_click=cb_retour_match_en_cours, use_container_width=True, help="Retourner à la saisie du match actuel")
 
+    # 0. Si le scanner de feuille de match par IA est sélectionné
+    if choix_vue == label_scan:
+        afficher_vue_scanner_feuille_match(label_direct)
+
     # 1. Si la consultation externe saphirbillard.com est sélectionnée
-    if choix_vue == label_saphir:
+    elif choix_vue == label_saphir:
         st.session_state["venant_de_archive"] = True
         col_sap_h1, col_sap_h2, col_sap_h3 = st.columns([2.5, 1.2, 1.2])
         with col_sap_h1:
