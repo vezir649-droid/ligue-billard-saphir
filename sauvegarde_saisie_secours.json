@@ -1,5 +1,5 @@
 {
-    "date": "2026-11-03 15:12",
+    "date": "2026-11-03 15:13",
     "receveur": "Foxtrot",
     "visiteur": "Echo",
     "choix_rec": "Foxtrot",
@@ -120,6 +120,6 @@
             "joueur_b_absent": false
         }
     },
-    "derniere_mise_a_jour": "15:12:40",
-    "ts_modif": 1793718760.1394064
+    "derniere_mise_a_jour": "15:13:01",
+    "ts_modif": 1793718781.8397613
 }
