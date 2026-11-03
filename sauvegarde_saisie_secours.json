@@ -1,5 +1,5 @@
 {
-    "date": "2026-11-03 21:44",
+    "date": "2026-11-03 21:46",
     "receveur": "Foxtrot",
     "visiteur": "Echo",
     "choix_rec": "Foxtrot",
@@ -53,7 +53,7 @@
     "matchs": {
         "1": {
             "score_a": 8,
-            "score_b": 8,
+            "score_b": 5,
             "joueur_a": "Sylvain Derasp",
             "joueur_b": "Gilles Dumais",
             "joueur_a_absent": false,
@@ -125,7 +125,7 @@
         }
     },
     "total_receveur": 8,
-    "total_visiteur": 8,
-    "derniere_mise_a_jour": "21:44:32",
-    "ts_modif": 1793742272.0899336
+    "total_visiteur": 5,
+    "derniere_mise_a_jour": "21:46:52",
+    "ts_modif": 1793742412.7055955
 }
