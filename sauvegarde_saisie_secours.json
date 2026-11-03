@@ -116,16 +116,16 @@
             "joueur_b_absent": false
         },
         "9": {
-            "score_a": 0,
-            "score_b": 0,
+            "score_a": 4,
+            "score_b": 8,
             "joueur_a": "Gabriel Labrecque",
             "joueur_b": "Guy Vézina",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         }
     },
-    "total_receveur": 59,
-    "total_visiteur": 47,
-    "derniere_mise_a_jour": "21:50:38",
-    "ts_modif": 1793742638.9738517
+    "total_receveur": 63,
+    "total_visiteur": 55,
+    "derniere_mise_a_jour": "21:50:51",
+    "ts_modif": 1793742651.8938289
 }
