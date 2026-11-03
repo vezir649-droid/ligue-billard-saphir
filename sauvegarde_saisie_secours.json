@@ -101,7 +101,7 @@
         },
         "7": {
             "score_a": 8,
-            "score_b": 4,
+            "score_b": 7,
             "joueur_a": "Sylvain Derasp",
             "joueur_b": "André St-Pierre",
             "joueur_a_absent": false,
@@ -125,7 +125,7 @@
         }
     },
     "total_receveur": 51,
-    "total_visiteur": 40,
-    "derniere_mise_a_jour": "21:50:15",
-    "ts_modif": 1793742615.4357142
+    "total_visiteur": 43,
+    "derniere_mise_a_jour": "21:50:25",
+    "ts_modif": 1793742625.686928
 }
