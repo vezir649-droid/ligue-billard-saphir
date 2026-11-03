@@ -475,5 +475,90 @@
             }
         },
         "saisi_comme_anterieur": true
+    },
+    {
+        "date": "2026-10-26",
+        "date_enregistrement": "2026-10-26",
+        "receveur": "Echo",
+        "visiteur": "Alpha",
+        "total_receveur": 66,
+        "total_visiteur": 58,
+        "approbateur_receveur": "None",
+        "approbateur_visiteur": "None",
+        "matchs": {
+            "1": {
+                "score_a": 8,
+                "score_b": 4,
+                "joueur_a": "Gilles Dumais",
+                "joueur_b": "Léon Morin",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "2": {
+                "score_a": 7,
+                "score_b": 8,
+                "joueur_a": "Guy Vézina",
+                "joueur_b": "Gaston Lavoie",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "3": {
+                "score_a": 8,
+                "score_b": 4,
+                "joueur_a": "André St-Pierre",
+                "joueur_b": "Claude Harvey",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "4": {
+                "score_a": 7,
+                "score_b": 8,
+                "joueur_a": "Gilles Dumais",
+                "joueur_b": "Gaston Lavoie",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "5": {
+                "score_a": 7,
+                "score_b": 8,
+                "joueur_a": "Guy Vézina",
+                "joueur_b": "Claude Harvey",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "6": {
+                "score_a": 8,
+                "score_b": 6,
+                "joueur_a": "André St-Pierre",
+                "joueur_b": "Léon Morin",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "7": {
+                "score_a": 6,
+                "score_b": 8,
+                "joueur_a": "Gilles Dumais",
+                "joueur_b": "Claude Harvey",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "8": {
+                "score_a": 7,
+                "score_b": 8,
+                "joueur_a": "Guy Vézina",
+                "joueur_b": "Léon Morin",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "9": {
+                "score_a": 8,
+                "score_b": 4,
+                "joueur_a": "André St-Pierre",
+                "joueur_b": "Gaston Lavoie",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            }
+        },
+        "saisi_via_scanner_ia": true
     }
 ]
