@@ -3243,8 +3243,8 @@ def afficher_vue_scanner_feuille_match(label_direct):
     mode_photo = st.radio(
         "Mode d'acquisition de la photo :",
         [
-            "📱 Appareil photo de la tablette / Téléverser une photo (Recommandé sur mobile)",
-            "📸 Caméra directe dans le navigateur (WebRTC)"
+            "📸 Caméra directe dans le navigateur (Caméra arrière par défaut)",
+            "📱 Appareil photo officiel de la tablette (Capture native avec flash)"
         ],
         horizontal=True,
         key="mode_source_scan"
@@ -3253,16 +3253,148 @@ def afficher_vue_scanner_feuille_match(label_direct):
     img_data = None
     if "Caméra directe" in mode_photo:
         st.info(
-            "💡 **Dépannage Tablette Android :**\n\n"
-            "• **Sécurité HTTPS :** Chrome Android exige impérativement que l'adresse commence par **https://** pour autoriser la vidéo en direct.\n"
-            "• **Permission Chrome :** Touchez le cadenas 🔒 ou l'icône de réglages à gauche de l'adresse web ➔ *Autorisations* ➔ Activez *Appareil photo*.\n"
-            "• **Alternative recommandée :** Basculez sur l'option ci-dessus *« Appareil photo de la tablette »* : elle ouvre directement votre application caméra Android officielle avec flash et autofocus sans aucun blocage WebRTC."
+            "💡 **Caméra arrière configurée :** L'application active automatiquement la caméra arrière de votre tablette pour viser la feuille de match. "
+            "Si besoin, vous pouvez basculer d'une caméra à l'autre à tout moment avec le bouton ci-dessous."
         )
+
+        # Injection du contrôleur JavaScript pour forcer la caméra arrière (facingMode: environment) et bouton de basculement
+        html_controleur_cam = """
+        <div id="cam-ctrl-wrap" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border: 1.5px solid #3b82f6; border-radius: 10px; padding: 10px 14px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span id="saphir-cam-dot" style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 8px #22c55e;"></span>
+            <span id="saphir-cam-status" style="color: #f8fafc; font-weight: 600; font-size: 13.5px;">📷 Caméra ARRIÈRE active (Feuille de match)</span>
+          </div>
+          <button id="saphir-btn-switch" type="button" style="background: #2563eb; color: #ffffff; border: none; padding: 7px 14px; border-radius: 6px; font-weight: 600; font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.25);">
+            🔄 Changer de caméra (Arrière / Avant)
+          </button>
+        </div>
+        <script>
+        (function() {
+          const pWin = window.parent;
+          if (!pWin || !pWin.navigator || !pWin.navigator.mediaDevices) return;
+
+          if (typeof pWin.__saphir_facing === 'undefined') {
+            pWin.__saphir_facing = "environment";
+          }
+
+          const dot = document.getElementById("saphir-cam-dot");
+          const status = document.getElementById("saphir-cam-status");
+          const btn = document.getElementById("saphir-btn-switch");
+
+          function renderUI() {
+            const isRear = (pWin.__saphir_facing === "environment");
+            if (status) {
+              status.innerText = isRear ? "📷 Caméra ARRIÈRE active (Feuille de match)" : "🤳 Caméra AVANT active (Selfie)";
+            }
+            if (dot) {
+              dot.style.background = isRear ? "#22c55e" : "#f59e0b";
+              dot.style.boxShadow = isRear ? "0 0 8px #22c55e" : "0 0 8px #f59e0b";
+            }
+          }
+          renderUI();
+
+          // Intercepter systématiquement getUserMedia pour imposer la caméra choisie (arrière par défaut)
+          if (!pWin.navigator.mediaDevices._saphirOrigGUM) {
+            pWin.navigator.mediaDevices._saphirOrigGUM = pWin.navigator.mediaDevices.getUserMedia.bind(pWin.navigator.mediaDevices);
+            pWin.navigator.mediaDevices.getUserMedia = function(constraints) {
+              try {
+                if (constraints && constraints.video) {
+                  const targetFacing = pWin.__saphir_facing || "environment";
+                  if (typeof constraints.video === 'object') {
+                    constraints.video.facingMode = { ideal: targetFacing };
+                  } else {
+                    constraints.video = { facingMode: { ideal: targetFacing } };
+                  }
+                }
+              } catch(e) {
+                console.warn("[Saphir] Erreur contraintes caméra:", e);
+              }
+              return pWin.navigator.mediaDevices._saphirOrigGUM(constraints);
+            };
+          }
+
+          async function basculerCameraVers(nouveauMode) {
+            pWin.__saphir_facing = nouveauMode;
+            renderUI();
+            try {
+              const pDoc = pWin.document;
+              const video = pDoc.querySelector('div[data-testid="stCameraInput"] video');
+              if (video) {
+                if (video.srcObject) {
+                  video.srcObject.getTracks().forEach(t => t.stop());
+                }
+                const newStream = await pWin.navigator.mediaDevices._saphirOrigGUM({
+                  video: {
+                    facingMode: { ideal: nouveauMode },
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 }
+                  },
+                  audio: false
+                });
+                video.srcObject = newStream;
+                await video.play();
+                console.log("[Saphir] Caméra basculée vers:", nouveauMode);
+              }
+            } catch(err) {
+              console.error("[Saphir] Erreur changement caméra:", err);
+            }
+          }
+
+          if (btn) {
+            btn.onclick = function() {
+              const nextMode = (pWin.__saphir_facing === "environment") ? "user" : "environment";
+              basculerCameraVers(nextMode);
+            };
+          }
+
+          // Vérifier si la vidéo active utilise la caméra arrière au démarrage
+          let count = 0;
+          const poll = setInterval(() => {
+            count++;
+            if (count > 25) { clearInterval(poll); return; }
+            const pDoc = pWin.document;
+            const video = pDoc.querySelector('div[data-testid="stCameraInput"] video');
+            if (video && video.srcObject && !video.dataset.saphirEnforced) {
+              video.dataset.saphirEnforced = "true";
+              const track = video.srcObject.getVideoTracks()[0];
+              const settings = (track && track.getSettings) ? track.getSettings() : {};
+              if (settings.facingMode && settings.facingMode !== "environment" && pWin.__saphir_facing === "environment") {
+                console.log("[Saphir] Caméra frontale détectée, basculement vers arrière...");
+                basculerCameraVers("environment");
+              }
+            }
+          }, 350);
+        })();
+        </script>
+        """
+        st.components.v1.html(html_controleur_cam, height=65)
+
         cam_file = st.camera_input("Prendre une photo nette et bien éclairée de la feuille", key="cam_feuille_input")
         if cam_file:
             img_data = cam_file.getvalue()
     else:
-        st.info("💡 **Sur votre tablette Android :** Touchez le bouton **« Browse files / Parcourir »** ci-dessous, puis choisissez **« 📷 Appareil photo »**. Vous pourrez prendre une photo nette en pleine résolution avec l'autofocus et le flash de votre tablette.")
+        st.info(
+            "💡 **Sur votre tablette Android :** Touchez le bouton **« Browse files / Parcourir »** ci-dessous. "
+            "Il ouvrira directement votre application **📷 Appareil photo** officielle (caméra arrière) avec autofocus et flash."
+        )
+        # Injection capture="environment" pour forcer l'appareil photo arrière natif
+        html_capture_env = """
+        <script>
+        (function() {
+          try {
+            const pWin = window.parent;
+            if (!pWin || !pWin.document) return;
+            const inputs = pWin.document.querySelectorAll('input[type="file"]');
+            inputs.forEach(inp => {
+              inp.setAttribute('capture', 'environment');
+              inp.setAttribute('accept', 'image/*');
+            });
+          } catch(e) {}
+        })();
+        </script>
+        """
+        st.components.v1.html(html_capture_env, height=0)
+
         upl_file = st.file_uploader(
             "Prendre une photo ou sélectionner une image de la feuille",
             type=["jpg", "jpeg", "png", "webp", "heic"],
