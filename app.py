@@ -384,13 +384,89 @@ def injecter_theme_css_saphir():
                 } catch(e) {}
             }
 
+            // 4. Auto-reparation sur mobile Android/iOS en cas d'erreur "Failed to fetch dynamically imported module"
+            function surveillerModuleDynamique() {
+                try {
+                    var pWin = window.parent || window;
+                    var pDoc = pWin.document;
+                    if (!pDoc) return;
+                    if (!pWin.__saphirChunkGuardBound) {
+                        pWin.__saphirChunkGuardBound = true;
+                        pWin.addEventListener('unhandledrejection', function(ev) {
+                            var msg = (ev && ev.reason && (ev.reason.message || String(ev.reason))) || '';
+                            if (msg.indexOf('Failed to fetch dynamically imported module') !== -1 || msg.indexOf('Importing a module script failed') !== -1) {
+                                var lastReload = parseInt(pWin.sessionStorage.getItem('saphir_chunk_reload_ts') || '0', 10);
+                                if (Date.now() - lastReload > 15000) {
+                                    pWin.sessionStorage.setItem('saphir_chunk_reload_ts', String(Date.now()));
+                                    pWin.location.reload();
+                                }
+                            }
+                        });
+                    }
+                } catch(e) {}
+            }
+
             neutraliserGestionnaireMotsDePasse();
+            surveillerModuleDynamique();
             setInterval(neutraliserGestionnaireMotsDePasse, 600);
         })();
         </script>
         """,
         height=0
     )
+
+
+def afficher_tableau_html_compatible(data):
+    """Affiche un DataFrame ou une liste de dictionnaires sous forme de tableau HTML natif
+    100 % compatible Android / iOS (sans import JS dynamique st.dataframe susceptible d'échouer sur mobile)."""
+    import html as html_lib
+    if data is None:
+        return
+    if isinstance(data, pd.DataFrame):
+        if data.empty:
+            return
+        colonnes = [str(c) for c in data.columns]
+        lignes = data.to_dict(orient="records")
+    elif isinstance(data, list):
+        if not data:
+            return
+        if isinstance(data[0], dict):
+            colonnes = list(data[0].keys())
+            lignes = data
+        else:
+            df_tmp = pd.DataFrame(data)
+            colonnes = [str(c) for c in df_tmp.columns]
+            lignes = df_tmp.to_dict(orient="records")
+    else:
+        return
+
+    ths = "".join(
+        f"<th style='background:#0b3c5d; color:#ffffff !important; padding:8px 10px; text-align:left; font-weight:700; font-size:13px; border-bottom:2px solid #072a42; white-space:nowrap;'>{html_lib.escape(str(col))}</th>"
+        for col in colonnes
+    )
+    trs = []
+    for idx, row in enumerate(lignes):
+        bg = "#ffffff" if idx % 2 == 0 else "#f8fafc"
+        tds = []
+        for col in colonnes:
+            val = row.get(col, "")
+            if val is None or (isinstance(val, float) and pd.isna(val)):
+                val_str = ""
+            else:
+                val_str = str(val)
+            tds.append(
+                f"<td style='padding:7px 10px; border-bottom:1px solid #e2e8f0; color:#0f172a !important; font-size:13px; vertical-align:middle;'>{html_lib.escape(val_str)}</td>"
+            )
+        trs.append(f"<tr style='background:{bg};'>{''.join(tds)}</tr>")
+
+    table_html = (
+        "<div class='saphir-light-card' style='width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; border:1px solid #cbd5e1; border-radius:8px; margin:6px 0 12px 0; box-shadow:0 1px 3px rgba(0,0,0,0.06); background:#ffffff;'>"
+        "<table style='width:100%; border-collapse:collapse; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;'>"
+        f"<thead><tr>{ths}</tr></thead>"
+        f"<tbody>{''.join(trs)}</tbody>"
+        "</table></div>"
+    )
+    st.markdown(table_html, unsafe_allow_html=True)
 
 
 def normaliser_donnees_admin(brut):
@@ -4435,7 +4511,7 @@ def afficher_vue_scanner_feuille_match(label_direct):
                         "Bilan (V - D)": f"{v}V - {d}D",
                         "Détail des 3 manches": m_txt
                     })
-                st.dataframe(pd.DataFrame(tab_joueurs), use_container_width=True, hide_index=True)
+                afficher_tableau_html_compatible(pd.DataFrame(tab_joueurs))
 
                 # Controle arithmetique de coherence des points
                 somme_pts_rec = sum(p.get("total_points", 0) for p in stats_rec)
@@ -4470,7 +4546,7 @@ def afficher_vue_scanner_feuille_match(label_direct):
                         "Joueur Visiteur (Nom complet)": jb,
                         "Vainqueur de la manche": gagnant_duel
                     })
-                st.dataframe(pd.DataFrame(duels_data), use_container_width=True, hide_index=True)
+                afficher_tableau_html_compatible(pd.DataFrame(duels_data))
 
                 # Section Feuille officielle HTML & Transmission aux administrateurs
                 st.divider()
@@ -11341,7 +11417,7 @@ def afficher_section_tournoi(mode="simple"):
                     })
             if lignes_horaires:
                 df_horaires = pd.DataFrame(lignes_horaires)
-                st.dataframe(df_horaires, use_container_width=True, hide_index=True)
+                afficher_tableau_html_compatible(df_horaires)
 
         # Arborescence graphique complète et toujours à jour (ouverte en permanence)
         st.markdown("##### 🌳 Arborescence officielle du tournoi")
@@ -11588,7 +11664,7 @@ def afficher_section_tournoi(mode="simple"):
                 })
 
             df_rr = pd.DataFrame(lignes_rr)
-            st.dataframe(df_rr, use_container_width=True, hide_index=True)
+            afficher_tableau_html_compatible(df_rr)
 
             st.divider()
             st.markdown("##### 📋 Calendrier des rencontres")
@@ -11991,7 +12067,7 @@ def afficher_section_historique_tournois():
             })
         if lignes_recap:
             df_recap = pd.DataFrame(lignes_recap)
-            st.dataframe(df_recap, use_container_width=True, hide_index=True)
+            afficher_tableau_html_compatible(df_recap)
 
 def afficher_onglet_tournois():
     """Onglet principal Tournois avec bandeau de verrou, prise/cession de main, Création de nouveau tournoi, Simple, Double et Historique."""
@@ -12857,7 +12933,7 @@ def afficher_tableau_de_bord_progression(historique):
                     "5 Derniers": eq_data["forme_5_str"]
                 })
 
-            st.dataframe(pd.DataFrame(lignes_tab), use_container_width=True, hide_index=True)
+            afficher_tableau_html_compatible(pd.DataFrame(lignes_tab))
 
             # 3. Courbe d'évolution cumulée des équipes
             if not df_prog_equipes.empty and len(df_prog_equipes) >= 1:
@@ -12911,7 +12987,7 @@ def afficher_tableau_de_bord_progression(historique):
                                     "Moy. /8": f"{moy_j_eq:.2f}",
                                     "% Équipe": f"{part_pct:.1f}%"
                                 })
-                            st.dataframe(pd.DataFrame(lignes_contrib), use_container_width=True, hide_index=True)
+                            afficher_tableau_html_compatible(pd.DataFrame(lignes_contrib))
                         else:
                             st.info("Aucune manche enregistrée pour cette équipe.")
 
@@ -12946,7 +13022,7 @@ def afficher_tableau_de_bord_progression(historique):
                                 "Moy. /24": f"{(f_eq['ronde_3_pour'] / r3_nb):.1f}" if f_eq["ronde_3_nb"] else "0.0"
                             }
                         ]
-                        st.dataframe(pd.DataFrame(lignes_rondes), use_container_width=True, hide_index=True)
+                        afficher_tableau_html_compatible(pd.DataFrame(lignes_rondes))
 
                 # Graphique en barres Pour vs Contre par match
                 if f_eq["matchs"]:
@@ -12974,7 +13050,7 @@ def afficher_tableau_de_bord_progression(historique):
                         }
                         for m in f_eq["matchs"]
                     ])
-                    st.dataframe(df_eq_matchs, use_container_width=True, hide_index=True)
+                    afficher_tableau_html_compatible(df_eq_matchs)
 
     # =========================================================================
     # SOUS-ONGLET 2 : PROGRESSION DES JOUEURS & INDICATEURS INDIVIDUELS
@@ -13073,7 +13149,7 @@ def afficher_tableau_de_bord_progression(historique):
                     "Tendance": j_data["tendance"]
                 })
 
-            st.dataframe(pd.DataFrame(lignes_lead), use_container_width=True, hide_index=True)
+            afficher_tableau_html_compatible(pd.DataFrame(lignes_lead))
 
             st.markdown("---")
 
@@ -13248,7 +13324,7 @@ def afficher_tableau_de_bord_progression(historique):
                             }
                             for c in fj["chronologie"]
                         ])
-                        st.dataframe(df_chron_j, use_container_width=True, hide_index=True)
+                        afficher_tableau_html_compatible(df_chron_j)
 
     # =========================================================================
     # SOUS-ONGLET 3 : FACE-À-FACE (DUELS JOUEURS & MATRICE 8×8 ÉQUIPES)
@@ -13316,7 +13392,7 @@ def afficher_tableau_de_bord_progression(historique):
                         }
                         for d in bilan_direct["details"]
                     ])
-                    st.dataframe(df_duels_j, use_container_width=True, hide_index=True)
+                    afficher_tableau_html_compatible(df_duels_j)
 
         st.markdown("---")
         st.markdown("#### 🏁 Matrice Croisée 8×8 des Confrontations Directes entre Équipes")
@@ -13340,7 +13416,7 @@ def afficher_tableau_de_bord_progression(historique):
                         else:
                             row_dict[eq_col] = "⏳ À jouer"
                 lignes_mat.append(row_dict)
-            st.dataframe(pd.DataFrame(lignes_mat), use_container_width=True, hide_index=True)
+            afficher_tableau_html_compatible(pd.DataFrame(lignes_mat))
 
     # =========================================================================
     # SOUS-ONGLET 4 : CALENDRIER RESTANT & PROJECTIONS DE FIN DE SAISON (14 SEM.)
@@ -13376,7 +13452,7 @@ def afficher_tableau_de_bord_progression(historique):
                 "🔮 Points Projetés (14 sem.)": f"{eq_p['projection_pts_14_sem']} pts"
             })
 
-        st.dataframe(pd.DataFrame(lignes_proj), use_container_width=True, hide_index=True)
+        afficher_tableau_html_compatible(pd.DataFrame(lignes_proj))
 
         # Détail du calendrier restant d'une équipe
         st.markdown("##### 📅 Consulter la feuille de route restante d'une équipe")
@@ -13400,7 +13476,7 @@ def afficher_tableau_de_bord_progression(historique):
                         "Bilan actuel de l'adversaire": f"{st_adv.get('v', 0)}V - {st_adv.get('d', 0)}D",
                         "Moyenne de l'adversaire (/72)": f"{st_adv.get('moy_pour', 0.0):.1f} pts"
                     })
-                st.dataframe(pd.DataFrame(rows_rest), use_container_width=True, hide_index=True)
+                afficher_tableau_html_compatible(pd.DataFrame(rows_rest))
             else:
                 st.success(f"✅ Toutes les rencontres programmées pour **{eq_cal_choix}** dans le calendrier actuel ont été disputées.")
 
