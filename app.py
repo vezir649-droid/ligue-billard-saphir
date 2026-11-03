@@ -1613,20 +1613,60 @@ def synchroniser_tous_les_fichiers_github(commit_prefix=None):
 
     return len(succes_list), succes_list, erreurs_list
 
+import copy
+import threading
+
+_FILE_MEM_CACHE = {}
+_SYNC_GITHUB_LOCK = threading.Lock()
+_SYNC_GITHUB_TIMER = None
+
+def _lire_cache_fichier(cle_cache, filepath):
+    """Retourne une copie des données en cache mémoire si le fichier sur disque n'a pas changé (mtime + taille)."""
+    try:
+        if os.path.exists(filepath):
+            st_stat = os.stat(filepath)
+            sig = (st_stat.st_mtime_ns, st_stat.st_size)
+            entree = _FILE_MEM_CACHE.get(cle_cache)
+            if entree and entree[0] == sig:
+                return True, copy.deepcopy(entree[1])
+    except Exception:
+        pass
+    return False, None
+
+def _ecrire_cache_fichier(cle_cache, filepath, data):
+    """Mémorise les données associées à l'empreinte actuelle (mtime + taille) du fichier."""
+    try:
+        if os.path.exists(filepath):
+            st_stat = os.stat(filepath)
+            sig = (st_stat.st_mtime_ns, st_stat.st_size)
+            _FILE_MEM_CACHE[cle_cache] = (sig, copy.deepcopy(data))
+    except Exception:
+        pass
+
 def declencher_sync_github_arriere_plan(delai=1.5, commit_prefix=None):
-    """Déclenche la synchronisation de tous les fichiers .json et .csv en arrière-plan sans bloquer l'UI."""
-    import threading
+    """Déclenche la synchronisation GitHub en arrière-plan avec anti-rebond (debounce) pour regrouper les saisies rapides sans bloquer l'UI."""
+    global _SYNC_GITHUB_TIMER
+    delai_effectif = max(float(delai or 1.5), 2.5)
     def _worker():
-        time.sleep(delai)
         try:
             synchroniser_tous_les_fichiers_github(commit_prefix=commit_prefix)
         except Exception:
             pass
-    t = threading.Thread(target=_worker, daemon=True)
-    t.start()
+    with _SYNC_GITHUB_LOCK:
+        if _SYNC_GITHUB_TIMER is not None:
+            try:
+                _SYNC_GITHUB_TIMER.cancel()
+            except Exception:
+                pass
+        _SYNC_GITHUB_TIMER = threading.Timer(delai_effectif, _worker)
+        _SYNC_GITHUB_TIMER.daemon = True
+        _SYNC_GITHUB_TIMER.start()
 
 def charger_equipes_csv():
-    """Charge la liste des équipes et joueurs depuis le fichier CSV."""
+    """Charge la liste des équipes et joueurs depuis le fichier CSV (avec cache mémoire instantané sur mtime)."""
+    ok_c, val_c = _lire_cache_fichier("equipes_csv", EQUIPES_CSV_FILE)
+    if ok_c and val_c:
+        return val_c
     equipes = {}
     if os.path.exists(EQUIPES_CSV_FILE):
         try:
@@ -1639,6 +1679,8 @@ def charger_equipes_csv():
                         while len(joueurs) < 3:
                             joueurs.append(f"Joueur {len(joueurs)+1}")
                         equipes[nom_eq] = joueurs[:3]
+            if equipes:
+                _ecrire_cache_fichier("equipes_csv", EQUIPES_CSV_FILE, equipes)
         except Exception as e:
             st.error(f"Erreur lors de la lecture du fichier {EQUIPES_CSV_FILE} : {e}")
     return equipes
@@ -1712,13 +1754,22 @@ def charger_sauvegarde():
     return {}
 
 def sauvegarder_donnees(data):
-    """Écrit atomiquement la sauvegarde pour éviter les corruptions et horodate les modifications."""
+    """Écrit atomiquement la sauvegarde uniquement lorsque les données utiles ont changé et regroupe la synchronisation GitHub."""
     try:
+        empreinte = json.dumps({
+            "receveur": data.get("receveur"),
+            "visiteur": data.get("visiteur"),
+            "joueurs": data.get("joueurs"),
+            "matchs": data.get("matchs")
+        }, sort_keys=True, ensure_ascii=False)
+        if _FILE_MEM_CACHE.get("last_backup_sig") == empreinte and os.path.exists(BACKUP_FILE):
+            return
+        _FILE_MEM_CACHE["last_backup_sig"] = empreinte
         data["derniere_mise_a_jour"] = datetime.now().strftime("%H:%M:%S")
         data["ts_modif"] = time.time()
         with open(BACKUP_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
-        declencher_sync_github_arriere_plan(delai=2.0, commit_prefix="Sauvegarde saisie secours")
+        declencher_sync_github_arriere_plan(delai=6.0, commit_prefix="Sauvegarde saisie secours")
     except Exception as e:
         st.error(f"Erreur lors de la sauvegarde automatique : {e}")
 
@@ -2492,12 +2543,16 @@ def parser_ligne_horaire_match(cell_text):
     return None
 
 def charger_horaire_json():
-    """Charge le calendrier des rencontres depuis le fichier local horaire_saphir.json."""
+    """Charge le calendrier des rencontres depuis le fichier local horaire_saphir.json (avec cache mémoire sur mtime)."""
+    ok_c, val_c = _lire_cache_fichier("horaire_json", HORAIRE_SAPHIR_FILE)
+    if ok_c and val_c:
+        return val_c
     if os.path.exists(HORAIRE_SAPHIR_FILE):
         try:
             with open(HORAIRE_SAPHIR_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 if isinstance(data, list) and data:
+                    _ecrire_cache_fichier("horaire_json", HORAIRE_SAPHIR_FILE, data)
                     return data
         except Exception:
             pass
@@ -2815,6 +2870,88 @@ def appliquer_match_du_jour(rencontre=None, forcer=False):
     st.session_state["match_du_jour_applique_date"] = datetime.today().strftime("%Y-%m-%d")
     st.session_state["match_du_jour_initialise_session"] = True
     return True
+
+def obtenir_matchs_semaine_courante(lignes_horaire=None):
+    """Retourne la liste des 4 rencontres officielles programmées pour la semaine active ou à venir."""
+    if not lignes_horaire:
+        lignes_horaire = charger_horaire_json()
+    if not lignes_horaire:
+        return []
+    ref = determiner_match_du_jour(lignes_horaire)
+    if not ref:
+        return []
+    sem_cible = str(ref.get("semaine", "")).strip()
+    jour_cible = ref.get("jour")
+    mois_cible = ref.get("mois")
+    est_ajd = bool(ref.get("est_aujourdhui", False))
+
+    rencontres_semaine = []
+    for row in lignes_horaire:
+        if not row:
+            continue
+        sem_label = str(row[0]).strip() if len(row) > 0 else ""
+        matchs_ligne = []
+        correspond = (sem_cible and sem_label == sem_cible)
+        for cell in row[1:]:
+            res = parser_ligne_horaire_match(cell)
+            if res:
+                res["semaine"] = sem_label
+                res["est_aujourdhui"] = est_ajd
+                res["saison_int"] = ref.get("saison_int", 4)
+                res["type_saison"] = ref.get("type_saison", "Hiver")
+                res["semaine_int"] = ref.get("semaine_int", 1)
+                matchs_ligne.append(res)
+                if res.get("jour") == jour_cible and res.get("mois") == mois_cible:
+                    correspond = True
+        if correspond and matchs_ligne:
+            rencontres_semaine.extend(matchs_ligne)
+            break
+
+    return rencontres_semaine
+
+def cb_appliquer_match_semaine(rencontre_dict):
+    """Callback 1-clic pour charger l'un des 4 matchs de la semaine (équipes, 6 joueurs et moyennes)."""
+    if not rencontre_dict:
+        return
+    appliquer_match_du_jour(rencontre=rencontre_dict, forcer=True)
+    st.session_state["match_en_cours_deja_valide"] = False
+    st.session_state["toast_match_semaine_charge"] = f"{rencontre_dict.get('receveur', '')} vs {rencontre_dict.get('visiteur', '')}"
+
+def cb_changement_score_manche(num_manche, cote):
+    """Logique ergonomique 'Auto-8' : lorsqu'on saisit le score du perdant (1 à 7) alors que l'adversaire est à 0, attribue automatiquement 8 pts à l'adversaire."""
+    if not st.session_state.get("opt_auto_8_actif", True):
+        return
+    cle_modifiee = f"s_{cote}_{num_manche}"
+    autre_cote = "b" if cote == "a" else "a"
+    cle_autre = f"s_{autre_cote}_{num_manche}"
+    try:
+        val_mod = int(st.session_state.get(cle_modifiee, 0))
+        val_autre = int(st.session_state.get(cle_autre, 0))
+    except Exception:
+        return
+    if 1 <= val_mod <= 7 and val_autre == 0:
+        st.session_state[cle_autre] = 8
+
+def cb_victoire_rapide_8pts(num_manche, cote):
+    """Bouton tactile 1-clic : attribue immédiatement 8 points au vainqueur de la manche."""
+    cle_gagnant = f"s_{cote}_{num_manche}"
+    st.session_state[cle_gagnant] = 8
+
+def cb_inverser_ordre_joueurs_rapide(cote_eq, pos1, pos2):
+    """Permet de permuter rapidement deux joueurs (ex: J1 ↔ J2 ou J2 ↔ J3) dans l'alignement depuis le panneau mobile."""
+    k1 = f"sel_{pos1}_{cote_eq}"
+    k2 = f"sel_{pos2}_{cote_eq}"
+    v1 = st.session_state.get(k1)
+    v2 = st.session_state.get(k2)
+    if v1 is not None and v2 is not None:
+        st.session_state[k1] = v2
+        st.session_state[k2] = v1
+        st.session_state[f"last_nom_{pos1}_{cote_eq}"] = v2
+        st.session_state[f"last_nom_{pos2}_{cote_eq}"] = v1
+        st.session_state[f"moy_{pos1}_{cote_eq}"] = obtenir_moyenne_joueur(v2)
+        st.session_state[f"moy_{pos2}_{cote_eq}"] = obtenir_moyenne_joueur(v1)
+        st.session_state[f"pts_{pos1}_{cote_eq}"] = calculer_score_absent(st.session_state[f"moy_{pos1}_{cote_eq}"])
+        st.session_state[f"pts_{pos2}_{cote_eq}"] = calculer_score_absent(st.session_state[f"moy_{pos2}_{cote_eq}"])
 
 # ==============================================================================
 # MODULE DE NUMÉRISATION ET RECONNAISSANCE DE FEUILLE DE MATCH (GEMINI VISION)
@@ -4548,6 +4685,133 @@ def afficher_vue_scanner_feuille_match(label_direct):
                     })
                 afficher_tableau_html_compatible(pd.DataFrame(duels_data))
 
+                # Mini-éditeur de correction rapide directement dans les résultats du Scanner IA
+                with st.expander("✏️ Corriger ou ajuster rapidement un joueur ou un pointage avant d'injecter / archiver", expanded=bool(incertitudes)):
+                    st.caption("Ajustez directement un nom mal lu ou un pointage ambigu : les totaux par joueur (/24), les totaux d'équipe (/72) et la feuille officielle A4 seront recalculés automatiquement.")
+                    eqs_dispo_scan = charger_liste_equipes_base()
+                    equipes_dict_scan = charger_equipes_csv()
+                    tous_joueurs_scan = []
+                    for _eq_n, _j_l in equipes_dict_scan.items():
+                        for _jn in _j_l:
+                            if _jn and _jn not in tous_joueurs_scan:
+                                tous_joueurs_scan.append(_jn)
+
+                    c_ed_meta1, c_ed_meta2, c_ed_meta3 = st.columns([1.2, 1.4, 1.4])
+                    with c_ed_meta1:
+                        ed_date_str = st.text_input("📅 Date du match (AAAA-MM-JJ)", value=str(data_s.get("date", datetime.today().strftime("%Y-%m-%d"))), key="scan_ed_date")
+                    with c_ed_meta2:
+                        idx_r_ed = eqs_dispo_scan.index(rec_nom) if rec_nom in eqs_dispo_scan else 0
+                        ed_rec_nom = st.selectbox("🏠 Équipe Receveuse", options=eqs_dispo_scan, index=idx_r_ed, key="scan_ed_rec")
+                    with c_ed_meta3:
+                        idx_v_ed = eqs_dispo_scan.index(vis_nom) if vis_nom in eqs_dispo_scan else min(1, len(eqs_dispo_scan)-1)
+                        ed_vis_nom = st.selectbox("🚗 Équipe Visiteuse", options=eqs_dispo_scan, index=idx_v_ed, key="scan_ed_vis")
+
+                    st.markdown("###### 👥 Alignement des 6 joueurs (Ordre J1, J2, J3)")
+                    j_rec_actuels = list(data_s.get("joueurs_rec") or [p.get("nom", "") for p in stats_rec])
+                    while len(j_rec_actuels) < 3:
+                        j_rec_actuels.append(f"Joueur {len(j_rec_actuels)+1}")
+                    j_vis_actuels = list(data_s.get("joueurs_vis") or [p.get("nom", "") for p in stats_vis])
+                    while len(j_vis_actuels) < 3:
+                        j_vis_actuels.append(f"Joueur {len(j_vis_actuels)+1}")
+
+                    c_ed_jr, c_ed_jv = st.columns(2)
+                    nouveaux_j_rec = []
+                    nouveaux_j_vis = []
+                    with c_ed_jr:
+                        st.markdown(f"**🔴 {ed_rec_nom} (Receveur)**")
+                        for idx_j in range(3):
+                            val_def_jr = j_rec_actuels[idx_j]
+                            opts_jr = [val_def_jr] + [p for p in equipes_dict_scan.get(ed_rec_nom, []) if p != val_def_jr] + [p for p in tous_joueurs_scan if p != val_def_jr and p not in equipes_dict_scan.get(ed_rec_nom, [])]
+                            opts_jr = [x for x in opts_jr if x]
+                            choix_jr = st.selectbox(f"Receveur J{idx_j+1} (M{idx_j+1})", options=opts_jr if opts_jr else [f"Joueur {idx_j+1}"], index=0, key=f"scan_ed_jr_{idx_j}")
+                            nouveaux_j_rec.append(choix_jr)
+                    with c_ed_jv:
+                        st.markdown(f"**🔵 {ed_vis_nom} (Visiteur)**")
+                        for idx_j in range(3):
+                            val_def_jv = j_vis_actuels[idx_j]
+                            opts_jv = [val_def_jv] + [p for p in equipes_dict_scan.get(ed_vis_nom, []) if p != val_def_jv] + [p for p in tous_joueurs_scan if p != val_def_jv and p not in equipes_dict_scan.get(ed_vis_nom, [])]
+                            opts_jv = [x for x in opts_jv if x]
+                            choix_jv = st.selectbox(f"Visiteur J{idx_j+1} (M{idx_j+1})", options=opts_jv if opts_jv else [f"Joueur {idx_j+1}"], index=0, key=f"scan_ed_jv_{idx_j}")
+                            nouveaux_j_vis.append(choix_jv)
+
+                    st.markdown("###### 🎱 Pointages des 9 manches (0 à 8 pts)")
+                    rotation_scan_pairs = [
+                        (1, 0, 0), (2, 1, 1), (3, 2, 2),
+                        (4, 0, 1), (5, 1, 2), (6, 2, 0),
+                        (7, 0, 2), (8, 1, 0), (9, 2, 1)
+                    ]
+                    ed_scores_manches = {}
+                    cols_m_ed = st.columns(3)
+                    for m_num, r_idx, v_idx in rotation_scan_pairs:
+                        col_m = cols_m_ed[(m_num - 1) % 3]
+                        m_curr = matchs_dict.get(str(m_num), {})
+                        sa_curr = max(0, min(8, _safe_int_val(m_curr.get("score_a", 0))))
+                        sb_curr = max(0, min(8, _safe_int_val(m_curr.get("score_b", 0))))
+                        nom_a_court = nouveaux_j_rec[r_idx].split()[0] if nouveaux_j_rec[r_idx] else f"J{r_idx+1}"
+                        nom_b_court = nouveaux_j_vis[v_idx].split()[0] if nouveaux_j_vis[v_idx] else f"J{v_idx+1}"
+                        with col_m:
+                            st.caption(f"**M{m_num}** : {nom_a_court} vs {nom_b_court}")
+                            sc_c1, sc_c2 = st.columns(2)
+                            with sc_c1:
+                                n_sa = st.selectbox(f"M{m_num} {nom_a_court}", options=list(range(9)), index=sa_curr, key=f"scan_ed_sa_{m_num}", label_visibility="collapsed")
+                            with sc_c2:
+                                n_sb = st.selectbox(f"M{m_num} {nom_b_court}", options=list(range(9)), index=sb_curr, key=f"scan_ed_sb_{m_num}", label_visibility="collapsed")
+                            ed_scores_manches[str(m_num)] = (int(n_sa), int(n_sb), nouveaux_j_rec[r_idx], nouveaux_j_vis[v_idx])
+
+                    if st.button("💾 Appliquer les corrections au scan et recalculer les totaux", type="primary", use_container_width=True, key="btn_apply_scan_edits"):
+                        nouv_matchs = {}
+                        tot_r_calc = 0
+                        tot_v_calc = 0
+                        stats_r_map = {i: {"nom": nouveaux_j_rec[i], "total_points": 0, "victoires": 0, "defaites": 0, "duels": []} for i in range(3)}
+                        stats_v_map = {i: {"nom": nouveaux_j_vis[i], "total_points": 0, "victoires": 0, "defaites": 0, "duels": []} for i in range(3)}
+                        nb_jouees_ed = 0
+                        for m_num, r_idx, v_idx in rotation_scan_pairs:
+                            sa_v, sb_v, ja_v, jb_v = ed_scores_manches[str(m_num)]
+                            nouv_matchs[str(m_num)] = {
+                                "score_a": sa_v,
+                                "score_b": sb_v,
+                                "joueur_a": ja_v,
+                                "joueur_b": jb_v
+                            }
+                            tot_r_calc += sa_v
+                            tot_v_calc += sb_v
+                            if sa_v > 0 or sb_v > 0:
+                                nb_jouees_ed += 1
+                            stats_r_map[r_idx]["total_points"] += sa_v
+                            stats_r_map[r_idx]["duels"].append({"manche": m_num, "score": sa_v, "score_adv": sb_v, "adversaire": jb_v})
+                            if sa_v > sb_v:
+                                stats_r_map[r_idx]["victoires"] += 1
+                            elif sb_v > sa_v:
+                                stats_r_map[r_idx]["defaites"] += 1
+
+                            stats_v_map[v_idx]["total_points"] += sb_v
+                            stats_v_map[v_idx]["duels"].append({"manche": m_num, "score": sb_v, "score_adv": sa_v, "adversaire": ja_v})
+                            if sb_v > sa_v:
+                                stats_v_map[v_idx]["victoires"] += 1
+                            elif sa_v > sb_v:
+                                stats_v_map[v_idx]["defaites"] += 1
+
+                        data_s["date"] = ed_date_str.strip()
+                        data_s["receveur"] = ed_rec_nom
+                        data_s["visiteur"] = ed_vis_nom
+                        data_s["joueurs_rec"] = nouveaux_j_rec
+                        data_s["joueurs_vis"] = nouveaux_j_vis
+                        data_s["matchs"] = nouv_matchs
+                        data_s["total_rec"] = tot_r_calc
+                        data_s["total_vis"] = tot_v_calc
+                        data_s["raw_total_rec"] = tot_r_calc
+                        data_s["raw_total_vis"] = tot_v_calc
+                        data_s["stats_joueurs_rec"] = [stats_r_map[i] for i in range(3)]
+                        data_s["stats_joueurs_vis"] = [stats_v_map[i] for i in range(3)]
+                        data_s["totaux_joueurs_rec"] = [stats_r_map[i]["total_points"] for i in range(3)]
+                        data_s["totaux_joueurs_vis"] = [stats_v_map[i]["total_points"] for i in range(3)]
+                        data_s["est_partiel"] = (nb_jouees_ed < 9)
+                        data_s["incertitudes"] = []
+                        data_s.pop("html_officiel", None)
+                        st.session_state["scan_result_data"] = data_s
+                        st.success("✅ Corrections appliquées ! Les totaux par joueur, le score d'équipe et la feuille A4 ont été mis à jour.")
+                        st.rerun()
+
                 # Section Feuille officielle HTML & Transmission aux administrateurs
                 st.divider()
                 st.markdown("### 📜 Feuille officielle du match & Transmission aux Administrateurs")
@@ -5407,12 +5671,17 @@ def afficher_module_test_post_saphir(key_prefix="saphir_api"):
 
 def charger_historique_matchs():
     """Charge la liste des matchs archivés depuis le fichier d'historique (avec repli sur la sauvegarde .bak ou GitHub si nécessaire)."""
+    ok_c, val_c = _lire_cache_fichier("historique_matchs", HISTORIQUE_FILE)
+    if ok_c and isinstance(val_c, list) and len(val_c) > 0:
+        return val_c
     for chemin in [HISTORIQUE_FILE, f"{HISTORIQUE_FILE}.bak"]:
         if os.path.exists(chemin):
             try:
                 with open(chemin, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     if isinstance(data, list) and len(data) > 0:
+                        if chemin == HISTORIQUE_FILE:
+                            _ecrire_cache_fichier("historique_matchs", HISTORIQUE_FILE, data)
                         return data
             except Exception:
                 continue
@@ -14247,10 +14516,25 @@ with tab_feuille:
     if rencontre_active:
         tag_match = "Aujourd'hui" if rencontre_active.get("est_aujourdhui") else f"Prévu ({rencontre_active.get('date_texte', '')})"
         with st.sidebar.container(border=True):
-            st.markdown(f"**📅 Match du jour — {tag_match}**")
+            st.markdown(f"**📅 Matchs programmés — {tag_match}**")
             st.markdown(f"🏆 **Saison {no_sais_sb}** ({type_sais_sb}) • **{sem_sais_sb}**")
-            st.markdown(f"🔵 **{rencontre_active['receveur']}** *(Receveur)*<br>vs 🟠 **{rencontre_active['visiteur']}** *(Visiteur)*", unsafe_allow_html=True)
-            st.button("🔄 Charger le match du jour et alignements", key="btn_apply_match_jour_sb", on_click=cb_appliquer_match_du_jour_btn, use_container_width=True, help="Configure automatiquement les équipes et les joueurs selon l'horaire officiel")
+            matchs_sem_sb = obtenir_matchs_semaine_courante()
+            if len(matchs_sem_sb) > 1:
+                st.caption("Cliquez sur votre table pour charger les 6 joueurs :")
+                for idx_sb_m, m_sb_it in enumerate(matchs_sem_sb):
+                    r_sb = m_sb_it.get("receveur", "")
+                    v_sb = m_sb_it.get("visiteur", "")
+                    st.button(
+                        f"🏠 {r_sb} vs 🚗 {v_sb}",
+                        key=f"btn_sb_match_sem_{idx_sb_m}",
+                        on_click=cb_appliquer_match_semaine,
+                        args=(m_sb_it,),
+                        use_container_width=True,
+                        help=f"Charger {r_sb} vs {v_sb} ({m_sb_it.get('texte', '')})"
+                    )
+            else:
+                st.markdown(f"🔵 **{rencontre_active['receveur']}** *(Receveur)*<br>vs 🟠 **{rencontre_active['visiteur']}** *(Visiteur)*", unsafe_allow_html=True)
+                st.button("🔄 Charger le match du jour et alignements", key="btn_apply_match_jour_sb", on_click=cb_appliquer_match_du_jour_btn, use_container_width=True, help="Configure automatiquement les équipes et les joueurs selon l'horaire officiel")
         if "msg_match_applique" in st.session_state:
             st.sidebar.success(st.session_state.pop("msg_match_applique"))
 
@@ -15436,6 +15720,10 @@ with tab_feuille:
         if st.session_state.pop("msg_succes_archive_scan", False):
             st.success("✅ **Match archivé avec succès dans l'historique officiel depuis le scanner IA !**")
         st.markdown(f"### 🎯 Grille de saisie des 9 manches — Saison {no_sais_sb} • {sem_sais_sb} (Rotation 3 contre 3)")
+        if st.session_state.get("toast_match_semaine_charge"):
+            nom_m_toast = st.session_state.pop("toast_match_semaine_charge")
+            st.success(f"✅ **Match chargé :** {nom_m_toast} — Les 6 joueurs officiels et leurs moyennes ont été alignés automatiquement.")
+
         rencontre_info = determiner_match_du_jour()
         if rencontre_info:
             txt_rencontre = rencontre_info.get("texte", "")
@@ -15443,30 +15731,91 @@ with tab_feuille:
             badge_date = "🟢 **Match officiel du jour selon l'horaire :**" if est_ajd else "ℹ️ **Prochain match officiel au calendrier :**"
             st.info(f"{badge_date} **{equipe_receveur}** (🏠 Receveur) vs **{equipe_visiteur}** (🚗 Visiteur) — *{txt_rencontre}* (🏆 **Saison {no_sais_sb} • {sem_sais_sb}**). Alignements et moyennes officielles des joueurs synchronisés.")
 
-        st.info(
-            "📌 **Règle de rotation :** Aucun joueur ne joue deux manches consécutives.\n\n"
-            "🎱 **Pointage des manches :** Saisie libre de **0 à 8 points** par joueur (**sans obligation d'un score de 8** pour valider un résultat)."
-        )
+        # --- MODULE 2 : SÉLECTEUR RAPIDE DES 4 MATCHS DE LA SEMAINE & CONFIGURATION MOBILE ---
+        matchs_semaine_liste = obtenir_matchs_semaine_courante()
+        with st.expander("📱 **Choix rapide de la table (4 matchs de la semaine) & Alignement mobile (J1, J2, J3, Présences)**", expanded=False):
+            if matchs_semaine_liste:
+                sem_titre_aff = matchs_semaine_liste[0].get("semaine", sem_sais_sb)
+                st.markdown(f"##### 🗓️ Charger l'une des {len(matchs_semaine_liste)} rencontres programmées ({sem_titre_aff}) en 1 clic :")
+                cols_m_sem = st.columns(min(4, max(1, len(matchs_semaine_liste))))
+                for idx_ms, m_sem_item in enumerate(matchs_semaine_liste):
+                    r_ms = m_sem_item.get("receveur", "")
+                    v_ms = m_sem_item.get("visiteur", "")
+                    est_actif_ms = (r_ms == equipe_receveur and v_ms == equipe_visiteur)
+                    lbl_btn_ms = f"{'✅ ' if est_actif_ms else ''}🏠 {r_ms} vs 🚗 {v_ms}"
+                    with cols_m_sem[idx_ms % len(cols_m_sem)]:
+                        st.button(
+                            lbl_btn_ms,
+                            key=f"btn_quick_match_sem_{idx_ms}",
+                            type="primary" if est_actif_ms else "secondary",
+                            use_container_width=True,
+                            disabled=not est_editeur,
+                            on_click=cb_appliquer_match_semaine,
+                            args=(m_sem_item,),
+                            help=f"Charger immédiatement l'alignement officiel de {r_ms} vs {v_ms} ({m_sem_item.get('texte', '')})"
+                        )
+                st.divider()
 
-        with st.expander("👥 **Présence des joueurs — Indiquer si un joueur est présent ou absent**", expanded=False):
-            st.caption("Vous pouvez basculer l'état de présence de chaque joueur directement ici ou dans la barre latérale. En cas d'absence, la moyenne est utilisée pour calculer le score forfaitaire (plafonné à 7 pts).")
+            st.markdown("##### 🔄 Permutation rapide de l'ordre des joueurs (J1 ↔ J2 ↔ J3) et Présences")
+            st.caption("Permutez l'ordre d'entrée des joueurs (J1, J2, J3) ou indiquez une absence directement sur votre téléphone sans ouvrir le menu latéral.")
             col_pr_r, col_pr_v = st.columns(2)
             with col_pr_r:
-                st.markdown(f"**🏠 {equipe_receveur}**")
-                for p_id in ["j1_rec", "j2_rec", "j3_rec"]:
+                st.markdown(f"**🏠 {equipe_receveur} (Receveur)**")
+                b_sw_r1, b_sw_r2, b_sw_r3 = st.columns(3)
+                b_sw_r1.button("🔀 J1 ↔ J2", key="btn_sw_r_12", use_container_width=True, disabled=not est_editeur, on_click=cb_inverser_ordre_joueurs_rapide, args=("rec", "j1", "j2"))
+                b_sw_r2.button("🔀 J2 ↔ J3", key="btn_sw_r_23", use_container_width=True, disabled=not est_editeur, on_click=cb_inverser_ordre_joueurs_rapide, args=("rec", "j2", "j3"))
+                b_sw_r3.button("🔀 J1 ↔ J3", key="btn_sw_r_13", use_container_width=True, disabled=not est_editeur, on_click=cb_inverser_ordre_joueurs_rapide, args=("rec", "j1", "j3"))
+                for idx_p, p_id in enumerate(["j1_rec", "j2_rec", "j3_rec"], start=1):
                     nom_j = dict_joueurs[p_id]["nom"]
                     c_n, c_t = st.columns([3, 2])
-                    c_n.markdown(f"**{nom_j}**")
+                    c_n.markdown(f"**J{idx_p} — {nom_j}**")
                     curr_pres = bool(st.session_state.get(f"pres_{p_id}", True))
                     c_t.toggle("Présent", value=curr_pres, key=f"main_pres_tog_{p_id}", on_change=cb_toggle_presence_main, args=(p_id,), disabled=not est_editeur)
             with col_pr_v:
-                st.markdown(f"**🚗 {equipe_visiteur}**")
-                for p_id in ["j1_vis", "j2_vis", "j3_vis"]:
+                st.markdown(f"**🚗 {equipe_visiteur} (Visiteur)**")
+                b_sw_v1, b_sw_v2, b_sw_v3 = st.columns(3)
+                b_sw_v1.button("🔀 J1 ↔ J2", key="btn_sw_v_12", use_container_width=True, disabled=not est_editeur, on_click=cb_inverser_ordre_joueurs_rapide, args=("vis", "j1", "j2"))
+                b_sw_v2.button("🔀 J2 ↔ J3", key="btn_sw_v_23", use_container_width=True, disabled=not est_editeur, on_click=cb_inverser_ordre_joueurs_rapide, args=("vis", "j2", "j3"))
+                b_sw_v3.button("🔀 J1 ↔ J3", key="btn_sw_v_13", use_container_width=True, disabled=not est_editeur, on_click=cb_inverser_ordre_joueurs_rapide, args=("vis", "j1", "j3"))
+                for idx_p, p_id in enumerate(["j1_vis", "j2_vis", "j3_vis"], start=1):
                     nom_j = dict_joueurs[p_id]["nom"]
                     c_n, c_t = st.columns([3, 2])
-                    c_n.markdown(f"**{nom_j}**")
+                    c_n.markdown(f"**J{idx_p} — {nom_j}**")
                     curr_pres = bool(st.session_state.get(f"pres_{p_id}", True))
                     c_t.toggle("Présent", value=curr_pres, key=f"main_pres_tog_{p_id}", on_change=cb_toggle_presence_main, args=(p_id,), disabled=not est_editeur)
+
+        # --- MODULE 1 : BARRE DE CONTRÔLE ERGONOMIQUE DES 9 MANCHES ---
+        with st.container(border=True):
+            c_erg1, c_erg2, c_erg3 = st.columns([2.3, 1.05, 1.05])
+            with c_erg1:
+                filtre_ronde = st.radio(
+                    "🎯 Affichage des manches :",
+                    options=[
+                        "📋 Toutes (1-9)",
+                        "1️⃣ Ronde 1 (M1-M3)",
+                        "2️⃣ Ronde 2 (M4-M6)",
+                        "3️⃣ Ronde 3 (M7-M9)",
+                        "⏳ À jouer"
+                    ],
+                    horizontal=True,
+                    key="radio_filtre_ronde_manches"
+                )
+            with c_erg2:
+                st.write("")
+                opt_auto_8 = st.toggle(
+                    "⚡ Auto-8 intelligent",
+                    value=st.session_state.get("opt_auto_8_actif", True),
+                    key="opt_auto_8_actif",
+                    help="Dès que vous sélectionnez le score du joueur perdant (1 à 7), l'adversaire reçoit automatiquement 8 points !"
+                )
+            with c_erg3:
+                st.write("")
+                opt_replier_term = st.toggle(
+                    "🔽 Replier terminées",
+                    value=st.session_state.get("opt_replier_manches_terminees", False),
+                    key="opt_replier_manches_terminees",
+                    help="Replie automatiquement les manches dont le pointage est déjà saisi pour garder l'écran compact sur mobile."
+                )
 
         donnees_a_sauvegarder = {
             "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -15516,74 +15865,130 @@ with tab_feuille:
                 init_val_a = 0
                 init_val_b = 0
 
-            # IMPORTANT : Le titre du st.expander doit rester statique vis-à-vis des scores pour que Streamlit conserve l'état des champs numériques
-            with st.expander(f"Manche {num_manche} : {joueur_a} ({equipe_receveur}) vs {joueur_b} ({equipe_visiteur}){status_label}", expanded=True):
-                c1, c2 = st.columns(2)
+            options_scores = [0, 1, 2, 3, 4, 5, 6, 7, 8]
 
-                options_scores = [0, 1, 2, 3, 4, 5, 6, 7, 8]
+            if manche_forfait:
+                st.session_state[f"s_a_{num_manche}"] = max(0, min(8, int(init_val_a)))
+                st.session_state[f"s_b_{num_manche}"] = max(0, min(8, int(init_val_b)))
+            else:
+                if f"s_a_{num_manche}" not in st.session_state:
+                    st.session_state[f"s_a_{num_manche}"] = 0
+                if f"s_b_{num_manche}" not in st.session_state:
+                    st.session_state[f"s_b_{num_manche}"] = 0
 
-                if manche_forfait:
-                    st.session_state[f"s_a_{num_manche}"] = max(0, min(8, int(init_val_a)))
-                    st.session_state[f"s_b_{num_manche}"] = max(0, min(8, int(init_val_b)))
-                else:
-                    if f"s_a_{num_manche}" not in st.session_state:
-                        st.session_state[f"s_a_{num_manche}"] = 0
-                    if f"s_b_{num_manche}" not in st.session_state:
-                        st.session_state[f"s_b_{num_manche}"] = 0
+            cur_sa = int(st.session_state.get(f"s_a_{num_manche}", init_val_a))
+            if cur_sa not in options_scores:
+                cur_sa = max(0, min(8, cur_sa))
+            idx_sa = options_scores.index(cur_sa)
 
-                cur_sa = int(st.session_state.get(f"s_a_{num_manche}", init_val_a))
-                if cur_sa not in options_scores:
-                    cur_sa = max(0, min(8, cur_sa))
-                idx_sa = options_scores.index(cur_sa)
+            cur_sb = int(st.session_state.get(f"s_b_{num_manche}", init_val_b))
+            if cur_sb not in options_scores:
+                cur_sb = max(0, min(8, cur_sb))
+            idx_sb = options_scores.index(cur_sb)
 
-                cur_sb = int(st.session_state.get(f"s_b_{num_manche}", init_val_b))
-                if cur_sb not in options_scores:
-                    cur_sb = max(0, min(8, cur_sb))
-                idx_sb = options_scores.index(cur_sb)
+            est_manche_jouee = bool(manche_forfait or cur_sa > 0 or cur_sb > 0)
 
-                disabled_a = (not est_editeur) or manche_forfait
-                disabled_b = (not est_editeur) or manche_forfait
+            # Filtrage d'affichage selon la Ronde choisie
+            afficher_cette_manche = True
+            if filtre_ronde == "1️⃣ Ronde 1 (M1-M3)" and num_manche not in (1, 2, 3):
+                afficher_cette_manche = False
+            elif filtre_ronde == "2️⃣ Ronde 2 (M4-M6)" and num_manche not in (4, 5, 6):
+                afficher_cette_manche = False
+            elif filtre_ronde == "3️⃣ Ronde 3 (M7-M9)" and num_manche not in (7, 8, 9):
+                afficher_cette_manche = False
+            elif filtre_ronde == "⏳ À jouer" and est_manche_jouee:
+                afficher_cette_manche = False
 
-                with c1:
-                    badge_lbl_a = f" [Absent : {init_val_a} pts 🔒]" if not a_pres else (f" [Score calculé selon moyenne : {init_val_a} pts 🔒]" if not b_pres else "")
-                    label_champ_a = f"🔵 Points de {joueur_a} ({equipe_receveur}){badge_lbl_a}"
-                    score_a = int(st.selectbox(
-                        label_champ_a, 
-                        options=options_scores,
-                        index=idx_sa,
-                        key=f"s_a_{num_manche}",
-                        disabled=disabled_a,
-                        help="🔒 Score verrouillé calculé automatiquement selon la moyenne en raison d'une absence." if manche_forfait else "Sélectionnez le score de la manche (0 à 8)."
-                    ))
+            if not afficher_cette_manche:
+                score_a = cur_sa
+                score_b = cur_sb
+            else:
+                if opt_replier_term and est_manche_jouee:
+                    gagnant_txt = f"🏆 {joueur_a}" if cur_sa > cur_sb else (f"🏆 {joueur_b}" if cur_sb > cur_sa else "⚖️ Égalité")
+                    st.markdown(
+                        f"<div style='background:#f0fdf4;border:1px solid #bbf7d0;border-left:4px solid #16a34a;border-radius:8px;padding:6px 12px;margin-bottom:4px;font-size:13.5px;color:#14532d;'>"
+                        f"✅ <strong>Manche {num_manche} terminée :</strong> {joueur_a} (<strong>{cur_sa}</strong>) — (<strong>{cur_sb}</strong>) {joueur_b} &nbsp;•&nbsp; {gagnant_txt}"
+                        f"</div>",
+                        unsafe_allow_html=True
+                    )
 
-                with c2:
-                    badge_lbl_b = f" [Absent : {init_val_b} pts 🔒]" if not b_pres else (f" [Score calculé selon moyenne : {init_val_b} pts 🔒]" if not a_pres else "")
-                    label_champ_b = f"🟠 Points de {joueur_b} ({equipe_visiteur}){badge_lbl_b}"
-                    score_b = int(st.selectbox(
-                        label_champ_b, 
-                        options=options_scores,
-                        index=idx_sb,
-                        key=f"s_b_{num_manche}",
-                        disabled=disabled_b,
-                        help="🔒 Score verrouillé calculé automatiquement selon la moyenne en raison d'une absence." if manche_forfait else "Sélectionnez le score de la manche (0 à 8)."
-                    ))
-            
-                # Retour visuel immédiat (résultat permis sans obligation d'un score de 8)
-                if score_a > score_b:
-                    st.caption(f"✅ **Manche {num_manche} — 🏆 Victoire de {joueur_a}** ({score_a} à {score_b})")
-                elif score_b > score_a:
-                    st.caption(f"✅ **Manche {num_manche} — 🏆 Victoire de {joueur_b}** ({score_b} à {score_a})")
-                elif score_a > 0 and score_a == score_b:
-                    st.caption(f"✅ **Manche {num_manche} — ⚖️ Égalité** ({score_a} à {score_b})")
+                # IMPORTANT : Le titre du st.expander doit rester statique vis-à-vis des scores pour que Streamlit conserve l'état des champs numériques
+                with st.expander(
+                    f"Manche {num_manche} : {joueur_a} ({equipe_receveur}) vs {joueur_b} ({equipe_visiteur}){status_label}",
+                    expanded=(not est_manche_jouee if opt_replier_term else True)
+                ):
+                    disabled_a = (not est_editeur) or manche_forfait
+                    disabled_b = (not est_editeur) or manche_forfait
 
-                donnees_a_sauvegarder["matchs"][str(num_manche)] = {
-                    "score_a": int(score_a),
-                    "score_b": int(score_b),
-                    "joueur_a": joueur_a,
-                    "joueur_b": joueur_b,
-                    "joueur_a_absent": not a_pres,
-                    "joueur_b_absent": not b_pres
-                }
+                    if not manche_forfait and est_editeur:
+                        qb1, qb2 = st.columns(2)
+                        with qb1:
+                            st.button(
+                                f"🏆 8 pts — {joueur_a}",
+                                key=f"btn_q8_a_{num_manche}",
+                                use_container_width=True,
+                                type="primary" if cur_sa == 8 else "secondary",
+                                on_click=cb_victoire_rapide_8pts,
+                                args=(num_manche, "a"),
+                                help=f"Attribuer immédiatement 8 points à {joueur_a}"
+                            )
+                        with qb2:
+                            st.button(
+                                f"🏆 8 pts — {joueur_b}",
+                                key=f"btn_q8_b_{num_manche}",
+                                use_container_width=True,
+                                type="primary" if cur_sb == 8 else "secondary",
+                                on_click=cb_victoire_rapide_8pts,
+                                args=(num_manche, "b"),
+                                help=f"Attribuer immédiatement 8 points à {joueur_b}"
+                            )
+
+                    c1, c2 = st.columns(2)
+
+                    with c1:
+                        badge_lbl_a = f" [Absent : {init_val_a} pts 🔒]" if not a_pres else (f" [Score calculé selon moyenne : {init_val_a} pts 🔒]" if not b_pres else "")
+                        label_champ_a = f"🔵 Points de {joueur_a} ({equipe_receveur}){badge_lbl_a}"
+                        score_a = int(st.selectbox(
+                            label_champ_a, 
+                            options=options_scores,
+                            index=idx_sa,
+                            key=f"s_a_{num_manche}",
+                            on_change=cb_changement_score_manche,
+                            args=(num_manche, "a"),
+                            disabled=disabled_a,
+                            help="🔒 Score verrouillé calculé automatiquement selon la moyenne en raison d'une absence." if manche_forfait else "Sélectionnez le score de la manche (0 à 8)."
+                        ))
+
+                    with c2:
+                        badge_lbl_b = f" [Absent : {init_val_b} pts 🔒]" if not b_pres else (f" [Score calculé selon moyenne : {init_val_b} pts 🔒]" if not a_pres else "")
+                        label_champ_b = f"🟠 Points de {joueur_b} ({equipe_visiteur}){badge_lbl_b}"
+                        score_b = int(st.selectbox(
+                            label_champ_b, 
+                            options=options_scores,
+                            index=idx_sb,
+                            key=f"s_b_{num_manche}",
+                            on_change=cb_changement_score_manche,
+                            args=(num_manche, "b"),
+                            disabled=disabled_b,
+                            help="🔒 Score verrouillé calculé automatiquement selon la moyenne en raison d'une absence." if manche_forfait else "Sélectionnez le score de la manche (0 à 8)."
+                        ))
+                
+                    # Retour visuel immédiat (résultat permis sans obligation d'un score de 8)
+                    if score_a > score_b:
+                        st.caption(f"✅ **Manche {num_manche} — 🏆 Victoire de {joueur_a}** ({score_a} à {score_b})")
+                    elif score_b > score_a:
+                        st.caption(f"✅ **Manche {num_manche} — 🏆 Victoire de {joueur_b}** ({score_b} à {score_a})")
+                    elif score_a > 0 and score_a == score_b:
+                        st.caption(f"✅ **Manche {num_manche} — ⚖️ Égalité** ({score_a} à {score_b})")
+
+            donnees_a_sauvegarder["matchs"][str(num_manche)] = {
+                "score_a": int(score_a),
+                "score_b": int(score_b),
+                "joueur_a": joueur_a,
+                "joueur_b": joueur_b,
+                "joueur_a_absent": not a_pres,
+                "joueur_b_absent": not b_pres
+            }
 
         # --- CALCULS FINAUX ET TOTAUX (PAR ÉQUIPE ET PAR JOUEUR) ---
         total_pts_receveur = sum(int(m["score_a"]) for m in donnees_a_sauvegarder["matchs"].values())
@@ -15616,23 +16021,42 @@ with tab_feuille:
         with conteneur_scoreboard_live:
             st.markdown(
                 f"""
-                <div style="background: linear-gradient(135deg, #0b3c5d 0%, #16527a 100%); color: white; border-radius: 12px; padding: 14px 20px; margin: 8px 0 12px 0; box-shadow: 0 4px 12px rgba(11, 60, 93, 0.2); border-bottom: 4px solid #f59e0b;">
+                <style>
+                div[data-testid="stVerticalBlock"] > div:has(.saphir-sticky-scoreboard) {{
+                    position: sticky !important;
+                    top: 2.85rem !important;
+                    z-index: 95 !important;
+                }}
+                @media (max-width: 768px) {{
+                    .saphir-sticky-scoreboard {{
+                        padding: 8px 12px !important;
+                        margin: 4px 0 8px 0 !important;
+                    }}
+                    .saphir-sticky-scoreboard .sb-team-name {{
+                        font-size: 14px !important;
+                    }}
+                    .saphir-sticky-scoreboard .sb-score-big {{
+                        font-size: 20px !important;
+                    }}
+                }}
+                </style>
+                <div class="saphir-sticky-scoreboard" style="background: linear-gradient(135deg, rgba(11, 60, 93, 0.97) 0%, rgba(22, 82, 122, 0.97) 100%); backdrop-filter: blur(8px); color: white; border-radius: 12px; padding: 14px 20px; margin: 8px 0 12px 0; box-shadow: 0 6px 16px rgba(11, 60, 93, 0.28); border-bottom: 4px solid #f59e0b;">
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                        <div style="flex: 1; min-width: 160px;">
+                        <div style="flex: 1; min-width: 120px;">
                             <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: #93c5fd; font-weight: 700;">🔵 Équipe Receveuse (🏠)</div>
-                            <div style="font-size: 18px; font-weight: 800; color: #ffffff;">{equipe_receveur}</div>
+                            <div class="sb-team-name" style="font-size: 18px; font-weight: 800; color: #ffffff;">{equipe_receveur}</div>
                         </div>
-                        <div style="text-align: center; padding: 4px 18px; background: rgba(255,255,255,0.12); border-radius: 10px; border: 1px solid rgba(255,255,255,0.22);">
-                            <div style="font-size: 26px; font-weight: 900; letter-spacing: 1px; color: #fbbf24;">
+                        <div style="text-align: center; padding: 4px 14px; background: rgba(255,255,255,0.12); border-radius: 10px; border: 1px solid rgba(255,255,255,0.22);">
+                            <div class="sb-score-big" style="font-size: 26px; font-weight: 900; letter-spacing: 1px; color: #fbbf24;">
                                 {total_pts_receveur} <span style="font-size: 15px; color: #e2e8f0; font-weight: 600;">pts</span>
                                 &nbsp;—&nbsp;
                                 {total_pts_visiteur} <span style="font-size: 15px; color: #e2e8f0; font-weight: 600;">pts</span>
                             </div>
                             <div style="font-size: 12px; color: #f8fafc; margin-top: 2px;">{statut_live_html} &nbsp;•&nbsp; ✅ {nb_manches_term}/9 manches ({pct_manches}%)</div>
                         </div>
-                        <div style="flex: 1; min-width: 160px; text-align: right;">
+                        <div style="flex: 1; min-width: 120px; text-align: right;">
                             <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: #fdba74; font-weight: 700;">🟠 Équipe Visiteuse (🚗)</div>
-                            <div style="font-size: 18px; font-weight: 800; color: #ffffff;">{equipe_visiteur}</div>
+                            <div class="sb-team-name" style="font-size: 18px; font-weight: 800; color: #ffffff;">{equipe_visiteur}</div>
                         </div>
                     </div>
                 </div>
@@ -15715,19 +16139,8 @@ with tab_feuille:
 
         st.divider()
 
-        # --- VALIDATION FINALE DU MATCH ET ENVOI AUTOMATIQUE ---
+        # --- VALIDATION FINALE DU MATCH ET ENVOI AUTOMATIQUE (Génération HTML à la demande) ---
         date_du_match = datetime.now().strftime("%d/%m/%Y à %H:%M")
-        texte_resume, html_resume = generer_resume_match(
-            equipe_receveur,
-            equipe_visiteur,
-            donnees_a_sauvegarder["matchs"],
-            total_pts_receveur,
-            total_pts_visiteur,
-            pts_joueurs,
-            dict_joueurs,
-            date_du_match,
-            absents_detectes
-        )
 
         @st.dialog("📋 Sommaire & Approbation de la feuille de match", width="large")
         def modal_sommaire_approbation(
@@ -16020,6 +16433,17 @@ with tab_feuille:
             elif manches_invalides:
                 st.error(f"❌ Impossible d'enregistrer : veuillez d'abord corriger les manches suivantes : {', '.join(map(str, sorted(set(manches_invalides))))}.")
             else:
+                texte_resume, html_resume = generer_resume_match(
+                    equipe_receveur,
+                    equipe_visiteur,
+                    donnees_a_sauvegarder["matchs"],
+                    total_pts_receveur,
+                    total_pts_visiteur,
+                    pts_joueurs,
+                    dict_joueurs,
+                    date_du_match,
+                    absents_detectes
+                )
                 modal_sommaire_approbation(
                     equipe_receveur,
                     equipe_visiteur,

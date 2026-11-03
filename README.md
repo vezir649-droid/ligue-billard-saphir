@@ -50,23 +50,32 @@ L'application intègre un module de pointe basé sur l'IA de vision de Google (*
 * **Feuille officielle A4 HTML & Transmission automatique par courriel aux administrateurs :**
   * Dès l'analyse terminée, la **feuille de match officielle HTML (format A4)** est générée automatiquement (consultable, téléchargeable et imprimable immédiatement).
   * **Envoi automatique par courriel SMTP** aux administrateurs incluant en pièces jointes la **photo originale scannée** et la **feuille de match officielle HTML** (avec verrou anti-doublon par empreinte SHA-1).
+* **✏️ Mini-éditeur de correction rapide intégré aux résultats du Scanner IA :**
+  * Permet d'ajuster directement la date, les équipes, l'alignement des 6 joueurs (`J1`, `J2`, `J3`) ou n'importe lequel des 9 pointages (`M1` à `M9`) sur la page du scan avant l'injection ou l'archivage, avec recalcul automatique en 1 clic des totaux par joueur (`/24`), du score d'équipe (`/72`) et de la feuille officielle A4.
+  * Tableaux récapitulatifs rendus en **HTML natif 100 % compatible Android / iOS** (zéro erreur de chargement de module dynamique `DataFrame` sur téléphone mobile).
 * **Deux modes d'action en un clic :**
   * **`📥 Injecter dans la saisie du match en direct` :** Pré-remplit automatiquement les équipes, les 6 joueurs et les pointages des 9 manches dans le formulaire principal avec confirmation de sécurité si une saisie était déjà en cours.
   * **`💾 Archiver directement dans l'historique officiel` :** Sauvegarde instantanément la rencontre dans `historique_matchs.json`, génère la copie `.bak`, pousse sur GitHub et envoie le rapport officiel par courriel.
 
 ---
 
-### 3. 📝 Feuille de Match Officielle (3 contre 3 — Jeu au 8)
-* **Bandeau « Live Scoreboard » épinglé en haut de page :**
-  * Affichage permanent en temps réel du score global (**Équipe Receveuse vs Équipe Visiteuse**), d'une jauge de progression des **9 manches** (`X / 9 manches complétées`) et du statut de verrouillage.
-* **Rotation optimisée des 9 duels :**
+### 3. 📝 Feuille de Match Officielle (3 contre 3 — Jeu au 8) & Ergonomie Mobile Ultra-Rapide
+* **Bandeau « Sticky Live Scoreboard » épinglé en haut de l'écran lors du défilement :**
+  * Affichage permanent en temps réel du score global (**Équipe Receveuse vs Équipe Visiteuse**), de l'écart en cours et de la progression des **9 manches** (`X / 9 manches complétées`), qui reste visible au sommet de l'écran sur téléphone même en faisant défiler jusqu'aux manches 6 à 9.
+* **📱 Choix rapide des 4 matchs de la semaine & Alignement mobile (`J1 ↔ J2 ↔ J3`) :**
+  * **Sélecteur 1-clic des 4 rencontres programmées de la semaine :** Affiche les 4 matchs officiels de la semaine (`🏠 Alpha vs 🚗 Bravo`, etc.) sous forme de boutons rapides en haut de la feuille de match et dans la barre latérale afin que chaque table puisse charger ses 2 équipes, ses 6 joueurs et leurs moyennes officielles en un seul toucher.
+  * **Permutation rapide sur mobile (`🔀 J1 ↔ J2`, `🔀 J2 ↔ J3`, `🔀 J1 ↔ J3`) et Présences :** Permet d'inverser l'ordre d'entrée des joueurs ou de basculer une absence directement depuis le haut de la feuille de match sans ouvrir le menu latéral sur téléphone.
+* **⚡ Barre de contrôle ergonomique & Saisie éclair des 9 manches :**
+  * **Filtre d'affichage par Ronde :** `📋 Toutes (1-9)` | `1️⃣ Ronde 1 (M1-M3)` | `2️⃣ Ronde 2 (M4-M6)` | `3️⃣ Ronde 3 (M7-M9)` | `⏳ À jouer` pour réduire le défilement vertical de 70 % sur smartphone.
+  * **Logique « ⚡ Auto-8 intelligent » (activée par défaut) :** Dès que le marqueur sélectionne le score du joueur perdant (`1` à `7`), l'application attribue automatiquement **`8 points`** à son adversaire (divisant par deux le nombre de clics nécessaires sur une soirée).
+  * **Boutons tactiles rapides 1-clic (`🏆 8 pts — Joueur`) :** Deux boutons rapides au sommet de chaque manche permettent d'attribuer 8 points au vainqueur d'un seul toucher.
+  * **Option « 🔽 Replier terminées » :** Replie automatiquement les manches déjà jouées en affichant un bandeau récapitulatif compact (`✅ Manche X terminée : Joueur A (8) — (5) Joueur B • 🏆 Joueur A`).
+* **Rotation optimisée des 9 duels & Pointage souple :**
   * Chaque joueur de l'équipe receveuse affronte les 3 joueurs de l'équipe visiteuse selon un ordre officiel garantissant qu'**aucun joueur ne dispute deux manches consécutives**.
-* **Pointage souple des manches & Validation instantanée :**
   * Saisie libre de **0 à 8 points** par joueur **sans obligation d'un score de 8** pour valider une manche ou enregistrer la feuille de match.
-  * Indicateurs visuels par manche (`⚪ À jouer`, `✅ Manche — 🏆 Victoire`, `⚖️ Égalité`) et synchronisation immédiate des totaux par équipe et par joueur.
-* **Approbation & Impression A4 :**
-  * Double approbation officielle par un représentant de chaque équipe avant archivage.
-  * Génération d'une **feuille de match officielle calibrée pour l'impression sur une seule page A4**.
+* **Approbation, Impression A4 & Réactivité instantanée :**
+  * Double approbation officielle par un représentant de chaque équipe avant archivage et génération paresseuse (*lazy*) de la **feuille de match officielle calibrée pour une seule page A4**.
+  * **Cache mémoire haute vitesse sur `mtime`** (`equipes-saphir.csv`, `horaire_saphir.json`, `historique_matchs.json`) et **anti-rebond GitHub (*debounce*)** pour une fluidité immédiate à chaque clic.
 * **Compatibilité complète Thème Clair (*Light*) & Thème Sombre (*Dark*) :**
   * Adaptation automatique des contrastes pour les cartes de métriques (`st.metric`), les onglets, les podiums, les cartes de rencontres et les aperçus A4.
 
