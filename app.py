@@ -2830,12 +2830,15 @@ Structure JSON attendue :
   },
   "total_rec": 66,
   "total_vis": 58,
+  "totaux_joueurs_rec": [21, 21, 24],
+  "totaux_joueurs_vis": [18, 20, 20],
   "approbateur_rec": "Signature ou nom capitaine receveur",
   "approbateur_vis": "Signature ou nom capitaine visiteur"
 }
 Consignes strictes :
 - score_a et score_b sont des entiers (0 à 8).
 - total_rec et total_vis sont des entiers.
+- totaux_joueurs_rec et totaux_joueurs_vis sont les totaux respectifs des 3 joueurs receveurs et 3 joueurs visiteurs (entiers).
 - Renvoie UNIQUEMENT le bloc JSON valide, sans formatage markdown, sans texte additionnel."""
 
     dernier_err = ""
@@ -3076,6 +3079,69 @@ def correler_donnees_feuille_avec_ligue(data_s):
     data_s["approbateur_rec"] = correspondances.get(app_r_raw) or correler_nom_joueur(app_r_raw, cands_rec, tous_joueurs_list)
     data_s["approbateur_vis"] = correspondances.get(app_v_raw) or correler_nom_joueur(app_v_raw, cands_vis, tous_joueurs_list)
 
+    # 7. Calcul rigoureux des totaux de points individuels et bilan par joueur
+    stats_rec = []
+    for idx_r in range(len(joueurs_rec_corr)):
+        nom = joueurs_rec_corr[idx_r]
+        pts_tot = 0
+        vics = 0
+        duels_list = []
+        for m_num, (r_i, v_i) in grille_rot.items():
+            if r_i == idx_r:
+                m_info = matchs_dict.get(str(m_num), {})
+                sa = _safe_int_val(m_info.get("score_a", 0))
+                sb = _safe_int_val(m_info.get("score_b", 0))
+                pts_tot += sa
+                if sa > sb:
+                    vics += 1
+                adv = m_info.get("joueur_b") or (joueurs_vis_corr[v_i] if v_i < len(joueurs_vis_corr) else f"J{v_i+1}")
+                duels_list.append({
+                    "manche": m_num,
+                    "score": sa,
+                    "score_adv": sb,
+                    "adversaire": adv,
+                    "victoire": sa > sb
+                })
+        stats_rec.append({
+            "nom": nom,
+            "total_points": pts_tot,
+            "victoires": vics,
+            "defaites": len(duels_list) - vics,
+            "duels": duels_list
+        })
+
+    stats_vis = []
+    for idx_v in range(len(joueurs_vis_corr)):
+        nom = joueurs_vis_corr[idx_v]
+        pts_tot = 0
+        vics = 0
+        duels_list = []
+        for m_num, (r_i, v_i) in grille_rot.items():
+            if v_i == idx_v:
+                m_info = matchs_dict.get(str(m_num), {})
+                sa = _safe_int_val(m_info.get("score_a", 0))
+                sb = _safe_int_val(m_info.get("score_b", 0))
+                pts_tot += sb
+                if sb > sa:
+                    vics += 1
+                adv = m_info.get("joueur_a") or (joueurs_rec_corr[r_i] if r_i < len(joueurs_rec_corr) else f"J{r_i+1}")
+                duels_list.append({
+                    "manche": m_num,
+                    "score": sb,
+                    "score_adv": sa,
+                    "adversaire": adv,
+                    "victoire": sb > sa
+                })
+        stats_vis.append({
+            "nom": nom,
+            "total_points": pts_tot,
+            "victoires": vics,
+            "defaites": len(duels_list) - vics,
+            "duels": duels_list
+        })
+
+    data_s["stats_joueurs_rec"] = stats_rec
+    data_s["stats_joueurs_vis"] = stats_vis
     data_s["correspondances"] = correspondances
     return data_s
 
@@ -3457,35 +3523,129 @@ def afficher_vue_scanner_feuille_match(label_direct):
                 col_r3.metric("🔵 Visiteur", f"{vis_nom}", f"{tot_v} pts")
                 col_r4.metric("🏆 Vainqueur", f"{vainqueur}", f"{abs(tot_r - tot_v)} pts d'écart" if tot_r != tot_v else "Match nul")
 
-                # Presentation detaillee des joueurs actifs correles
-                st.markdown("##### 👥 Joueurs actifs identifiés (Noms complets officiels)")
-                col_jr, col_jv = st.columns(2)
-                raw_r = data_s.get("raw_joueurs_rec", [])
-                raw_v = data_s.get("raw_joueurs_vis", [])
+                # Recuperation des statistiques individuelles des joueurs (ou recalcul si besoin)
+                stats_rec = data_s.get("stats_joueurs_rec", [])
+                stats_vis = data_s.get("stats_joueurs_vis", [])
                 corr_r = data_s.get("joueurs_rec", [])
                 corr_v = data_s.get("joueurs_vis", [])
+                raw_r = data_s.get("raw_joueurs_rec", [])
+                raw_v = data_s.get("raw_joueurs_vis", [])
+                matchs_dict = data_s.get("matchs", {})
+
+                # Si absent de la session, recalcul a la volee
+                if not stats_rec or not stats_vis:
+                    grille_loc = {1: (0,0), 2: (1,1), 3: (2,2), 4: (0,1), 5: (1,2), 6: (2,0), 7: (0,2), 8: (1,0), 9: (2,1)}
+                    stats_rec = []
+                    for idx_r in range(len(corr_r)):
+                        nom = corr_r[idx_r]
+                        pts_tot, vics, duels_l = 0, 0, []
+                        for m_n, (ri, vi) in grille_loc.items():
+                            if ri == idx_r:
+                                m_i = matchs_dict.get(str(m_n), {})
+                                sa = _safe_int_val(m_i.get("score_a", 0))
+                                sb = _safe_int_val(m_i.get("score_b", 0))
+                                pts_tot += sa
+                                if sa > sb: vics += 1
+                                adv = m_i.get("joueur_b") or (corr_v[vi] if vi < len(corr_v) else f"J{vi+1}")
+                                duels_l.append({"manche": m_n, "score": sa, "score_adv": sb, "adversaire": adv, "victoire": sa > sb})
+                        stats_rec.append({"nom": nom, "total_points": pts_tot, "victoires": vics, "defaites": len(duels_l) - vics, "duels": duels_l})
+                    stats_vis = []
+                    for idx_v in range(len(corr_v)):
+                        nom = corr_v[idx_v]
+                        pts_tot, vics, duels_l = 0, 0, []
+                        for m_n, (ri, vi) in grille_loc.items():
+                            if vi == idx_v:
+                                m_i = matchs_dict.get(str(m_n), {})
+                                sa = _safe_int_val(m_i.get("score_a", 0))
+                                sb = _safe_int_val(m_i.get("score_b", 0))
+                                pts_tot += sb
+                                if sb > sa: vics += 1
+                                adv = m_i.get("joueur_a") or (corr_r[ri] if ri < len(corr_r) else f"J{ri+1}")
+                                duels_l.append({"manche": m_n, "score": sb, "score_adv": sa, "adversaire": adv, "victoire": sb > sa})
+                        stats_vis.append({"nom": nom, "total_points": pts_tot, "victoires": vics, "defaites": len(duels_l) - vics, "duels": duels_l})
+
+                # Presentation detaillee des joueurs avec total de points
+                st.markdown("##### 👥 Joueurs & Pointages individuels officiels")
+                col_jr, col_jv = st.columns(2)
 
                 with col_jr:
-                    st.info(f"**🔴 Équipe Receveuse : {rec_nom}**")
+                    st.info(f"**🔴 Équipe Receveuse : {rec_nom}** ({tot_r} pts)")
                     for idx in range(3):
                         nom_complet = corr_r[idx] if idx < len(corr_r) else f"Joueur {idx+1}"
                         nom_manuscrit = raw_r[idx] if idx < len(raw_r) else ""
-                        info_manuscrit = f" *(détecté sur la feuille : « {nom_manuscrit} »)*" if nom_manuscrit and nom_manuscrit != nom_complet else ""
-                        st.markdown(f"- **Joueur {idx+1} :** **{nom_complet}**{info_manuscrit}")
+                        info_manuscrit = f" *(feuille : « {nom_manuscrit} »)*" if nom_manuscrit and nom_manuscrit != nom_complet else ""
+                        st_p = stats_rec[idx] if idx < len(stats_rec) else {}
+                        pts_j = st_p.get("total_points", 0)
+                        vic_j = st_p.get("victoires", 0)
+                        def_j = st_p.get("defaites", 0)
+                        duels_txt = ", ".join([f"M{d['manche']}: {d['score']} pts" for d in st_p.get("duels", [])])
+                        st.markdown(f"- **Joueur {idx+1} :** **{nom_complet}** — 🎯 **{pts_j} points** `({vic_j}V - {def_j}D)`{info_manuscrit}")
+                        st.caption(f"&nbsp;&nbsp;&nbsp;&nbsp;🎯 Détail des manches : {duels_txt}")
                     app_r = data_s.get("approbateur_rec")
                     if app_r:
                         st.caption(f"✍️ Signature / Capitaine : **{app_r}**")
 
                 with col_jv:
-                    st.info(f"**🔵 Équipe Visiteuse : {vis_nom}**")
+                    st.info(f"**🔵 Équipe Visiteuse : {vis_nom}** ({tot_v} pts)")
                     for idx in range(3):
                         nom_complet = corr_v[idx] if idx < len(corr_v) else f"Joueur {idx+1}"
                         nom_manuscrit = raw_v[idx] if idx < len(raw_v) else ""
-                        info_manuscrit = f" *(détecté sur la feuille : « {nom_manuscrit} »)*" if nom_manuscrit and nom_manuscrit != nom_complet else ""
-                        st.markdown(f"- **Joueur {idx+1} :** **{nom_complet}**{info_manuscrit}")
+                        info_manuscrit = f" *(feuille : « {nom_manuscrit} »)*" if nom_manuscrit and nom_manuscrit != nom_complet else ""
+                        st_p = stats_vis[idx] if idx < len(stats_vis) else {}
+                        pts_j = st_p.get("total_points", 0)
+                        vic_j = st_p.get("victoires", 0)
+                        def_j = st_p.get("defaites", 0)
+                        duels_txt = ", ".join([f"M{d['manche']}: {d['score']} pts" for d in st_p.get("duels", [])])
+                        st.markdown(f"- **Joueur {idx+1} :** **{nom_complet}** — 🎯 **{pts_j} points** `({vic_j}V - {def_j}D)`{info_manuscrit}")
+                        st.caption(f"&nbsp;&nbsp;&nbsp;&nbsp;🎯 Détail des manches : {duels_txt}")
                     app_v = data_s.get("approbateur_vis")
                     if app_v:
                         st.caption(f"✍️ Signature / Capitaine : **{app_v}**")
+
+                # Tableau recapitulatif complet des 6 joueurs
+                st.markdown("##### 📊 Tableau récapitulatif des totaux par joueur")
+                tab_joueurs = []
+                for idx, st_p in enumerate(stats_rec):
+                    nom = st_p.get("nom", f"Receveur J{idx+1}")
+                    pts = st_p.get("total_points", 0)
+                    v = st_p.get("victoires", 0)
+                    d = st_p.get("defaites", 0)
+                    duels = st_p.get("duels", [])
+                    m_txt = " | ".join([f"M{duel['manche']}: {duel['score']} pts (vs {duel['adversaire']})" for duel in duels])
+                    moy = round(pts / len(duels), 1) if duels else 0.0
+                    tab_joueurs.append({
+                        "Équipe": f"🔴 {rec_nom}",
+                        "Joueur (Nom complet)": nom,
+                        "Total Points": f"🎯 {pts} pts",
+                        "Moyenne / Duel": f"{moy} pts",
+                        "Bilan (V - D)": f"{v}V - {d}D",
+                        "Détail des 3 manches": m_txt
+                    })
+                for idx, st_p in enumerate(stats_vis):
+                    nom = st_p.get("nom", f"Visiteur J{idx+1}")
+                    pts = st_p.get("total_points", 0)
+                    v = st_p.get("victoires", 0)
+                    d = st_p.get("defaites", 0)
+                    duels = st_p.get("duels", [])
+                    m_txt = " | ".join([f"M{duel['manche']}: {duel['score']} pts (vs {duel['adversaire']})" for duel in duels])
+                    moy = round(pts / len(duels), 1) if duels else 0.0
+                    tab_joueurs.append({
+                        "Équipe": f"🔵 {vis_nom}",
+                        "Joueur (Nom complet)": nom,
+                        "Total Points": f"🎯 {pts} pts",
+                        "Moyenne / Duel": f"{moy} pts",
+                        "Bilan (V - D)": f"{v}V - {d}D",
+                        "Détail des 3 manches": m_txt
+                    })
+                st.dataframe(pd.DataFrame(tab_joueurs), use_container_width=True, hide_index=True)
+
+                # Controle arithmetique de coherence des points
+                somme_pts_rec = sum(p.get("total_points", 0) for p in stats_rec)
+                somme_pts_vis = sum(p.get("total_points", 0) for p in stats_vis)
+                if somme_pts_rec == tot_r and somme_pts_vis == tot_v:
+                    st.success(f"✅ **Contrôle de cohérence :** La somme des points des joueurs ({somme_pts_rec} pts pour {rec_nom} et {somme_pts_vis} pts pour {vis_nom}) correspond exactement aux totaux d'équipe de la feuille.")
+                else:
+                    st.warning(f"⚠️ **Vérification arithmétique :** Somme calculée des 3 joueurs = **{somme_pts_rec} pts** ({rec_nom}) et **{somme_pts_vis} pts** ({vis_nom}) vs totaux indiqués sur la feuille = **{tot_r} pts** et **{tot_v} pts**.")
 
                 st.markdown("##### 🎱 Détail des 9 duels officiels (avec noms complets)")
                 duels_data = []
