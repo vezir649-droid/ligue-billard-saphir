@@ -1835,7 +1835,7 @@ def restaurer_session(data):
         safe_set("input_custom_vis", data["input_custom_vis"])
 
     # 2. Sélections Joueurs
-    for k in ["sel_j1_rec", "sel_j2_rec", "sel_j1_vis", "sel_j2_vis"]:
+    for k in ["sel_j1_rec", "sel_j2_rec", "sel_j3_rec", "sel_j1_vis", "sel_j2_vis", "sel_j3_vis"]:
         if k in data:
             safe_set(k, data[k])
 
@@ -2667,6 +2667,7 @@ def appliquer_match_du_jour(rencontre=None, forcer=False):
     st.session_state["pres_j2_rec"] = True
     st.session_state["main_pres_tog_j2_rec"] = True
 
+    st.session_state["sel_j3_rec"] = j3_r_nom
     st.session_state["last_nom_j3_rec"] = j3_r_nom
     st.session_state["moy_j3_rec"] = obtenir_moyenne_joueur(j3_r_nom)
     st.session_state["pts_j3_rec"] = calculer_score_absent(st.session_state["moy_j3_rec"])
@@ -2692,6 +2693,7 @@ def appliquer_match_du_jour(rencontre=None, forcer=False):
     st.session_state["pres_j2_vis"] = True
     st.session_state["main_pres_tog_j2_vis"] = True
 
+    st.session_state["sel_j3_vis"] = j3_v_nom
     st.session_state["last_nom_j3_vis"] = j3_v_nom
     st.session_state["moy_j3_vis"] = obtenir_moyenne_joueur(j3_v_nom)
     st.session_state["pts_j3_vis"] = calculer_score_absent(st.session_state["moy_j3_vis"])
@@ -2790,7 +2792,7 @@ def analyser_photo_feuille_match(image_bytes, cle_api=None):
     if not api_k:
         return False, "Clé API Gemini non configurée. Veuillez renseigner votre clé dans l'administration."
     
-    # 1. Redimensionnement optimisé pour vitesse maximale avec rotation EXIF
+    # 1. Redimensionnement haute netteté avec rotation EXIF pour lecture optimale des chiffres manuscrits
     try:
         im = Image.open(io.BytesIO(image_bytes))
         try:
@@ -2799,15 +2801,15 @@ def analyser_photo_feuille_match(image_bytes, cle_api=None):
             pass
         if im.mode != "RGB":
             im = im.convert("RGB")
-        im.thumbnail((1200, 1200), Image.Resampling.LANCZOS)
+        im.thumbnail((2000, 2000), Image.Resampling.LANCZOS)
         buf = io.BytesIO()
-        im.save(buf, format="JPEG", quality=85)
+        im.save(buf, format="JPEG", quality=90)
         b64_img = base64.b64encode(buf.getvalue()).decode("ascii")
     except Exception as e_im:
         return False, f"Erreur de traitement de l'image : {e_im}"
 
     # 2. Modèles disponibles par ordre de priorité
-    models_vision = ["gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-flash-latest"]
+    models_vision = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"]
     
     prompt = """Tu es un expert officiel de la Ligue de Billard du Saphir.
 Analyse cette photo de feuille de match manuscrite et extrait rigoureusement les données en JSON STRICT.
@@ -2816,8 +2818,8 @@ Structure JSON attendue :
   "date": "AAAA-MM-JJ",
   "receveur": "Nom equipe receveuse",
   "visiteur": "Nom equipe visiteuse",
-  "joueurs_rec": ["Joueur 1", "Joueur 2", "Joueur 3"],
-  "joueurs_vis": ["Joueur 1", "Joueur 2", "Joueur 3"],
+  "joueurs_rec": ["Joueur 1 (Manche 1)", "Joueur 2 (Manche 2)", "Joueur 3 (Manche 3)"],
+  "joueurs_vis": ["Joueur 1 (Manche 1)", "Joueur 2 (Manche 2)", "Joueur 3 (Manche 3)"],
   "matchs": {
     "1": {"score_a": 8, "score_b": 4, "joueur_a": "Gille", "joueur_b": "Léon M"},
     "2": {"score_a": 7, "score_b": 8, "joueur_a": "Guy", "joueur_b": "Gaston L"},
@@ -2837,9 +2839,10 @@ Structure JSON attendue :
   "approbateur_vis": "Signature ou nom capitaine visiteur"
 }
 Consignes strictes :
-- score_a et score_b sont des entiers (0 à 8).
-- total_rec et total_vis sont des entiers.
-- totaux_joueurs_rec et totaux_joueurs_vis sont les totaux respectifs des 3 joueurs receveurs et 3 joueurs visiteurs (entiers).
+- joueurs_rec DOIT contenir les 3 joueurs de l'équipe receveuse dans l'ordre exact des manches 1, 2 et 3.
+- joueurs_vis DOIT contenir les 3 joueurs de l'équipe visiteuse dans l'ordre exact des manches 1, 2 et 3.
+- score_a et score_b sont des entiers compris entre 0 et 8 inclusivement.
+- Vérifie que les scores des 9 manches correspondent aux totaux par joueur et aux totaux d'équipe (total_rec et total_vis).
 - Renvoie UNIQUEMENT le bloc JSON valide, sans formatage markdown, sans texte additionnel."""
 
     dernier_err = ""
@@ -2900,23 +2903,27 @@ def charger_liste_equipes_base():
     return ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel"]
 
 
-def correler_nom_joueur(nom_brut, cands_equipe, tous_joueurs_list):
+def correler_nom_joueur(nom_brut, cands_equipe, tous_joueurs_list, exclus=None):
     """Associe intelligemment un prénom ou surnom manuscrit (ex. 'Gille', 'Léon M')
-    au nom officiel complet d'un joueur dans l'équipe ou dans la ligue."""
+    au nom officiel complet d'un joueur dans l'équipe ou dans la ligue, en évitant les doublons (exclus)."""
     import unicodedata
     def _norm(s):
         if not s:
             return ""
         s = unicodedata.normalize("NFD", str(s))
         s = "".join(c for c in s if unicodedata.category(c) != "Mn")
-        return s.lower().strip()
+        return re.sub(r"[^a-z0-9\s-]", " ", s.lower()).strip()
 
     nom_n = _norm(nom_brut)
     if not nom_n:
-        return nom_brut
+        return ""
+
+    exclus_set = set(exclus or [])
+    cands_eq_dispo = [c for c in (cands_equipe or []) if c not in exclus_set]
+    tous_dispo = [c for c in (tous_joueurs_list or []) if c not in exclus_set]
 
     # 1. Match exact dans l'équipe
-    for c in cands_equipe:
+    for c in cands_eq_dispo:
         if _norm(c) == nom_n:
             return c
 
@@ -2924,44 +2931,49 @@ def correler_nom_joueur(nom_brut, cands_equipe, tous_joueurs_list):
     parts = nom_n.split()
     if len(parts) >= 2:
         prenom_q, nom_init = parts[0], parts[1][0]
-        for c in cands_equipe:
+        for c in cands_eq_dispo:
             c_parts = _norm(c).split()
             if len(c_parts) >= 2:
                 if (c_parts[0].startswith(prenom_q) or prenom_q.startswith(c_parts[0])) and c_parts[-1].startswith(nom_init):
                     return c
 
-    # 3. Match Prénom seul dans l'équipe (ex: 'gille' vs 'Gilles Dumais', 'guy' vs 'Guy Vézina')
-    for c in cands_equipe:
+    # 3. Match Prénom ou Nom de famille dans l'équipe (ex: 'gille' vs 'Gilles Dumais', 'guy' vs 'Guy Vézina')
+    for c in cands_eq_dispo:
         c_parts = _norm(c).split()
         if c_parts:
             c_prenom = c_parts[0]
-            if c_prenom == nom_n or nom_n.startswith(c_prenom) or c_prenom.startswith(nom_n):
+            c_nom_fam = c_parts[-1]
+            if c_prenom == nom_n or (len(nom_n) >= 3 and (nom_n.startswith(c_prenom) or c_prenom.startswith(nom_n))):
+                return c
+            if len(nom_n) >= 3 and (c_nom_fam == nom_n or c_nom_fam.startswith(nom_n)):
                 return c
 
     # 4. Élargissement à tous les joueurs de la ligue (remplaçant officiel)
-    for c in tous_joueurs_list:
+    for c in tous_dispo:
         if _norm(c) == nom_n:
             return c
     if len(parts) >= 2:
         prenom_q, nom_init = parts[0], parts[1][0]
-        for c in tous_joueurs_list:
+        for c in tous_dispo:
             c_parts = _norm(c).split()
             if len(c_parts) >= 2:
                 if (c_parts[0].startswith(prenom_q) or prenom_q.startswith(c_parts[0])) and c_parts[-1].startswith(nom_init):
                     return c
-    for c in tous_joueurs_list:
+    for c in tous_dispo:
         c_parts = _norm(c).split()
         if c_parts:
             c_prenom = c_parts[0]
             if c_prenom == nom_n or (len(nom_n) >= 4 and (nom_n.startswith(c_prenom) or c_prenom.startswith(nom_n))):
                 return c
 
-    return nom_brut
+    return str(nom_brut).strip()
 
 
 def correler_donnees_feuille_avec_ligue(data_s):
     """Effectue la correlation automatique des noms manuscrits extraits par l IA
-    avec les equipes et joueurs actifs officiels (equipes-saphir.csv et joueurs_stats.csv)."""
+    avec les equipes et joueurs actifs officiels (equipes-saphir.csv et joueurs_stats.csv),
+    deduit les equipes a partir des joueurs si necessaire, elimine tout doublon de joueur,
+    et aligne rigoureusement les 9 manches avec la grille de rotation 3 contre 3."""
     if not isinstance(data_s, dict):
         return data_s
 
@@ -2971,7 +2983,7 @@ def correler_donnees_feuille_avec_ligue(data_s):
             return ""
         s = unicodedata.normalize("NFD", str(s))
         s = "".join(c for c in s if unicodedata.category(c) != "Mn")
-        return s.lower().strip()
+        return re.sub(r"[^a-z0-9\s-]", " ", s.lower()).strip()
 
     equipes_dict = charger_equipes_csv()
     tous_joueurs = set()
@@ -3001,101 +3013,231 @@ def correler_donnees_feuille_avec_ligue(data_s):
         data_s["raw_receveur"] = str(data_s.get("receveur", ""))
     if "raw_visiteur" not in data_s:
         data_s["raw_visiteur"] = str(data_s.get("visiteur", ""))
+    if "raw_matchs" not in data_s and isinstance(data_s.get("matchs"), dict):
+        import copy
+        data_s["raw_matchs"] = copy.deepcopy(data_s.get("matchs", {}))
 
-    # 2. Correlation des equipes
+    raw_matchs = data_s.get("raw_matchs", data_s.get("matchs", {}))
+
+    # Collecter les noms bruts de joueurs receveurs et visiteurs (en priorisant l'ordre des manches 1, 2, 3)
+    noms_bruts_rec = []
+    for m_k in ["1", "2", "3"]:
+        ja_m = str(raw_matchs.get(m_k, {}).get("joueur_a", "")).strip()
+        if ja_m:
+            noms_bruts_rec.append(ja_m)
+    for j_r in data_s.get("raw_joueurs_rec", []):
+        if str(j_r).strip() and len(noms_bruts_rec) < 3:
+            noms_bruts_rec.append(str(j_r).strip())
+
+    noms_bruts_vis = []
+    for m_k in ["1", "2", "3"]:
+        jb_m = str(raw_matchs.get(m_k, {}).get("joueur_b", "")).strip()
+        if jb_m:
+            noms_bruts_vis.append(jb_m)
+    for j_v in data_s.get("raw_joueurs_vis", []):
+        if str(j_v).strip() and len(noms_bruts_vis) < 3:
+            noms_bruts_vis.append(str(j_v).strip())
+
+    def _deduire_equipe(eq_raw, noms_joueurs_bruts, eq_exclue=None):
+        eq_n = _norm(eq_raw)
+        match_direct = None
+        if eq_n:
+            for eq_nom in equipes_dict.keys():
+                en = _norm(eq_nom)
+                if en == eq_n or (len(eq_n) >= 3 and (en in eq_n or eq_n in en)):
+                    match_direct = eq_nom
+                    break
+        # Evaluer aussi la correspondance par les joueurs de chaque equipe officielle
+        meilleur_eq = None
+        meilleur_score = 0
+        for eq_nom, roster in equipes_dict.items():
+            if eq_exclue and eq_nom == eq_exclue:
+                continue
+            score_eq = 0
+            deja_pris = set()
+            for nb in noms_joueurs_bruts:
+                c_match = correler_nom_joueur(nb, roster, [], exclus=deja_pris)
+                if c_match in roster:
+                    score_eq += 1
+                    deja_pris.add(c_match)
+            if score_eq > meilleur_score:
+                meilleur_score = score_eq
+                meilleur_eq = eq_nom
+
+        # Si au moins 2 joueurs correspondent a une equipe officielle, cette equipe est certaine
+        if meilleur_eq and meilleur_score >= 2:
+            return meilleur_eq
+        if match_direct and match_direct != eq_exclue:
+            return match_direct
+        if meilleur_eq and meilleur_score >= 1:
+            return meilleur_eq
+        return match_direct or eq_raw or (list(equipes_dict.keys())[0] if equipes_dict else "Receveur")
+
+    # 2. Correlation intelligente des equipes (nom d'equipe + deduction par les joueurs)
     eq_rec_raw = str(data_s.get("raw_receveur", data_s.get("receveur", ""))).strip()
     eq_vis_raw = str(data_s.get("raw_visiteur", data_s.get("visiteur", ""))).strip()
-    eq_rec_off = eq_rec_raw
-    eq_vis_off = eq_vis_raw
-    for eq_nom in equipes_dict.keys():
-        if _norm(eq_nom) == _norm(eq_rec_raw) or _norm(eq_nom) in _norm(eq_rec_raw) or _norm(eq_rec_raw) in _norm(eq_nom):
-            eq_rec_off = eq_nom
-        if _norm(eq_nom) == _norm(eq_vis_raw) or _norm(eq_nom) in _norm(eq_vis_raw) or _norm(eq_vis_raw) in _norm(eq_nom):
-            eq_vis_off = eq_nom
+
+    eq_rec_off = _deduire_equipe(eq_rec_raw, noms_bruts_rec, eq_exclue=None)
+    eq_vis_off = _deduire_equipe(eq_vis_raw, noms_bruts_vis, eq_exclue=eq_rec_off)
 
     data_s["receveur"] = eq_rec_off
     data_s["visiteur"] = eq_vis_off
 
-    cands_rec = equipes_dict.get(eq_rec_off, [])
-    cands_vis = equipes_dict.get(eq_vis_off, [])
+    cands_rec = list(equipes_dict.get(eq_rec_off, []))
+    cands_vis = list(equipes_dict.get(eq_vis_off, []))
 
     correspondances = {}
 
-    # 3. Correlation des 3 joueurs receveurs
-    joueurs_rec_raw = data_s.get("raw_joueurs_rec", [])
-    joueurs_rec_corr = []
-    for j_raw in joueurs_rec_raw:
-        j_corr = correler_nom_joueur(j_raw, cands_rec, tous_joueurs_list)
-        joueurs_rec_corr.append(j_corr)
-        correspondances[str(j_raw)] = j_corr
+    # 3. Correlation sans doublon des 3 joueurs receveurs (alignes sur Manches 1, 2, 3)
+    src_rec = list(data_s.get("raw_joueurs_rec", []))
+    if len(src_rec) < 3:
+        for nb in noms_bruts_rec:
+            if len(src_rec) < 3:
+                src_rec.append(nb)
 
-    while len(joueurs_rec_corr) < 3 and len(joueurs_rec_corr) < len(cands_rec):
-        joueurs_rec_corr.append(cands_rec[len(joueurs_rec_corr)])
+    joueurs_rec_corr = []
+    used_rec = set()
+    for idx_slot in range(3):
+        j_raw = str(src_rec[idx_slot]).strip() if idx_slot < len(src_rec) else ""
+        # Si Manche 1, 2 ou 3 indique explicitement un joueur_a, l'utiliser en priorite pour definir l'ordre J1, J2, J3
+        ja_m = str(raw_matchs.get(str(idx_slot + 1), {}).get("joueur_a", "")).strip()
+        cible_raw = ja_m if ja_m else j_raw
+        j_corr = correler_nom_joueur(cible_raw, cands_rec, tous_joueurs_list, exclus=used_rec) if cible_raw else ""
+        if not j_corr or j_corr in used_rec:
+            restants = [c for c in cands_rec if c not in used_rec]
+            j_corr = restants[0] if restants else (cible_raw or f"Joueur {idx_slot + 1}")
+        joueurs_rec_corr.append(j_corr)
+        used_rec.add(j_corr)
+        if cible_raw:
+            correspondances[cible_raw] = j_corr
+        if j_raw:
+            correspondances[j_raw] = j_corr
+
     data_s["joueurs_rec"] = joueurs_rec_corr
 
-    # 4. Correlation des 3 joueurs visiteurs
-    joueurs_vis_raw = data_s.get("raw_joueurs_vis", [])
-    joueurs_vis_corr = []
-    for j_raw in joueurs_vis_raw:
-        j_corr = correler_nom_joueur(j_raw, cands_vis, tous_joueurs_list)
-        joueurs_vis_corr.append(j_corr)
-        correspondances[str(j_raw)] = j_corr
+    # 4. Correlation sans doublon des 3 joueurs visiteurs (alignes sur Manches 1, 2, 3)
+    src_vis = list(data_s.get("raw_joueurs_vis", []))
+    if len(src_vis) < 3:
+        for nb in noms_bruts_vis:
+            if len(src_vis) < 3:
+                src_vis.append(nb)
 
-    while len(joueurs_vis_corr) < 3 and len(joueurs_vis_corr) < len(cands_vis):
-        joueurs_vis_corr.append(cands_vis[len(joueurs_vis_corr)])
+    joueurs_vis_corr = []
+    used_vis = set()
+    for idx_slot in range(3):
+        j_raw = str(src_vis[idx_slot]).strip() if idx_slot < len(src_vis) else ""
+        jb_m = str(raw_matchs.get(str(idx_slot + 1), {}).get("joueur_b", "")).strip()
+        cible_raw = jb_m if jb_m else j_raw
+        j_corr = correler_nom_joueur(cible_raw, cands_vis, tous_joueurs_list, exclus=used_vis) if cible_raw else ""
+        if not j_corr or j_corr in used_vis:
+            restants = [c for c in cands_vis if c not in used_vis]
+            j_corr = restants[0] if restants else (cible_raw or f"Joueur {idx_slot + 1}")
+        joueurs_vis_corr.append(j_corr)
+        used_vis.add(j_corr)
+        if cible_raw:
+            correspondances[cible_raw] = j_corr
+        if j_raw:
+            correspondances[j_raw] = j_corr
+
     data_s["joueurs_vis"] = joueurs_vis_corr
 
-    # 5. Correlation des joueurs dans chaque duel (1 a 9) selon la grille officielle
+    # 5. Correlation des joueurs et alignement des 9 duels selon la grille officielle
     grille_rot = {
         1: (0, 0), 2: (1, 1), 3: (2, 2),
         4: (0, 1), 5: (1, 2), 6: (2, 0),
         7: (0, 2), 8: (1, 0), 9: (2, 1)
     }
 
-    matchs_dict = data_s.get("matchs", {})
+    # Associer chaque duel brut (1..9) aux joueurs correles (parmi les 3 joueurs de chaque equipe)
+    duels_extraits = {}
     for i in range(1, 10):
-        m_i = matchs_dict.get(str(i), {})
-        idx_r, idx_v = grille_rot.get(i, (0, 0))
-
+        m_i = dict(raw_matchs.get(str(i), {}))
         ja_raw = str(m_i.get("joueur_a", "")).strip()
         jb_raw = str(m_i.get("joueur_b", "")).strip()
+        sa = max(0, min(8, _safe_int_val(m_i.get("score_a", 0))))
+        sb = max(0, min(8, _safe_int_val(m_i.get("score_b", 0))))
 
-        ja_corr = correspondances.get(ja_raw) or correler_nom_joueur(ja_raw, cands_rec, tous_joueurs_list)
-        if not ja_corr and idx_r < len(joueurs_rec_corr):
-            ja_corr = joueurs_rec_corr[idx_r]
+        ja_c = correspondances.get(ja_raw) or correler_nom_joueur(ja_raw, joueurs_rec_corr, cands_rec)
+        jb_c = correspondances.get(jb_raw) or correler_nom_joueur(jb_raw, joueurs_vis_corr, cands_vis)
+        duels_extraits[i] = {
+            "score_a": sa,
+            "score_b": sb,
+            "ja_c": ja_c,
+            "jb_c": jb_c,
+            "used": False
+        }
 
-        jb_corr = correspondances.get(jb_raw) or correler_nom_joueur(jb_raw, cands_vis, tous_joueurs_list)
-        if not jb_corr and idx_v < len(joueurs_vis_corr):
-            jb_corr = joueurs_vis_corr[idx_v]
+    matchs_alignes = {}
+    # Passe 1 : Faire correspondre par paire exacte (joueur_a, joueur_b) avec la grille de rotation officielle
+    for m_num, (idx_r, idx_v) in grille_rot.items():
+        nom_r_attendu = joueurs_rec_corr[idx_r]
+        nom_v_attendu = joueurs_vis_corr[idx_v]
+        # Verifier d'abord si la manche m_num a deja la bonne paire
+        d_meme = duels_extraits.get(m_num)
+        if d_meme and not d_meme["used"] and d_meme["ja_c"] == nom_r_attendu and d_meme["jb_c"] == nom_v_attendu:
+            d_meme["used"] = True
+            matchs_alignes[str(m_num)] = {
+                "score_a": d_meme["score_a"],
+                "score_b": d_meme["score_b"],
+                "joueur_a": nom_r_attendu,
+                "joueur_b": nom_v_attendu
+            }
+            continue
+        # Sinon chercher dans les autres manches extraites si cette paire (nom_r_attendu, nom_v_attendu) existe
+        for k_ext, d_ext in duels_extraits.items():
+            if not d_ext["used"] and d_ext["ja_c"] == nom_r_attendu and d_ext["jb_c"] == nom_v_attendu:
+                d_ext["used"] = True
+                matchs_alignes[str(m_num)] = {
+                    "score_a": d_ext["score_a"],
+                    "score_b": d_ext["score_b"],
+                    "joueur_a": nom_r_attendu,
+                    "joueur_b": nom_v_attendu
+                }
+                break
 
-        m_i["joueur_a"] = ja_corr
-        m_i["joueur_b"] = jb_corr
-        matchs_dict[str(i)] = m_i
+    # Passe 2 : Pour toute manche non appairee par noms, utiliser la manche extraite au meme indice m_num
+    for m_num, (idx_r, idx_v) in grille_rot.items():
+        if str(m_num) not in matchs_alignes:
+            nom_r_attendu = joueurs_rec_corr[idx_r]
+            nom_v_attendu = joueurs_vis_corr[idx_v]
+            d_fallback = duels_extraits.get(m_num)
+            if d_fallback and not d_fallback["used"]:
+                d_fallback["used"] = True
+            else:
+                # Prendre la premiere manche non utilisee
+                d_fallback = next((d for d in duels_extraits.values() if not d["used"]), {"score_a": 0, "score_b": 0})
+                d_fallback["used"] = True
+            matchs_alignes[str(m_num)] = {
+                "score_a": d_fallback.get("score_a", 0),
+                "score_b": d_fallback.get("score_b", 0),
+                "joueur_a": nom_r_attendu,
+                "joueur_b": nom_v_attendu
+            }
 
-    data_s["matchs"] = matchs_dict
+    data_s["matchs"] = matchs_alignes
 
     # 6. Correlation des approbateurs / capitaines
     app_r_raw = str(data_s.get("approbateur_rec", "")).strip()
     app_v_raw = str(data_s.get("approbateur_vis", "")).strip()
-    data_s["approbateur_rec"] = correspondances.get(app_r_raw) or correler_nom_joueur(app_r_raw, cands_rec, tous_joueurs_list)
-    data_s["approbateur_vis"] = correspondances.get(app_v_raw) or correler_nom_joueur(app_v_raw, cands_vis, tous_joueurs_list)
+    data_s["approbateur_rec"] = (correspondances.get(app_r_raw) or correler_nom_joueur(app_r_raw, cands_rec, tous_joueurs_list)) if app_r_raw else ""
+    data_s["approbateur_vis"] = (correspondances.get(app_v_raw) or correler_nom_joueur(app_v_raw, cands_vis, tous_joueurs_list)) if app_v_raw else ""
 
     # 7. Calcul rigoureux des totaux de points individuels et bilan par joueur
     stats_rec = []
-    for idx_r in range(len(joueurs_rec_corr)):
+    for idx_r in range(3):
         nom = joueurs_rec_corr[idx_r]
         pts_tot = 0
         vics = 0
         duels_list = []
         for m_num, (r_i, v_i) in grille_rot.items():
             if r_i == idx_r:
-                m_info = matchs_dict.get(str(m_num), {})
+                m_info = matchs_alignes.get(str(m_num), {})
                 sa = _safe_int_val(m_info.get("score_a", 0))
                 sb = _safe_int_val(m_info.get("score_b", 0))
                 pts_tot += sa
                 if sa > sb:
                     vics += 1
-                adv = m_info.get("joueur_b") or (joueurs_vis_corr[v_i] if v_i < len(joueurs_vis_corr) else f"J{v_i+1}")
+                adv = m_info.get("joueur_b") or joueurs_vis_corr[v_i]
                 duels_list.append({
                     "manche": m_num,
                     "score": sa,
@@ -3112,20 +3254,20 @@ def correler_donnees_feuille_avec_ligue(data_s):
         })
 
     stats_vis = []
-    for idx_v in range(len(joueurs_vis_corr)):
+    for idx_v in range(3):
         nom = joueurs_vis_corr[idx_v]
         pts_tot = 0
         vics = 0
         duels_list = []
         for m_num, (r_i, v_i) in grille_rot.items():
             if v_i == idx_v:
-                m_info = matchs_dict.get(str(m_num), {})
+                m_info = matchs_alignes.get(str(m_num), {})
                 sa = _safe_int_val(m_info.get("score_a", 0))
                 sb = _safe_int_val(m_info.get("score_b", 0))
                 pts_tot += sb
                 if sb > sa:
                     vics += 1
-                adv = m_info.get("joueur_a") or (joueurs_rec_corr[r_i] if r_i < len(joueurs_rec_corr) else f"J{r_i+1}")
+                adv = m_info.get("joueur_a") or joueurs_rec_corr[r_i]
                 duels_list.append({
                     "manche": m_num,
                     "score": sb,
@@ -3140,6 +3282,16 @@ def correler_donnees_feuille_avec_ligue(data_s):
             "defaites": len(duels_list) - vics,
             "duels": duels_list
         })
+
+    somme_rec = sum(p["total_points"] for p in stats_rec)
+    somme_vis = sum(p["total_points"] for p in stats_vis)
+    if "raw_total_rec" not in data_s:
+        data_s["raw_total_rec"] = _safe_int_val(data_s.get("total_rec", somme_rec))
+    if "raw_total_vis" not in data_s:
+        data_s["raw_total_vis"] = _safe_int_val(data_s.get("total_vis", somme_vis))
+    # Toujours garantir que total_rec et total_vis correspondent exactement a la somme des 9 manches
+    data_s["total_rec"] = somme_rec
+    data_s["total_vis"] = somme_vis
 
     data_s["stats_joueurs_rec"] = stats_rec
     data_s["stats_joueurs_vis"] = stats_vis
@@ -3263,12 +3415,15 @@ def envoyer_feuille_et_photo_administrateurs(data_s, photo_bytes=None, destinata
 
     return envoyer_courriel(destinataires, sujet, texte_brut, html_officiel, cfg, pieces_jointes=pj)
 
-def cb_injecter_donnees_scanner(data_s, label_direct):
+def cb_injecter_donnees_scanner(data_s, label_direct=None):
     """Callback on_click execute AVANT l instanciation des widgets Streamlit
     pour injecter equipes, joueurs officiels actifs et les 9 manches avec succes garanti,
-    sans declencher de reboot container et sans perte de session."""
+    sans declencher de reboot container et sans erreur StreamlitAPIException."""
     if not isinstance(data_s, dict):
         return
+
+    # Garantir que les donnees sont correlees et alignees avec la grille de rotation 3 contre 3
+    data_s = correler_donnees_feuille_avec_ligue(data_s)
 
     eq_r_scan = str(data_s.get("receveur", "")).strip()
     eq_v_scan = str(data_s.get("visiteur", "")).strip()
@@ -3279,62 +3434,76 @@ def cb_injecter_donnees_scanner(data_s, label_direct):
     # 1. Selection securisee des equipes
     if eq_r_scan in noms_eq:
         st.session_state["sel_equipe_rec"] = eq_r_scan
+        choix_rec_val = eq_r_scan
     else:
         st.session_state["sel_equipe_rec"] = "Autre / Personnalisée"
-        st.session_state["input_custom_rec"] = eq_r_scan
+        st.session_state["input_custom_rec"] = eq_r_scan or "Équipe 1"
+        choix_rec_val = "Autre / Personnalisée"
     st.session_state["choix_equipe_receveuse"] = eq_r_scan
+    st.session_state["track_choix_rec"] = eq_r_scan
 
     if eq_v_scan in noms_eq:
         st.session_state["sel_equipe_vis"] = eq_v_scan
+        choix_vis_val = eq_v_scan
     else:
         st.session_state["sel_equipe_vis"] = "Autre / Personnalisée"
-        st.session_state["input_custom_vis"] = eq_v_scan
+        st.session_state["input_custom_vis"] = eq_v_scan or "Équipe 2"
+        choix_vis_val = "Autre / Personnalisée"
     st.session_state["choix_equipe_visiteuse"] = eq_v_scan
+    st.session_state["track_choix_vis"] = eq_v_scan
 
-    # 2. Selection securisee des joueurs receveurs et synchronisation des etats de presence
-    roster_r = equipes_dict.get(eq_r_scan, [])
-    j_r_list = data_s.get("joueurs_rec", [])
+    # 2. Selection securisee des 3 joueurs receveurs sans doublon
+    roster_r = list(equipes_dict.get(eq_r_scan, []))
+    j_r_list = list(data_s.get("joueurs_rec", []))
+    used_sel_r = set()
     for idx, p_id in enumerate(["j1_rec", "j2_rec", "j3_rec"]):
-        nom = j_r_list[idx] if idx < len(j_r_list) else f"Joueur {idx+1}"
-        if nom in roster_r:
+        nom = str(j_r_list[idx]).strip() if idx < len(j_r_list) else f"Joueur {idx+1}"
+        if nom in roster_r and nom not in used_sel_r:
             st.session_state[f"sel_{p_id}"] = nom
+            used_sel_r.add(nom)
         else:
             st.session_state[f"sel_{p_id}"] = "Remplaçant..."
             st.session_state[f"cust_{p_id}"] = nom
+        moy_j = obtenir_moyenne_joueur(nom)
+        pts_def = calculer_score_absent(moy_j)
         st.session_state[f"last_nom_{p_id}"] = nom
-        st.session_state[f"moy_{p_id}"] = obtenir_moyenne_joueur(nom)
-        st.session_state[f"pts_{p_id}"] = 0
+        st.session_state[f"moy_{p_id}"] = moy_j
+        st.session_state[f"pts_{p_id}"] = pts_def
         st.session_state[f"pres_{p_id}"] = True
         st.session_state[f"main_pres_tog_{p_id}"] = True
         st.session_state[f"prev_state_{p_id}"] = True
-        st.session_state[f"prev_pts_{p_id}"] = 0
+        st.session_state[f"prev_pts_{p_id}"] = pts_def
 
-    # 3. Selection securisee des joueurs visiteurs et synchronisation des etats de presence
-    roster_v = equipes_dict.get(eq_v_scan, [])
-    j_v_list = data_s.get("joueurs_vis", [])
+    # 3. Selection securisee des 3 joueurs visiteurs sans doublon
+    roster_v = list(equipes_dict.get(eq_v_scan, []))
+    j_v_list = list(data_s.get("joueurs_vis", []))
+    used_sel_v = set()
     for idx, p_id in enumerate(["j1_vis", "j2_vis", "j3_vis"]):
-        nom = j_v_list[idx] if idx < len(j_v_list) else f"Joueur {idx+1}"
-        if nom in roster_v:
+        nom = str(j_v_list[idx]).strip() if idx < len(j_v_list) else f"Joueur {idx+1}"
+        if nom in roster_v and nom not in used_sel_v:
             st.session_state[f"sel_{p_id}"] = nom
+            used_sel_v.add(nom)
         else:
             st.session_state[f"sel_{p_id}"] = "Remplaçant..."
             st.session_state[f"cust_{p_id}"] = nom
+        moy_j = obtenir_moyenne_joueur(nom)
+        pts_def = calculer_score_absent(moy_j)
         st.session_state[f"last_nom_{p_id}"] = nom
-        st.session_state[f"moy_{p_id}"] = obtenir_moyenne_joueur(nom)
-        st.session_state[f"pts_{p_id}"] = 0
+        st.session_state[f"moy_{p_id}"] = moy_j
+        st.session_state[f"pts_{p_id}"] = pts_def
         st.session_state[f"pres_{p_id}"] = True
         st.session_state[f"main_pres_tog_{p_id}"] = True
         st.session_state[f"prev_state_{p_id}"] = True
-        st.session_state[f"prev_pts_{p_id}"] = 0
+        st.session_state[f"prev_pts_{p_id}"] = pts_def
 
-    # 4. Injection des scores des 9 manches
+    # 4. Injection des scores des 9 manches (bornes de 0 a 8)
     matchs_dict = data_s.get("matchs", {})
     scores_dict = {}
     matchs_save = {}
     for i in range(1, 10):
         m_i = matchs_dict.get(str(i), {})
-        sa = _safe_int_val(m_i.get("score_a", 0))
-        sb = _safe_int_val(m_i.get("score_b", 0))
+        sa = max(0, min(8, _safe_int_val(m_i.get("score_a", 0))))
+        sb = max(0, min(8, _safe_int_val(m_i.get("score_b", 0))))
         st.session_state[f"s_a_{i}"] = sa
         st.session_state[f"s_b_{i}"] = sb
         scores_dict[f"s_a_{i}"] = sa
@@ -3343,21 +3512,24 @@ def cb_injecter_donnees_scanner(data_s, label_direct):
             "score_a": sa,
             "score_b": sb,
             "joueur_a": m_i.get("joueur_a", ""),
-            "joueur_b": m_i.get("joueur_b", "")
+            "joueur_b": m_i.get("joueur_b", ""),
+            "joueur_a_absent": False,
+            "joueur_b_absent": False
         }
 
     st.session_state["venant_de_archive"] = False
+    st.session_state["match_en_cours_deja_valide"] = False
     st.session_state["scores_en_cours_backup"] = scores_dict
 
-    # 5. Sauvegarde locale atomique SANS declencher de push GitHub (evite le redemarrage de l'app sur Streamlit Cloud)
+    # 5. Sauvegarde locale atomique dans BACKUP_FILE pour persistance immediate
     try:
         dict_j_inj = {
-            "j1_rec": {"nom": j_r_list[0] if len(j_r_list) > 0 else "Joueur 1", "present": True, "moyenne": float(st.session_state.get("moy_j1_rec", 0.625)), "pts_absent": 0},
-            "j2_rec": {"nom": j_r_list[1] if len(j_r_list) > 1 else "Joueur 2", "present": True, "moyenne": float(st.session_state.get("moy_j2_rec", 0.625)), "pts_absent": 0},
-            "j3_rec": {"nom": j_r_list[2] if len(j_r_list) > 2 else "Joueur 3", "present": True, "moyenne": float(st.session_state.get("moy_j3_rec", 0.625)), "pts_absent": 0},
-            "j1_vis": {"nom": j_v_list[0] if len(j_v_list) > 0 else "Joueur 1", "present": True, "moyenne": float(st.session_state.get("moy_j1_vis", 0.625)), "pts_absent": 0},
-            "j2_vis": {"nom": j_v_list[1] if len(j_v_list) > 1 else "Joueur 2", "present": True, "moyenne": float(st.session_state.get("moy_j2_vis", 0.625)), "pts_absent": 0},
-            "j3_vis": {"nom": j_v_list[2] if len(j_v_list) > 2 else "Joueur 3", "present": True, "moyenne": float(st.session_state.get("moy_j3_vis", 0.625)), "pts_absent": 0},
+            "j1_rec": {"nom": st.session_state["last_nom_j1_rec"], "present": True, "moyenne": float(st.session_state.get("moy_j1_rec", 0.625)), "pts_absent": int(st.session_state.get("pts_j1_rec", 0))},
+            "j2_rec": {"nom": st.session_state["last_nom_j2_rec"], "present": True, "moyenne": float(st.session_state.get("moy_j2_rec", 0.625)), "pts_absent": int(st.session_state.get("pts_j2_rec", 0))},
+            "j3_rec": {"nom": st.session_state["last_nom_j3_rec"], "present": True, "moyenne": float(st.session_state.get("moy_j3_rec", 0.625)), "pts_absent": int(st.session_state.get("pts_j3_rec", 0))},
+            "j1_vis": {"nom": st.session_state["last_nom_j1_vis"], "present": True, "moyenne": float(st.session_state.get("moy_j1_vis", 0.625)), "pts_absent": int(st.session_state.get("pts_j1_vis", 0))},
+            "j2_vis": {"nom": st.session_state["last_nom_j2_vis"], "present": True, "moyenne": float(st.session_state.get("moy_j2_vis", 0.625)), "pts_absent": int(st.session_state.get("pts_j2_vis", 0))},
+            "j3_vis": {"nom": st.session_state["last_nom_j3_vis"], "present": True, "moyenne": float(st.session_state.get("moy_j3_vis", 0.625)), "pts_absent": int(st.session_state.get("pts_j3_vis", 0))},
         }
         data_inj = {
             "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -3365,8 +3537,16 @@ def cb_injecter_donnees_scanner(data_s, label_direct):
             "ts_modif": time.time(),
             "receveur": eq_r_scan,
             "visiteur": eq_v_scan,
-            "choix_rec": eq_r_scan,
-            "choix_vis": eq_v_scan,
+            "choix_rec": choix_rec_val,
+            "choix_vis": choix_vis_val,
+            "input_custom_rec": st.session_state.get("input_custom_rec", ""),
+            "input_custom_vis": st.session_state.get("input_custom_vis", ""),
+            "sel_j1_rec": st.session_state.get("sel_j1_rec", ""),
+            "sel_j2_rec": st.session_state.get("sel_j2_rec", ""),
+            "sel_j3_rec": st.session_state.get("sel_j3_rec", ""),
+            "sel_j1_vis": st.session_state.get("sel_j1_vis", ""),
+            "sel_j2_vis": st.session_state.get("sel_j2_vis", ""),
+            "sel_j3_vis": st.session_state.get("sel_j3_vis", ""),
             "joueurs": dict_j_inj,
             "matchs": matchs_save
         }
@@ -3380,6 +3560,7 @@ def cb_injecter_donnees_scanner(data_s, label_direct):
     st.session_state["est_spectateur"] = False
     st.session_state["mode_consultation"] = False
     st.session_state["app_initialisee"] = True
+    st.session_state["match_du_jour_initialise_session"] = True
 
     # Prendre le verrou pour afficher directement la grille d'edition
     user_sess = st.session_state.get("user_session_id")
@@ -3387,11 +3568,11 @@ def cb_injecter_donnees_scanner(data_s, label_direct):
         user_sess = str(uuid.uuid4())
         st.session_state["user_session_id"] = user_sess
     try:
-        prendre_le_verrou(user_sess)
+        forcer_prise_de_main(user_sess)
     except Exception:
         pass
 
-    lbl_direct = "🔴 Saisie du match en direct (En cours)"
+    lbl_direct = label_direct or "🔴 Saisie du match en direct (En cours)"
     st.session_state["choix_match_vue"] = lbl_direct
     st.session_state["pending_choix_match_vue"] = lbl_direct
     st.session_state["toast_scan_injecte"] = True
@@ -3816,10 +3997,12 @@ def afficher_vue_scanner_feuille_match(label_direct):
                 # Controle arithmetique de coherence des points
                 somme_pts_rec = sum(p.get("total_points", 0) for p in stats_rec)
                 somme_pts_vis = sum(p.get("total_points", 0) for p in stats_vis)
-                if somme_pts_rec == tot_r and somme_pts_vis == tot_v:
-                    st.success(f"✅ **Contrôle de cohérence :** La somme des points des joueurs ({somme_pts_rec} pts pour {rec_nom} et {somme_pts_vis} pts pour {vis_nom}) correspond exactement aux totaux d'équipe de la feuille.")
+                raw_tot_r = _safe_int_val(data_s.get("raw_total_rec", tot_r))
+                raw_tot_v = _safe_int_val(data_s.get("raw_total_vis", tot_v))
+                if (raw_tot_r == somme_pts_rec and raw_tot_v == somme_pts_vis) or (raw_tot_r == 0 and raw_tot_v == 0):
+                    st.success(f"✅ **Contrôle de cohérence :** La somme des points des joueurs ({somme_pts_rec} pts pour {rec_nom} et {somme_pts_vis} pts pour {vis_nom}) correspond exactement aux 9 manches de la feuille.")
                 else:
-                    st.warning(f"⚠️ **Vérification arithmétique :** Somme calculée des 3 joueurs = **{somme_pts_rec} pts** ({rec_nom}) et **{somme_pts_vis} pts** ({vis_nom}) vs totaux indiqués sur la feuille = **{tot_r} pts** et **{tot_v} pts**.")
+                    st.info(f"ℹ️ **Synchronisation arithmétique automatique :** Les totaux d'équipe ont été alignés sur la somme exacte des 9 manches (**{somme_pts_rec} pts** pour {rec_nom} et **{somme_pts_vis} pts** pour {vis_nom} ; totaux bruts lus au bas de la feuille : {raw_tot_r} pts et {raw_tot_v} pts).")
 
                 st.markdown("##### 🎱 Détail des 9 duels officiels (avec noms complets)")
                 duels_data = []
@@ -3914,25 +4097,25 @@ def afficher_vue_scanner_feuille_match(label_direct):
                 st.markdown("#### ⚡ Actions sur la feuille de match")
                 col_act1, col_act2, col_act3 = st.columns([1.6, 1.4, 1.0])
                 with col_act1:
-                    if st.button(
+                    st.button(
                         "📥 Injecter dans la saisie du match en direct",
                         use_container_width=True,
                         type="primary",
                         key="btn_injecter_saisie_directe",
+                        on_click=cb_injecter_donnees_scanner,
+                        args=(data_s, label_direct),
                         help="Pré-remplit la feuille de match en direct avec ces équipes, joueurs actifs et pointages"
-                    ):
-                        cb_injecter_donnees_scanner(data_s, label_direct)
-                        st.rerun()
+                    )
 
                 with col_act2:
-                    if st.button(
+                    st.button(
                         "💾 Archiver directement dans l'historique officiel",
                         use_container_width=True,
                         key="btn_archiver_match_direct",
+                        on_click=cb_archiver_match_scanner,
+                        args=(data_s,),
                         help="Enregistre officiellement ce match avec les noms complets des joueurs dans l'historique"
-                    ):
-                        cb_archiver_match_scanner(data_s)
-                        st.rerun()
+                    )
 
                 with col_act3:
                     st.download_button(
@@ -12445,6 +12628,7 @@ def cb_changer_equipe_rec():
             st.session_state["pres_j2_rec"] = True
             st.session_state["main_pres_tog_j2_rec"] = True
         if len(r) >= 3:
+            st.session_state["sel_j3_rec"] = r[2]
             st.session_state["last_nom_j3_rec"] = r[2]
             st.session_state["moy_j3_rec"] = obtenir_moyenne_joueur(r[2])
             st.session_state["pts_j3_rec"] = calculer_score_absent(st.session_state["moy_j3_rec"])
@@ -12471,6 +12655,7 @@ def cb_changer_equipe_vis():
             st.session_state["pres_j2_vis"] = True
             st.session_state["main_pres_tog_j2_vis"] = True
         if len(r) >= 3:
+            st.session_state["sel_j3_vis"] = r[2]
             st.session_state["last_nom_j3_vis"] = r[2]
             st.session_state["moy_j3_vis"] = obtenir_moyenne_joueur(r[2])
             st.session_state["pts_j3_vis"] = calculer_score_absent(st.session_state["moy_j3_vis"])
@@ -13161,16 +13346,26 @@ with tab_feuille:
         else:
             j2_rec_pts = int(st.session_state.get("pts_j2_rec", 0))
 
-        # Joueur 3 (Évident / Déduit automatiquement)
-        restants_rec = [p for p in roster_rec if p != sel_j1_rec and p != sel_j2_rec]
-        j3_rec = restants_rec[0] if restants_rec else "Joueur 3"
+        # Options sécurisées pour Joueur 3 (déduit automatiquement ou remplaçant)
+        options_j3_rec = [p for p in roster_rec if p != sel_j1_rec and p != sel_j2_rec] + ["Remplaçant..."]
+        if "sel_j3_rec" in st.session_state and st.session_state["sel_j3_rec"] not in options_j3_rec:
+            st.session_state["sel_j3_rec"] = options_j3_rec[0]
+
+        def_idx_j3_rec = 0
+        if "sel_j3_rec" in st.session_state and st.session_state["sel_j3_rec"] in options_j3_rec:
+            def_idx_j3_rec = options_j3_rec.index(st.session_state["sel_j3_rec"])
+
+        col_j3_r1, col_j3_r2 = st.columns([3, 2])
+        sel_j3_rec = col_j3_r1.selectbox("Sélection Joueur 3 :", options_j3_rec, index=def_idx_j3_rec, key="sel_j3_rec", disabled=not est_editeur)
+        if sel_j3_rec == "Remplaçant...":
+            j3_rec = st.text_input("Nom Joueur 3 (Remplaçant)", value=st.session_state.get("cust_j3_rec", "Remplaçant 3"), key="cust_j3_rec", disabled=not est_editeur)
+        else:
+            j3_rec = sel_j3_rec
+
         if "last_nom_j3_rec" not in st.session_state or st.session_state["last_nom_j3_rec"] != j3_rec:
             st.session_state["last_nom_j3_rec"] = j3_rec
             st.session_state["moy_j3_rec"] = obtenir_moyenne_joueur(j3_rec)
             st.session_state["pts_j3_rec"] = calculer_score_absent(st.session_state["moy_j3_rec"])
-
-        col_j3_r1, col_j3_r2 = st.columns([3, 2])
-        col_j3_r1.markdown(f"**Joueur 3 (défini) :**<br>`{j3_rec}`", unsafe_allow_html=True)
         j3_rec_pres = col_j3_r2.toggle("Présent", value=st.session_state.get("pres_j3_rec", True), key="pres_j3_rec", on_change=cb_toggle_presence_sb, args=("j3_rec",), disabled=not est_editeur)
         if not j3_rec_pres:
             def_moy_j3 = float(st.session_state.get("moy_j3_rec", obtenir_moyenne_joueur(j3_rec)))
@@ -13301,16 +13496,26 @@ with tab_feuille:
         else:
             j2_vis_pts = int(st.session_state.get("pts_j2_vis", 0))
 
-        # Joueur 3 (Évident / Déduit automatiquement)
-        restants_vis = [p for p in roster_vis if p != sel_j1_vis and p != sel_j2_vis]
-        j3_vis = restants_vis[0] if restants_vis else "Joueur 3"
+        # Options sécurisées pour Joueur 3 (déduit automatiquement ou remplaçant)
+        options_j3_vis = [p for p in roster_vis if p != sel_j1_vis and p != sel_j2_vis] + ["Remplaçant..."]
+        if "sel_j3_vis" in st.session_state and st.session_state["sel_j3_vis"] not in options_j3_vis:
+            st.session_state["sel_j3_vis"] = options_j3_vis[0]
+
+        def_idx_j3_vis = 0
+        if "sel_j3_vis" in st.session_state and st.session_state["sel_j3_vis"] in options_j3_vis:
+            def_idx_j3_vis = options_j3_vis.index(st.session_state["sel_j3_vis"])
+
+        col_j3_v1, col_j3_v2 = st.columns([3, 2])
+        sel_j3_vis = col_j3_v1.selectbox("Sélection Joueur 3 :", options_j3_vis, index=def_idx_j3_vis, key="sel_j3_vis", disabled=not est_editeur)
+        if sel_j3_vis == "Remplaçant...":
+            j3_vis = st.text_input("Nom Visiteur 3 (Remplaçant)", value=st.session_state.get("cust_j3_vis", "Remplaçant 3"), key="cust_j3_vis", disabled=not est_editeur)
+        else:
+            j3_vis = sel_j3_vis
+
         if "last_nom_j3_vis" not in st.session_state or st.session_state["last_nom_j3_vis"] != j3_vis:
             st.session_state["last_nom_j3_vis"] = j3_vis
             st.session_state["moy_j3_vis"] = obtenir_moyenne_joueur(j3_vis)
             st.session_state["pts_j3_vis"] = calculer_score_absent(st.session_state["moy_j3_vis"])
-
-        col_j3_v1, col_j3_v2 = st.columns([3, 2])
-        col_j3_v1.markdown(f"**Joueur 3 (défini) :**<br>`{j3_vis}`", unsafe_allow_html=True)
         j3_vis_pres = col_j3_v2.toggle("Présent", value=st.session_state.get("pres_j3_vis", True), key="pres_j3_vis", on_change=cb_toggle_presence_sb, args=("j3_vis",), disabled=not est_editeur)
         if not j3_vis_pres:
             def_moy_v3 = float(st.session_state.get("moy_j3_vis", obtenir_moyenne_joueur(j3_vis)))
@@ -13840,6 +14045,10 @@ with tab_feuille:
             st.button("🔙 Reprendre la saisie", on_click=cb_retour_match_en_cours, type="primary", use_container_width=True, key="btn_reprendre_saisie")
     elif not est_spectateur:
         st.markdown("---")
+        if st.session_state.pop("toast_scan_injecte", False):
+            st.success(f"✅ **Résultats du scanner IA injectés avec succès !** Alignement **{equipe_receveur}** vs **{equipe_visiteur}**, joueurs officiels et pointages des 9 manches chargés dans le formulaire ci-dessous.")
+        if st.session_state.pop("msg_succes_archive_scan", False):
+            st.success("✅ **Match archivé avec succès dans l'historique officiel depuis le scanner IA !**")
         st.markdown(f"### 🎯 Grille de saisie des 9 manches — Saison {no_sais_sb} • {sem_sais_sb} (Rotation 3 contre 3)")
         rencontre_info = determiner_match_du_jour()
         if rencontre_info:
@@ -13883,8 +14092,10 @@ with tab_feuille:
             "input_custom_vis": st.session_state.get("input_custom_vis", ""),
             "sel_j1_rec": sel_j1_rec,
             "sel_j2_rec": sel_j2_rec,
+            "sel_j3_rec": sel_j3_rec,
             "sel_j1_vis": sel_j1_vis,
             "sel_j2_vis": sel_j2_vis,
+            "sel_j3_vis": sel_j3_vis,
             "joueurs": {p_id: {"nom": j["nom"], "present": j["present"], "moyenne": j.get("moyenne", 0.0), "pts_absent": j["pts_absent"]} for p_id, j in dict_joueurs.items()},
             "matchs": {}
         }
