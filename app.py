@@ -3762,47 +3762,263 @@ def afficher_vue_scanner_feuille_match(label_direct):
     img_data = None
     if "Caméra directe" in mode_photo:
         st.info(
-            "💡 **Caméra arrière configurée :** L'application active automatiquement la caméra arrière de votre tablette pour viser la feuille de match. "
-            "Si besoin, vous pouvez basculer d'une caméra à l'autre à tout moment avec le bouton ci-dessous."
+            "💡 **Ergonomie Tablette optimisée :** Vous pouvez déclencher la photo de **4 façons** sans bouger la tablette : "
+            "1️⃣ en **touchant directement l'image vidéo**, "
+            "2️⃣ avec les **gros boutons latéraux (pouce gauche/droit)** sur les bords du viseur, "
+            "3️⃣ avec le **⏱️ Retardateur 3s** (idéal pour tenir la tablette à 2 mains et cadrer), ou "
+            "4️⃣ avec le **gros bouton vert** sous l'image."
         )
 
-        # Injection du contrôleur JavaScript pour forcer la caméra arrière (facingMode: environment) et bouton de basculement
+        # Contrôleur ergonomique complet : Cadrage compact sans défilement, Zoom, Retardateur 3s, Tap-to-Shot et Boutons de pouce latéraux
         html_controleur_cam = """
-        <div id="cam-ctrl-wrap" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border: 1.5px solid #3b82f6; border-radius: 10px; padding: 10px 14px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-          <div style="display: flex; align-items: center; gap: 10px;">
-            <span id="saphir-cam-dot" style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 8px #22c55e;"></span>
-            <span id="saphir-cam-status" style="color: #f8fafc; font-weight: 600; font-size: 13.5px;">📷 Caméra ARRIÈRE active (Feuille de match)</span>
+        <div id="cam-ctrl-wrap" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border: 2px solid #3b82f6; border-radius: 12px; padding: 12px 14px; margin-bottom: 6px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #f8fafc; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
+          <!-- Ligne 1 : Gros boutons de déclenchement rapide et Retardateur 3s -->
+          <div style="display: grid; grid-template-columns: 1.4fr 1.2fr 1fr; gap: 10px; margin-bottom: 10px;">
+            <button id="saphir-btn-shoot-now" type="button" style="background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); color: #ffffff; border: 2px solid #4ade80; padding: 12px 14px; border-radius: 10px; font-weight: 800; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 4px 10px rgba(22,163,74,0.4); touch-action: manipulation;">
+              📸 PRENDRE LA PHOTO
+            </button>
+            <button id="saphir-btn-timer3" type="button" style="background: linear-gradient(135deg, #d97706 0%, #b45309 100%); color: #ffffff; border: 2px solid #fbbf24; padding: 12px 14px; border-radius: 10px; font-weight: 800; font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 4px 10px rgba(217,119,6,0.35); touch-action: manipulation;">
+              ⏱️ RETARDATEUR 3s (2 mains)
+            </button>
+            <button id="saphir-btn-switch" type="button" style="background: #2563eb; color: #ffffff; border: 1.5px solid #60a5fa; padding: 10px 12px; border-radius: 10px; font-weight: 700; font-size: 13.5px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; touch-action: manipulation;">
+              🔄 Caméra Arrière / Avant
+            </button>
           </div>
-          <button id="saphir-btn-switch" type="button" style="background: #2563eb; color: #ffffff; border: none; padding: 7px 14px; border-radius: 6px; font-weight: 600; font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.25);">
-            🔄 Changer de caméra (Arrière / Avant)
-          </button>
+
+          <!-- Ligne 2 : Réglages de l'image (Zoom, Mode d'ajustement, Tap-to-shot, Torche) -->
+          <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding-top: 8px; border-top: 1px solid rgba(148,163,184,0.25); font-size: 13px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span id="saphir-cam-dot" style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 8px #22c55e;"></span>
+              <span id="saphir-cam-status" style="font-weight: 600;">📷 Caméra ARRIÈRE</span>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="color: #cbd5e1; font-weight: 600;">🔍 Zoom :</span>
+              <button type="button" class="saphir-zoom-btn" data-zoom="1" style="background: #3b82f6; color: white; border: none; padding: 5px 10px; border-radius: 6px; font-weight: 700; cursor: pointer;">1x</button>
+              <button type="button" class="saphir-zoom-btn" data-zoom="1.25" style="background: #334155; color: #e2e8f0; border: none; padding: 5px 10px; border-radius: 6px; font-weight: 700; cursor: pointer;">1.25x</button>
+              <button type="button" class="saphir-zoom-btn" data-zoom="1.5" style="background: #334155; color: #e2e8f0; border: none; padding: 5px 10px; border-radius: 6px; font-weight: 700; cursor: pointer;">1.5x</button>
+              <button type="button" class="saphir-zoom-btn" data-zoom="2" style="background: #334155; color: #e2e8f0; border: none; padding: 5px 10px; border-radius: 6px; font-weight: 700; cursor: pointer;">2x</button>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <button id="saphir-btn-fit" type="button" style="background: #334155; color: #f8fafc; border: 1px solid #64748b; padding: 5px 10px; border-radius: 6px; font-weight: 600; cursor: pointer;">
+                📐 Cadrage : Vue entière
+              </button>
+              <button id="saphir-btn-tap-toggle" type="button" style="background: #0d9488; color: #ffffff; border: 1px solid #2dd4bf; padding: 5px 10px; border-radius: 6px; font-weight: 600; cursor: pointer;">
+                👆 Toucher l'image = Photo (Actif)
+              </button>
+              <button id="saphir-btn-torch" type="button" style="background: #334155; color: #fde047; border: 1px solid #64748b; padding: 5px 10px; border-radius: 6px; font-weight: 600; cursor: pointer;">
+                🔦 Lampe
+              </button>
+            </div>
+          </div>
         </div>
+
         <script>
         (function() {
           const pWin = window.parent;
           if (!pWin || !pWin.navigator || !pWin.navigator.mediaDevices) return;
+          const pDoc = pWin.document;
 
-          if (typeof pWin.__saphir_facing === 'undefined') {
-            pWin.__saphir_facing = "environment";
-          }
+          if (typeof pWin.__saphir_facing === 'undefined') pWin.__saphir_facing = "environment";
+          if (typeof pWin.__saphir_zoom === 'undefined') pWin.__saphir_zoom = 1.0;
+          if (typeof pWin.__saphir_fit === 'undefined') pWin.__saphir_fit = "contain";
+          if (typeof pWin.__saphir_tap_shot === 'undefined') pWin.__saphir_tap_shot = true;
+          if (typeof pWin.__saphir_torch === 'undefined') pWin.__saphir_torch = false;
 
           const dot = document.getElementById("saphir-cam-dot");
           const status = document.getElementById("saphir-cam-status");
-          const btn = document.getElementById("saphir-btn-switch");
+          const btnSwitch = document.getElementById("saphir-btn-switch");
+          const btnShootNow = document.getElementById("saphir-btn-shoot-now");
+          const btnTimer3 = document.getElementById("saphir-btn-timer3");
+          const btnFit = document.getElementById("saphir-btn-fit");
+          const btnTapToggle = document.getElementById("saphir-btn-tap-toggle");
+          const btnTorch = document.getElementById("saphir-btn-torch");
+          const zoomBtns = document.querySelectorAll(".saphir-zoom-btn");
+
+          // 1. Injecter le style ergonomique dans le document parent pour le composant stCameraInput
+          function injecterStylesCameraParent() {
+            let styleEl = pDoc.getElementById("saphir-ergo-cam-style");
+            if (!styleEl) {
+              styleEl = pDoc.createElement("style");
+              styleEl.id = "saphir-ergo-cam-style";
+              pDoc.head.appendChild(styleEl);
+            }
+            styleEl.textContent = `
+              div[data-testid="stCameraInput"] {
+                position: relative !important;
+                background: #0f172a !important;
+                border: 2px solid #334155 !important;
+                border-radius: 14px !important;
+                padding: 8px !important;
+                box-shadow: 0 6px 18px rgba(0,0,0,0.3) !important;
+              }
+              div[data-testid="stCameraInput"] video,
+              div[data-testid="stCameraInput"] img {
+                max-height: 48vh !important;
+                width: 100% !important;
+                object-fit: ${pWin.__saphir_fit} !important;
+                background: #020617 !important;
+                border-radius: 10px !important;
+                transform: scale(${pWin.__saphir_zoom}) !important;
+                transform-origin: center center !important;
+                transition: transform 0.2s ease !important;
+                cursor: ${pWin.__saphir_tap_shot ? 'pointer' : 'default'} !important;
+              }
+              /* Gros bouton natif sous la caméra ultra-accessible */
+              div[data-testid="stCameraInput"] button {
+                min-height: 58px !important;
+                width: 100% !important;
+                font-size: 18px !important;
+                font-weight: 800 !important;
+                background: linear-gradient(135deg, #16a34a 0%, #15803d 100%) !important;
+                color: #ffffff !important;
+                border: 2px solid #4ade80 !important;
+                border-radius: 10px !important;
+                margin-top: 8px !important;
+                box-shadow: 0 4px 12px rgba(22, 163, 74, 0.45) !important;
+                letter-spacing: 0.4px !important;
+                cursor: pointer !important;
+                touch-action: manipulation !important;
+              }
+              div[data-testid="stCameraInput"] button:active {
+                transform: scale(0.98) !important;
+              }
+            `;
+          }
+          injecterStylesCameraParent();
+
+          // 2. Déclencher le bouton natif de prise de photo / réinitialisation de Streamlit
+          function declencherCaptureNative() {
+            const nativeBtn = pDoc.querySelector('div[data-testid="stCameraInput"] button');
+            if (nativeBtn) {
+              nativeBtn.click();
+            }
+          }
+
+          // 3. Déclenchement avec retardateur de 3 secondes (stabilisation 2 mains)
+          let timerActif = false;
+          function declencherRetardateur3s() {
+            if (timerActif) return;
+            const camBox = pDoc.querySelector('div[data-testid="stCameraInput"]');
+            if (!camBox) {
+              declencherCaptureNative();
+              return;
+            }
+            timerActif = true;
+            let overlay = pDoc.getElementById("saphir-countdown-overlay");
+            if (!overlay) {
+              overlay = pDoc.createElement("div");
+              overlay.id = "saphir-countdown-overlay";
+              overlay.style.cssText = "position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; background:rgba(15,23,42,0.45); z-index:9999; border-radius:12px; pointer-events:none; font-family:sans-serif;";
+              camBox.appendChild(overlay);
+            }
+            overlay.style.display = "flex";
+            let sec = 3;
+            overlay.innerHTML = `<div style="font-size:84px; font-weight:900; color:#4ade80; text-shadow:0 4px 20px rgba(0,0,0,0.9);">${sec}</div><div style="font-size:18px; font-weight:700; color:#ffffff; background:rgba(0,0,0,0.7); padding:6px 16px; border-radius:20px;">Tenez la tablette stable à 2 mains...</div>`;
+            const iv = setInterval(() => {
+              sec--;
+              if (sec > 0) {
+                overlay.innerHTML = `<div style="font-size:84px; font-weight:900; color:#fbbf24; text-shadow:0 4px 20px rgba(0,0,0,0.9);">${sec}</div><div style="font-size:18px; font-weight:700; color:#ffffff; background:rgba(0,0,0,0.7); padding:6px 16px; border-radius:20px;">Ne bougez plus...</div>`;
+              } else {
+                clearInterval(iv);
+                overlay.innerHTML = `<div style="font-size:64px; font-weight:900; color:#22c55e;">📸 CAPTURE !</div>`;
+                declencherCaptureNative();
+                setTimeout(() => {
+                  if (overlay) overlay.style.display = "none";
+                  timerActif = false;
+                }, 500);
+              }
+            }, 950);
+          }
+
+          // 4. Ajouter le cadre de visée (4 coins) et les boutons latéraux de pouce directement sur le viseur
+          function installerOverlayViseur() {
+            const camBox = pDoc.querySelector('div[data-testid="stCameraInput"]');
+            if (!camBox) return;
+
+            if (!pDoc.getElementById("saphir-frame-guide")) {
+              const guide = pDoc.createElement("div");
+              guide.id = "saphir-frame-guide";
+              guide.style.cssText = "position:absolute; top:38px; left:12%; right:12%; bottom:78px; border:2px dashed rgba(74,222,128,0.65); border-radius:10px; pointer-events:none; z-index:20; display:flex; align-items:flex-start; justify-content:center;";
+              guide.innerHTML = `<span style="background:rgba(15,23,42,0.75); color:#4ade80; font-size:12px; font-weight:700; padding:3px 10px; border-radius:0 0 8px 8px; font-family:sans-serif;">🎯 Alignez la feuille dans ce cadre (ou touchez l'image pour capturer)</span>`;
+              camBox.appendChild(guide);
+            }
+
+            // Bouton flottant Pouce DROIT (prise immédiate)
+            if (!pDoc.getElementById("saphir-thumb-right")) {
+              const thumbR = pDoc.createElement("button");
+              thumbR.id = "saphir-thumb-right";
+              thumbR.type = "button";
+              thumbR.title = "Déclencheur Pouce Droit (Prise immédiate)";
+              thumbR.style.cssText = "position:absolute; right:14px; top:45%; transform:translateY(-50%); width:66px; height:66px; border-radius:50%; background:radial-gradient(circle, #22c55e 0%, #15803d 100%); color:white; border:4px solid #ffffff; font-size:26px; font-weight:bold; cursor:pointer; z-index:35; box-shadow:0 4px 16px rgba(0,0,0,0.65); display:flex; align-items:center; justify-content:center; touch-action:manipulation;";
+              thumbR.innerHTML = "📸";
+              thumbR.onclick = function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                declencherCaptureNative();
+              };
+              camBox.appendChild(thumbR);
+            }
+
+            // Bouton flottant Pouce GAUCHE (Retardateur 3s)
+            if (!pDoc.getElementById("saphir-thumb-left")) {
+              const thumbL = pDoc.createElement("button");
+              thumbL.id = "saphir-thumb-left";
+              thumbL.type = "button";
+              thumbL.title = "Déclencheur Pouce Gauche (Retardateur 3s)";
+              thumbL.style.cssText = "position:absolute; left:14px; top:45%; transform:translateY(-50%); width:62px; height:62px; border-radius:50%; background:radial-gradient(circle, #f59e0b 0%, #b45309 100%); color:white; border:3px solid #ffffff; font-size:15px; font-weight:800; cursor:pointer; z-index:35; box-shadow:0 4px 16px rgba(0,0,0,0.65); display:flex; flex-direction:column; align-items:center; justify-content:center; line-height:1.1; touch-action:manipulation;";
+              thumbL.innerHTML = "<span>⏱️</span><span style='font-size:12px;'>3s</span>";
+              thumbL.onclick = function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                declencherRetardateur3s();
+              };
+              camBox.appendChild(thumbL);
+            }
+
+            // Tap-to-shot directement sur la vidéo
+            const video = camBox.querySelector("video");
+            if (video && !video.dataset.saphirTapBound) {
+              video.dataset.saphirTapBound = "true";
+              video.addEventListener("click", function(e) {
+                if (pWin.__saphir_tap_shot) {
+                  e.preventDefault();
+                  declencherCaptureNative();
+                }
+              });
+            }
+          }
 
           function renderUI() {
             const isRear = (pWin.__saphir_facing === "environment");
-            if (status) {
-              status.innerText = isRear ? "📷 Caméra ARRIÈRE active (Feuille de match)" : "🤳 Caméra AVANT active (Selfie)";
-            }
+            if (status) status.innerText = isRear ? "📷 Caméra ARRIÈRE" : "🤳 Caméra AVANT";
             if (dot) {
               dot.style.background = isRear ? "#22c55e" : "#f59e0b";
               dot.style.boxShadow = isRear ? "0 0 8px #22c55e" : "0 0 8px #f59e0b";
             }
+            if (btnFit) {
+              btnFit.innerText = (pWin.__saphir_fit === "contain") ? "📐 Cadrage : Vue entière" : "📐 Cadrage : Plein cadre";
+            }
+            if (btnTapToggle) {
+              btnTapToggle.innerText = pWin.__saphir_tap_shot ? "👆 Toucher l'image = Photo (Actif)" : "👆 Toucher l'image (Inactif)";
+              btnTapToggle.style.background = pWin.__saphir_tap_shot ? "#0d9488" : "#475569";
+            }
+            zoomBtns.forEach(b => {
+              const zVal = parseFloat(b.getAttribute("data-zoom") || "1");
+              if (Math.abs(zVal - pWin.__saphir_zoom) < 0.05) {
+                b.style.background = "#3b82f6";
+                b.style.color = "#ffffff";
+              } else {
+                b.style.background = "#334155";
+                b.style.color = "#e2e8f0";
+              }
+            });
+            injecterStylesCameraParent();
           }
           renderUI();
 
-          // Intercepter systématiquement getUserMedia pour imposer la caméra choisie (arrière par défaut)
+          // Intercepter systématiquement getUserMedia pour imposer la caméra arrière haute définition
           if (!pWin.navigator.mediaDevices._saphirOrigGUM) {
             pWin.navigator.mediaDevices._saphirOrigGUM = pWin.navigator.mediaDevices.getUserMedia.bind(pWin.navigator.mediaDevices);
             pWin.navigator.mediaDevices.getUserMedia = function(constraints) {
@@ -3811,14 +4027,69 @@ def afficher_vue_scanner_feuille_match(label_direct):
                   const targetFacing = pWin.__saphir_facing || "environment";
                   if (typeof constraints.video === 'object') {
                     constraints.video.facingMode = { ideal: targetFacing };
+                    constraints.video.width = { ideal: 1920 };
+                    constraints.video.height = { ideal: 1080 };
                   } else {
-                    constraints.video = { facingMode: { ideal: targetFacing } };
+                    constraints.video = { facingMode: { ideal: targetFacing }, width: { ideal: 1920 }, height: { ideal: 1080 } };
                   }
                 }
-              } catch(e) {
-                console.warn("[Saphir] Erreur contraintes caméra:", e);
-              }
+              } catch(e) {}
               return pWin.navigator.mediaDevices._saphirOrigGUM(constraints);
+            };
+          }
+
+          async function appliquerZoomMaterielOuCSS(zVal) {
+            pWin.__saphir_zoom = zVal;
+            renderUI();
+            try {
+              const video = pDoc.querySelector('div[data-testid="stCameraInput"] video');
+              if (video && video.srcObject) {
+                const track = video.srcObject.getVideoTracks()[0];
+                if (track && track.getCapabilities) {
+                  const caps = track.getCapabilities();
+                  if (caps.zoom) {
+                    const targetZ = Math.min(caps.zoom.max, Math.max(caps.zoom.min, zVal));
+                    await track.applyConstraints({ advanced: [{ zoom: targetZ }] });
+                  }
+                }
+              }
+            } catch(e) {}
+          }
+
+          zoomBtns.forEach(b => {
+            b.onclick = function() {
+              const zVal = parseFloat(b.getAttribute("data-zoom") || "1");
+              appliquerZoomMaterielOuCSS(zVal);
+            };
+          });
+
+          if (btnShootNow) btnShootNow.onclick = function() { declencherCaptureNative(); };
+          if (btnTimer3) btnTimer3.onclick = function() { declencherRetardateur3s(); };
+          if (btnFit) {
+            btnFit.onclick = function() {
+              pWin.__saphir_fit = (pWin.__saphir_fit === "contain") ? "cover" : "contain";
+              renderUI();
+            };
+          }
+          if (btnTapToggle) {
+            btnTapToggle.onclick = function() {
+              pWin.__saphir_tap_shot = !pWin.__saphir_tap_shot;
+              renderUI();
+            };
+          }
+          if (btnTorch) {
+            btnTorch.onclick = async function() {
+              pWin.__saphir_torch = !pWin.__saphir_torch;
+              try {
+                const video = pDoc.querySelector('div[data-testid="stCameraInput"] video');
+                if (video && video.srcObject) {
+                  const track = video.srcObject.getVideoTracks()[0];
+                  if (track) {
+                    await track.applyConstraints({ advanced: [{ torch: pWin.__saphir_torch }] });
+                    btnTorch.style.background = pWin.__saphir_torch ? "#ca8a04" : "#334155";
+                  }
+                }
+              } catch(e) {}
             };
           }
 
@@ -3826,7 +4097,6 @@ def afficher_vue_scanner_feuille_match(label_direct):
             pWin.__saphir_facing = nouveauMode;
             renderUI();
             try {
-              const pDoc = pWin.document;
               const video = pDoc.querySelector('div[data-testid="stCameraInput"] video');
               if (video) {
                 if (video.srcObject) {
@@ -3842,43 +4112,41 @@ def afficher_vue_scanner_feuille_match(label_direct):
                 });
                 video.srcObject = newStream;
                 await video.play();
-                console.log("[Saphir] Caméra basculée vers:", nouveauMode);
               }
             } catch(err) {
               console.error("[Saphir] Erreur changement caméra:", err);
             }
           }
 
-          if (btn) {
-            btn.onclick = function() {
+          if (btnSwitch) {
+            btnSwitch.onclick = function() {
               const nextMode = (pWin.__saphir_facing === "environment") ? "user" : "environment";
               basculerCameraVers(nextMode);
             };
           }
 
-          // Vérifier si la vidéo active utilise la caméra arrière au démarrage
+          // Surveillance périodique pour maintenir le cadre de visée, les boutons de pouce et la caméra arrière
           let count = 0;
           const poll = setInterval(() => {
             count++;
-            if (count > 25) { clearInterval(poll); return; }
-            const pDoc = pWin.document;
+            if (count > 60) { clearInterval(poll); return; }
+            installerOverlayViseur();
             const video = pDoc.querySelector('div[data-testid="stCameraInput"] video');
             if (video && video.srcObject && !video.dataset.saphirEnforced) {
               video.dataset.saphirEnforced = "true";
               const track = video.srcObject.getVideoTracks()[0];
               const settings = (track && track.getSettings) ? track.getSettings() : {};
               if (settings.facingMode && settings.facingMode !== "environment" && pWin.__saphir_facing === "environment") {
-                console.log("[Saphir] Caméra frontale détectée, basculement vers arrière...");
                 basculerCameraVers("environment");
               }
             }
-          }, 350);
+          }, 300);
         })();
         </script>
         """
-        st.components.v1.html(html_controleur_cam, height=65)
+        st.components.v1.html(html_controleur_cam, height=118)
 
-        cam_file = st.camera_input("Prendre une photo nette et bien éclairée de la feuille", key="cam_feuille_input")
+        cam_file = st.camera_input("🎯 Visez la feuille de match (touchez l'image, les boutons latéraux 📸 ou le gros bouton vert ci-dessous)", key="cam_feuille_input")
         if cam_file:
             img_data = cam_file.getvalue()
     else:
@@ -3913,14 +4181,72 @@ def afficher_vue_scanner_feuille_match(label_direct):
             img_data = upl_file.getvalue()
 
     if img_data:
+        # Gestion des ajustements ergonomiques de l'image capturée (rotation 90°/180° et contraste/netteté auto)
+        import hashlib
+        raw_hash = hashlib.md5(img_data[:8192] + str(len(img_data)).encode("ascii")).hexdigest()
+        if st.session_state.get("scan_img_raw_hash") != raw_hash:
+            st.session_state["scan_img_raw_hash"] = raw_hash
+            st.session_state["scan_img_rot"] = 0
+            st.session_state["scan_img_enhance"] = False
+
+        rot_deg = int(st.session_state.get("scan_img_rot", 0)) % 360
+        enhance_on = bool(st.session_state.get("scan_img_enhance", False))
+
+        if rot_deg != 0 or enhance_on:
+            try:
+                from PIL import Image, ImageOps, ImageEnhance, ImageFilter
+                import io
+                im_adj = Image.open(io.BytesIO(img_data))
+                try:
+                    im_adj = ImageOps.exif_transpose(im_adj)
+                except Exception:
+                    pass
+                if im_adj.mode != "RGB":
+                    im_adj = im_adj.convert("RGB")
+                if rot_deg == 90:
+                    im_adj = im_adj.transpose(Image.Transpose.ROTATE_270)
+                elif rot_deg == 180:
+                    im_adj = im_adj.transpose(Image.Transpose.ROTATE_180)
+                elif rot_deg == 270:
+                    im_adj = im_adj.transpose(Image.Transpose.ROTATE_90)
+                if enhance_on:
+                    im_adj = ImageOps.autocontrast(im_adj, cutoff=1)
+                    im_adj = ImageEnhance.Contrast(im_adj).enhance(1.25)
+                    im_adj = im_adj.filter(ImageFilter.SHARPEN)
+                buf_adj = io.BytesIO()
+                im_adj.save(buf_adj, format="JPEG", quality=92)
+                img_data = buf_adj.getvalue()
+            except Exception:
+                pass
+
         st.divider()
-        col_prev, col_act = st.columns([1.5, 2])
+        col_prev, col_act = st.columns([1.4, 2.0])
         with col_prev:
-            st.image(img_data, caption="Photo de la feuille à numériser", use_container_width=True)
+            st.image(img_data, caption=f"Aperçu de la feuille à numériser (Rotation : {rot_deg}°{' • Contraste amélioré' if enhance_on else ''})", use_container_width=True)
         with col_act:
-            st.markdown("#### 🔍 Prêt pour l'analyse IA")
+            st.markdown("#### 🛠️ Ajustement rapide de la photo & Lancement IA")
+            st.caption("Si la photo a été prise de côté ou sous un éclairage faible, ajustez son orientation ou sa netteté en un clic avant de lancer l'analyse :")
+            c_adj1, c_adj2, c_adj3, c_adj4 = st.columns(4)
+            with c_adj1:
+                if st.button("↺ Pivoter Gauche", use_container_width=True, key="btn_rot_left_scan", help="Tourner la photo de 90° vers la gauche"):
+                    st.session_state["scan_img_rot"] = (rot_deg - 90) % 360
+                    st.rerun()
+            with c_adj2:
+                if st.button("↻ Pivoter Droite", use_container_width=True, key="btn_rot_right_scan", help="Tourner la photo de 90° vers la droite"):
+                    st.session_state["scan_img_rot"] = (rot_deg + 90) % 360
+                    st.rerun()
+            with c_adj3:
+                if st.button("↕️ Retourner 180°", use_container_width=True, key="btn_rot_180_scan", help="Inverser le haut et le bas de la photo"):
+                    st.session_state["scan_img_rot"] = (rot_deg + 180) % 360
+                    st.rerun()
+            with c_adj4:
+                lbl_enh = "✨ Netteté : ON" if enhance_on else "✨ Netteté Auto"
+                if st.button(lbl_enh, use_container_width=True, key="btn_enhance_scan", type="primary" if enhance_on else "secondary", help="Augmente automatiquement le contraste et la netteté des chiffres manuscrits"):
+                    st.session_state["scan_img_enhance"] = not enhance_on
+                    st.rerun()
+
             st.info("💡 L'IA détectera l'écriture manuscrite, les 9 duels, vérifiera les totaux et fera la corrélation immédiate avec les joueurs actifs de la ligue.")
-            col_b1, col_b2 = st.columns([2, 1])
+            col_b1, col_b2 = st.columns([2.2, 1])
             with col_b1:
                 if st.button("🚀 Lancer la numérisation avec l'IA", type="primary", use_container_width=True, key="btn_run_scan_ia"):
                     with st.spinner("Analyse de la feuille et corrélation des joueurs actifs en cours par Gemini Vision..."):
