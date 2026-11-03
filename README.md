@@ -1,6 +1,6 @@
 # 🎱 Ligue de billard Boule en main — Salle Le Saphir
 
-Application web officielle développée avec [Streamlit](https://streamlit.io/) pour la gestion complète de la **Ligue de billard Boule en main (Salle Le Saphir)** : portail d'accueil multi-rôles (**Spectateur**, **Marqueur**, **Administrateur**), saisie en direct des feuilles de matchs réguliers (**3 contre 3**), **Scanner IA de feuilles de match manuscrites par photo (Gemini Vision)**, organisation de **tournois officiels** (Simple 1v1 & Double 2v2) avec **Mode Téléviseur / Casting TV auto-actualisé**, **Statistiques & Classements**, **Administration sécurisée** et **Synchronisation Cloud GitHub intégrale anti-veille avec fusion intelligente**.
+Application web officielle développée avec [Streamlit](https://streamlit.io/) pour la gestion complète de la **Ligue de billard Boule en main (Salle Le Saphir)** : portail d'accueil multi-rôles (**Spectateur**, **Marqueur**, **Administrateur**), saisie en direct des feuilles de matchs réguliers (**3 contre 3**), **Scanner IA de feuilles de match manuscrites par photo (Gemini Vision)** avec **viseur ergonomique multi-déclencheurs**, **détection des doublons & scans partiels**, **Statistiques avancées, Progression, Face-à-Face & Projections de fin de saison (Joueurs & Équipes)**, organisation de **tournois officiels** (Simple 1v1 & Double 2v2) avec **Mode Téléviseur / Casting TV auto-actualisé**, **Administration sécurisée** et **Synchronisation Cloud GitHub intégrale anti-veille avec fusion intelligente**.
 
 ---
 
@@ -11,7 +11,7 @@ Dès l'ouverture de l'application, la page d'accueil présente trois modes d'acc
 
 1. **👁️ Accès Spectateur (affiché en premier — sans mot de passe) :**
    * Accès immédiat en un clic (`👁️ Entrer en mode Spectateur`) en **lecture seule**.
-   * Permet de suivre en direct la feuille de match en cours, les classements de la saison, les statistiques des joueurs et l'arborescence des tournois.
+   * Permet de suivre en direct la feuille de match en cours, les classements de la saison, les statistiques et projections des équipes et joueurs, ainsi que l'arborescence des tournois.
 2. **🔒 Accès Marqueur / Éditeur (protégé par mot de passe — par défaut : `saphir2026`) :**
    * Permet de saisir les pointages des 9 manches (3 contre 3), de numériser les feuilles papier par photo IA, d'approuver et d'archiver les feuilles de match, et de créer/gérer les tournois (Simple et Double).
    * **Restriction de sécurité :** le Marqueur n'a **pas** accès au volet `⚙️ Administration`.
@@ -24,24 +24,36 @@ Dès l'ouverture de l'application, la page d'accueil présente trois modes d'acc
 ---
 
 ### 2. 📷 Scanner Intelligent de Feuilles de Match (IA Multimodale Gemini Vision)
-L'application intègre un module de pointe basé sur l'IA de vision de Google (**Gemini 3.1 / 3.5 Flash**) capable de lire et de retranscrire automatiquement des feuilles de match papier manuscrites :
+L'application intègre un module de pointe basé sur l'IA de vision de Google (**Gemini 2.5 / 3.1 Flash**) capable de lire, corréler et retranscrire automatiquement des feuilles de match papier manuscrites :
 
-* **Prise de vue tout-en-un :**
-  * **Sur mobile et tablette :** Utilisation directe de l'appareil photo via `st.camera_input` pour photographier instantanément la feuille au bord de la table.
-  * **Sur ordinateur :** Téléversement d'image par glisser-déposer (`st.file_uploader`) acceptant les formats JPG, PNG et WebP.
+* **Ergonomie de prise de vue optimisée (Mobile, Tablette & Ordinateur) :**
+  * **Viseur plein cadre adapté à l'écran (`48vh`, `object-fit: contain`)** avec **guide de cadrage vert pointillé** superposé pour aligner facilement les 4 coins de la feuille sans défilement vertical.
+  * **4 modes de déclenchement ergonomiques** pour prendre la photo d'une seule main :
+    1. **Tap direct sur l'image vidéo** (un toucher n'importe où sur l'aperçu caméra déclenche la photo).
+    2. **Boutons flottants gauche/droite (`🎯`)** à hauteur de pouce sur les bords latéraux de l'image.
+    3. **Retardateur 3 secondes (`⏱️ Retardateur 3s`)** avec décompte visuel plein écran (`3… 2… 1… 📸`) pour stabiliser l'appareil à deux mains avant le déclenchement automatique.
+    4. **Grands boutons de capture (`📸 PRENDRE LA PHOTO`, `58px`)** placés à la fois **au-dessus et en dessous** du viseur.
+  * **Contrôles matériels en direct :** Sélecteur de **zoom numérique (`1x`, `1.25x`, `1.5x`, `2x`)** et activation de la **torche / flash LED (`🔦 Torche LED`)** sur les appareils compatibles.
+  * **Barre d'outils de retouche rapide après capture (en 1 clic) :** Rotation **↺ 90° Gauche**, **↻ 90° Droite**, **↕️ 180°**, et **✨ Netteté & Contraste Auto** (optimise la lisibilité des chiffres manuscrits au crayon ou stylo pâle avant l'analyse IA).
+  * **Alternative universelle :** Prise de photo via l'application **Appareil photo natif** du téléphone ou téléversement par glisser-déposer (`JPG`, `PNG`, `WebP`).
 * **Optimisation et vitesse éclair (2 à 3 secondes) :**
-  * Redimensionnement et compression automatique en mémoire vive par Pillow (PIL) avant transmission, garantissant une analyse ultrarapide sans temps de latence.
-* **Extraction exhaustive & Contrôle de cohérence :**
-  * Détection automatique de la **date du match**, des **équipes receveuse et visiteuse**, et des **6 joueurs alignés**.
-  * Déchiffrement de l'écriture manuscrite pour les **9 duels individuels** (scores des manches de 0 à 8 points).
-  * Calcul et vérification mathématique des cumuls individuels et des totaux par équipe.
-  * Détection des capitaines signataires / approbateurs.
+  * Redimensionnement et compression automatique en mémoire vive par Pillow (PIL) avant transmission, garantissant une analyse ultrarapide sans latence.
+* **Extraction exhaustive, Corrélation intelligente & Totaux par joueur :**
+  * Détection automatique de la **date du match**, des **équipes receveuse et visiteuse**, et des **6 joueurs alignés** (avec rapprochement flou sur `equipes-saphir.csv`).
+  * **Déduction automatique de l'équipe :** Si le nom d'une équipe est illisible ou absent sur la feuille papier, l'application identifie automatiquement l'équipe officielle à partir des 3 joueurs détectés et empêche tout doublon de joueur au sein d'un même trio.
+  * **Alignement sur la grille officielle des 9 manches :** Réconciliation automatique des 9 duels individuels selon l'ordre officiel de rotation et calcul du **total individuel (`/24`)** ainsi que du bilan **`V-D`** de chaque joueur dans le résumé et le tableau récapitulatif.
+* **Vérification automatique de l'historique, Scans partiels & Diagnostic d'incertitudes :**
+  * **🛑 Détection des matchs déjà archivés (Doublons) :** Dès la fin du scan, l'application vérifie si la rencontre existe déjà dans `historique_matchs.json` (même affiche et même date, ou mêmes scores). Si le match existe déjà :
+    * Les boutons d'injection et d'archivage direct sont verrouillés pour éviter tout doublon.
+    * Une alerte invite l'utilisateur à utiliser la fonction **`⚙️ Administration → ✏️ Rectifications`** (avec bouton d'accès direct pré-sélectionnant le match pour les administrateurs) et propose un bouton **`🔙 Retour à la saisie du match`**.
+  * **⏳ Prise en charge des scans partiels (match en cours) :** Si seules quelques manches sont complétées sur la feuille (`X / 9 manches jouées`), le scanner affiche le détail des manches jouées vs manches à venir, bloque l'archivage direct d'un match incomplet et autorise **`📥 Injecter dans la saisie en direct`** pour poursuivre la soirée dans l'application.
+  * **🔍 Diagnostic de confiance & Incertitudes :** Signalement automatique des doutes de lecture manuscrite relevés par l'IA, des manches sans gagnant à 8 points, des écarts arithmétiques entre la somme des manches et le total inscrit au bas de la feuille, et des joueurs remplaçants hors liste officielle.
+* **Feuille officielle A4 HTML & Transmission automatique par courriel aux administrateurs :**
+  * Dès l'analyse terminée, la **feuille de match officielle HTML (format A4)** est générée automatiquement (consultable, téléchargeable et imprimable immédiatement).
+  * **Envoi automatique par courriel SMTP** aux administrateurs incluant en pièces jointes la **photo originale scannée** et la **feuille de match officielle HTML** (avec verrou anti-doublon par empreinte SHA-1).
 * **Deux modes d'action en un clic :**
-  * **`📥 Injecter dans la saisie du match en direct` :** Pré-remplit automatiquement la feuille de match en direct pour vérification, ajustement ou continuation de saisie.
-  * **`💾 Archiver directement dans l'historique officiel` :** Sauvegarde instantanément la rencontre dans l'historique JSON, génère la copie `.bak` et déclenche la synchronisation distante vers GitHub sans aucune manipulation manuelle.
-* **Points d'accès rapides :**
-  * Sélectionnable dans la liste déroulante principale : `📷 Numériser une feuille de match (Scanner IA)`.
-  * Raccourci dédié dans la barre latérale : `📷 Numériser une feuille (IA)`.
+  * **`📥 Injecter dans la saisie du match en direct` :** Pré-remplit automatiquement les équipes, les 6 joueurs et les pointages des 9 manches dans le formulaire principal avec confirmation de sécurité si une saisie était déjà en cours.
+  * **`💾 Archiver directement dans l'historique officiel` :** Sauvegarde instantanément la rencontre dans `historique_matchs.json`, génère la copie `.bak`, pousse sur GitHub et envoie le rapport officiel par courriel.
 
 ---
 
@@ -77,7 +89,7 @@ La barre latérale **« 📋 Paramètres du Match »** regroupe tous les réglag
   * Lorsqu'un joueur est marqué **Absent** :
     1. Un champ numérique s'affiche pour saisir sa **moyenne officielle** (acceptée sous forme de ratio décimal, ex. `0.625`, ou de pourcentage, ex. `62.5`).
     2. Le pointage forfaitaire par manche du joueur absent est calculé automatiquement selon la formule officielle de la ligue :
-       $$	ext{Score absent} = \min\left(7,\ 	ext{arrondi}\left(rac{	ext{moyenne} 	imes 24}{3}ight)ight)$$
+       $$\text{Score absent} = \min\left(7,\ \text{arrondi}\left(\frac{\text{moyenne} \times 24}{3}\right)\right)$$
     3. **Attribution automatique dans les manches concernées :**
        * **Un seul joueur absent :** le joueur absent reçoit son score calculé (maximum **7 points** par manche) et son adversaire présent reçoit automatiquement **8 points**.
        * **Forfait double (les 2 joueurs absents) :** chacun des deux joueurs absents reçoit le pointage correspondant à sa propre moyenne.
@@ -105,10 +117,10 @@ La barre latérale **« 📋 Paramètres du Match »** regroupe tous les réglag
 * **Trois formules de compétition prises en charge (avec équilibrage automatique pour 18, 20, 22 et 24 joueurs ainsi que jusqu'à 32 participants) :**
   1. **⚡ Élimination directe (Simple élimination)** : Préliminaires en *2 de 3* (premier à 2 victoires) et Finale en *3 de 5* (premier à 3 victoires) :
      * **Cas spécifiques 18, 20, 22 et 24 joueurs (tous jouent au 1er tour + équilibrage au 2e tour) :**
-       * **18 joueurs :** **9 matchs** au 1er tour (tous les 18 joueurs jouent) $ightarrow$ **1 match d'équilibrage** au 2e tour (+ 7 gagnants du 1er tour promus) $ightarrow$ **4 matchs** en Quarts de finale (8 joueurs) $ightarrow$ **2 matchs** en Demi-finales $ightarrow$ **1 Finale**.
-       * **20 joueurs :** **10 matchs** au 1er tour (tous les 20 joueurs jouent) $ightarrow$ **2 matchs d'équilibrage** au 2e tour (+ 6 gagnants du 1er tour promus) $ightarrow$ **4 matchs** en Quarts de finale $ightarrow$ **2 matchs** en Demi-finales $ightarrow$ **1 Finale**.
-       * **22 joueurs :** **11 matchs** au 1er tour (tous les 22 joueurs jouent) $ightarrow$ **3 matchs d'équilibrage** au 2e tour (+ 5 gagnants du 1er tour promus) $ightarrow$ **4 matchs** en Quarts de finale $ightarrow$ **2 matchs** en Demi-finales $ightarrow$ **1 Finale**.
-       * **24 joueurs :** **12 matchs** au 1er tour (tous les 24 joueurs jouent) $ightarrow$ **4 matchs d'équilibrage** au 2e tour (+ 4 gagnants du 1er tour promus) $ightarrow$ **4 matchs** en Quarts de finale $ightarrow$ **2 matchs** en Demi-finales $ightarrow$ **1 Finale**.
+       * **18 joueurs :** **9 matchs** au 1er tour (tous les 18 joueurs jouent) → **1 match d'équilibrage** au 2e tour (+ 7 gagnants du 1er tour promus) → **4 matchs** en Quarts de finale (8 joueurs) → **2 matchs** en Demi-finales → **1 Finale**.
+       * **20 joueurs :** **10 matchs** au 1er tour (tous les 20 joueurs jouent) → **2 matchs d'équilibrage** au 2e tour (+ 6 gagnants du 1er tour promus) → **4 matchs** en Quarts de finale → **2 matchs** en Demi-finales → **1 Finale**.
+       * **22 joueurs :** **11 matchs** au 1er tour (tous les 22 joueurs jouent) → **3 matchs d'équilibrage** au 2e tour (+ 5 gagnants du 1er tour promus) → **4 matchs** en Quarts de finale → **2 matchs** en Demi-finales → **1 Finale**.
+       * **24 joueurs :** **12 matchs** au 1er tour (tous les 24 joueurs jouent) → **4 matchs d'équilibrage** au 2e tour (+ 4 gagnants du 1er tour promus) → **4 matchs** en Quarts de finale → **2 matchs** en Demi-finales → **1 Finale**.
      * **Exemple en Double (9, 10, 11 ou 12 duos en 2v2) :** Calcul automatique des passes-droits pour équilibrer les Quarts de finale (**4 matchs**) et Demi-finales (**2 matchs**).
   2. **🛡️ Double élimination — Winner & Loser Bracket (Seconde chance)** :
      * **🟦 Tableau des Gagnants (*Winner Bracket*)** : *2 de 3* — pour **18, 20, 22 et 24 joueurs**, tous les joueurs disputent le 1er tour (**9, 10, 11 ou 12 matchs**), puis le 2e tour d'équilibrage (**1, 2, 3 ou 4 matchs** + gagnants promus) forme les Quarts de finale à **4 matchs (8 joueurs)**.
@@ -135,7 +147,7 @@ La barre latérale **« 📋 Paramètres du Match »** regroupe tous les réglag
 
 ### 6. 👁️ Mode Spectateur & Gestion de la Main (Verrouillage multi-utilisateurs)
 * **Accès Spectateur sans mot de passe :**
-  * Consultation en direct des scores de la feuille de match (par équipe, par joueur et manche par manche), des classements et de l'arborescence des tournois.
+  * Consultation en direct des scores de la feuille de match (par équipe, par joueur et manche par manche), des classements, des statistiques de progression et de l'arborescence des tournois.
   * Rafraîchissement automatique (toutes les 5s / 15s / 30s) ou manuel en un clic.
 * **Contrôle exclusif du Marqueur / Administrateur :**
   * Un seul éditeur détient la main active à la fois (`session_lock.json`) afin d'éviter tout conflit d'écriture.
@@ -143,13 +155,43 @@ La barre latérale **« 📋 Paramètres du Match »** regroupe tous les réglag
 
 ---
 
-### 7. 📊 Statistiques, Podiums & Historiques
-* **Podiums Visuels Top 3 (`🥇 1er`, `🥈 2e`, `🥉 3e`) :**
-  * Cartes podium en haut des classements **Équipes** et **Joueurs** mettant en valeur les 3 meilleurs performeurs de la saison.
-* **Tableaux statistiques complets :**
-  * **Classement des équipes :** Matchs joués (PJ), Victoires, Défaites, Égalités, Points Pour, Points Contre, Différentiel, Moyenne pts/match, % Victoires et **Points au classement**.
-  * **Classement individuel des joueurs :** Manches jouées, Manches gagnées (score de 8), % Victoires, Points cumulés et **Moyenne officielle sur 8**.
-  * **Consultation et réimpression A4** de toutes les feuilles de matchs archivées et de tous les tournois passés.
+### 7. 📈 Statistiques, Progression, Face-à-Face & Projections (Joueurs & Équipes)
+Le module **« 📈 Statistiques & Progression — Joueurs et Équipes »** (accessible depuis le menu principal et dans l'onglet Statistiques) offre une analyse complète en **4 volets spécialisés**, précédés d'un bandeau des records et honneurs de la semaine :
+
+* **🌟 Bandeau « Tableau d'Honneur de la Dernière Semaine & Records de la Saison » :**
+  * **⭐ Les 3 Étoiles de la Semaine (Joueurs) :** Mise en lumière automatique des 3 meilleures performances individuelles de la dernière journée (score `/24`, nombre de manches gagnées à 8 points et différentiel $\Delta$ par rapport à l'objectif personnel).
+  * **🚀 Équipe de la Semaine :** L'équipe ayant signé le plus haut pointage collectif (`/72`) lors de la dernière semaine.
+  * **🏅 4 Records de la Saison :**
+    * **Record d'équipe (`/72`)** sur une soirée.
+    * **Duel le plus serré** (plus faible écart de points).
+    * **Plus large victoire** (écart maximal).
+    * **Plus longue série de manches à 8 points consécutives** par un joueur.
+* **🏆 Volet 1 — Équipes & Collectif :**
+  * **Podium Top 3 & Classement général enrichi** (triable selon le **Total des Points officiel Saphir** ou par **Victoires V-D**) incluant : Matchs joués (`PJ`), `V`, `D`, `É`, **Total Points**, **Moyenne `/72`**, **Différentiel (`+/-`)**, **% Manches gagnées**, bilan **🏠 Receveur vs 🚗 Visiteur**, **Série en cours** (`🔥 3V`, `❄️ 2D`) et **Forme des 5 derniers matchs** (`🟢V 🔴D...`).
+  * **📈 Courbe d'évolution cumulée des points** des 8 équipes (`Alpha` à `Hotel`) au fil de la saison.
+  * **⚖️ Homogénéité & Répartition du Trio (J1 / J2 / J3 / Remplaçants) :** Part en `%` et moyenne `/24` de chaque membre du trio dans le score de son équipe avec qualification automatique du profil collectif (*⚖️ Trio très homogène*, *🤝 Trio équilibré*, *⭐ Leader prédominant*).
+  * **🔄 Performance par Ronde (Début, Milieu et Fin de soirée) :** Analyse comparative de chaque équipe en **1re Ronde (Manches 1–3)**, **2e Ronde (Manches 4–6)** et **3e Ronde (Manches 7–9 — Finition)** avec identification de sa ronde forte.
+* **👤 Volet 2 — Joueurs & Individuel :**
+  * **Filtre par équipe** et **4 modes de tri** : *Moyenne par manche (`/8`)*, *Total des points cumulés*, *Surperformance vs Objectif ($\Delta$ pts)* et *Indice Clutch (manches serrées 8-6 / 8-7)*.
+  * **🎯 Objectif personnel (`/24`) & Indice de Surperformance ($\Delta$ pts) :** Croisement automatique avec `joueurs_stats.csv` pour calculer l'objectif attendu par soirée de chaque joueur et mesurer son écart réel cumulé ($\Delta$ points au-dessus ou en dessous de son standard).
+  * **Indicateurs de maîtrise & Constance :**
+    * **👑 Soirées parfaites (`24/24`)** (3 victoires de 8 points en 3 manches).
+    * **🧹 Blanchissages (`8-0`)** infligés.
+    * **🔥 Indice « Clutch » :** Bilan `V-D` et `%` de réussite dans les manches décisives serrées (`8-6` et `8-7`).
+    * **📊 Profil de Constance :** Écart-type et fourchette `Plancher – Plafond` classant chaque joueur (*🎯 Métronome*, *⚖️ Régulier*, *⚡ Variable*).
+    * **🟢 Assiduité & Points sur table vs Forfait d'absence :** Distinction claire entre les points gagnés queue en main à la table et les points attribués par forfait d'absence.
+  * **⚔️ Relations d'adversité individuelles :** Identification automatique pour chaque joueur de son **🟢 Adversaire favori (Proie favorite)** et de sa **🔴 Bête noire**.
+  * **📉 Graphique individuel de progression (0 à 24 pts) :** Diagramme par soirée avec barres colorées selon l'atteinte du contrat et **ligne de référence pointillée orange** représentant l'objectif personnel (`/24`).
+* **⚔️ Volet 3 — Face-à-Face & Matrice Croisée 8×8 :**
+  * **🥊 Comparateur Duel Joueur A vs Joueur B :** Bilan direct des confrontations (manches gagnées, points marqués, moyenne `/8` en face-à-face) et historique détaillé manche par manche.
+  * **🏁 Matrice Croisée des Équipes (8×8 — `Alpha` à `Hotel`) :** Tableau synthétique de tous les duels d'équipes (scores aller/retour et bilan particulier).
+* **🔮 Volet 4 — Calendrier Restant & Projections de Fin de Saison (14 semaines) :**
+  * Croisement automatique entre `historique_matchs.json` et le calendrier officiel `horaire_saphir.json` :
+    * **Matchs restants à disputer** et liste des **3 prochains adversaires** (`vs` domicile / `@` extérieur).
+    * **Indice de difficulté du calendrier restant (*Strength of Schedule*) :** Moyenne `/72` des adversaires restants avec badge de difficulté (*🟢 Favorable*, *🟡 Équilibré*, *🔴 Relevé*).
+    * **Projection de fin de saison (14 semaines) :** Estimation des victoires finales et du total de points projeté au terme des 14 semaines régulières, accompagnée de la **feuille de route détaillée match par match** par équipe.
+* **🖨️ Archives & Réimpression A4 :**
+  * Consultation et réimpression A4 en un clic de toutes les feuilles de matchs archivées et de tous les tournois passés.
 
 ---
 
@@ -159,8 +201,8 @@ Le volet **`⚙️ Administration`** (réservé exclusivement à l'accès **`�
 * **Onglets et modules du volet Administration :**
   * **👥 Équipes (`equipes-saphir.csv`) :** Tableau interactif modifiable en direct, ajout rapide d'équipes et de joueurs réguliers, import/export CSV et validation instantanée.
   * **📝 Match passé (Saisie de matchs antérieurs ou en retard) :** Formulaire complet permettant d'enregistrer rétroactivement une rencontre disputée avec sélection de la date/heure, composition des équipes et scores des 9 manches selon la rotation officielle alternée.
-  * **✏️ Rectifications (Correction ou suppression de matchs archivés) :** 
-    * Correction ciblée des scores de manche, des présences ou des alignements avec motif officiel et régénération immédiate de la feuille officielle.
+  * **✏️ Rectifications (Correction ou suppression de matchs archivés) :**
+    * Correction ciblée des scores de manche, des présences ou des alignements avec motif officiel et régénération immédiate de la feuille officielle (accessible aussi directement depuis une alerte de doublon du Scanner IA).
     * **🗑️ Suppression d'un match de l'historique :** Option sécurisée avec confirmation, sauvegarde `.bak` horodatée et synchronisation GitHub automatique.
   * **🗓️ Saison (Gestion des cycles de compétition) :** Initialisation d'une nouvelle saison, archivage des statistiques précédentes et remise à zéro sécurisée des classements actifs.
   * **💾 Sauvegardes & Restauration fiabilisée (Nettoyage JSON pur) :**
@@ -169,7 +211,7 @@ Le volet **`⚙️ Administration`** (réservé exclusivement à l'accès **`�
   * **🌐 Test POST Saphir (`billardImport`) :**
     * Module interactif d'interconnexion avec l'API officielle de la Salle Le Saphir (`POST https://saphirbillard.com/index.php?eID=billardImport`).
     * En-têtes HTTP `Content-Type: application/json` et `X-API-Key: ...` avec test de latence et coloration syntaxique de la réponse serveur.
-  * **📧 SMTP (Notifications et bilans officiels) :** Configuration du serveur d'expédition courriel, test d'envoi en direct et routage des alertes administratives.
+  * **📧 SMTP (Notifications et bilans officiels) :** Configuration du serveur d'expédition courriel (prise en charge robuste TLS port 587 / SSL port 465 avec repli automatique et nettoyage des mots de passe d'application Gmail), test d'envoi en direct et routage des alertes administratives.
   * **🔑 Sécurité (Gestion des accès, Clés API & Secrets) :**
     * Modification sécurisée des mots de passe Marqueur et Administrateur avec hachage cryptographique SHA-256 dans `config_auth.json`.
     * **Gestion des clés d'API IA :** Configuration de la clé **Google Gemini API** (`gemini_api_key`) pour la numérisation des photos de feuilles de scores.
@@ -178,7 +220,7 @@ Le volet **`⚙️ Administration`** (réservé exclusivement à l'accès **`�
 * **☁️ Synchronisation automatique GitHub intégrale avec Fusion Intelligente (Anti-écrasement) :**
   * **Bouclier anti-écrasement :** Le système de synchronisation au réveil compare l'horodatage des fichiers et n'écrase jamais une sauvegarde locale plus récente par un commit distant plus ancien.
   * **Fusion automatique (Merge) :** Si un match a été saisi localement (ou via le scanner photo), il est automatiquement conservé et fusionné avec les données distantes par sa clé unique (`receveur + visiteur + date`), interdisant toute perte accidentelle de match.
-  * **Dès qu'un fichier est modifié :** Poussée automatique vers GitHub pour **tous les fichiers .json et .csv** (validation de match, numérisation photo, tournois, équipes CSV, mots de passe).
+  * **Dès qu'un fichier est modifié :** Poussée automatique vers GitHub pour **tous les fichiers `.json` et `.csv`** (validation de match, numérisation photo, tournois, équipes CSV, mots de passe).
   * **Écritures atomiques & Sauvegardes `.bak` :** Toutes les écritures locales sont atomiques avec copies de sauvegarde de secours `.bak` pour une résilience absolue.
 
 ---
@@ -233,10 +275,12 @@ smtp_ssl = false
 
 | Fichier | Rôle |
 | :--- | :--- |
-| `app.py` | Code source principal de l'application Streamlit (Saisie, Scanner IA, Tournois, Stats, Admin, Mode TV) |
-| `README.md` | Documentation officielle complète (affichée et imprimable depuis la page d'ouverture) |
+| `app.py` | Code source principal de l'application Streamlit (Saisie, Scanner IA, Tournois, Stats & Projections, Admin, Mode TV) |
+| `README.md` | Documentation officielle complète (affichée et imprimable au format A4 depuis la page d'ouverture) |
 | `.streamlit/secrets.toml` | Stockage sécurisé des clés d'accès (jeton GitHub, clé Gemini Vision, mots de passe SMTP et Admin) |
-| `equipes-saphir.csv` | Liste officielle des équipes et de leurs 3 joueurs réguliers (synchronisée sur GitHub) |
+| `equipes-saphir.csv` | Liste officielle des équipes (`Alpha` à `Hotel`) et de leurs 3 joueurs réguliers (synchronisée sur GitHub) |
+| `joueurs_stats.csv` | Statistiques de référence et moyennes officielles des joueurs utilisées pour le calcul des objectifs personnels (`/24`) et des forfaits d'absence |
+| `horaire_saphir.json` | Calendrier officiel des 14 semaines de la saison régulière utilisé pour les projections de fin de saison et l'indice de difficulté |
 | `historique_matchs.json` | Base de données JSON allégée (100 % JSON pur, sans HTML) des feuilles 3v3 validées (synchronisée sur GitHub) |
 | `historique_tournois.json` | Historique officiel complet des tournois Simples & Doubles (synchronisé sur GitHub) |
 | `tournois_data.json` | État en temps réel des tournois actifs (synchronisé sur GitHub) |
@@ -244,7 +288,7 @@ smtp_ssl = false
 | `sauvegarde_annulee_secours.json` | Corbeille de secours permettant d'annuler un « Nouveau match » |
 | `session_lock.json` | Verrouillage multi-utilisateurs de la main active (Marqueur / Administrateur) |
 | `config_auth.json` | Empreintes SHA-256 des mots de passe Marqueur et Administrateur |
-| `config_email.json` | Paramètres SMTP pour l'envoi automatique des rapports et sauvegardes (synchronisé sur GitHub) |
+| `config_email.json` | Paramètres SMTP pour l'envoi automatique des rapports, feuilles scannées et sauvegardes (synchronisé sur GitHub) |
 | `config_admin.json` | Configuration administrative locale de la synchronisation GitHub et clé Gemini |
 
 ---
