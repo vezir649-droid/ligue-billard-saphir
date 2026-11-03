@@ -1,5 +1,5 @@
 {
-    "date": "2026-11-03 21:49",
+    "date": "2026-11-03 21:50",
     "receveur": "Foxtrot",
     "visiteur": "Echo",
     "choix_rec": "Foxtrot",
@@ -92,16 +92,16 @@
             "joueur_b_absent": false
         },
         "6": {
-            "score_a": 0,
-            "score_b": 0,
+            "score_a": 4,
+            "score_b": 8,
             "joueur_a": "Gabriel Labrecque",
             "joueur_b": "Gilles Dumais",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "7": {
-            "score_a": 0,
-            "score_b": 0,
+            "score_a": 8,
+            "score_b": 4,
             "joueur_a": "Sylvain Derasp",
             "joueur_b": "André St-Pierre",
             "joueur_a_absent": false,
@@ -124,8 +124,8 @@
             "joueur_b_absent": false
         }
     },
-    "total_receveur": 39,
-    "total_visiteur": 28,
-    "derniere_mise_a_jour": "21:49:18",
-    "ts_modif": 1793742558.4227087
+    "total_receveur": 51,
+    "total_visiteur": 40,
+    "derniere_mise_a_jour": "21:50:15",
+    "ts_modif": 1793742615.4357142
 }
