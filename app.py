@@ -3103,7 +3103,7 @@ def cb_scanner_feuille():
 
 def cb_injecter_donnees_scanner(data_s, label_direct):
     """Callback on_click execute AVANT l instanciation des widgets Streamlit
-    pour eviter toute exception de modification apres instanciation."""
+    pour injecter equipes, joueurs officiels actifs et les 9 manches avec succes garanti."""
     if not isinstance(data_s, dict):
         return
     eq_r_scan = str(data_s.get("receveur", "")).strip()
@@ -3119,28 +3119,79 @@ def cb_injecter_donnees_scanner(data_s, label_direct):
     j_v_list = data_s.get("joueurs_vis", [])
     if len(j_r_list) > 0:
         st.session_state["sel_j1_rec"] = j_r_list[0]
+        st.session_state["last_nom_j1_rec"] = j_r_list[0]
+        st.session_state["moy_j1_rec"] = obtenir_moyenne_joueur(j_r_list[0])
     if len(j_r_list) > 1:
         st.session_state["sel_j2_rec"] = j_r_list[1]
+        st.session_state["last_nom_j2_rec"] = j_r_list[1]
+        st.session_state["moy_j2_rec"] = obtenir_moyenne_joueur(j_r_list[1])
     if len(j_r_list) > 2:
         st.session_state["sel_j3_rec"] = j_r_list[2]
+        st.session_state["last_nom_j3_rec"] = j_r_list[2]
+        st.session_state["moy_j3_rec"] = obtenir_moyenne_joueur(j_r_list[2])
 
     if len(j_v_list) > 0:
         st.session_state["sel_j1_vis"] = j_v_list[0]
+        st.session_state["last_nom_j1_vis"] = j_v_list[0]
+        st.session_state["moy_j1_vis"] = obtenir_moyenne_joueur(j_v_list[0])
     if len(j_v_list) > 1:
         st.session_state["sel_j2_vis"] = j_v_list[1]
+        st.session_state["last_nom_j2_vis"] = j_v_list[1]
+        st.session_state["moy_j2_vis"] = obtenir_moyenne_joueur(j_v_list[1])
     if len(j_v_list) > 2:
         st.session_state["sel_j3_vis"] = j_v_list[2]
+        st.session_state["last_nom_j3_vis"] = j_v_list[2]
+        st.session_state["moy_j3_vis"] = obtenir_moyenne_joueur(j_v_list[2])
+
+    # Tous les joueurs presents
+    for p_id in ["j1_rec", "j2_rec", "j3_rec", "j1_vis", "j2_vis", "j3_vis"]:
+        st.session_state[f"pres_{p_id}"] = True
+        st.session_state[f"main_pres_tog_{p_id}"] = True
 
     # Injecter les scores des 9 manches
     matchs_dict = data_s.get("matchs", {})
+    scores_dict = {}
+    matchs_save = {}
     for i in range(1, 10):
         m_i = matchs_dict.get(str(i), {})
-        st.session_state[f"s_a_{i}"] = _safe_int_val(m_i.get("score_a", 0))
-        st.session_state[f"s_b_{i}"] = _safe_int_val(m_i.get("score_b", 0))
+        sa = _safe_int_val(m_i.get("score_a", 0))
+        sb = _safe_int_val(m_i.get("score_b", 0))
+        st.session_state[f"s_a_{i}"] = sa
+        st.session_state[f"s_b_{i}"] = sb
+        scores_dict[f"s_a_{i}"] = sa
+        scores_dict[f"s_b_{i}"] = sb
+        matchs_save[str(i)] = {"score_a": sa, "score_b": sb}
+
+    # IMPORTANTISSIME: desactiver venant_de_archive et mettre a jour scores_en_cours_backup
+    st.session_state["venant_de_archive"] = False
+    st.session_state["scores_en_cours_backup"] = scores_dict
+
+    # Sauvegarder sur le disque de secours
+    try:
+        dict_j_inj = {
+            "j1_rec": {"nom": j_r_list[0] if len(j_r_list) > 0 else "Joueur 1", "present": True, "moyenne": float(st.session_state.get("moy_j1_rec", 0.625)), "pts_absent": 0},
+            "j2_rec": {"nom": j_r_list[1] if len(j_r_list) > 1 else "Joueur 2", "present": True, "moyenne": float(st.session_state.get("moy_j2_rec", 0.625)), "pts_absent": 0},
+            "j3_rec": {"nom": j_r_list[2] if len(j_r_list) > 2 else "Joueur 3", "present": True, "moyenne": float(st.session_state.get("moy_j3_rec", 0.625)), "pts_absent": 0},
+            "j1_vis": {"nom": j_v_list[0] if len(j_v_list) > 0 else "Joueur 1", "present": True, "moyenne": float(st.session_state.get("moy_j1_vis", 0.625)), "pts_absent": 0},
+            "j2_vis": {"nom": j_v_list[1] if len(j_v_list) > 1 else "Joueur 2", "present": True, "moyenne": float(st.session_state.get("moy_j2_vis", 0.625)), "pts_absent": 0},
+            "j3_vis": {"nom": j_v_list[2] if len(j_v_list) > 2 else "Joueur 3", "present": True, "moyenne": float(st.session_state.get("moy_j3_vis", 0.625)), "pts_absent": 0},
+        }
+        data_inj = {
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "receveur": eq_r_scan,
+            "visiteur": eq_v_scan,
+            "choix_rec": eq_r_scan,
+            "choix_vis": eq_v_scan,
+            "joueurs": dict_j_inj,
+            "matchs": matchs_save
+        }
+        sauvegarder_donnees(data_inj)
+    except Exception:
+        pass
 
     st.session_state["choix_match_vue"] = label_direct
     st.session_state["pending_choix_match_vue"] = label_direct
-    st.session_state["msg_succes_injection"] = True
+    st.session_state["toast_scan_injecte"] = True
 
 
 def cb_archiver_match_scanner(data_s):
@@ -3180,8 +3231,7 @@ def cb_archiver_match_scanner(data_s):
 def afficher_vue_scanner_feuille_match(label_direct):
     """Vue dédiée à la numérisation intelligente de feuille de match par photo (Gemini Vision)
     avec corrélation automatique des noms de joueurs officiels actifs et présentation détaillée."""
-    st.session_state["venant_de_archive"] = True
-    
+        
     col_h1, col_h2 = st.columns([3, 1])
     with col_h1:
         st.markdown("### 📷 Numérisation intelligente de feuille de match (IA Vision)")
