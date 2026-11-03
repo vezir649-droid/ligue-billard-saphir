@@ -52,7 +52,7 @@
     },
     "matchs": {
         "1": {
-            "score_a": 3,
+            "score_a": 8,
             "score_b": 8,
             "joueur_a": "Sylvain Derasp",
             "joueur_b": "Gilles Dumais",
@@ -124,8 +124,8 @@
             "joueur_b_absent": false
         }
     },
-    "total_receveur": 3,
+    "total_receveur": 8,
     "total_visiteur": 8,
-    "derniere_mise_a_jour": "21:44:16",
-    "ts_modif": 1793742256.7894585
+    "derniere_mise_a_jour": "21:44:32",
+    "ts_modif": 1793742272.0899336
 }
