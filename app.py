@@ -2882,6 +2882,17 @@ def cb_scanner_feuille():
     st.session_state["choix_match_vue"] = "📷 Numériser une feuille de match (Scanner IA)"
 
 
+def charger_liste_equipes_base():
+    """Retourne la liste ordonnée des noms d'équipes officielles."""
+    try:
+        eqs = charger_equipes_csv()
+        if eqs:
+            return list(eqs.keys())
+    except Exception:
+        pass
+    return ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel"]
+
+
 def correler_nom_joueur(nom_brut, cands_equipe, tous_joueurs_list):
     """Associe intelligemment un prénom ou surnom manuscrit (ex. 'Gille', 'Léon M')
     au nom officiel complet d'un joueur dans l'équipe ou dans la ligue."""
