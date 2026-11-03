@@ -1,49 +1,49 @@
 {
-    "date": "2026-11-02 23:16",
-    "receveur": "Golf",
-    "visiteur": "Hotel",
-    "choix_rec": "Golf",
-    "choix_vis": "Hotel",
-    "sel_j1_rec": "André Lauzon",
-    "sel_j2_rec": "Suzanne Blaquière",
-    "sel_j1_vis": "Richard Lavoie",
-    "sel_j2_vis": "Richard Théberge",
+    "date": "2026-11-03 01:07",
+    "receveur": "Foxtrot",
+    "visiteur": "Echo",
+    "choix_rec": "Foxtrot",
+    "choix_vis": "Echo",
+    "sel_j1_rec": "Sylvain Derasp",
+    "sel_j2_rec": "Valérie Turcotte",
+    "sel_j1_vis": "Gilles Dumais",
+    "sel_j2_vis": "Guy Vézina",
     "joueurs": {
         "j1_rec": {
-            "nom": "André Lauzon",
+            "nom": "Sylvain Derasp",
             "present": true,
-            "moyenne": 0.927,
+            "moyenne": 0.99,
             "pts_absent": 7
         },
         "j2_rec": {
-            "nom": "Suzanne Blaquière",
+            "nom": "Valérie Turcotte",
             "present": true,
-            "moyenne": 0.823,
-            "pts_absent": 7
-        },
-        "j3_rec": {
-            "nom": "Yves Pilon",
-            "present": true,
-            "moyenne": 0.766,
+            "moyenne": 0.771,
             "pts_absent": 6
         },
-        "j1_vis": {
-            "nom": "Richard Lavoie",
+        "j3_rec": {
+            "nom": "Gabriel Labrecque",
             "present": true,
-            "moyenne": 0.891,
+            "moyenne": 0.677,
+            "pts_absent": 5
+        },
+        "j1_vis": {
+            "nom": "Gilles Dumais",
+            "present": true,
+            "moyenne": 0.833,
             "pts_absent": 7
         },
         "j2_vis": {
-            "nom": "Richard Théberge",
+            "nom": "Guy Vézina",
             "present": true,
-            "moyenne": 0.948,
+            "moyenne": 0.885,
             "pts_absent": 7
         },
         "j3_vis": {
-            "nom": "Jean-Yves Brochu",
+            "nom": "André St-Pierre",
             "present": true,
-            "moyenne": 0.667,
-            "pts_absent": 5
+            "moyenne": 0.922,
+            "pts_absent": 7
         }
     },
     "matchs": {
@@ -120,6 +120,6 @@
             "joueur_b_absent": false
         }
     },
-    "derniere_mise_a_jour": "23:16:22",
-    "ts_modif": 1793661382.8433595
+    "derniere_mise_a_jour": "01:07:32",
+    "ts_modif": 1793668052.4943995
 }
