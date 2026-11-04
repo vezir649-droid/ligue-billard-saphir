@@ -971,7 +971,7 @@ def synchroniser_fichier_github(filepath, commit_message=None):
                 try:
                     cfg_dict = json.loads(raw_bytes.decode("utf-8"))
                     modifie = False
-                    for secret_cle in ["github_token", "gemini_api_key"]:
+                    for secret_cle in ["github_token", "gemini_api_key", "supabase_key"]:
                         if secret_cle in cfg_dict and cfg_dict[secret_cle]:
                             cfg_dict[secret_cle] = ""
                             modifie = True
@@ -1594,8 +1594,8 @@ def restaurer_depuis_github_au_reveil(forcer=False):
 
     return (nb_maj > 0), (", ".join(details) if details else "Tous les fichiers de données (.json & .csv) sont à jour avec la plus récente sauvegarde GitHub.")
 
-def synchroniser_tous_les_fichiers_github(commit_prefix=None):
-    """Pousse automatiquement tous les fichiers .json et .csv de données vers le dépôt GitHub."""
+def synchroniser_tous_les_fichiers_github_brut(commit_prefix=None):
+    """Pousse directement tous les fichiers .json et .csv de données vers le dépôt GitHub."""
     fichiers = lister_fichiers_locaux_donnees()
     succes_list = []
     erreurs_list = []
@@ -1612,6 +1612,333 @@ def synchroniser_tous_les_fichiers_github(commit_prefix=None):
             erreurs_list.append(f"{fn} ({info})")
 
     return len(succes_list), succes_list, erreurs_list
+
+# ==============================================================================
+# MOTEUR CLOUD HYBRIDE : SUPABASE POSTGRESQL & GITHUB
+# ==============================================================================
+SUPABASE_URL_DEFAULT = "https://ueikhwdfmtnavqqscdoe.supabase.co"
+SUPABASE_KEY_DEFAULT = ""
+
+def obtenir_parametres_supabase():
+    """Récupère les paramètres de connexion Supabase (URL, clé API, mode actif) depuis config_admin.json, l'environnement ou st.secrets."""
+    from collections.abc import Mapping
+    url = SUPABASE_URL_DEFAULT
+    key = SUPABASE_KEY_DEFAULT
+    mode = "supabase"  # Mode 1 par défaut : Supabase prioritaire
+
+    cfg_adm = charger_config_admin()
+    if cfg_adm.get("supabase_url"):
+        url = str(cfg_adm.get("supabase_url")).strip()
+    if cfg_adm.get("supabase_key"):
+        key = str(cfg_adm.get("supabase_key")).strip()
+    if cfg_adm.get("cloud_mode"):
+        mode = str(cfg_adm.get("cloud_mode")).strip()
+
+    if os.environ.get("SUPABASE_URL"):
+        url = os.environ.get("SUPABASE_URL").strip()
+    if os.environ.get("SUPABASE_KEY"):
+        key = os.environ.get("SUPABASE_KEY").strip()
+    if os.environ.get("CLOUD_STORAGE_MODE"):
+        mode = os.environ.get("CLOUD_STORAGE_MODE").strip()
+
+    try:
+        if hasattr(st, "secrets"):
+            for sec_sb in ["supabase", "Supabase", "SUPABASE"]:
+                if sec_sb in st.secrets:
+                    val_sb = st.secrets[sec_sb]
+                    if isinstance(val_sb, (dict, Mapping)) or hasattr(val_sb, "items"):
+                        url = str(val_sb.get("url", url)).strip() or url
+                        key = str(val_sb.get("key", val_sb.get("service_role_key", key))).strip() or key
+                        mode = str(val_sb.get("mode", mode)).strip() or mode
+            if "SUPABASE_URL" in st.secrets:
+                url = str(st.secrets["SUPABASE_URL"]).strip() or url
+            if "SUPABASE_KEY" in st.secrets:
+                key = str(st.secrets["SUPABASE_KEY"]).strip() or key
+            if "CLOUD_MODE" in st.secrets:
+                mode = str(st.secrets["CLOUD_MODE"]).strip() or mode
+    except Exception:
+        pass
+
+    return url, key, mode
+
+def sauvegarder_parametres_supabase(url, key, mode="supabase"):
+    """Enregistre les paramètres Supabase dans config_admin.json."""
+    try:
+        data = charger_config_admin()
+        data["supabase_url"] = (url or SUPABASE_URL_DEFAULT).strip()
+        data["supabase_key"] = (key or SUPABASE_KEY_DEFAULT).strip()
+        data["cloud_mode"] = (mode or "supabase").strip()
+        with open(ADMIN_CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
+        return True
+    except Exception:
+        return False
+
+def tester_connexion_supabase(url=None, key=None):
+    """Teste la connexion directe avec la table public.saphir_files dans Supabase PostgreSQL."""
+    u = url or obtenir_parametres_supabase()[0]
+    k = key or obtenir_parametres_supabase()[1]
+    if not u or not k:
+        return False, "URL ou clé API Supabase manquante."
+    try:
+        import urllib.request
+        req = urllib.request.Request(
+            f"{u.rstrip('/')}/rest/v1/saphir_files?select=filename&limit=1",
+            headers={
+                "apikey": k,
+                "Authorization": f"Bearer {k}"
+            }
+        )
+        with urllib.request.urlopen(req, timeout=6) as resp:
+            if resp.status == 200:
+                return True, "Connexion établie avec succès à la base Supabase PostgreSQL !"
+            return False, f"Réponse HTTP inattendue : {resp.status}"
+    except Exception as e:
+        return False, f"Impossible de joindre Supabase : {e}"
+
+def synchroniser_fichier_supabase(filepath, commit_message=None):
+    """Pousse un fichier local (.json ou .csv) vers la table public.saphir_files de Supabase (upsert)."""
+    if not filepath or not os.path.exists(filepath):
+        return False, "Fichier local introuvable."
+    filename = os.path.basename(filepath)
+    url_sb, key_sb, _ = obtenir_parametres_supabase()
+    if not url_sb or not key_sb:
+        return False, "Paramètres Supabase non configurés."
+
+    try:
+        import urllib.request
+        import hashlib
+        from datetime import datetime, timezone
+
+        with open(filepath, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        # Nettoyage sécurité pour config_admin.json
+        if filename == "config_admin.json":
+            try:
+                d_sec = json.loads(content)
+                d_sec["github_token"] = ""
+                d_sec["gemini_api_key"] = ""
+                d_sec["supabase_key"] = ""
+                content = json.dumps(d_sec, indent=4, ensure_ascii=False)
+            except Exception:
+                pass
+
+        sha1_val = hashlib.sha1(content.encode("utf-8")).hexdigest()
+        payload = {
+            "filename": filename,
+            "content": content,
+            "sha1": sha1_val,
+            "commit_message": commit_message or f"Sauvegarde {filename} ({datetime.now().strftime('%H:%M:%S')})",
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+
+        req = urllib.request.Request(
+            f"{url_sb.rstrip('/')}/rest/v1/saphir_files",
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            headers={
+                "apikey": key_sb,
+                "Authorization": f"Bearer {key_sb}",
+                "Content-Type": "application/json",
+                "Prefer": "resolution=merge-duplicates"
+            },
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            if resp.status in (200, 201, 204):
+                try:
+                    st.session_state["dernier_sync_cloud"] = f"✅ {filename} synchronisé sur Supabase ({datetime.now().strftime('%H:%M:%S')})"
+                except Exception:
+                    pass
+                return True, f"Fichier {filename} sauvegardé sur Supabase PostgreSQL."
+            return False, f"Erreur HTTP {resp.status} Supabase."
+    except Exception as e:
+        return False, f"Erreur synchronisation Supabase ({filename}) : {e}"
+
+def telecharger_fichier_supabase(filename):
+    """Télécharge le contenu brut d'un fichier stocké dans la table public.saphir_files de Supabase."""
+    url_sb, key_sb, _ = obtenir_parametres_supabase()
+    if not url_sb or not key_sb:
+        return None
+    try:
+        import urllib.request
+        import urllib.parse
+        q_fn = urllib.parse.quote(filename)
+        req = urllib.request.Request(
+            f"{url_sb.rstrip('/')}/rest/v1/saphir_files?filename=eq.{q_fn}&select=content,sha1,updated_at",
+            headers={
+                "apikey": key_sb,
+                "Authorization": f"Bearer {key_sb}"
+            }
+        )
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            if resp.status == 200:
+                rows = json.loads(resp.read().decode("utf-8"))
+                if rows and isinstance(rows, list) and len(rows) > 0:
+                    return rows[0].get("content")
+    except Exception:
+        pass
+    return None
+
+def synchroniser_tous_les_fichiers_supabase(commit_prefix=None):
+    """Pousse tous les fichiers locaux .json et .csv vers Supabase PostgreSQL."""
+    fichiers = lister_fichiers_locaux_donnees()
+    succes = []
+    erreurs = []
+    prefix = (commit_prefix or "Sauvegarde automatique").strip()
+    date_str = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+
+    for fp in fichiers:
+        fn = os.path.basename(fp)
+        msg = f"{prefix} {fn} ({date_str})"
+        ok, info = synchroniser_fichier_supabase(fp, msg)
+        if ok:
+            succes.append(fn)
+        else:
+            erreurs.append(f"{fn} ({info})")
+
+    return len(succes), succes, erreurs
+
+def synchroniser_fichier_cloud(filepath, commit_message=None):
+    """Route la synchronisation du fichier selon le mode Cloud Hybride configuré (Mode 1 Supabase, Mode 2 Hybride, Mode 3 GitHub)."""
+    _, _, mode = obtenir_parametres_supabase()
+    if mode == "supabase":
+        return synchroniser_fichier_supabase(filepath, commit_message)
+    elif mode == "supabase_github":
+        ok_sb, msg_sb = synchroniser_fichier_supabase(filepath, commit_message)
+        ok_gh, msg_gh = synchroniser_fichier_github(filepath, commit_message)
+        return (ok_sb or ok_gh), f"Supabase: {msg_sb} | GitHub: {msg_gh}"
+    else:
+        return synchroniser_fichier_github(filepath, commit_message)
+
+def synchroniser_tous_les_fichiers_cloud(commit_prefix=None):
+    """Synchronise tous les fichiers de données selon le mode Cloud Hybride configuré."""
+    _, _, mode = obtenir_parametres_supabase()
+    if mode == "supabase":
+        return synchroniser_tous_les_fichiers_supabase(commit_prefix)
+    elif mode == "supabase_github":
+        nb_sb, ok_sb, err_sb = synchroniser_tous_les_fichiers_supabase(commit_prefix)
+        nb_gh, ok_gh, err_gh = synchroniser_tous_les_fichiers_github_brut(commit_prefix)
+        return max(nb_sb, nb_gh), list(set(ok_sb + ok_gh)), err_sb + err_gh
+    else:
+        return synchroniser_tous_les_fichiers_github_brut(commit_prefix)
+
+def synchroniser_tous_les_fichiers_github(commit_prefix=None):
+    """Route automatiquement toutes les sauvegardes vers le moteur Cloud actif (Supabase ou GitHub)."""
+    return synchroniser_tous_les_fichiers_cloud(commit_prefix=commit_prefix)
+
+def restaurer_depuis_cloud_au_reveil(forcer=False):
+    """Au réveil de l'application ou sur demande, restaure les données les plus récentes depuis Supabase (Mode 1/2) ou GitHub (Mode 3)."""
+    try:
+        if not forcer and st.session_state.get("cloud_wake_sync_done", False):
+            return False, "Déjà synchronisé pour cette session."
+    except Exception:
+        pass
+
+    _, _, mode = obtenir_parametres_supabase()
+
+    # Si Mode 1 ou Mode 2 : Restauration depuis Supabase prioritaire
+    if mode in ("supabase", "supabase_github"):
+        try:
+            nb_maj_sb = 0
+            details_sb = []
+
+            # 1. Historique des matchs (fusion sécurisée des matchs locaux non poussés)
+            raw_hm = telecharger_fichier_supabase("historique_matchs.json")
+            if raw_hm:
+                sb_matchs = json.loads(raw_hm)
+                if isinstance(sb_matchs, list) and len(sb_matchs) > 0:
+                    loc_matchs = []
+                    if os.path.exists(HISTORIQUE_FILE):
+                        try:
+                            with open(HISTORIQUE_FILE, "r", encoding="utf-8") as f_r:
+                                loc_matchs = json.load(f_r)
+                            if not isinstance(loc_matchs, list):
+                                loc_matchs = []
+                        except Exception:
+                            loc_matchs = []
+
+                    def _cle_match_sb(m):
+                        if not isinstance(m, dict):
+                            return ""
+                        r = str(m.get("receveur") or "").strip().lower()
+                        v = str(m.get("visiteur") or "").strip().lower()
+                        d = str(m.get("date") or m.get("date_enregistrement") or "").strip()[:10]
+                        return f"{r}|{v}|{d}"
+
+                    cles_sb = {_cle_match_sb(m) for m in sb_matchs if _cle_match_sb(m)}
+                    locaux_a_garder = [m for m in loc_matchs if isinstance(m, dict) and _cle_match_sb(m) not in cles_sb]
+                    matchs_fusionnes = sb_matchs + locaux_a_garder
+
+                    tmp_p = f"{HISTORIQUE_FILE}.tmp"
+                    with open(tmp_p, "w", encoding="utf-8") as f_tmp:
+                        json.dump(matchs_fusionnes, f_tmp, ensure_ascii=False, indent=4)
+                    try:
+                        os.replace(tmp_p, HISTORIQUE_FILE)
+                    except Exception:
+                        with open(HISTORIQUE_FILE, "w", encoding="utf-8") as f_w:
+                            json.dump(matchs_fusionnes, f_w, ensure_ascii=False, indent=4)
+                        if os.path.exists(tmp_p):
+                            try:
+                                os.remove(tmp_p)
+                            except Exception:
+                                pass
+                    nb_maj_sb += 1
+                    details_sb.append(f"historique_matchs.json ({len(matchs_fusionnes)} matchs)")
+
+            # 2. Historique des tournois
+            raw_ht = telecharger_fichier_supabase("historique_tournois.json")
+            if raw_ht:
+                sb_tournois = json.loads(raw_ht)
+                if isinstance(sb_tournois, list) and len(sb_tournois) > 0:
+                    with open(HISTORIQUE_TOURNOIS_FILE, "w", encoding="utf-8") as f_wt:
+                        json.dump(sb_tournois, f_wt, ensure_ascii=False, indent=4)
+                    nb_maj_sb += 1
+                    details_sb.append(f"historique_tournois.json ({len(sb_tournois)} tournois)")
+
+            # 3. Données des tournois actifs
+            raw_td = telecharger_fichier_supabase("tournois_data.json")
+            if raw_td:
+                sb_td = json.loads(raw_td)
+                if isinstance(sb_td, dict) and sb_td:
+                    with open(TOURNOIS_FILE, "w", encoding="utf-8") as f_wtd:
+                        json.dump(sb_td, f_wtd, ensure_ascii=False, indent=4)
+                    nb_maj_sb += 1
+                    details_sb.append("tournois_data.json")
+
+            # 4. Équipes CSV
+            raw_eq = telecharger_fichier_supabase("equipes-saphir.csv")
+            if raw_eq and len(raw_eq.strip()) > 10:
+                with open(EQUIPES_CSV_FILE, "w", encoding="utf-8") as f_weq:
+                    f_weq.write(raw_eq)
+                nb_maj_sb += 1
+                details_sb.append("equipes-saphir.csv")
+
+            # 5. Autres fichiers (horaire, joueurs_stats, config_email)
+            for fn_autre, fp_autre in [
+                ("horaire_saphir.json", HORAIRE_SAPHIR_FILE),
+                ("joueurs_stats.csv", JOUEURS_CSV_FILE),
+                ("config_email.json", CONFIG_EMAIL_FILE)
+            ]:
+                raw_autre = telecharger_fichier_supabase(fn_autre)
+                if raw_autre:
+                    with open(fp_autre, "w", encoding="utf-8") as f_wa:
+                        f_wa.write(raw_autre)
+                    nb_maj_sb += 1
+                    details_sb.append(fn_autre)
+
+            try:
+                st.session_state["cloud_wake_sync_done"] = True
+            except Exception:
+                pass
+
+            if nb_maj_sb > 0:
+                return True, f"Données restaurées depuis Supabase PostgreSQL : {', '.join(details_sb)}."
+        except Exception:
+            pass
+
+    # En repli ou en Mode 3 : Restauration depuis GitHub
+    return restaurer_depuis_github_au_reveil(forcer=forcer)
 
 import copy
 import threading
@@ -14188,10 +14515,10 @@ injecter_theme_css_saphir()
 
 # Synchronisation au démarrage en arrière-plan (non bloquante pour un chargement instantané de l'interface)
 try:
-    if not st.session_state.get("github_wake_sync_done", False):
-        st.session_state["github_wake_sync_done"] = True
+    if not st.session_state.get("cloud_wake_sync_done", False):
+        st.session_state["cloud_wake_sync_done"] = True
         import threading
-        t_wake = threading.Thread(target=restaurer_depuis_github_au_reveil, daemon=True)
+        t_wake = threading.Thread(target=restaurer_depuis_cloud_au_reveil, daemon=True)
         t_wake.start()
 except Exception:
     pass
@@ -18195,81 +18522,123 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                                         st.error("Erreur lors de la sauvegarde.")
 
                 st.divider()
-                st.markdown("#### ☁️ Synchronisation automatique GitHub (Protection anti-veille Streamlit Cloud)")
+                st.markdown("#### ☁️ Synchronisation Cloud Hybride & Persistance des Données")
                 st.caption(
-                    "Sur Streamlit Community Cloud, la mise en veille réinitialise le disque local à partir de GitHub. "
-                    "En renseignant un jeton d'accès personnel GitHub (`GITHUB_TOKEN`), chaque validation de match ou de tournoi est **automatiquement poussée en temps réel sur votre dépôt GitHub**."
+                    "Protégez vos données contre la mise en veille de Streamlit Community Cloud. "
+                    "Le **Mode 1 (Supabase PostgreSQL)** élimine les rechargements intempestifs de page lors des matchs en sauvegardant "
+                    "instantanément en base de données sans déclencher de redémarrage Git."
                 )
-                tok_actuel, repo_actuel, branch_actuelle = obtenir_parametres_github()
-                if tok_actuel:
-                    st.success(f"🟢 **Synchronisation GitHub active** vers `{repo_actuel}` (branche `{branch_actuelle}`). Jeton configuré (`ghp_••••••••••••`).")
+
+                # Récupération des paramètres actuels
+                url_sb_actuel, key_sb_actuel, mode_sb_actuel = obtenir_parametres_supabase()
+                tok_gh_actuel, repo_gh_actuel, branch_gh_actuel = obtenir_parametres_github()
+
+                # Sélecteur de Mode Cloud
+                modes_options = [
+                    "🟢 Mode 1 : Supabase PostgreSQL prioritaire (Recommandé - Anti-rechargement)",
+                    "🔵 Mode 2 : Hybride (Supabase PostgreSQL + Backup GitHub)",
+                    "⚪ Mode 3 : GitHub classique"
+                ]
+                mode_index = 0
+                if mode_sb_actuel == "supabase_github":
+                    mode_index = 1
+                elif mode_sb_actuel == "github":
+                    mode_index = 2
+
+                choix_mode_str = st.radio(
+                    "**Mode de persistance Cloud :**",
+                    options=modes_options,
+                    index=mode_index,
+                    help="En Mode 1, les données sont envoyées instantanément à Supabase sans créer de commits GitHub, évitant ainsi le rechargement intempestif de Streamlit Cloud."
+                )
+
+                nouveau_mode = "supabase"
+                if "Mode 2" in choix_mode_str:
+                    nouveau_mode = "supabase_github"
+                elif "Mode 3" in choix_mode_str:
+                    nouveau_mode = "github"
+
+                if nouveau_mode == "supabase":
+                    st.info("💡 **Mode 1 actif :** Les scores et historiques sont sauvegardés instantanément sur votre base Supabase PostgreSQL. Aucune coupure de session Streamlit Cloud.")
+                elif nouveau_mode == "supabase_github":
+                    st.info("💡 **Mode 2 actif :** Double persistance. Chaque mise à jour est enregistrée sur Supabase PostgreSQL et poussée en parallèle sur GitHub.")
                 else:
+                    st.info("💡 **Mode 3 actif :** Les données sont poussées directement sur GitHub via des commits Git.")
 
-                    st.warning(
-
-                        "🟠 **Jeton GitHub (`GITHUB_TOKEN`) non configuré pour l'écriture distante.**\n\n"
-
-                        "Pour que Streamlit Cloud pousse automatiquement les nouveaux matchs et tournois sur GitHub avant toute mise en veille :\n\n"
-
-                        "1. Créez un jeton sur GitHub (*Settings → Developer settings → Personal access tokens → Tokens (classic)* avec la permission **`repo`**).\n\n"
-
-                        "2. Collez-le ci-dessous **OU** dans les paramètres de votre application Streamlit Cloud (*Settings → Secrets*) sous la forme : `GITHUB_TOKEN = 'ghp_...'`"
-
-                    )
-
-                col_gh1, col_gh2 = st.columns([2, 1])
-                with col_gh1:
-                    if tok_actuel:
-                        st.caption("🔑 Jeton GitHub enregistré : `ghp_••••••••••••••••••••••••`")
-                        modifier_gh_tok = st.checkbox("Modifier le jeton d'accès GitHub", key="chk_mod_gh_tok")
-                        if modifier_gh_tok:
-                            saisie_gh_token = st.text_input(
-                                "Nouveau jeton d'accès GitHub :",
-                                type="password",
-                                placeholder="ghp_... ou github_pat_...",
-                                key="input_gh_token_admin"
-                            )
-                        else:
-                            saisie_gh_token = tok_actuel
-                    else:
-                        saisie_gh_token = st.text_input(
-                            "Jeton d'accès personnel GitHub (Personal Access Token) :",
-                            type="password",
-                            placeholder="ghp_... ou github_pat_...",
-                            key="input_gh_token_admin"
+                # Section Supabase
+                with st.expander("🗄️ Configuration Supabase PostgreSQL", expanded=(nouveau_mode in ("supabase", "supabase_github"))):
+                    col_sb1, col_sb2 = st.columns([2, 1])
+                    with col_sb1:
+                        saisie_sb_url = st.text_input(
+                            "URL du projet Supabase :",
+                            value=url_sb_actuel,
+                            placeholder="https://ueikhwdfmtnavqqscdoe.supabase.co",
+                            key="input_sb_url_admin"
                         )
-                with col_gh2:
-                    saisie_gh_repo = st.text_input(
-                        "Dépôt GitHub ( propriétaire/nom ) :",
-                        value=repo_actuel,
-                        key="input_gh_repo_admin"
-                    )
+                        if key_sb_actuel:
+                            st.caption("🔑 Clé API secrète Supabase : `sb_secret_••••••••••••••••`")
+                            mod_sb_key = st.checkbox("Modifier la clé API Supabase", key="chk_mod_sb_key")
+                            if mod_sb_key:
+                                saisie_sb_key = st.text_input("Nouvelle clé secrète Supabase :", type="password", key="input_sb_key_admin")
+                            else:
+                                saisie_sb_key = key_sb_actuel
+                        else:
+                            saisie_sb_key = st.text_input("Clé secrète Supabase (service_role ou secret key) :", type="password", key="input_sb_key_admin")
+                    with col_sb2:
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        if st.button("🧪 Tester connexion Supabase", use_container_width=True, key="btn_test_sb"):
+                            ok_test_sb, msg_test_sb = tester_connexion_supabase(saisie_sb_url, saisie_sb_key)
+                            if ok_test_sb:
+                                st.success(f"✅ {msg_test_sb}")
+                            else:
+                                st.error(f"❌ {msg_test_sb}")
 
-                col_gh_btn1, col_gh_btn2, col_gh_btn3 = st.columns(3)
-                with col_gh_btn1:
-                    if st.button("💾 Enregistrer la configuration GitHub", use_container_width=True, key="btn_save_gh_cfg"):
-                        if sauvegarder_parametres_github(saisie_gh_token, saisie_gh_repo, branch_actuelle):
-                            st.success("✅ Configuration GitHub enregistrée !")
+                # Section GitHub
+                with st.expander("🐙 Configuration Dépôt GitHub", expanded=(nouveau_mode in ("supabase_github", "github"))):
+                    col_gh1, col_gh2 = st.columns([2, 1])
+                    with col_gh1:
+                        if tok_gh_actuel:
+                            st.caption("🔑 Jeton GitHub enregistré : `ghp_••••••••••••••••••••••••`")
+                            mod_gh_tok = st.checkbox("Modifier le jeton GitHub", key="chk_mod_gh_tok")
+                            if mod_gh_tok:
+                                saisie_gh_token = st.text_input("Nouveau jeton GitHub :", type="password", placeholder="ghp_...", key="input_gh_token_admin")
+                            else:
+                                saisie_gh_token = tok_gh_actuel
+                        else:
+                            saisie_gh_token = st.text_input("Jeton GitHub (Personal Access Token) :", type="password", placeholder="ghp_...", key="input_gh_token_admin")
+                    with col_gh2:
+                        saisie_gh_repo = st.text_input("Dépôt GitHub (propriétaire/nom) :", value=repo_gh_actuel, key="input_gh_repo_admin")
+
+                # Boutons d'action globale
+                col_cld_btn1, col_cld_btn2, col_cld_btn3 = st.columns(3)
+                with col_cld_btn1:
+                    if st.button("💾 Enregistrer la configuration Cloud", type="primary", use_container_width=True, key="btn_save_cloud_cfg"):
+                        ok_s = sauvegarder_parametres_supabase(saisie_sb_url, saisie_sb_key, nouveau_mode)
+                        ok_g = sauvegarder_parametres_github(saisie_gh_token, saisie_gh_repo, branch_gh_actuel)
+                        if ok_s and ok_g:
+                            st.success("✅ Configuration Cloud et mode enregistrés avec succès !")
                             time.sleep(0.8)
                             st.rerun()
                         else:
-                            st.error("Erreur lors de l'enregistrement.")
-                with col_gh_btn2:
-                    if st.button("☁️ Pousser tous les historiques vers GitHub", type="primary", use_container_width=True, key="btn_push_all_gh"):
-                        with st.spinner("Synchronisation des fichiers vers GitHub en cours..."):
-                            nb_ok, l_ok, l_err = synchroniser_tous_les_fichiers_github()
+                            st.error("❌ Erreur lors de l'enregistrement.")
+
+                with col_cld_btn2:
+                    if st.button("☁️ Sauvegarder tous les fichiers vers le Cloud", use_container_width=True, key="btn_push_all_cloud"):
+                        with st.spinner("Sauvegarde vers le Cloud en cours..."):
+                            nb_ok, l_ok, l_err = synchroniser_tous_les_fichiers_cloud()
                         if nb_ok > 0 and not l_err:
-                            st.success(f"✅ {nb_ok} fichier(s) synchronisé(s) sur GitHub : {', '.join(l_ok)}")
+                            st.success(f"✅ {nb_ok} fichier(s) sauvegardé(s) sur le Cloud : {', '.join(l_ok)}")
                         elif nb_ok > 0:
-                            st.warning(f"⚠️ Synchronisé(s) : {', '.join(l_ok)} | Erreur(s) : {'; '.join(l_err)}")
+                            st.warning(f"⚠️ Fichiers sauvegardés : {', '.join(l_ok)} | Erreur(s) : {'; '.join(l_err)}")
                         else:
-                            st.error(f"❌ Échec de la synchronisation : {'; '.join(l_err)}")
-                with col_gh_btn3:
-                    if st.button("📥 Récupérer la plus récente sauvegarde depuis GitHub", use_container_width=True, key="btn_pull_all_gh"):
-                        with st.spinner("Récupération de la sauvegarde la plus récente depuis GitHub..."): 
-                            maj_ok, msg_pull = restaurer_depuis_github_au_reveil(forcer=True)
+                            st.error(f"❌ Échec de la sauvegarde Cloud : {'; '.join(l_err)}")
+
+                with col_cld_btn3:
+                    if st.button("📥 Récupérer la plus récente sauvegarde Cloud", use_container_width=True, key="btn_pull_all_cloud"):
+                        with st.spinner("Restauration depuis le Cloud en cours..."):
+                            maj_ok, msg_pull = restaurer_depuis_cloud_au_reveil(forcer=True)
                         if maj_ok:
-                            st.success(f"✅ Historiques récupérés et fusionnés : {msg_pull}")
+                            st.success(f"✅ Données restaurées et fusionnées : {msg_pull}")
                             time.sleep(0.8)
                             st.rerun()
                         else:

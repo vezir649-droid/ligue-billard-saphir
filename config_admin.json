@@ -5,5 +5,8 @@
     "saphir_api_url": "https://saphirbillard.com/index.php?eID=billardImport",
     "github_token": "",
     "github_repo": "vezir649-droid/ligue-billard-saphir",
-    "github_branch": "main"
+    "github_branch": "main",
+    "supabase_url": "https://ueikhwdfmtnavqqscdoe.supabase.co",
+    "supabase_key": "",
+    "cloud_mode": "supabase"
 }
