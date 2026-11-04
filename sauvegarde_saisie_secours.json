@@ -1,5 +1,5 @@
 {
-    "date": "2026-11-04 17:36",
+    "date": "2026-11-04 17:46",
     "receveur": "Alpha",
     "visiteur": "Bravo",
     "choix_rec": "Alpha",
@@ -120,6 +120,6 @@
             "joueur_b_absent": false
         }
     },
-    "derniere_mise_a_jour": "17:36:03",
-    "ts_modif": 1793813763.9848216
+    "derniere_mise_a_jour": "17:46:11",
+    "ts_modif": 1793814371.4197571
 }
