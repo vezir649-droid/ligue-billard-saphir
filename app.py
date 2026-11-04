@@ -3950,6 +3950,404 @@ def cb_archiver_match_scanner(data_s):
     st.session_state["msg_succes_archive_scan"] = True
 
 
+def cb_injecter_scan_dans_match_anterieur(data_s):
+    """Pré-remplit tous les champs du formulaire 'Match passé' (Administration) à partir des données analysées par l'IA."""
+    if not isinstance(data_s, dict):
+        return
+    eq_dispo = charger_equipes_csv()
+    noms_eq = list(eq_dispo.keys())
+
+    # 1. Date du match
+    d_str = str(data_s.get("date", "")).strip()
+    if len(d_str) >= 10:
+        try:
+            st.session_state["ant_date_input"] = datetime.strptime(d_str[:10], "%Y-%m-%d").date()
+        except Exception:
+            pass
+
+    # 2. Équipes Receveuse et Visiteuse
+    rec_nom = str(data_s.get("receveur", "")).strip()
+    vis_nom = str(data_s.get("visiteur", "")).strip()
+
+    if rec_nom in noms_eq:
+        st.session_state["ant_sel_rec"] = rec_nom
+        st.session_state["ant_last_track_rec"] = f"{rec_nom}::{rec_nom}"
+    else:
+        st.session_state["ant_sel_rec"] = "Autre / Personnalisée"
+        st.session_state["ant_cust_rec"] = rec_nom or "Équipe 1"
+        st.session_state["ant_last_track_rec"] = f"Autre / Personnalisée::{rec_nom or 'Équipe 1'}"
+
+    if vis_nom in noms_eq:
+        st.session_state["ant_sel_vis"] = vis_nom
+        st.session_state["ant_last_track_vis"] = f"{vis_nom}::{vis_nom}"
+    else:
+        st.session_state["ant_sel_vis"] = "Autre / Personnalisée"
+        st.session_state["ant_cust_vis"] = vis_nom or "Équipe 2"
+        st.session_state["ant_last_track_vis"] = f"Autre / Personnalisée::{vis_nom or 'Équipe 2'}"
+
+    # 3. Alignement des 6 joueurs (J1, J2, J3)
+    roster_rec_def = list(eq_dispo.get(rec_nom, ["Joueur 1", "Joueur 2", "Joueur 3"]))
+    while len(roster_rec_def) < 3:
+        roster_rec_def.append(f"Joueur {len(roster_rec_def)+1}")
+    roster_vis_def = list(eq_dispo.get(vis_nom, ["Joueur 1", "Joueur 2", "Joueur 3"]))
+    while len(roster_vis_def) < 3:
+        roster_vis_def.append(f"Joueur {len(roster_vis_def)+1}")
+
+    j_rec_list = list(data_s.get("joueurs_rec") or [p.get("nom", "") for p in data_s.get("stats_joueurs_rec", [])])
+    j_vis_list = list(data_s.get("joueurs_vis") or [p.get("nom", "") for p in data_s.get("stats_joueurs_vis", [])])
+
+    for idx in range(1, 4):
+        jr = str(j_rec_list[idx - 1]).strip() if len(j_rec_list) >= idx and j_rec_list[idx - 1] else roster_rec_def[idx - 1]
+        if jr in roster_rec_def:
+            st.session_state[f"ant_sel_j{idx}_r"] = jr
+        else:
+            st.session_state[f"ant_sel_j{idx}_r"] = "Remplaçant / Autre..."
+            st.session_state[f"ant_cust_j{idx}_r"] = jr
+        st.session_state[f"ant_j{idx}_rec"] = jr
+        st.session_state[f"ant_pres_j{idx}_r"] = True
+
+        jv = str(j_vis_list[idx - 1]).strip() if len(j_vis_list) >= idx and j_vis_list[idx - 1] else roster_vis_def[idx - 1]
+        if jv in roster_vis_def:
+            st.session_state[f"ant_sel_j{idx}_v"] = jv
+        else:
+            st.session_state[f"ant_sel_j{idx}_v"] = "Remplaçant / Autre..."
+            st.session_state[f"ant_cust_j{idx}_v"] = jv
+        st.session_state[f"ant_j{idx}_vis"] = jv
+        st.session_state[f"ant_pres_j{idx}_v"] = True
+
+    # 4. Pointages des 9 manches
+    matchs_scan = data_s.get("matchs", {})
+    for num_m in range(1, 10):
+        m_d = matchs_scan.get(str(num_m), {})
+        st.session_state[f"ant_sa_{num_m}"] = max(0, min(8, _safe_int_val(m_d.get("score_a", 0))))
+        st.session_state[f"ant_sb_{num_m}"] = max(0, min(8, _safe_int_val(m_d.get("score_b", 0))))
+
+    st.session_state["toast_ant_scan_injecte"] = f"{rec_nom} vs {vis_nom} ({d_str or 'Date détectée'})"
+
+
+def cb_archiver_match_anterieur_scanner(data_s):
+    """Archive directement dans historique_matchs.json un match passé numérisé depuis l'onglet Administration -> Match passé."""
+    if not isinstance(data_s, dict):
+        return
+    existe_h, idx_h, _ = verifier_match_scan_dans_historique(data_s)
+    if existe_h:
+        st.session_state["select_match_to_rectify"] = idx_h
+        return
+    matchs_dict = data_s.get("matchs", {})
+    rec_n = str(data_s.get("receveur", "Receveur"))
+    vis_n = str(data_s.get("visiteur", "Visiteur"))
+    j_rec_l = list(data_s.get("joueurs_rec") or [p.get("nom", "") for p in data_s.get("stats_joueurs_rec", [])])
+    while len(j_rec_l) < 3:
+        j_rec_l.append(f"Joueur {len(j_rec_l)+1}")
+    j_vis_l = list(data_s.get("joueurs_vis") or [p.get("nom", "") for p in data_s.get("stats_joueurs_vis", [])])
+    while len(j_vis_l) < 3:
+        j_vis_l.append(f"Joueur {len(j_vis_l)+1}")
+
+    pts_r_l = list(data_s.get("totaux_joueurs_rec") or [p.get("total_points", 0) for p in data_s.get("stats_joueurs_rec", [])])
+    while len(pts_r_l) < 3:
+        pts_r_l.append(0)
+    pts_v_l = list(data_s.get("totaux_joueurs_vis") or [p.get("total_points", 0) for p in data_s.get("stats_joueurs_vis", [])])
+    while len(pts_v_l) < 3:
+        pts_v_l.append(0)
+
+    pts_par_joueur = {
+        "j1_rec": {"nom": j_rec_l[0], "equipe": rec_n, "points": _safe_int_val(pts_r_l[0]), "present": True, "moyenne": obtenir_moyenne_joueur(j_rec_l[0])},
+        "j2_rec": {"nom": j_rec_l[1], "equipe": rec_n, "points": _safe_int_val(pts_r_l[1]), "present": True, "moyenne": obtenir_moyenne_joueur(j_rec_l[1])},
+        "j3_rec": {"nom": j_rec_l[2], "equipe": rec_n, "points": _safe_int_val(pts_r_l[2]), "present": True, "moyenne": obtenir_moyenne_joueur(j_rec_l[2])},
+        "j1_vis": {"nom": j_vis_l[0], "equipe": vis_n, "points": _safe_int_val(pts_v_l[0]), "present": True, "moyenne": obtenir_moyenne_joueur(j_vis_l[0])},
+        "j2_vis": {"nom": j_vis_l[1], "equipe": vis_n, "points": _safe_int_val(pts_v_l[1]), "present": True, "moyenne": obtenir_moyenne_joueur(j_vis_l[1])},
+        "j3_vis": {"nom": j_vis_l[2], "equipe": vis_n, "points": _safe_int_val(pts_v_l[2]), "present": True, "moyenne": obtenir_moyenne_joueur(j_vis_l[2])},
+    }
+
+    nouveau_match = {
+        "date": str(data_s.get("date", datetime.today().strftime("%Y-%m-%d"))),
+        "date_enregistrement": str(data_s.get("date", datetime.today().strftime("%Y-%m-%d"))),
+        "receveur": rec_n,
+        "visiteur": vis_n,
+        "total_receveur": _safe_int_val(data_s.get("total_rec", 0)),
+        "total_visiteur": _safe_int_val(data_s.get("total_vis", 0)),
+        "approbateur_receveur": str(data_s.get("approbateur_rec", j_rec_l[0])),
+        "approbateur_visiteur": str(data_s.get("approbateur_vis", j_vis_l[0])),
+        "points_par_joueur": pts_par_joueur,
+        "matchs": {
+            str(i): {
+                "score_a": _safe_int_val(matchs_dict.get(str(i), {}).get("score_a", 0)),
+                "score_b": _safe_int_val(matchs_dict.get(str(i), {}).get("score_b", 0)),
+                "joueur_a": str(matchs_dict.get(str(i), {}).get("joueur_a", "")),
+                "joueur_b": str(matchs_dict.get(str(i), {}).get("joueur_b", "")),
+                "joueur_a_absent": False,
+                "joueur_b_absent": False
+            }
+            for i in range(1, 10)
+        },
+        "saisi_comme_anterieur": True,
+        "saisi_via_scanner_ia": True
+    }
+    hist_courant = charger_historique_matchs()
+    hist_courant.append(nouveau_match)
+    sauvegarder_historique_matchs(hist_courant)
+    st.session_state.pop("ant_scan_result_data", None)
+    st.session_state["msg_succes_archive_ant_scan"] = f"{rec_n} ({nouveau_match['total_receveur']}) vs {vis_n} ({nouveau_match['total_visiteur']}) — {nouveau_match['date']}"
+
+
+def afficher_scanner_ia_match_anterieur():
+    """Module complet de numérisation IA (Gemini Vision) intégré dans l'onglet Administration -> Match passé."""
+    if st.session_state.get("msg_succes_archive_ant_scan"):
+        info_arch = st.session_state.pop("msg_succes_archive_ant_scan")
+        st.success(f"✅ **Match antérieur archivé avec succès depuis le Scanner IA :** {info_arch} !")
+    if st.session_state.get("toast_ant_scan_injecte"):
+        info_inj = st.session_state.pop("toast_ant_scan_injecte")
+        st.success(f"✅ **Données du scan IA injectées dans le formulaire ci-dessous :** {info_inj}. Vérifiez les champs puis cliquez sur « 💾 Enregistrer ce match antérieur » au bas de la page.")
+
+    with st.expander("📷 **Saisie rapide par Analyse IA (Numériser une photo ou télécharger une image de feuille de match)**", expanded=True):
+        st.caption(
+            "Téléchargez une image ou prenez en photo une feuille de match passée : l'IA Gemini Vision extrait automatiquement la date, "
+            "les équipes, les 6 joueurs actifs et les 9 duels, puis vous permet soit de **pré-remplir le formulaire ci-dessous**, soit d'**archiver directement le match**."
+        )
+        mode_photo_ant = st.radio(
+            "Mode d'acquisition de la feuille de match passée :",
+            [
+                "📂 Télécharger / Choisir une image (Galerie, Fichiers, PC)",
+                "📸 Prendre une photo (Caméra directe)",
+                "📱 Appareil photo natif (Capture avec flash)"
+            ],
+            horizontal=True,
+            key="ant_mode_source_scan"
+        )
+
+        img_data_ant = None
+        if "Télécharger / Choisir une image" in mode_photo_ant:
+            html_rm_cap_ant = """
+            <script>
+            (function() {
+              try {
+                const pWin = window.parent;
+                if (!pWin || !pWin.document) return;
+                const inputs = pWin.document.querySelectorAll('input[type="file"]');
+                inputs.forEach(inp => {
+                  inp.removeAttribute('capture');
+                  inp.setAttribute('accept', 'image/*,.jpg,.jpeg,.png,.webp,.heic');
+                });
+              } catch(e) {}
+            })();
+            </script>
+            """
+            st.components.v1.html(html_rm_cap_ant, height=0)
+            upl_ant_gal = st.file_uploader(
+                "📂 Choisir ou glisser-déposer une image de la feuille de match passée (JPG, PNG, WebP, HEIC)",
+                type=["jpg", "jpeg", "png", "webp", "heic"],
+                key="ant_upload_galerie_input"
+            )
+            if upl_ant_gal:
+                img_data_ant = upl_ant_gal.getvalue()
+        elif "Caméra directe" in mode_photo_ant:
+            cam_ant_file = st.camera_input("🎯 Visez la feuille de match passée", key="ant_cam_feuille_input")
+            if cam_ant_file:
+                img_data_ant = cam_ant_file.getvalue()
+        else:
+            html_cap_env_ant = """
+            <script>
+            (function() {
+              try {
+                const pWin = window.parent;
+                if (!pWin || !pWin.document) return;
+                const inputs = pWin.document.querySelectorAll('input[type="file"]');
+                inputs.forEach(inp => {
+                  inp.setAttribute('capture', 'environment');
+                  inp.setAttribute('accept', 'image/*');
+                });
+              } catch(e) {}
+            })();
+            </script>
+            """
+            st.components.v1.html(html_cap_env_ant, height=0)
+            upl_ant_nat = st.file_uploader(
+                "📷 Prendre une photo avec l'appareil natif",
+                type=["jpg", "jpeg", "png", "webp", "heic"],
+                key="ant_upload_natif_input"
+            )
+            if upl_ant_nat:
+                img_data_ant = upl_ant_nat.getvalue()
+
+        if img_data_ant:
+            import hashlib
+            raw_hash_ant = hashlib.md5(img_data_ant[:8192] + str(len(img_data_ant)).encode("ascii")).hexdigest()
+            if st.session_state.get("ant_scan_img_hash") != raw_hash_ant:
+                st.session_state["ant_scan_img_hash"] = raw_hash_ant
+                st.session_state["ant_scan_img_rot"] = 0
+                st.session_state["ant_scan_img_enhance"] = False
+
+            rot_ant = int(st.session_state.get("ant_scan_img_rot", 0)) % 360
+            enh_ant = bool(st.session_state.get("ant_scan_img_enhance", False))
+
+            if rot_ant != 0 or enh_ant:
+                try:
+                    from PIL import Image, ImageOps, ImageEnhance, ImageFilter
+                    import io
+                    im_a = Image.open(io.BytesIO(img_data_ant))
+                    try:
+                        im_a = ImageOps.exif_transpose(im_a)
+                    except Exception:
+                        pass
+                    if im_a.mode != "RGB":
+                        im_a = im_a.convert("RGB")
+                    if rot_ant == 90:
+                        im_a = im_a.transpose(Image.Transpose.ROTATE_270)
+                    elif rot_ant == 180:
+                        im_a = im_a.transpose(Image.Transpose.ROTATE_180)
+                    elif rot_ant == 270:
+                        im_a = im_a.transpose(Image.Transpose.ROTATE_90)
+                    if enh_ant:
+                        im_a = ImageOps.autocontrast(im_a, cutoff=1)
+                        im_a = ImageEnhance.Contrast(im_a).enhance(1.25)
+                        im_a = im_a.filter(ImageFilter.SHARPEN)
+                    buf_a = io.BytesIO()
+                    im_a.save(buf_a, format="JPEG", quality=92)
+                    img_data_ant = buf_a.getvalue()
+                except Exception:
+                    pass
+
+            col_ap_ant, col_ac_ant = st.columns([1.3, 2.0])
+            with col_ap_ant:
+                st.image(img_data_ant, caption=f"Feuille à analyser (Rotation : {rot_ant}°{' • Netteté ON' if enh_ant else ''})", use_container_width=True)
+            with col_ac_ant:
+                st.markdown("##### 🛠️ Ajustement de l'image & Analyse IA")
+                ca1, ca2, ca3, ca4 = st.columns(4)
+                with ca1:
+                    if st.button("↺ Gauche", use_container_width=True, key="btn_ant_rot_l"):
+                        st.session_state["ant_scan_img_rot"] = (rot_ant - 90) % 360
+                        st.rerun()
+                with ca2:
+                    if st.button("↻ Droite", use_container_width=True, key="btn_ant_rot_r"):
+                        st.session_state["ant_scan_img_rot"] = (rot_ant + 90) % 360
+                        st.rerun()
+                with ca3:
+                    if st.button("↕️ 180°", use_container_width=True, key="btn_ant_rot_180"):
+                        st.session_state["ant_scan_img_rot"] = (rot_ant + 180) % 360
+                        st.rerun()
+                with ca4:
+                    if st.button("✨ Netteté" + (" : ON" if enh_ant else ""), use_container_width=True, key="btn_ant_enh", type="primary" if enh_ant else "secondary"):
+                        st.session_state["ant_scan_img_enhance"] = not enh_ant
+                        st.rerun()
+
+                cb_run1, cb_run2 = st.columns([2.2, 1])
+                with cb_run1:
+                    if st.button("🚀 Lancer l'analyse IA (Gemini Vision)", type="primary", use_container_width=True, key="btn_ant_run_ia"):
+                        with st.spinner("Analyse de la feuille passée et corrélation des joueurs en cours..."):
+                            ok_a, res_a = analyser_photo_feuille_match(img_data_ant)
+                            if ok_a:
+                                res_a = correler_donnees_feuille_avec_ligue(res_a)
+                                st.session_state["ant_scan_result_data"] = res_a
+                                # Pré-remplir également le formulaire ci-dessous automatiquement pour gagner un clic
+                                cb_injecter_scan_dans_match_anterieur(res_a)
+                                st.rerun()
+                            else:
+                                st.error(f"❌ {res_a}")
+                with cb_run2:
+                    if st.button("🗑️ Effacer scan", use_container_width=True, key="btn_ant_clear_scan"):
+                        st.session_state.pop("ant_scan_result_data", None)
+                        st.rerun()
+
+        data_ant_s = st.session_state.get("ant_scan_result_data")
+        if isinstance(data_ant_s, dict):
+            st.divider()
+            rec_n_s = data_ant_s.get("receveur", "Receveur")
+            vis_n_s = data_ant_s.get("visiteur", "Visiteur")
+            tot_r_s = _safe_int_val(data_ant_s.get("total_rec", 0))
+            tot_v_s = _safe_int_val(data_ant_s.get("total_vis", 0))
+            date_s = data_ant_s.get("date", datetime.today().strftime("%Y-%m-%d"))
+            stats_rec_s = data_ant_s.get("stats_joueurs_rec", [])
+            stats_vis_s = data_ant_s.get("stats_joueurs_vis", [])
+            incert_s = data_ant_s.get("incertitudes", [])
+
+            existe_hist_s, idx_hist_s, match_hist_s = verifier_match_scan_dans_historique(data_ant_s)
+            if existe_hist_s:
+                d_ex = match_hist_s.get("date_enregistrement", match_hist_s.get("date", "")) if isinstance(match_hist_s, dict) else ""
+                st.error(
+                    f"🛑 **Match déjà présent dans l'historique officiel !** La rencontre **{rec_n_s} vs {vis_n_s}** "
+                    f"(archivée le `{d_ex}`) existe déjà dans `historique_matchs.json` (Match #{idx_hist_s + 1}). "
+                    f"Utilisez l'onglet **« ✏️ Rectifications »** si vous souhaitez modifier ses pointages."
+                )
+
+            if incert_s:
+                lignes_inc = "\n".join([f"- ⚠️ {item}" for item in incert_s])
+                st.warning(f"🔍 **Points à vérifier sur la feuille ({len(incert_s)}) :**\n{lignes_inc}")
+            else:
+                st.success("✅ **Analyse IA réussie et formulaire pré-rempli automatiquement ci-dessous !**")
+
+            cm1, cm2, cm3, cm4 = st.columns(4)
+            cm1.metric("📅 Date détectée", date_s)
+            cm2.metric(f"🔴 {rec_n_s} (Receveur)", f"{tot_r_s} pts")
+            cm3.metric(f"🔵 {vis_n_s} (Visiteur)", f"{tot_v_s} pts")
+            gagnant_s = rec_n_s if tot_r_s > tot_v_s else (vis_n_s if tot_v_s > tot_r_s else "Égalité")
+            cm4.metric("🏆 Vainqueur", gagnant_s, delta=f"Écart : {abs(tot_r_s - tot_v_s)} pts")
+
+            tab_j_ant = []
+            for idx_p, st_p in enumerate(stats_rec_s):
+                duels_p = st_p.get("duels", [])
+                m_txt = " | ".join([f"M{d['manche']}: {d['score']} pts (vs {d['adversaire']})" for d in duels_p])
+                tab_j_ant.append({
+                    "Équipe": f"🔴 {rec_n_s}",
+                    "Joueur": st_p.get("nom", f"Receveur J{idx_p+1}"),
+                    "Total Points": f"🎯 {st_p.get('total_points', 0)} pts",
+                    "Bilan (V - D)": f"{st_p.get('victoires', 0)}V - {st_p.get('defaites', 0)}D",
+                    "Détail des 3 manches": m_txt
+                })
+            for idx_p, st_p in enumerate(stats_vis_s):
+                duels_p = st_p.get("duels", [])
+                m_txt = " | ".join([f"M{d['manche']}: {d['score']} pts (vs {d['adversaire']})" for d in duels_p])
+                tab_j_ant.append({
+                    "Équipe": f"🔵 {vis_n_s}",
+                    "Joueur": st_p.get("nom", f"Visiteur J{idx_p+1}"),
+                    "Total Points": f"🎯 {st_p.get('total_points', 0)} pts",
+                    "Bilan (V - D)": f"{st_p.get('victoires', 0)}V - {st_p.get('defaites', 0)}D",
+                    "Détail des 3 manches": m_txt
+                })
+            if tab_j_ant:
+                st.markdown("###### 📊 Totaux par joueur détectés")
+                afficher_tableau_html_compatible(pd.DataFrame(tab_j_ant))
+
+            matchs_ant_dict = data_ant_s.get("matchs", {})
+            if matchs_ant_dict:
+                with st.expander("🎱 Voir le détail des 9 duels détectés & Aperçu A4", expanded=False):
+                    duels_ant_rows = []
+                    for i_m in range(1, 10):
+                        m_it = matchs_ant_dict.get(str(i_m), {})
+                        sa_i = _safe_int_val(m_it.get("score_a", 0))
+                        sb_i = _safe_int_val(m_it.get("score_b", 0))
+                        ja_i = m_it.get("joueur_a", f"J{((i_m-1)%3)+1}")
+                        jb_i = m_it.get("joueur_b", f"J{((i_m-1)%3)+1}")
+                        duels_ant_rows.append({
+                            "Manche": f"Manche {i_m}",
+                            f"Joueur ({rec_n_s})": ja_i,
+                            "Score": f"{sa_i} — {sb_i}",
+                            f"Joueur ({vis_n_s})": jb_i,
+                            "Vainqueur": f"🔴 {ja_i}" if sa_i > sb_i else (f"🔵 {jb_i}" if sb_i > sa_i else "Égalité")
+                        })
+                    afficher_tableau_html_compatible(pd.DataFrame(duels_ant_rows))
+
+            ca_b1, ca_b2 = st.columns(2)
+            with ca_b1:
+                st.button(
+                    "📥 Ré-injecter dans le formulaire « Match passé » ci-dessous",
+                    use_container_width=True,
+                    type="secondary",
+                    key="btn_ant_reinject_form",
+                    on_click=cb_injecter_scan_dans_match_anterieur,
+                    args=(data_ant_s,)
+                )
+            with ca_b2:
+                st.button(
+                    "💾 Archiver directement ce match passé dans l'historique",
+                    use_container_width=True,
+                    type="primary",
+                    key="btn_ant_direct_archive",
+                    on_click=cb_archiver_match_anterieur_scanner,
+                    args=(data_ant_s,),
+                    disabled=existe_hist_s
+                )
+
+
 def afficher_vue_scanner_feuille_match(label_direct):
     """Vue dédiée à la numérisation intelligente de feuille de match par photo (Gemini Vision)
     avec corrélation automatique des noms de joueurs officiels actifs et présentation détaillée."""
@@ -16724,7 +17122,11 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
 
             with tab_saisie_ant:
                 st.markdown("#### 📝 Saisie d'un match antérieur (Match en retard ou archive)")
-                st.caption("Enregistrez un match officiel disputé antérieurement directement dans l'historique de la saison. Les classements, statistiques et synchronisations GitHub seront mis à jour automatiquement.")
+                st.caption("Enregistrez un match officiel disputé antérieurement directement dans l'historique de la saison (par **Analyse IA d'une photo/image de feuille** ou par **saisie manuelle** ci-dessous). Les classements, statistiques et synchronisations GitHub seront mis à jour automatiquement.")
+
+                afficher_scanner_ia_match_anterieur()
+                st.divider()
+                st.markdown("##### ✍️ Formulaire de vérification ou saisie manuelle du match antérieur")
 
                 eq_dispo = charger_equipes_csv()
                 noms_eq = list(eq_dispo.keys())
@@ -16750,7 +17152,9 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                 with col_ant_eq2:
                     st.markdown("##### 🚗 Équipe Visiteuse")
                     opt_vis = [e for e in opt_rec if e != sel_rec] or opt_rec
-                    def_vis_idx = 1 if len(opt_vis) > 1 else 0
+                    if st.session_state.get("ant_sel_vis") not in opt_vis:
+                        st.session_state["ant_sel_vis"] = opt_vis[0]
+                    def_vis_idx = opt_vis.index(st.session_state["ant_sel_vis"]) if st.session_state.get("ant_sel_vis") in opt_vis else 0
                     sel_vis = st.selectbox("Sélectionner l'équipe visiteuse :", opt_vis, index=def_vis_idx, key="ant_sel_vis")
                     if sel_vis == "Autre / Personnalisée":
                         eq_vis_ant = st.text_input("Nom de l'équipe visiteuse :", value="Équipe 2", key="ant_cust_vis").strip()
