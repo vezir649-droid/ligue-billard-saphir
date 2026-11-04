@@ -3961,12 +3961,13 @@ def afficher_vue_scanner_feuille_match(label_direct):
     with col_h2:
         st.button("🔙 Revenir au match en cours", on_click=cb_retour_match_en_cours, use_container_width=True, type="primary")
 
-    # Choix du mode d'acquisition optimisé pour tablette et ordinateur
+    # Choix du mode d'acquisition optimisé pour téléphone, tablette et ordinateur
     mode_photo = st.radio(
-        "Mode d'acquisition de la photo :",
+        "Mode d'acquisition de la feuille de match :",
         [
-            "📸 Caméra directe dans le navigateur (Caméra arrière par défaut)",
-            "📱 Appareil photo officiel de la tablette (Capture native avec flash)"
+            "📸 Prendre une photo (Caméra directe)",
+            "📂 Télécharger / Choisir une image (Galerie, Fichiers, PC)",
+            "📱 Appareil photo natif (Capture avec flash)"
         ],
         horizontal=True,
         key="mode_source_scan"
@@ -4292,9 +4293,50 @@ def afficher_vue_scanner_feuille_match(label_direct):
         cam_file = st.camera_input("🎯 Visez la feuille de match (touchez l'image ou le gros bouton vert ci-dessous pour prendre la photo)", key="cam_feuille_input")
         if cam_file:
             img_data = cam_file.getvalue()
+
+        with st.expander("📂 Ou choisir / télécharger une image existante depuis votre appareil (sans utiliser la caméra)", expanded=False):
+            upl_alt = st.file_uploader(
+                "Sélectionnez une image de feuille de match (Galerie photo, Téléchargements, ordinateur)",
+                type=["jpg", "jpeg", "png", "webp", "heic"],
+                key="upload_feuille_alt_input"
+            )
+            if upl_alt and not img_data:
+                img_data = upl_alt.getvalue()
+
+    elif "Télécharger / Choisir une image" in mode_photo:
+        st.info(
+            "📂 **Sélectionner une image existante :** Choisissez une photo déjà enregistrée dans votre **Galerie / Pellicule**, "
+            "vos **Téléchargements**, Google Drive ou sur votre ordinateur (aucune ouverture forcée de la caméra)."
+        )
+        # S'assurer que l'attribut 'capture' est retiré pour ouvrir la galerie de fichiers et non l'appareil photo
+        html_remove_capture = """
+        <script>
+        (function() {
+          try {
+            const pWin = window.parent;
+            if (!pWin || !pWin.document) return;
+            const inputs = pWin.document.querySelectorAll('input[type="file"]');
+            inputs.forEach(inp => {
+              inp.removeAttribute('capture');
+              inp.setAttribute('accept', 'image/*,.jpg,.jpeg,.png,.webp,.heic');
+            });
+          } catch(e) {}
+        })();
+        </script>
+        """
+        st.components.v1.html(html_remove_capture, height=0)
+
+        upl_galerie = st.file_uploader(
+            "📂 Choisir ou glisser-déposer une image de la feuille de match (JPG, PNG, WebP, HEIC)",
+            type=["jpg", "jpeg", "png", "webp", "heic"],
+            key="upload_feuille_galerie_input"
+        )
+        if upl_galerie:
+            img_data = upl_galerie.getvalue()
+
     else:
         st.info(
-            "💡 **Sur votre tablette Android :** Touchez le bouton **« Browse files / Parcourir »** ci-dessous. "
+            "💡 **Sur votre téléphone ou tablette :** Touchez le bouton **« Browse files / Parcourir »** ci-dessous. "
             "Il ouvrira directement votre application **📷 Appareil photo** officielle (caméra arrière) avec autofocus et flash."
         )
         # Injection capture="environment" pour forcer l'appareil photo arrière natif
@@ -4316,7 +4358,7 @@ def afficher_vue_scanner_feuille_match(label_direct):
         st.components.v1.html(html_capture_env, height=0)
 
         upl_file = st.file_uploader(
-            "Prendre une photo ou sélectionner une image de la feuille",
+            "Prendre une photo avec l'appareil natif",
             type=["jpg", "jpeg", "png", "webp", "heic"],
             key="upload_feuille_input"
         )
