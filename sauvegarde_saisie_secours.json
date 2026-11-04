@@ -1,49 +1,49 @@
 {
-    "date": "2026-11-03 22:13",
-    "receveur": "Foxtrot",
-    "visiteur": "Echo",
-    "choix_rec": "Foxtrot",
-    "choix_vis": "Echo",
-    "sel_j1_rec": "Sylvain Derasp",
-    "sel_j2_rec": "Valérie Turcotte",
-    "sel_j1_vis": "Gilles Dumais",
-    "sel_j2_vis": "Guy Vézina",
+    "date": "2026-11-04 00:49",
+    "receveur": "Alpha",
+    "visiteur": "Bravo",
+    "choix_rec": "Alpha",
+    "choix_vis": "Bravo",
+    "sel_j1_rec": "Claude Harvey",
+    "sel_j2_rec": "Gaston Lavoie",
+    "sel_j1_vis": "Richard Vézina",
+    "sel_j2_vis": "Denis Beaudoin",
     "joueurs": {
         "j1_rec": {
-            "nom": "Sylvain Derasp",
+            "nom": "Claude Harvey",
             "present": true,
-            "moyenne": 0.99,
+            "moyenne": 0.859,
             "pts_absent": 7
         },
         "j2_rec": {
-            "nom": "Valérie Turcotte",
+            "nom": "Gaston Lavoie",
             "present": true,
-            "moyenne": 0.771,
+            "moyenne": 0.797,
             "pts_absent": 6
         },
         "j3_rec": {
-            "nom": "Gabriel Labrecque",
+            "nom": "Léon Morin",
             "present": true,
-            "moyenne": 0.677,
-            "pts_absent": 5
+            "moyenne": 0.729,
+            "pts_absent": 6
         },
         "j1_vis": {
-            "nom": "Gilles Dumais",
+            "nom": "Richard Vézina",
             "present": true,
-            "moyenne": 0.833,
+            "moyenne": 0.891,
             "pts_absent": 7
         },
         "j2_vis": {
-            "nom": "Guy Vézina",
+            "nom": "Denis Beaudoin",
             "present": true,
-            "moyenne": 0.885,
-            "pts_absent": 7
+            "moyenne": 0.0,
+            "pts_absent": 0
         },
         "j3_vis": {
-            "nom": "André St-Pierre",
+            "nom": "Michel Caron",
             "present": true,
-            "moyenne": 0.922,
-            "pts_absent": 7
+            "moyenne": 0.781,
+            "pts_absent": 6
         }
     },
     "matchs": {
@@ -120,6 +120,6 @@
             "joueur_b_absent": false
         }
     },
-    "derniere_mise_a_jour": "22:13:39",
-    "ts_modif": 1793744019.2553372
+    "derniere_mise_a_jour": "00:49:21",
+    "ts_modif": 1793753361.8532403
 }
