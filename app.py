@@ -496,6 +496,12 @@ def normaliser_donnees_admin(brut):
             res.setdefault("github_repo", v_str)
         elif k_clean in ("github_branch", "gh_branch", "branch", "branche"):
             res.setdefault("github_branch", v_str)
+        elif k_clean in ("supabase_url", "sb_url", "url_supabase", "supabase_endpoint"):
+            res.setdefault("supabase_url", v_str)
+        elif k_clean in ("supabase_key", "sb_key", "sb_secret", "supabase_secret", "supabase_api_key", "service_role_key", "cle_supabase", "cle_secrete_supabase"):
+            res.setdefault("supabase_key", v_str)
+        elif k_clean in ("cloud_mode", "cloud_storage_mode", "mode_cloud"):
+            res.setdefault("cloud_mode", v_str)
         else:
             res[k_orig] = v_str
     return res
@@ -547,7 +553,8 @@ def obtenir_diagnostic_secrets_streamlit():
             "mot_de_passe_admin": {"configure": False, "est_defaut": True, "source": "défaut"},
             "saphir_api_key": {"configure": False, "est_defaut": True, "source": "défaut"},
             "github_token": {"configure": False, "source": "non configuré"},
-            "email_smtp": {"configure": False, "source": "non configuré"}
+            "email_smtp": {"configure": False, "source": "non configuré"},
+            "supabase": {"configure": False, "source": "non configuré"}
         }
     }
     try:
@@ -607,6 +614,11 @@ def obtenir_diagnostic_secrets_streamlit():
             "configure": bool(cfg_em.get("smtp_expediteur") and cfg_em.get("smtp_mdp")),
             "source": sources_em.get("smtp_expediteur", "config_email.json ou non configuré")
         }
+        sb_u, sb_k, _ = obtenir_parametres_supabase()
+        diag["elements"]["supabase"] = {
+            "configure": bool(sb_u and sb_k),
+            "source": ("st.secrets" if sb_k and not cfg_adm.get("supabase_key") else ("config_admin.json" if cfg_adm.get("supabase_key") else "non configuré"))
+        }
     except Exception:
         pass
 
@@ -636,7 +648,7 @@ def afficher_etat_secrets_admin():
                 st.rerun()
 
         el = diag.get("elements", {})
-        col_s1, col_s2, col_s3, col_s4 = st.columns(4)
+        col_s1, col_s2, col_s3, col_s4, col_s5 = st.columns(5)
         with col_s1:
             adm_p = el.get("mot_de_passe_admin", {})
             st.markdown(f"**🛡️ Mdp Admin**<br>{'🟢 Personnalisé' if not adm_p.get('est_defaut') else '🟡 Défaut'}<br><small style='color:gray;'>Source : {adm_p.get('source', '-')}</small>", unsafe_allow_html=True)
@@ -648,7 +660,10 @@ def afficher_etat_secrets_admin():
             st.markdown(f"**☁️ Token GitHub**<br>{'🟢 Présent' if gh_t.get('configure') else '🟠 Absent'}<br><small style='color:gray;'>Source : {gh_t.get('source', '-')}</small>", unsafe_allow_html=True)
         with col_s4:
             em_s = el.get("email_smtp", {})
-            st.markdown(f"**📧 Envoi Courriel (SMTP)**<br>{'🟢 Configuré' if em_s.get('configure') else '🟠 Non configuré'}<br><small style='color:gray;'>Source : {em_s.get('source', '-')}</small>", unsafe_allow_html=True)
+            st.markdown(f"**📧 Envoi Courriel**<br>{'🟢 Configuré' if em_s.get('configure') else '🟠 Non configuré'}<br><small style='color:gray;'>Source : {em_s.get('source', '-')}</small>", unsafe_allow_html=True)
+        with col_s5:
+            sb_s = el.get("supabase", {})
+            st.markdown(f"**🗄️ Supabase Cloud**<br>{'🟢 Connecté' if sb_s.get('configure') else '🟠 Non configuré'}<br><small style='color:gray;'>Source : {sb_s.get('source', '-')}</small>", unsafe_allow_html=True)
 
 
 def charger_config_admin():
@@ -702,6 +717,16 @@ def charger_config_admin():
                         for k, v in norm_gh.items():
                             data[k] = v
                             sources[k] = f"st.secrets [{sec_gh}]"
+
+            # C2. Recherche dans la section [supabase]
+            for sec_sb in ["supabase", "Supabase", "SUPABASE", "sb", "SB"]:
+                if sec_sb in st.secrets:
+                    val_sb = st.secrets[sec_sb]
+                    if isinstance(val_sb, (dict, Mapping)) or hasattr(val_sb, "items"):
+                        norm_sb = normaliser_donnees_admin(dict(val_sb))
+                        for k, v in norm_sb.items():
+                            data[k] = v
+                            sources[k] = f"st.secrets [{sec_sb}]"
 
             # D. Clés directes à la racine de st.secrets
             try:
@@ -1620,42 +1645,81 @@ SUPABASE_URL_DEFAULT = "https://ueikhwdfmtnavqqscdoe.supabase.co"
 SUPABASE_KEY_DEFAULT = ""
 
 def obtenir_parametres_supabase():
-    """Récupère les paramètres de connexion Supabase (URL, clé API, mode actif) depuis config_admin.json, l'environnement ou st.secrets."""
+    """Récupère les paramètres de connexion Supabase (URL, clé API, mode actif) avec tolérance maximale aux formats et alias."""
     from collections.abc import Mapping
-    url = SUPABASE_URL_DEFAULT
-    key = SUPABASE_KEY_DEFAULT
+    url = SUPABASE_URL_DEFAULT or "https://ueikhwdfmtnavqqscdoe.supabase.co"
+    key = SUPABASE_KEY_DEFAULT or ""
     mode = "supabase"  # Mode 1 par défaut : Supabase prioritaire
 
-    cfg_adm = charger_config_admin()
-    if cfg_adm.get("supabase_url"):
-        url = str(cfg_adm.get("supabase_url")).strip()
-    if cfg_adm.get("supabase_key"):
-        key = str(cfg_adm.get("supabase_key")).strip()
-    if cfg_adm.get("cloud_mode"):
-        mode = str(cfg_adm.get("cloud_mode")).strip()
-
-    if os.environ.get("SUPABASE_URL"):
-        url = os.environ.get("SUPABASE_URL").strip()
-    if os.environ.get("SUPABASE_KEY"):
-        key = os.environ.get("SUPABASE_KEY").strip()
-    if os.environ.get("CLOUD_STORAGE_MODE"):
-        mode = os.environ.get("CLOUD_STORAGE_MODE").strip()
-
+    # 1. Lecture depuis config_admin.json
     try:
-        if hasattr(st, "secrets"):
-            for sec_sb in ["supabase", "Supabase", "SUPABASE"]:
-                if sec_sb in st.secrets:
-                    val_sb = st.secrets[sec_sb]
-                    if isinstance(val_sb, (dict, Mapping)) or hasattr(val_sb, "items"):
-                        url = str(val_sb.get("url", url)).strip() or url
-                        key = str(val_sb.get("key", val_sb.get("service_role_key", key))).strip() or key
-                        mode = str(val_sb.get("mode", mode)).strip() or mode
-            if "SUPABASE_URL" in st.secrets:
-                url = str(st.secrets["SUPABASE_URL"]).strip() or url
-            if "SUPABASE_KEY" in st.secrets:
-                key = str(st.secrets["SUPABASE_KEY"]).strip() or key
-            if "CLOUD_MODE" in st.secrets:
-                mode = str(st.secrets["CLOUD_MODE"]).strip() or mode
+        cfg_adm = charger_config_admin()
+        if isinstance(cfg_adm, dict):
+            for k, v in cfg_adm.items():
+                if not v:
+                    continue
+                v_str = str(v).strip()
+                k_l = str(k).lower().replace("-", "_").replace(" ", "_")
+                if k_l in ("supabase_url", "sb_url", "url_supabase", "supabase_endpoint"):
+                    url = v_str
+                elif k_l in ("supabase_key", "sb_key", "sb_secret", "supabase_secret", "supabase_api_key", "service_role_key", "cle_supabase", "cle_secrete_supabase"):
+                    key = v_str
+                elif k_l in ("cloud_mode", "cloud_storage_mode", "mode_cloud"):
+                    mode = v_str
+    except Exception:
+        pass
+
+    # 2. Variables d'environnement
+    for env_k, env_v in os.environ.items():
+        if not env_v:
+            continue
+        v_str = str(env_v).strip()
+        k_l = str(env_k).lower().replace("-", "_")
+        if k_l in ("supabase_url", "sb_url", "url_supabase"):
+            url = v_str
+        elif k_l in ("supabase_key", "sb_key", "sb_secret", "supabase_secret", "service_role_key"):
+            key = v_str
+        elif k_l in ("cloud_mode", "cloud_storage_mode", "mode_cloud"):
+            mode = v_str
+
+    # 3. Streamlit secrets (st.secrets) - Balayage récursif intelligent et tolérant
+    try:
+        if hasattr(st, "secrets") and st.secrets is not None:
+            def _extraire_secrets_sb(obj, prefix=""):
+                res = []
+                try:
+                    if isinstance(obj, (dict, Mapping)) or hasattr(obj, "items"):
+                        for k, v in obj.items():
+                            res.extend(_extraire_secrets_sb(v, f"{prefix}.{k}" if prefix else str(k)))
+                    elif hasattr(obj, "keys"):
+                        for k in obj.keys():
+                            res.extend(_extraire_secrets_sb(obj[k], f"{prefix}.{k}" if prefix else str(k)))
+                    else:
+                        res.append((prefix, str(obj).strip()))
+                except Exception:
+                    pass
+                return res
+
+            tous_secrets = _extraire_secrets_sb(st.secrets)
+
+            for k_path, v_val in tous_secrets:
+                if not v_val:
+                    continue
+                # Détection par valeur caractéristique
+                if v_val.startswith("sb_secret_") or v_val.startswith("sb_publishable_"):
+                    key = v_val
+                elif v_val.startswith("https://") and "supabase.co" in v_val and "/rest" not in v_val:
+                    url = v_val
+
+                # Détection par nom de clé ou chemin
+                k_full = k_path.lower().replace("-", "_").replace(" ", "_")
+                k_simple = k_full.split(".")[-1]
+                if any(x in k_full for x in ("supabase_url", "sb_url", "url_supabase", "supabase.url")):
+                    url = v_val
+                elif any(x in k_full for x in ("supabase_key", "sb_key", "supabase_secret", "supabase.key", "service_role_key")):
+                    key = v_val
+                elif k_simple in ("cloud_mode", "cloud_storage_mode", "mode_cloud"):
+                    mode = v_val
     except Exception:
         pass
 
@@ -1665,8 +1729,8 @@ def sauvegarder_parametres_supabase(url, key, mode="supabase"):
     """Enregistre les paramètres Supabase dans config_admin.json."""
     try:
         data = charger_config_admin()
-        data["supabase_url"] = (url or SUPABASE_URL_DEFAULT).strip()
-        data["supabase_key"] = (key or SUPABASE_KEY_DEFAULT).strip()
+        data["supabase_url"] = (url or SUPABASE_URL_DEFAULT or "https://ueikhwdfmtnavqqscdoe.supabase.co").strip()
+        data["supabase_key"] = (key or "").strip()
         data["cloud_mode"] = (mode or "supabase").strip()
         with open(ADMIN_CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
@@ -1676,10 +1740,11 @@ def sauvegarder_parametres_supabase(url, key, mode="supabase"):
 
 def tester_connexion_supabase(url=None, key=None):
     """Teste la connexion directe avec la table public.saphir_files dans Supabase PostgreSQL."""
-    u = url or obtenir_parametres_supabase()[0]
-    k = key or obtenir_parametres_supabase()[1]
+    u_def, k_def, _ = obtenir_parametres_supabase()
+    u = (url or u_def or "").strip()
+    k = (key or k_def or "").strip()
     if not u or not k:
-        return False, "URL ou clé API Supabase manquante."
+        return False, f"URL ou clé API Supabase manquante (URL: {'présente' if u else 'manquante'}, Clé: {'présente' if k else 'manquante'})."
     try:
         import urllib.request
         req = urllib.request.Request(
@@ -1689,7 +1754,7 @@ def tester_connexion_supabase(url=None, key=None):
                 "Authorization": f"Bearer {k}"
             }
         )
-        with urllib.request.urlopen(req, timeout=6) as resp:
+        with urllib.request.urlopen(req, timeout=7) as resp:
             if resp.status == 200:
                 return True, "Connexion établie avec succès à la base Supabase PostgreSQL !"
             return False, f"Réponse HTTP inattendue : {resp.status}"
@@ -18571,23 +18636,28 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                     with col_sb1:
                         saisie_sb_url = st.text_input(
                             "URL du projet Supabase :",
-                            value=url_sb_actuel,
+                            value=url_sb_actuel or "https://ueikhwdfmtnavqqscdoe.supabase.co",
                             placeholder="https://ueikhwdfmtnavqqscdoe.supabase.co",
                             key="input_sb_url_admin"
                         )
                         if key_sb_actuel:
-                            st.caption("🔑 Clé API secrète Supabase : `sb_secret_••••••••••••••••`")
-                            mod_sb_key = st.checkbox("Modifier la clé API Supabase", key="chk_mod_sb_key")
+                            masque_k = (key_sb_actuel[:10] + "••••••••") if len(key_sb_actuel) > 10 else "••••••••"
+                            st.caption(f"🔑 Clé API secrète active : `{masque_k}` (Détectée via Secrets ou Config)")
+                            mod_sb_key = st.checkbox("Modifier ou remplacer la clé API Supabase", key="chk_mod_sb_key")
                             if mod_sb_key:
                                 saisie_sb_key = st.text_input("Nouvelle clé secrète Supabase :", type="password", key="input_sb_key_admin")
                             else:
                                 saisie_sb_key = key_sb_actuel
                         else:
-                            saisie_sb_key = st.text_input("Clé secrète Supabase (service_role ou secret key) :", type="password", key="input_sb_key_admin")
+                            st.caption("ℹ️ Clé non encore détectée. Saisissez-la ci-dessous ou vérifiez Streamlit Secrets :")
+                            saisie_sb_key = st.text_input("Clé secrète Supabase (sb_secret_...) :", type="password", key="input_sb_key_admin", placeholder="sb_secret_...")
                     with col_sb2:
                         st.markdown("<br>", unsafe_allow_html=True)
                         if st.button("🧪 Tester connexion Supabase", use_container_width=True, key="btn_test_sb"):
-                            ok_test_sb, msg_test_sb = tester_connexion_supabase(saisie_sb_url, saisie_sb_key)
+                            cle_eval = (saisie_sb_key or key_sb_actuel or obtenir_parametres_supabase()[1]).strip()
+                            url_eval = (saisie_sb_url or url_sb_actuel or obtenir_parametres_supabase()[0]).strip()
+                            with st.spinner("Test de communication avec Supabase PostgreSQL..."):
+                                ok_test_sb, msg_test_sb = tester_connexion_supabase(url_eval, cle_eval)
                             if ok_test_sb:
                                 st.success(f"✅ {msg_test_sb}")
                             else:
@@ -18613,7 +18683,8 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                 col_cld_btn1, col_cld_btn2, col_cld_btn3 = st.columns(3)
                 with col_cld_btn1:
                     if st.button("💾 Enregistrer la configuration Cloud", type="primary", use_container_width=True, key="btn_save_cloud_cfg"):
-                        ok_s = sauvegarder_parametres_supabase(saisie_sb_url, saisie_sb_key, nouveau_mode)
+                        cle_finale = (saisie_sb_key or key_sb_actuel or "").strip()
+                        ok_s = sauvegarder_parametres_supabase(saisie_sb_url, cle_finale, nouveau_mode)
                         ok_g = sauvegarder_parametres_github(saisie_gh_token, saisie_gh_repo, branch_gh_actuel)
                         if ok_s and ok_g:
                             st.success("✅ Configuration Cloud et mode enregistrés avec succès !")
