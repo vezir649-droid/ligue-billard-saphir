@@ -2345,11 +2345,6 @@ def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_j
 </head>
 <body>
     <div class="fiche-a4">
-        <div class="no-print" style="text-align: right; margin-bottom: 10px;">
-            <button onclick="window.print()" style="background-color: #0b3c5d; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer;">
-                🖨️ Imprimer cette feuille (A4)
-            </button>
-        </div>
         <table class="header-table" style="width: 100%; border-bottom: 2px solid #0b3c5d; padding-bottom: 6px; margin-bottom: 10px; border-collapse: collapse;">
             <tr>
                 {logo_td}
@@ -6279,6 +6274,7 @@ def obtenir_html_match(m):
 
     if m.get("html_officiel"):
         html_existant = m["html_officiel"]
+        html_existant = re.sub(r'<div class="no-print"[^>]*>.*?Imprimer cette feuille.*?</div>\s*', '', html_existant, flags=re.DOTALL)
         # Injection du style d'impression A4 pour forcer une seule page
         if "<style>" in html_existant and "</style>" in html_existant:
             html_existant = re.sub(r"<style>.*?</style>", f"<style>\n{STYLE_PRINT_A4}\n</style>", html_existant, flags=re.DOTALL)
@@ -6373,11 +6369,6 @@ def obtenir_html_match(m):
 </head>
 <body>
     <div class="fiche-a4">
-        <div class="no-print" style="text-align: right; margin-bottom: 10px;">
-            <button onclick="window.print()" style="background-color: #0b3c5d; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer;">
-                🖨️ Imprimer cette feuille (A4)
-            </button>
-        </div>
         <table class="header-table" style="width: 100%; border-bottom: 2px solid #0b3c5d; padding-bottom: 6px; margin-bottom: 10px; border-collapse: collapse;">
             <tr>
                 {logo_td}
