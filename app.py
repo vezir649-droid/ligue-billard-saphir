@@ -6192,6 +6192,132 @@ def envoyer_post_saphir_import(payload, api_key="UNE_CLE_DEBILEMENT_LONGUE", url
         temps_ms = round((time.time() - t0) * 1000, 1)
         return False, 0, f"Erreur inattendue : {e_gen}", temps_ms
 
+def transmettre_match_a_saphirbillard(donnees_match, dict_j=None, pts_j=None):
+    """Construit la charge utile JSON et l'expédie automatiquement via HTTP POST vers https://saphirbillard.com/index.php?eID=billardImport.
+    
+    Format officiel attendu par l'API Saphir :
+    [
+        {"saison": 4, "semaine": 9, "prenom": "Sylvain", "nom": "Derasp", "pointage": 89}, ...
+    ]
+    Retourne : (succes: bool, message: str, payload: list)
+    """
+    if not isinstance(donnees_match, dict):
+        return False, "Données de match invalides.", []
+
+    # 1. Détermination de la date du match
+    d_match_raw = str(donnees_match.get("date_enregistrement") or donnees_match.get("date") or "")
+    d_obj = datetime.today().date()
+    try:
+        m_dmy = re.search(r'(\d{1,2})/(\d{1,2})/(\d{4})', d_match_raw)
+        if m_dmy:
+            d_obj = date(int(m_dmy.group(3)), int(m_dmy.group(2)), int(m_dmy.group(1)))
+        else:
+            m_ymd = re.search(r'(\d{4})-(\d{2})-(\d{2})', d_match_raw)
+            if m_ymd:
+                d_obj = date(int(m_ymd.group(1)), int(m_ymd.group(2)), int(m_ymd.group(3)))
+    except Exception:
+        d_obj = datetime.today().date()
+
+    # 2. Détermination du numéro de saison et de semaine
+    info_rencontre = trouver_match_par_date(d_obj)
+    if info_rencontre:
+        no_saison = info_rencontre.get("saison_int", 4)
+        no_semaine = info_rencontre.get("semaine_int", 1)
+    else:
+        no_saison, _ = calculer_numero_saison(d_obj)
+        no_semaine = calculer_semaine_saison(d_obj)
+
+    payload = []
+
+    # 3. Extraction des joueurs et pointages
+    if dict_j and isinstance(dict_j, dict) and pts_j and isinstance(pts_j, dict):
+        for p_id in ["j1_rec", "j2_rec", "j3_rec", "j1_vis", "j2_vis", "j3_vis"]:
+            p_data = dict_j.get(p_id)
+            if not isinstance(p_data, dict):
+                continue
+            nom_complet = str(p_data.get("nom") or "").strip()
+            if not nom_complet:
+                continue
+            parts = nom_complet.split(None, 1)
+            prenom = parts[0] if parts else "Joueur"
+            nom = parts[1] if len(parts) > 1 else ""
+            score = int(pts_j.get(p_id, 0))
+            payload.append({
+                "saison": int(no_saison),
+                "semaine": int(no_semaine),
+                "prenom": prenom,
+                "nom": nom,
+                "pointage": score
+            })
+    elif "points_par_joueur" in donnees_match and isinstance(donnees_match["points_par_joueur"], dict):
+        for p_id, p_info in donnees_match["points_par_joueur"].items():
+            if not isinstance(p_info, dict):
+                continue
+            nom_complet = str(p_info.get("nom") or "").strip()
+            if not nom_complet:
+                continue
+            parts = nom_complet.split(None, 1)
+            prenom = parts[0] if parts else "Joueur"
+            nom = parts[1] if len(parts) > 1 else ""
+            score = int(p_info.get("points", 0))
+            payload.append({
+                "saison": int(no_saison),
+                "semaine": int(no_semaine),
+                "prenom": prenom,
+                "nom": nom,
+                "pointage": score
+            })
+    elif "matchs" in donnees_match and isinstance(donnees_match["matchs"], dict):
+        scores_agr = {}
+        for manche in donnees_match["matchs"].values():
+            if not isinstance(manche, dict):
+                continue
+            ja = str(manche.get("joueur_a") or "").strip()
+            jb = str(manche.get("joueur_b") or "").strip()
+            sa = int(manche.get("score_a", 0))
+            sb = int(manche.get("score_b", 0))
+            if ja:
+                scores_agr[ja] = scores_agr.get(ja, 0) + sa
+            if jb:
+                scores_agr[jb] = scores_agr.get(jb, 0) + sb
+        for nom_complet, score in scores_agr.items():
+            parts = nom_complet.split(None, 1)
+            prenom = parts[0] if parts else "Joueur"
+            nom = parts[1] if len(parts) > 1 else ""
+            payload.append({
+                "saison": int(no_saison),
+                "semaine": int(no_semaine),
+                "prenom": prenom,
+                "nom": nom,
+                "pointage": score
+            })
+
+    if not payload:
+        return False, "Aucun pointage de joueur trouvé à transmettre vers saphirbillard.com.", []
+
+    url_api, key_api = charger_config_api_saphir()
+    ok_p, code_p, rep_p, duree_ms = envoyer_post_saphir_import(
+        payload,
+        api_key=key_api,
+        url=url_api,
+        timeout=15
+    )
+
+    detail_serveur = ""
+    try:
+        d_rep = json.loads(rep_p)
+        if isinstance(d_rep, dict):
+            detail_serveur = d_rep.get("message") or d_rep.get("statut_bdd") or ""
+    except Exception:
+        detail_serveur = str(rep_p)[:100]
+
+    if ok_p and (200 <= code_p < 300):
+        extra = f" ({detail_serveur})" if detail_serveur else ""
+        return True, f"Pointages des {len(payload)} joueurs transmis avec succès à saphirbillard.com en {duree_ms} ms{extra} !", payload
+    else:
+        err_txt = detail_serveur or rep_p
+        return False, f"Erreur transmission saphirbillard.com (Code {code_p}) : {err_txt}", payload
+
 def obtenir_points_reels_joueurs_match(date_cible, eq_rec, eq_vis):
     """Recherche si des points réels existent pour ce match (dans l'historique archivé ou la session active).
     Retourne un dict {nom_normalise: points} ou None si aucun point n'a encore été joué.
@@ -17111,6 +17237,14 @@ with tab_feuille:
             else:
                 st.caption("ℹ️ Aucun courriel configuré dans les paramètres.")
 
+            # Transmission officielle vers saphirbillard.com
+            opt_transmettre_saphir = st.checkbox(
+                "🌐 Transmettre automatiquement les pointages au site officiel saphirbillard.com",
+                value=True,
+                key="chk_transmettre_saphir_validation",
+                help="Envoie un appel HTTP POST (billardImport) vers https://saphirbillard.com avec les pointages officiels des 6 joueurs."
+            )
+
             st.markdown("---")
             st.markdown("##### ⚖️ Souhaitez-vous approuver ou annuler l'enregistrement de ce match ?")
 
@@ -17163,6 +17297,18 @@ with tab_feuille:
                     st.session_state["match_en_cours_deja_valide"] = True
 
                     msg_flash = f"✅ Le match entre **{equipe_rec}** ({tot_rec} pts) et **{equipe_vis}** ({tot_vis} pts) a été approuvé par **{sel_app_rec}** ({equipe_rec}) et **{sel_app_vis}** ({equipe_vis}), et archivé avec succès !"
+
+                    if opt_transmettre_saphir:
+                        with st.spinner("Transmission automatique des pointages vers saphirbillard.com..."):
+                            ok_saph, msg_saph, _ = transmettre_match_a_saphirbillard(
+                                donnees_finales,
+                                dict_j=dict_j,
+                                pts_j=pts_j
+                            )
+                        if ok_saph:
+                            msg_flash += f"\n\n🌐 {msg_saph}"
+                        else:
+                            msg_flash += f"\n\n⚠️ {msg_saph}"
 
                     if destinataires_envoi:
                         sujet = f"🎱 Ligue de billard Boule en main : {equipe_rec} ({tot_rec}) vs {equipe_vis} ({tot_vis}) - {d_match}"
