@@ -1,0 +1,170 @@
+[
+    {
+        "nom": "Gilles Dumais",
+        "equipe": "Echo",
+        "telephone": "",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Guy Vézina",
+        "equipe": "Echo",
+        "telephone": "",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "André St-Pierre",
+        "equipe": "Echo",
+        "telephone": "",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "André Lauzon",
+        "equipe": "Golf",
+        "telephone": "",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Suzanne Blaquière",
+        "equipe": "Golf",
+        "telephone": "",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Yves Pilon",
+        "equipe": "Golf",
+        "telephone": "",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Richard Lavoie",
+        "equipe": "Hotel",
+        "telephone": "",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Richard Théberge",
+        "equipe": "Hotel",
+        "telephone": "",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Jean-Yves Brochu",
+        "equipe": "Hotel",
+        "telephone": "",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Denis Viens",
+        "equipe": "Charlie",
+        "telephone": "",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Marcel Larouche",
+        "equipe": "Charlie",
+        "telephone": "",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Denis Chamberland",
+        "equipe": "Charlie",
+        "telephone": "",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Richard Vézina",
+        "equipe": "Bravo",
+        "telephone": "",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Denis Beaudoin",
+        "equipe": "Bravo",
+        "telephone": "",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Michel Caron",
+        "equipe": "Bravo",
+        "telephone": "",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Sylvain Derasp",
+        "equipe": "Foxtrot",
+        "telephone": "",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Valérie Turcotte",
+        "equipe": "Foxtrot",
+        "telephone": "",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Gabriel Labrecque",
+        "equipe": "Foxtrot",
+        "telephone": "",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Serge Nollet",
+        "equipe": "Delta",
+        "telephone": "",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Marc Savard",
+        "equipe": "Delta",
+        "telephone": "",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Alain Bellemare",
+        "equipe": "Delta",
+        "telephone": "",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Claude Harvey",
+        "equipe": "Alpha",
+        "telephone": "",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Gaston Lavoie",
+        "equipe": "Alpha",
+        "telephone": "",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Léon Morin",
+        "equipe": "Alpha",
+        "telephone": "",
+        "consentement": false,
+        "actif": true
+    }
+]
