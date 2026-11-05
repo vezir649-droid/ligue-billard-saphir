@@ -6759,22 +6759,70 @@ def afficher_module_test_post_saphir(key_prefix="saphir_api"):
                 st.code(reponse_p if reponse_p else "(Réponse vide)", language="text")
 
 
-def charger_joueurs_sms():
-    """Charge la liste des joueurs avec leurs numeros de telephone et consentement SMS depuis joueurs_sms.json.
-    Synchronise automatiquement avec les joueurs reguliers de equipes-saphir.csv."""
+def charger_joueurs_sms(forcer_cloud=False):
+    """Charge la liste des joueurs avec leurs numeros de telephone et consentements SMS.
+    Garantit la synchronisation avec PostgreSQL (Supabase) et GitHub.
+    Synchronise egalement avec equipes-saphir.csv pour maintenir la liste des 24 membres a jour.
+    """
     joueurs_sms = []
-    if os.path.exists(JOUEURS_SMS_FILE):
+    charge_cloud = False
+
+    # 1. Priorite : Interroger Supabase PostgreSQL (source cloud officielle)
+    try:
+        raw_sb = telecharger_fichier_supabase("joueurs_sms.json")
+        if raw_sb:
+            data_sb = json.loads(raw_sb)
+            if isinstance(data_sb, list) and len(data_sb) > 0:
+                joueurs_sms = data_sb
+                charge_cloud = True
+                # Mise a jour locale silencieuse
+                try:
+                    with open(JOUEURS_SMS_FILE, "w", encoding="utf-8") as f_w:
+                        json.dump(data_sb, f_w, ensure_ascii=False, indent=4)
+                    _ecrire_cache_fichier("joueurs_sms", JOUEURS_SMS_FILE, data_sb)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    # 2. Repli : Lire le fichier local si Supabase indisponible ou vide
+    if not joueurs_sms and os.path.exists(JOUEURS_SMS_FILE):
         try:
             with open(JOUEURS_SMS_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if isinstance(data, list):
-                    joueurs_sms = data
+                data_loc = json.load(f)
+                if isinstance(data_loc, list) and len(data_loc) > 0:
+                    joueurs_sms = data_loc
         except Exception:
             joueurs_sms = []
 
-    dict_existant = {j.get("nom", "").strip(): j for j in joueurs_sms if isinstance(j, dict) and j.get("nom")}
+    # 3. Repli ultime : GitHub
+    if not joueurs_sms:
+        try:
+            raw_gh = telecharger_json_depuis_github("joueurs_sms.json")
+            if isinstance(raw_gh, list) and len(raw_gh) > 0:
+                joueurs_sms = raw_gh
+        except Exception:
+            pass
 
-    # Recuperer les joueurs officiels depuis equipes-saphir.csv
+    # 4. Nettoyage strict anti-corruptions ("nan", "None", etc.)
+    dict_existant = {}
+    for j in joueurs_sms:
+        if isinstance(j, dict) and j.get("nom"):
+            nom_k = str(j.get("nom", "")).strip()
+            tel_brut = str(j.get("telephone", "")).strip()
+            if tel_brut.lower() in ("nan", "none", "null", "undefined"):
+                tel_brut = ""
+            # Conserver uniquement les chiffres et eventuellement un +
+            tel_propre = re.sub(r"[^0-9+]", "", tel_brut)
+            dict_existant[nom_k] = {
+                "nom": nom_k,
+                "equipe": str(j.get("equipe", "")).strip(),
+                "telephone": tel_propre,
+                "consentement": bool(j.get("consentement", False)),
+                "actif": bool(j.get("actif", True))
+            }
+
+    # 5. Synchroniser avec equipes-saphir.csv pour preserver les 24 joueurs de la ligue
     equipes = charger_equipes_csv()
     liste_ordonnee = []
     joueurs_vus = set()
@@ -6798,6 +6846,7 @@ def charger_joueurs_sms():
                     "actif": True
                 })
 
+    # Ajouter les eventuels joueurs hors equipes officielles
     for nom_ex, item in dict_existant.items():
         if nom_ex not in joueurs_vus:
             liste_ordonnee.append(item)
@@ -6805,28 +6854,64 @@ def charger_joueurs_sms():
     return liste_ordonnee
 
 def sauvegarder_joueurs_sms(liste_joueurs):
-    """Sauvegarde la liste des joueurs, numeros et consentements dans joueurs_sms.json et synchronise dans le Cloud."""
+    """Sauvegarde la liste des joueurs, numeros et consentements dans joueurs_sms.json et synchronise SIMULTANEMENT dans PostgreSQL (Supabase) ET GitHub."""
     try:
+        # Nettoyage preventif
+        liste_propre = []
+        for j in liste_joueurs:
+            nom_p = str(j.get("nom", "")).strip()
+            eq_p = str(j.get("equipe", "")).strip()
+            tel_p = str(j.get("telephone", "")).strip()
+            if tel_p.lower() in ("nan", "none", "null", "undefined"):
+                tel_p = ""
+            tel_p = re.sub(r"[^0-9+]", "", tel_p)
+            liste_propre.append({
+                "nom": nom_p,
+                "equipe": eq_p,
+                "telephone": tel_p,
+                "consentement": bool(j.get("consentement", False)),
+                "actif": bool(j.get("actif", True))
+            })
+
+        # 1. Sauvegarde locale atomique
         tmp_p = f"{JOUEURS_SMS_FILE}.tmp"
         with open(tmp_p, "w", encoding="utf-8") as f:
-            json.dump(liste_joueurs, f, ensure_ascii=False, indent=4)
+            json.dump(liste_propre, f, ensure_ascii=False, indent=4)
         try:
             os.replace(tmp_p, JOUEURS_SMS_FILE)
         except Exception:
             with open(JOUEURS_SMS_FILE, "w", encoding="utf-8") as f:
-                json.dump(liste_joueurs, f, ensure_ascii=False, indent=4)
+                json.dump(liste_propre, f, ensure_ascii=False, indent=4)
             if os.path.exists(tmp_p):
                 try:
                     os.remove(tmp_p)
                 except Exception:
                     pass
 
-        # Synchronisation Cloud (Supabase PostgreSQL / GitHub)
-        ok_cloud, msg_cloud = synchroniser_fichier_cloud(
-            JOUEURS_SMS_FILE,
-            commit_message=f"Mise a jour joueurs_sms.json ({len(liste_joueurs)} contacts)"
-        )
-        return True, msg_cloud
+        # Mettre a jour le cache memoire
+        _ecrire_cache_fichier("joueurs_sms", JOUEURS_SMS_FILE, liste_propre)
+
+        # 2. Synchronisation SIMULTANEE Cloud :
+        # - PostgreSQL (Supabase table public.saphir_files)
+        # - GitHub (Depot vezir649-droid/ligue-billard-saphir)
+        commit_msg = f"Mise a jour joueurs_sms.json ({len(liste_propre)} contacts)"
+        ok_sb, msg_sb = synchroniser_fichier_supabase(JOUEURS_SMS_FILE, commit_msg)
+        ok_gh, msg_gh = synchroniser_fichier_github(JOUEURS_SMS_FILE, commit_msg)
+
+        rapports = []
+        if ok_sb:
+            rapports.append("PostgreSQL (Supabase) : Enregistre ✅")
+        else:
+            rapports.append(f"PostgreSQL : ⚠️ {msg_sb}")
+
+        if ok_gh:
+            rapports.append("GitHub : Enregistre ✅")
+        else:
+            rapports.append(f"GitHub : ⚠️ {msg_gh}")
+
+        succes_global = ok_sb or ok_gh
+        msg_global = " | ".join(rapports)
+        return succes_global, msg_global
     except Exception as e:
         return False, str(e)
 
@@ -7287,50 +7372,80 @@ def afficher_onglet_sentinelle_sms():
         st.markdown("##### 👥 Liste des membres et preferences SMS")
         st.info("💡 Seuls les joueurs avec un **numero de cellulaire valide** ET la case **Consentement cochee** recevront les notifications SMS automatiques lors de l'archivage d'un match.")
 
+        col_cld1, col_cld2, col_cld3 = st.columns([1.5, 1.5, 1])
+        with col_cld1:
+            st.caption("🐘 **Stockage PostgreSQL (Supabase)** : `public.saphir_files`")
+        with col_cld2:
+            st.caption("🐙 **Stockage GitHub** : `vezir649-droid/ligue-billard-saphir`")
+        with col_cld3:
+            if st.button("🔄 Forcer recharge Cloud", help="Recharge les donnees les plus fraiches depuis Supabase / GitHub", key="btn_refresh_sms_cloud"):
+                st.session_state["sms_editor_version"] = st.session_state.get("sms_editor_version", 1) + 1
+                st.rerun()
+
         import pandas as pd
-        df_sms = pd.DataFrame([
-            {
-                "Nom": j.get("nom", ""),
-                "Equipe": j.get("equipe", ""),
-                "Cellulaire": str(j.get("telephone", "")),
+
+        # Construction du DataFrame avec nettoyage anti-NaN
+        donnees_propres = []
+        for j in joueurs_sms:
+            t = str(j.get("telephone", "")).strip()
+            if t.lower() in ("nan", "none", "null", "undefined"):
+                t = ""
+            donnees_propres.append({
+                "Nom": str(j.get("nom", "")),
+                "Equipe": str(j.get("equipe", "")),
+                "Cellulaire": t,
                 "Consentement SMS": bool(j.get("consentement", False)),
                 "Actif": bool(j.get("actif", True))
-            }
-            for j in joueurs_sms
-        ])
+            })
+
+        df_sms = pd.DataFrame(donnees_propres)
 
         col_cfg = {
             "Nom": st.column_config.TextColumn("Nom du joueur", disabled=True),
             "Equipe": st.column_config.TextColumn("Equipe", disabled=True),
-            "Cellulaire": st.column_config.TextColumn("Numero de cellulaire (ex: 514-123-4567)", width="medium"),
+            "Cellulaire": st.column_config.TextColumn("Numero de cellulaire (ex: 5141234567 ou 514-123-4567)", width="medium"),
             "Consentement SMS": st.column_config.CheckboxColumn("Recoit les SMS (Consentement)", help="Cocher si le joueur a consenti a recevoir les textos"),
             "Actif": st.column_config.CheckboxColumn("Actif dans la ligue")
         }
+
+        # Cle dynamique pour s'assurer du rafraichissement immediat de l'editeur Streamlit apres sauvegarde
+        if "sms_editor_version" not in st.session_state:
+            st.session_state["sms_editor_version"] = 1
+
+        editor_key = f"editor_joueurs_sms_{st.session_state['sms_editor_version']}"
 
         edited_df = st.data_editor(
             df_sms,
             column_config=col_cfg,
             use_container_width=True,
             num_rows="fixed",
-            key="editor_joueurs_sms"
+            key=editor_key
         )
 
         col_save_sms1, col_save_sms2 = st.columns([1.5, 1])
         with col_save_sms1:
-            if st.button("💾 Enregistrer les contacts & consentements SMS", type="primary", use_container_width=True, key="btn_save_joueurs_sms"):
+            if st.button("💾 ENREGISTRER DANS POSTGRESQL & GITHUB", type="primary", use_container_width=True, key="btn_save_joueurs_sms"):
                 nouvelle_liste = []
                 for _, row in edited_df.iterrows():
+                    tel_brut = str(row.get("Cellulaire", "")).strip()
+                    if tel_brut.lower() in ("nan", "none", "null", "undefined"):
+                        tel_brut = ""
+                    tel_clean = re.sub(r"[^0-9+]", "", tel_brut)
+
                     nouvelle_liste.append({
-                        "nom": str(row["Nom"]).strip(),
-                        "equipe": str(row["Equipe"]).strip(),
-                        "telephone": str(row["Cellulaire"]).strip(),
-                        "consentement": bool(row["Consentement SMS"]),
-                        "actif": bool(row["Actif"])
+                        "nom": str(row.get("Nom", "")).strip(),
+                        "equipe": str(row.get("Equipe", "")).strip(),
+                        "telephone": tel_clean,
+                        "consentement": bool(row.get("Consentement SMS", False)),
+                        "actif": bool(row.get("Actif", True))
                     })
-                ok_s, msg_s = sauvegarder_joueurs_sms(nouvelle_liste)
+                with st.spinner("Sauvegarde dans PostgreSQL (Supabase) et GitHub en cours..."):
+                    ok_s, msg_s = sauvegarder_joueurs_sms(nouvelle_liste)
                 if ok_s:
-                    st.success(f"✅ Repertoire SMS mis a jour et synchronise dans le Cloud ({len(nouvelle_liste)} joueurs) !")
-                    time.sleep(1.0)
+                    st.success(f"✅ Sauvegarde terminee avec succes !\n\n**Rapport de synchronisation :** {msg_s}")
+                    # Incrementer la version pour forcer l'editeur a recharger le nouveau DataFrame
+                    st.session_state["sms_editor_version"] = st.session_state.get("sms_editor_version", 1) + 1
+                    time.sleep(1.2)
                     st.rerun()
                 else:
                     st.error(f"❌ Erreur de sauvegarde : {msg_s}")
