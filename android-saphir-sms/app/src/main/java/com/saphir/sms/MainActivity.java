@@ -50,14 +50,6 @@ public class MainActivity extends AppCompatActivity {
         }
     };
 
-    private SmsManager getSmsManager() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            return getSystemService(SmsManager.class);
-        } else {
-            return SmsManager.getDefault();
-        }
-    }
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -153,9 +145,6 @@ public class MainActivity extends AppCompatActivity {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) {
             permissions.add(Manifest.permission.SEND_SMS);
         }
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
-            permissions.add(Manifest.permission.READ_PHONE_STATE);
-        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 permissions.add(Manifest.permission.POST_NOTIFICATIONS);
@@ -214,16 +203,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void sendTestSms() {
-        ArrayList<String> permCheck = new ArrayList<>();
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) {
-            permCheck.add(Manifest.permission.SEND_SMS);
-        }
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
-            permCheck.add(Manifest.permission.READ_PHONE_STATE);
-        }
-        if (!permCheck.isEmpty()) {
-            ActivityCompat.requestPermissions(this, permCheck.toArray(new String[0]), 123);
-            Toast.makeText(this, "Veuillez accorder les autorisations SMS et Téléphone.", Toast.LENGTH_SHORT).show();
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.SEND_SMS}, 123);
+            Toast.makeText(this, "Veuillez accorder l'autorisation d'envoi SMS.", Toast.LENGTH_SHORT).show();
             return;
         }
 
@@ -250,12 +232,10 @@ public class MainActivity extends AppCompatActivity {
             prefs.edit().putString("test_phone_number", phoneNumber).apply();
 
             String timeNow = new SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(new Date());
-            String testMessage = "🎱 SAPHIR SMS (TEST) : Connexion réussie à " + timeNow + " ! La Sentinelle de la Ligue de billard est active et prête à transmettre les pointages.";
+            String testMessage = "[SAPHIR SMS TEST] Connexion reussie a " + timeNow + " ! La Sentinelle de la Ligue de billard est active et prete.";
 
             try {
-                SmsManager sms = getSmsManager();
-                ArrayList<String> parts = sms.divideMessage(testMessage);
-                sms.sendMultipartTextMessage(phoneNumber, null, parts, null, null);
+                SmsHelper.sendSafeSms(this, phoneNumber, testMessage);
 
                 String logEntry = "[" + timeNow + "] ✅ SMS de test envoyé à " + phoneNumber;
                 logBuilder.append(logEntry).append("\n");

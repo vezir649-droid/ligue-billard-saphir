@@ -40,14 +40,6 @@ public class SmsPollingService extends Service {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private Runnable pollingRunnable;
 
-    private SmsManager getSmsManager() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            return getSystemService(SmsManager.class);
-        } else {
-            return SmsManager.getDefault();
-        }
-    }
-
     @Override
     public void onCreate() {
         super.onCreate();
@@ -160,7 +152,6 @@ public class SmsPollingService extends Service {
             String smsMessage = buildSmsMessage(dernierMatch);
 
             int sentCount = 0;
-            SmsManager smsManager = getSmsManager();
 
             for (int i = 0; i < contactsArray.length(); i++) {
                 JSONObject c = contactsArray.getJSONObject(i);
@@ -170,8 +161,7 @@ public class SmsPollingService extends Service {
 
                 if (consentement && telephone.length() >= 7) {
                     try {
-                        ArrayList<String> parts = smsManager.divideMessage(smsMessage);
-                        smsManager.sendMultipartTextMessage(telephone, null, parts, null, null);
+                        SmsHelper.sendSafeSms(this, telephone, smsMessage);
                         broadcastLog("  -> SMS envoyé à " + nom + " (" + telephone + ")");
                         sentCount++;
                         Thread.sleep(1200); // Pause anti-flood
@@ -229,7 +219,7 @@ public class SmsPollingService extends Service {
         String dateStr = m.optString("date", m.optString("date_enregistrement", ""));
 
         StringBuilder sb = new StringBuilder();
-        sb.append("🎱 LIGUE SAPHIR — ").append(rec).append(" (").append(totRec).append(") vs ")
+        sb.append("[LIGUE SAPHIR] ").append(rec).append(" (").append(totRec).append(") vs ")
                 .append(vis).append(" (").append(totVis).append(")\n")
                 .append("Date : ").append(dateStr).append("\n\nPointages :\n");
 
@@ -239,7 +229,7 @@ public class SmsPollingService extends Service {
             if (keys != null) {
                 for (int i = 0; i < keys.length(); i++) {
                     String k = keys.optString(i);
-                    sb.append("• ").append(k).append(" : ").append(totauxJ.optInt(k)).append("/24\n");
+                    sb.append("- ").append(k).append(" : ").append(totauxJ.optInt(k)).append("/24\n");
                 }
             }
         }
