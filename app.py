@@ -4335,6 +4335,13 @@ def cb_archiver_match_scanner(data_s):
     sauvegarder_historique_matchs(hist_courant)
     st.session_state.pop("scan_result_data", None)
     st.session_state["msg_succes_archive_scan"] = True
+    
+    # Transmission automatique des pointages vers saphirbillard.com
+    try:
+        ok_sp, msg_sp, _ = transmettre_match_a_saphirbillard(data_s)
+        st.session_state["scan_saphir_post_status"] = (ok_sp, msg_sp)
+    except Exception as e_sp:
+        st.session_state["scan_saphir_post_status"] = (False, f"Erreur transmission Saphir : {e_sp}")
 
 
 def cb_injecter_scan_dans_match_anterieur(data_s):
@@ -4475,6 +4482,13 @@ def cb_archiver_match_anterieur_scanner(data_s):
     sauvegarder_historique_matchs(hist_courant)
     st.session_state.pop("ant_scan_result_data", None)
     st.session_state["msg_succes_archive_ant_scan"] = f"{rec_n} ({nouveau_match['total_receveur']}) vs {vis_n} ({nouveau_match['total_visiteur']}) — {nouveau_match['date']}"
+    
+    # Transmission automatique des pointages vers saphirbillard.com
+    try:
+        ok_sp, msg_sp, _ = transmettre_match_a_saphirbillard(nouveau_match)
+        st.session_state["ant_scan_saphir_post_status"] = (ok_sp, msg_sp)
+    except Exception as e_sp:
+        st.session_state["ant_scan_saphir_post_status"] = (False, f"Erreur transmission Saphir : {e_sp}")
 
 
 def afficher_scanner_ia_match_anterieur():
@@ -4482,6 +4496,13 @@ def afficher_scanner_ia_match_anterieur():
     if st.session_state.get("msg_succes_archive_ant_scan"):
         info_arch = st.session_state.pop("msg_succes_archive_ant_scan")
         st.success(f"✅ **Match antérieur archivé avec succès depuis le Scanner IA :** {info_arch} !")
+        sp_stat_ant = st.session_state.pop("ant_scan_saphir_post_status", None)
+        if sp_stat_ant:
+            ok_sp, msg_sp = sp_stat_ant
+            if ok_sp:
+                st.success(f"🌐 **Site saphirbillard.com :** {msg_sp}")
+            else:
+                st.warning(f"⚠️ **Site saphirbillard.com :** {msg_sp}")
     if st.session_state.get("toast_ant_scan_injecte"):
         info_inj = st.session_state.pop("toast_ant_scan_injecte")
         st.success(f"✅ **Données du scan IA injectées dans le formulaire ci-dessous :** {info_inj}. Vérifiez les champs puis cliquez sur « 💾 Enregistrer ce match antérieur » au bas de la page.")
@@ -6349,6 +6370,24 @@ def transmettre_match_a_saphirbillard(donnees_match, dict_j=None, pts_j=None):
             prenom = parts[0] if parts else "Joueur"
             nom = parts[1] if len(parts) > 1 else ""
             score = int(p_info.get("points", 0))
+            payload.append({
+                "saison": int(no_saison),
+                "semaine": int(no_semaine),
+                "prenom": prenom,
+                "nom": nom,
+                "pointage": score
+            })
+    elif "stats_joueurs_rec" in donnees_match or "stats_joueurs_vis" in donnees_match:
+        for st_j in (donnees_match.get("stats_joueurs_rec", []) + donnees_match.get("stats_joueurs_vis", [])):
+            if not isinstance(st_j, dict):
+                continue
+            nom_complet = str(st_j.get("nom") or "").strip()
+            if not nom_complet:
+                continue
+            parts = nom_complet.split(None, 1)
+            prenom = parts[0] if parts else "Joueur"
+            nom = parts[1] if len(parts) > 1 else ""
+            score = int(st_j.get("total_points", 0))
             payload.append({
                 "saison": int(no_saison),
                 "semaine": int(no_semaine),
@@ -16757,6 +16796,13 @@ with tab_feuille:
             st.success(f"✅ **Résultats du scanner IA injectés avec succès !** Alignement **{equipe_receveur}** vs **{equipe_visiteur}**, joueurs officiels et pointages des 9 manches chargés dans le formulaire ci-dessous.")
         if st.session_state.pop("msg_succes_archive_scan", False):
             st.success("✅ **Match archivé avec succès dans l'historique officiel depuis le scanner IA !**")
+            sp_stat = st.session_state.pop("scan_saphir_post_status", None)
+            if sp_stat:
+                ok_sp, msg_sp = sp_stat
+                if ok_sp:
+                    st.success(f"🌐 **Site saphirbillard.com :** {msg_sp}")
+                else:
+                    st.warning(f"⚠️ **Site saphirbillard.com :** {msg_sp}")
         st.markdown(f"### 🎯 Grille de saisie des 9 manches — Saison {no_sais_sb} • {sem_sais_sb} (Rotation 3 contre 3)")
         if st.session_state.get("toast_match_semaine_charge"):
             nom_m_toast = st.session_state.pop("toast_match_semaine_charge")
@@ -18922,8 +18968,15 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                         ok_s = sauvegarder_parametres_supabase(saisie_sb_url, cle_finale, nouveau_mode)
                         ok_g = sauvegarder_parametres_github(saisie_gh_token, saisie_gh_repo, branch_gh_actuel)
                         if ok_s and ok_g:
-                            st.success("✅ Configuration Cloud et mode enregistrés avec succès !")
-                            time.sleep(0.8)
+                            with st.spinner("Configuration enregistrée ! Sauvegarde automatique de tous les fichiers vers le Cloud en cours..."):
+                                nb_cld, l_cld_ok, l_cld_err = synchroniser_tous_les_fichiers_cloud()
+                            if nb_cld > 0 and not l_cld_err:
+                                st.success(f"✅ Configuration enregistrée et {nb_cld} fichier(s) sauvegardé(s) vers le Cloud ({', '.join(l_cld_ok)}) !")
+                            elif nb_cld > 0:
+                                st.warning(f"⚠️ Configuration enregistrée. Fichiers sauvegardés : {', '.join(l_cld_ok)} | Erreurs : {'; '.join(l_cld_err)}")
+                            else:
+                                st.success("✅ Configuration Cloud et mode enregistrés avec succès !")
+                            time.sleep(1.2)
                             st.rerun()
                         else:
                             st.error("❌ Erreur lors de l'enregistrement.")
