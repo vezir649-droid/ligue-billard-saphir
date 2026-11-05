@@ -4528,7 +4528,48 @@ def afficher_scanner_ia_match_anterieur():
             if upl_ant_gal:
                 img_data_ant = upl_ant_gal.getvalue()
         elif "Caméra directe" in mode_photo_ant:
-            cam_ant_file = st.camera_input("🎯 Visez la feuille de match passée", key="ant_cam_feuille_input")
+            html_style_ant_port = """
+            <script>
+            (function() {
+              try {
+                const pDoc = window.parent.document;
+                if (!pDoc) return;
+                let s = pDoc.getElementById("saphir-ant-port-style");
+                if (!s) {
+                  s = pDoc.createElement("style");
+                  s.id = "saphir-ant-port-style";
+                  pDoc.head.appendChild(s);
+                }
+                s.textContent = `
+                  div[data-testid="stCameraInput"] {
+                    max-width: 560px !important;
+                    margin: 0 auto !important;
+                    border: 2.5px solid #3b82f6 !important;
+                    border-radius: 12px !important;
+                    background: #0b1120 !important;
+                    padding: 8px !important;
+                  }
+                  div[data-testid="stCameraInput"] video {
+                    aspect-ratio: 3 / 4 !important;
+                    max-height: 64vh !important;
+                    object-fit: cover !important;
+                    border-radius: 10px !important;
+                  }
+                  div[data-testid="stCameraInput"] img {
+                    display: block !important;
+                    aspect-ratio: 3 / 4 !important;
+                    max-height: 64vh !important;
+                    object-fit: contain !important;
+                    border: 3px solid #22c55e !important;
+                    border-radius: 10px !important;
+                  }
+                `;
+              } catch(e) {}
+            })();
+            </script>
+            """
+            st.components.v1.html(html_style_ant_port, height=0)
+            cam_ant_file = st.camera_input("🎯 Visez la feuille de match passée (Mode Portrait vertical 3:4)", key="ant_cam_feuille_input")
             if cam_ant_file:
                 img_data_ant = cam_ant_file.getvalue()
         else:
@@ -4780,11 +4821,20 @@ def afficher_vue_scanner_feuille_match(label_direct):
             </button>
           </div>
 
-          <!-- Ligne 2 : Réglages de l'image (Zoom, Mode d'ajustement, Tap-to-shot, Torche) -->
+          <!-- Ligne 2 : Réglages de l'image (Format Portrait/Paysage, Zoom, Tap-to-shot, Torche) -->
           <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding-top: 8px; border-top: 1px solid rgba(148,163,184,0.25); font-size: 13px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <span id="saphir-cam-dot" style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 8px #22c55e;"></span>
               <span id="saphir-cam-status" style="font-weight: 600;">📷 Caméra ARRIÈRE</span>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <button id="saphir-btn-orient" type="button" style="background: #0284c7; color: #ffffff; border: 1.5px solid #38bdf8; padding: 5px 12px; border-radius: 6px; font-weight: 700; cursor: pointer;">
+                📱 Format : Portrait vertical (3:4)
+              </button>
+              <button id="saphir-btn-fit" type="button" style="background: #334155; color: #f8fafc; border: 1px solid #64748b; padding: 5px 10px; border-radius: 6px; font-weight: 600; cursor: pointer;">
+                📐 Cadrage : Vue entière
+              </button>
             </div>
 
             <div style="display: flex; align-items: center; gap: 6px;">
@@ -4796,9 +4846,6 @@ def afficher_vue_scanner_feuille_match(label_direct):
             </div>
 
             <div style="display: flex; align-items: center; gap: 8px;">
-              <button id="saphir-btn-fit" type="button" style="background: #334155; color: #f8fafc; border: 1px solid #64748b; padding: 5px 10px; border-radius: 6px; font-weight: 600; cursor: pointer;">
-                📐 Cadrage : Vue entière
-              </button>
               <button id="saphir-btn-tap-toggle" type="button" style="background: #0d9488; color: #ffffff; border: 1px solid #2dd4bf; padding: 5px 10px; border-radius: 6px; font-weight: 600; cursor: pointer;">
                 👆 Toucher l'image = Photo (Actif)
               </button>
@@ -4815,6 +4862,8 @@ def afficher_vue_scanner_feuille_match(label_direct):
           if (!pWin || !pWin.navigator || !pWin.navigator.mediaDevices) return;
           const pDoc = pWin.document;
 
+          // Par défaut : Format portrait vertical (3:4) idéal pour une feuille de match
+          if (typeof pWin.__saphir_orient === 'undefined') pWin.__saphir_orient = "portrait";
           if (typeof pWin.__saphir_facing === 'undefined') pWin.__saphir_facing = "environment";
           if (typeof pWin.__saphir_zoom === 'undefined') pWin.__saphir_zoom = 1.0;
           if (typeof pWin.__saphir_fit === 'undefined') pWin.__saphir_fit = "contain";
@@ -4825,6 +4874,7 @@ def afficher_vue_scanner_feuille_match(label_direct):
           const status = document.getElementById("saphir-cam-status");
           const btnSwitch = document.getElementById("saphir-btn-switch");
           const btnShootNow = document.getElementById("saphir-btn-shoot-now");
+          const btnOrient = document.getElementById("saphir-btn-orient");
           const btnFit = document.getElementById("saphir-btn-fit");
           const btnTapToggle = document.getElementById("saphir-btn-tap-toggle");
           const btnTorch = document.getElementById("saphir-btn-torch");
@@ -4844,20 +4894,26 @@ def afficher_vue_scanner_feuille_match(label_direct):
               styleEl.id = "saphir-ergo-cam-style";
               pDoc.head.appendChild(styleEl);
             }
+            const isPort = (pWin.__saphir_orient === "portrait");
+            const aspectCss = isPort ? "3 / 4" : "16 / 9";
+            const maxHCss = isPort ? "66vh" : "48vh";
+            const maxWCss = isPort ? "560px" : "100%";
             styleEl.textContent = `
               div[data-testid="stCameraInput"] {
                 position: relative !important;
-                background: #0f172a !important;
-                border: 2px solid #334155 !important;
+                background: #0b1120 !important;
+                border: 2.5px solid #3b82f6 !important;
                 border-radius: 14px !important;
-                padding: 8px !important;
-                box-shadow: 0 6px 18px rgba(0,0,0,0.3) !important;
+                padding: 10px !important;
+                box-shadow: 0 8px 24px rgba(0,0,0,0.4) !important;
+                max-width: ${maxWCss} !important;
+                margin: 0 auto !important;
               }
-              div[data-testid="stCameraInput"] video,
-              div[data-testid="stCameraInput"] img {
-                max-height: 48vh !important;
+              div[data-testid="stCameraInput"] video {
+                aspect-ratio: ${aspectCss} !important;
+                max-height: ${maxHCss} !important;
                 width: 100% !important;
-                object-fit: ${pWin.__saphir_fit} !important;
+                object-fit: cover !important;
                 background: #020617 !important;
                 border-radius: 10px !important;
                 transform: scale(${pWin.__saphir_zoom}) !important;
@@ -4865,12 +4921,25 @@ def afficher_vue_scanner_feuille_match(label_direct):
                 transition: transform 0.2s ease !important;
                 cursor: ${pWin.__saphir_tap_shot ? 'pointer' : 'default'} !important;
               }
+              /* Rendu ultra-visible de la photo capturée */
+              div[data-testid="stCameraInput"] img {
+                display: block !important;
+                aspect-ratio: ${aspectCss} !important;
+                max-height: ${maxHCss} !important;
+                width: 100% !important;
+                object-fit: contain !important;
+                background: #020617 !important;
+                border: 3.5px solid #22c55e !important;
+                border-radius: 10px !important;
+                box-shadow: 0 0 20px rgba(34, 197, 94, 0.4) !important;
+                margin: 0 auto !important;
+              }
               /* Gros bouton natif sous la caméra ultra-accessible */
               div[data-testid="stCameraInput"] button[data-testid="stCameraInputButton"],
               div[data-testid="stCameraInput"] button {
-                min-height: 58px !important;
+                min-height: 56px !important;
                 width: 100% !important;
-                font-size: 18px !important;
+                font-size: 17px !important;
                 font-weight: 800 !important;
                 background: linear-gradient(135deg, #16a34a 0%, #15803d 100%) !important;
                 color: #ffffff !important;
@@ -4927,6 +4996,10 @@ def afficher_vue_scanner_feuille_match(label_direct):
               dot.style.background = isRear ? "#22c55e" : "#f59e0b";
               dot.style.boxShadow = isRear ? "0 0 8px #22c55e" : "0 0 8px #f59e0b";
             }
+            if (btnOrient) {
+              btnOrient.innerText = (pWin.__saphir_orient === "portrait") ? "📱 Format : Portrait vertical (3:4)" : "💻 Format : Paysage (16:9)";
+              btnOrient.style.background = (pWin.__saphir_orient === "portrait") ? "#0284c7" : "#334155";
+            }
             if (btnFit) {
               btnFit.innerText = (pWin.__saphir_fit === "contain") ? "📐 Cadrage : Vue entière" : "📐 Cadrage : Plein cadre";
             }
@@ -4955,12 +5028,17 @@ def afficher_vue_scanner_feuille_match(label_direct):
               try {
                 if (constraints && constraints.video) {
                   const targetFacing = pWin.__saphir_facing || "environment";
+                  const isPort = (pWin.__saphir_orient === "portrait");
+                  const wIdeal = isPort ? 1080 : 1920;
+                  const hIdeal = isPort ? 1440 : 1080;
+                  const aspIdeal = isPort ? 0.75 : 1.333;
                   if (typeof constraints.video === 'object') {
                     constraints.video.facingMode = { ideal: targetFacing };
-                    constraints.video.width = { ideal: 1920 };
-                    constraints.video.height = { ideal: 1080 };
+                    constraints.video.width = { ideal: wIdeal };
+                    constraints.video.height = { ideal: hIdeal };
+                    constraints.video.aspectRatio = { ideal: aspIdeal };
                   } else {
-                    constraints.video = { facingMode: { ideal: targetFacing }, width: { ideal: 1920 }, height: { ideal: 1080 } };
+                    constraints.video = { facingMode: { ideal: targetFacing }, width: { ideal: wIdeal }, height: { ideal: hIdeal }, aspectRatio: { ideal: aspIdeal } };
                   }
                 }
               } catch(e) {}
@@ -4994,6 +5072,13 @@ def afficher_vue_scanner_feuille_match(label_direct):
           });
 
           if (btnShootNow) btnShootNow.onclick = function() { declencherCaptureNative(); };
+          if (btnOrient) {
+            btnOrient.onclick = function() {
+              pWin.__saphir_orient = (pWin.__saphir_orient === "portrait") ? "landscape" : "portrait";
+              renderUI();
+              basculerCameraVers(pWin.__saphir_facing || "environment");
+            };
+          }
           if (btnFit) {
             btnFit.onclick = function() {
               pWin.__saphir_fit = (pWin.__saphir_fit === "contain") ? "cover" : "contain";
@@ -5031,11 +5116,13 @@ def afficher_vue_scanner_feuille_match(label_direct):
                 if (video.srcObject) {
                   video.srcObject.getTracks().forEach(t => t.stop());
                 }
+                const isPortNow = (pWin.__saphir_orient === "portrait");
                 const newStream = await pWin.navigator.mediaDevices._saphirOrigGUM({
                   video: {
                     facingMode: { ideal: nouveauMode },
-                    width: { ideal: 1920 },
-                    height: { ideal: 1080 }
+                    width: { ideal: isPortNow ? 1080 : 1920 },
+                    height: { ideal: isPortNow ? 1440 : 1080 },
+                    aspectRatio: { ideal: isPortNow ? 0.75 : 1.333 }
                   },
                   audio: false
                 });
@@ -5190,9 +5277,11 @@ def afficher_vue_scanner_feuille_match(label_direct):
                 pass
 
         st.divider()
-        col_prev, col_act = st.columns([1.4, 2.0])
+        st.success("📸 **Photo capturée avec succès en mode Portrait vertical !** Vérifiez l'aperçu ci-dessous et ajustez l'orientation si nécessaire avant de lancer l'IA.")
+        col_prev, col_act = st.columns([1.4, 1.8])
         with col_prev:
-            st.image(img_data, caption=f"Aperçu de la feuille à numériser (Rotation : {rot_deg}°{' • Contraste amélioré' if enhance_on else ''})", use_container_width=True)
+            with st.container(border=True):
+                st.image(img_data, caption=f"📄 Feuille cadrée en mode Portrait vertical (Rotation : {rot_deg}°{' • Contraste amélioré' if enhance_on else ''})", use_container_width=True)
         with col_act:
             st.markdown("#### 🛠️ Ajustement rapide de la photo & Lancement IA")
             st.caption("Si la photo a été prise de côté ou sous un éclairage faible, ajustez son orientation ou sa netteté en un clic avant de lancer l'analyse :")
