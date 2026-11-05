@@ -7406,6 +7406,20 @@ def afficher_onglet_sentinelle_sms():
                     key="textarea_custom_test_sms"
                 )
 
+            st.write("")
+            btn_env_col1 = st.button("📤 ENVOYER LE SMS DE TEST", type="primary", use_container_width=True, key="btn_send_test_sms_col1")
+            if btn_env_col1:
+                if not str(tel_dest_choisi).strip():
+                    st.error("❌ Veuillez indiquer un numéro de cellulaire valide.")
+                else:
+                    st.session_state["dernier_tel_test"] = tel_dest_choisi
+                    with st.spinner("Transmission de la commande de test..."):
+                        ok_t, msg_t = envoyer_test_sms_sentinelle(tel_dest_choisi, msg_a_tester)
+                    if ok_t:
+                        st.success(msg_t)
+                    else:
+                        st.error(f"❌ Échec du test : {msg_t}")
+
         with col_t2:
             st.markdown("###### 📱 Aperçu du SMS sur le téléphone récepteur :")
             st.text_area("Aperçu du texte :", value=msg_a_tester, height=160, disabled=True, key="preview_box_test")
@@ -7498,34 +7512,101 @@ def afficher_onglet_sentinelle_sms():
                     st.code(script_termux_code, language="python")
 
     with sous_tab_simu:
-        st.markdown("##### 📜 Previsualisation et Simulation du SMS")
+        st.markdown("##### 📜 Prévisualisation & Expédition du SMS de match")
         hist = charger_historique_matchs()
         if not hist:
-            st.info("Aucun match archive dans l'historique pour l'instant.")
+            st.info("ℹ️ Aucun match archivé dans l'historique pour l'instant.")
         else:
             dernier = hist[-1]
             rec_nom = dernier.get("equipe_receveur") or dernier.get("receveur") or "Receveur"
             vis_nom = dernier.get("equipe_visiteur") or dernier.get("visiteur") or "Visiteur"
             dt_m = dernier.get("date") or dernier.get("date_enregistrement") or ""
             
-            st.markdown(f"**Dernier match archive :** 🏠 `{rec_nom}` vs 🚗 `{vis_nom}` ({dt_m})")
+            st.markdown(f"**Dernier match archivé :** 🏠 `{rec_nom}` vs 🚗 `{vis_nom}` ({dt_m})")
             
             msg_genere = generer_message_sms_match(dernier)
-            
+            dest_consent = [j for j in joueurs_sms if j.get("consentement") and str(j.get("telephone", "")).strip()]
+
             col_preview, col_dest_prev = st.columns([1.2, 1])
             with col_preview:
-                st.markdown("###### 💬 Apercu du SMS sur smartphone :")
-                st.text_area("Texte du message :", value=msg_genere, height=220, disabled=True, key="preview_sms_text")
-                st.caption(f"Longueur du message : **{len(msg_genere)} caracteres** (~{max(1, len(msg_genere)//153 + 1)} segment(s) SMS).")
+                st.markdown("###### 💬 Aperçu du SMS sur smartphone :")
+                st.text_area("Texte du message :", value=msg_genere, height=200, disabled=True, key="preview_sms_text")
+                nb_c_m = len(msg_genere)
+                st.caption(f"Longueur du message : **{nb_c_m} caractères** (~{max(1, (nb_c_m - 1) // 153 + 1)} segment(s) SMS).")
 
             with col_dest_prev:
-                st.markdown("###### 🎯 Destinataires qui recevront ce SMS :")
-                dest_consent = [j for j in joueurs_sms if j.get("consentement") and str(j.get("telephone", "")).strip()]
+                st.markdown(f"###### 🎯 Destinataires consentants ({len(dest_consent)}) :")
                 if not dest_consent:
-                    st.warning("⚠️ Aucun membre consentant avec numero valide. Configurez le repertoire dans le premier onglet.")
+                    st.warning("⚠️ Aucun membre consentant avec numéro valide. Configurez le répertoire dans le premier onglet.")
                 else:
-                    for d in dest_consent:
-                        st.markdown(f"• **{d.get('nom')}** (`{d.get('equipe')}`) ➔ 📱 `{d.get('telephone')}`")
+                    with st.container(height=200):
+                        for d in dest_consent:
+                            st.markdown(f"• **{d.get('nom')}** (`{d.get('equipe')}`) ➔ 📱 `{d.get('telephone')}`")
+
+            st.markdown("---")
+            st.markdown("##### 🚀 Boutons d'expédition du SMS pour ce dernier match")
+
+            col_act_test, col_act_tous = st.columns(2)
+
+            with col_act_test:
+                with st.container(border=True):
+                    st.markdown("###### 🧪 Option 1 : Tester l'envoi de ce match sur un cellulaire")
+                    st.caption("Expédie le texto complet des résultats de ce match à votre numéro ou un joueur de test.")
+                    
+                    tel_test_simu = st.text_input(
+                        "Numéro de cellulaire pour le test :",
+                        value=st.session_state.get("dernier_tel_test", ""),
+                        placeholder="ex: 514-123-4567 ou 4501234567",
+                        key="input_tel_test_simu"
+                    )
+                    
+                    if st.button("📤 ENVOYER CE MATCH EN TEST", type="primary", use_container_width=True, key="btn_send_test_match_sms"):
+                        if not str(tel_test_simu).strip():
+                            st.error("❌ Veuillez renseigner un numéro de téléphone valide.")
+                        else:
+                            st.session_state["dernier_tel_test"] = tel_test_simu
+                            with st.spinner("Expédition du test..."):
+                                ok_t, msg_t = envoyer_test_sms_sentinelle(tel_test_simu, msg_genere)
+                            if ok_t:
+                                st.success(msg_t)
+                            else:
+                                st.error(f"❌ Erreur : {msg_t}")
+
+            with col_act_tous:
+                with st.container(border=True):
+                    st.markdown(f"###### 📢 Option 2 : Diffuser ce match à TOUS les membres consentants ({len(dest_consent)})")
+                    st.caption(f"Transmet le texto à l'ensemble des **{len(dest_consent)} joueur(s)** consentants de la ligue.")
+                    
+                    if not dest_consent:
+                        st.info("Aucun destinataire configuré dans le répertoire.")
+                    else:
+                        confirmer_diffusion = st.checkbox(
+                            f"Je confirme vouloir expédier ce SMS à {len(dest_consent)} joueur(s)",
+                            key="chk_confirm_diff_match"
+                        )
+                        btn_diffuser = st.button(
+                            f"🚀 DIFFUSER LE MATCH AUX {len(dest_consent)} JOUEURS",
+                            type="secondary",
+                            disabled=not confirmer_diffusion,
+                            use_container_width=True,
+                            key="btn_diffuser_match_tous"
+                        )
+                        if btn_diffuser:
+                            with st.spinner("Transmission des SMS en cours..."):
+                                nb_envoyes = 0
+                                erreurs = []
+                                for d in dest_consent:
+                                    tel_d = d.get("telephone", "")
+                                    nom_d = d.get("nom", "Membre")
+                                    ok_d, msg_d = envoyer_test_sms_sentinelle(tel_d, msg_genere)
+                                    if ok_d:
+                                        nb_envoyes += 1
+                                    else:
+                                        erreurs.append(f"{nom_d} ({tel_d}) : {msg_d}")
+                                if nb_envoyes > 0:
+                                    st.success(f"🎉 {nb_envoyes} commande(s) SMS transmise(s) avec succès pour expédition !")
+                                if erreurs:
+                                    st.warning(f"⚠️ {len(erreurs)} avertissement(s) : " + "; ".join(erreurs[:3]))
 
 
 def charger_historique_matchs():
