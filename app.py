@@ -6814,10 +6814,14 @@ def charger_joueurs_sms(forcer_cloud=False):
                 tel_brut = ""
             # Conserver uniquement les chiffres et eventuellement un +
             tel_propre = re.sub(r"[^0-9+]", "", tel_brut)
+            courriel_p = str(j.get("courriel", "")).strip()
+            if courriel_p.lower() in ("nan", "none", "null", "undefined"):
+                courriel_p = ""
             dict_existant[nom_k] = {
                 "nom": nom_k,
                 "equipe": str(j.get("equipe", "")).strip(),
                 "telephone": tel_propre,
+                "courriel": courriel_p,
                 "consentement": bool(j.get("consentement", False)),
                 "actif": bool(j.get("actif", True))
             }
@@ -6842,6 +6846,7 @@ def charger_joueurs_sms(forcer_cloud=False):
                     "nom": j_clean,
                     "equipe": eq,
                     "telephone": "",
+                    "courriel": "",
                     "consentement": False,
                     "actif": True
                 })
@@ -6865,10 +6870,14 @@ def sauvegarder_joueurs_sms(liste_joueurs):
             if tel_p.lower() in ("nan", "none", "null", "undefined"):
                 tel_p = ""
             tel_p = re.sub(r"[^0-9+]", "", tel_p)
+            cour_p = str(j.get("courriel", "")).strip()
+            if cour_p.lower() in ("nan", "none", "null", "undefined"):
+                cour_p = ""
             liste_propre.append({
                 "nom": nom_p,
                 "equipe": eq_p,
                 "telephone": tel_p,
+                "courriel": cour_p,
                 "consentement": bool(j.get("consentement", False)),
                 "actif": bool(j.get("actif", True))
             })
@@ -7390,10 +7399,14 @@ def afficher_onglet_sentinelle_sms():
             t = str(j.get("telephone", "")).strip()
             if t.lower() in ("nan", "none", "null", "undefined"):
                 t = ""
+            em = str(j.get("courriel", "")).strip()
+            if em.lower() in ("nan", "none", "null", "undefined"):
+                em = ""
             donnees_propres.append({
                 "Nom": str(j.get("nom", "")),
                 "Equipe": str(j.get("equipe", "")),
                 "Cellulaire": t,
+                "Courriel": em,
                 "Consentement SMS": bool(j.get("consentement", False)),
                 "Actif": bool(j.get("actif", True))
             })
@@ -7403,8 +7416,9 @@ def afficher_onglet_sentinelle_sms():
         col_cfg = {
             "Nom": st.column_config.TextColumn("Nom du joueur", disabled=True),
             "Equipe": st.column_config.TextColumn("Equipe", disabled=True),
-            "Cellulaire": st.column_config.TextColumn("Numero de cellulaire (ex: 5141234567 ou 514-123-4567)", width="medium"),
-            "Consentement SMS": st.column_config.CheckboxColumn("Recoit les SMS (Consentement)", help="Cocher si le joueur a consenti a recevoir les textos"),
+            "Cellulaire": st.column_config.TextColumn("Numero de cellulaire (ex: 418-847-5277)", width="medium"),
+            "Courriel": st.column_config.TextColumn("Adresse courriel", width="large"),
+            "Consentement SMS": st.column_config.CheckboxColumn("Recoit les SMS", help="Cocher si le joueur a consenti a recevoir les textos"),
             "Actif": st.column_config.CheckboxColumn("Actif dans la ligue")
         }
 
@@ -7432,10 +7446,14 @@ def afficher_onglet_sentinelle_sms():
                         tel_brut = ""
                     tel_clean = re.sub(r"[^0-9+]", "", tel_brut)
 
+                    em_val = str(row.get("Courriel", "")).strip()
+                    if em_val.lower() in ("nan", "none", "null", "undefined"):
+                        em_val = ""
                     nouvelle_liste.append({
                         "nom": str(row.get("Nom", "")).strip(),
                         "equipe": str(row.get("Equipe", "")).strip(),
                         "telephone": tel_clean,
+                        "courriel": em_val,
                         "consentement": bool(row.get("Consentement SMS", False)),
                         "actif": bool(row.get("Actif", True))
                     })
