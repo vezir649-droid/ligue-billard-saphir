@@ -12,6 +12,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.telephony.SmsManager;
 import android.util.Log;
 
@@ -41,33 +42,54 @@ public class SmsPollingService extends Service {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private Runnable pollingRunnable;
+    private PowerManager.WakeLock wakeLock;
 
     @Override
     public void onCreate() {
         super.onCreate();
         createNotificationChannel();
+        try {
+            PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
+            if (powerManager != null) {
+                wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "SaphirSMS:WakeLock");
+                wakeLock.acquire();
+            }
+        } catch (Exception ignored) {}
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         startForeground(NOTIF_ID, createNotification("🎱 Surveillance active (aux 5 min)"));
 
-        pollingRunnable = new Runnable() {
-            @Override
-            public void run() {
-                executor.execute(() -> checkSupabaseAndSendSms());
-                handler.postDelayed(this, INTERVAL_MS);
-            }
-        };
+        if (intent != null && "ACTION_CHECK_NOW".equals(intent.getAction())) {
+            executor.execute(() -> checkSupabaseAndSendSms());
+            return START_STICKY;
+        }
 
-        handler.post(pollingRunnable);
+        if (pollingRunnable == null) {
+            pollingRunnable = new Runnable() {
+                @Override
+                public void run() {
+                    executor.execute(() -> checkSupabaseAndSendSms());
+                    handler.postDelayed(this, INTERVAL_MS);
+                }
+            };
+            handler.post(pollingRunnable);
+        }
+
         return START_STICKY;
     }
 
     @Override
     public void onDestroy() {
+        if (wakeLock != null && wakeLock.isHeld()) {
+            try {
+                wakeLock.release();
+            } catch (Exception ignored) {}
+        }
         if (pollingRunnable != null) {
             handler.removeCallbacks(pollingRunnable);
+            pollingRunnable = null;
         }
         executor.shutdown();
         super.onDestroy();
@@ -115,12 +137,12 @@ public class SmsPollingService extends Service {
         String supabaseKey = prefs.getString("supabase_key", "").trim();
 
         if (supabaseUrl.isEmpty() || supabaseKey.isEmpty()) {
-            broadcastLog("⚠️ URL ou clé Supabase manquante.");
+            broadcastLog("⚠️ Clé ou URL Supabase manquante dans l'application ! Veuillez la configurer.");
             return;
         }
 
         String timeNow = new SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(new Date());
-        broadcastLog("[" + timeNow + "] Vérification Supabase...");
+        broadcastLog("[" + timeNow + "] 🔍 Vérification Supabase...");
 
         try {
             // 0. Traiter les commandes de test SMS en attente
@@ -129,29 +151,42 @@ public class SmsPollingService extends Service {
                 try {
                     JSONArray cmdArray = new JSONArray(cmdJsonStr);
                     boolean modifCmd = false;
+                    int testsTrouves = 0;
                     for (int k = 0; k < cmdArray.length(); k++) {
                         JSONObject cmd = cmdArray.getJSONObject(k);
                         if ("en_attente".equals(cmd.optString("statut", ""))) {
+                            testsTrouves++;
                             String telTest = cmd.optString("telephone", "");
                             String msgTest = cmd.optString("message", "");
                             if (!telTest.isEmpty() && !msgTest.isEmpty()) {
-                                broadcastLog("🧪 Commande test reçue pour " + telTest + "...");
+                                broadcastLog("🧪 Commande test trouvée pour " + telTest + "...");
                                 try {
                                     SmsHelper.sendSafeSms(this, telTest, msgTest);
                                     cmd.put("statut", "envoye");
                                     cmd.put("date_envoi", new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date()));
                                     modifCmd = true;
-                                    broadcastLog("✅ SMS de test envoyé à " + telTest);
+                                    broadcastLog("✅ SMS de test envoyé avec succès à " + telTest + " !");
                                 } catch (Exception eCmd) {
-                                    broadcastLog("❌ Échec test à " + telTest + " : " + eCmd.getMessage());
+                                    broadcastLog("❌ Échec envoi test à " + telTest + " : " + eCmd.getMessage());
                                 }
                             }
                         }
                     }
                     if (modifCmd) {
-                        saveFileToSupabase(supabaseUrl, supabaseKey, "commandes_sms.json", cmdArray.toString(4));
+                        boolean okSave = saveFileToSupabase(supabaseUrl, supabaseKey, "commandes_sms.json", cmdArray.toString(4));
+                        if (okSave) {
+                            broadcastLog("💾 Commande mise à jour sur Supabase (statut=envoyé).");
+                        } else {
+                            broadcastLog("⚠️ Échec mise à jour statut sur Supabase.");
+                        }
+                    } else if (testsTrouves == 0) {
+                        broadcastLog("ℹ️ Aucune commande de test en attente.");
                     }
-                } catch (Exception ignored) {}
+                } catch (Exception eJson) {
+                    broadcastLog("⚠️ Erreur format commandes_sms : " + eJson.getMessage());
+                }
+            } else {
+                broadcastLog("ℹ️ Aucune commande SMS trouvée sur Supabase.");
             }
 
             // 0bis. Vérifier l'activation globale dans config_sms.json
@@ -260,18 +295,19 @@ public class SmsPollingService extends Service {
     private boolean saveFileToSupabase(String baseUrl, String apiKey, String filename, String content) {
         HttpURLConnection conn = null;
         try {
-            URL url = new URL(baseUrl.replaceAll("/$", "") + "/rest/v1/saphir_files?filename=eq." + filename);
+            URL url = new URL(baseUrl.replaceAll("/$", "") + "/rest/v1/saphir_files");
             conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("PATCH");
+            conn.setRequestMethod("POST");
             conn.setRequestProperty("apikey", apiKey);
             conn.setRequestProperty("Authorization", "Bearer " + apiKey);
             conn.setRequestProperty("Content-Type", "application/json");
-            conn.setRequestProperty("Prefer", "return=minimal");
+            conn.setRequestProperty("Prefer", "resolution=merge-duplicates");
             conn.setDoOutput(true);
             conn.setConnectTimeout(15000);
             conn.setReadTimeout(15000);
 
             JSONObject body = new JSONObject();
+            body.put("filename", filename);
             body.put("content", content);
             body.put("updated_at", new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(new Date()));
 
@@ -280,7 +316,8 @@ public class SmsPollingService extends Service {
             os.flush();
             os.close();
 
-            return conn.getResponseCode() >= 200 && conn.getResponseCode() < 300;
+            int code = conn.getResponseCode();
+            return code >= 200 && code < 300;
         } catch (Exception e) {
             Log.e("SmsPollingService", "Erreur save " + filename, e);
             return false;

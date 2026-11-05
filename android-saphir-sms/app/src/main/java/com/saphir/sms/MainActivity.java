@@ -112,6 +112,26 @@ public class MainActivity extends AppCompatActivity {
             sendTestSms();
         });
 
+        Button btnSyncNow = findViewById(R.id.btn_sync_now);
+        btnSyncNow.setOnClickListener(v -> {
+            saveConfig();
+            checkAndRequestPermissions();
+            String url = etSupabaseUrl.getText().toString().trim();
+            String key = etSupabaseKey.getText().toString().trim();
+            if (url.isEmpty() || key.isEmpty()) {
+                Toast.makeText(this, "⚠️ Veuillez renseigner l'URL et la clé Supabase avant de vérifier.", Toast.LENGTH_LONG).show();
+                return;
+            }
+            Toast.makeText(this, "⚡ Vérification Supabase en cours...", Toast.LENGTH_SHORT).show();
+            Intent intent = new Intent(this, SmsPollingService.class);
+            intent.setAction("ACTION_CHECK_NOW");
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent);
+            } else {
+                startService(intent);
+            }
+        });
+
         checkAndRequestPermissions();
     }
 
