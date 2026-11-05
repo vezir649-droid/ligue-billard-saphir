@@ -6,5 +6,13 @@
         "message": "[LIGUE SAPHIR] Echo (0) vs Alpha (0)\nDate : 2026-10-26\n\nPointages individuels :\n- Gilles Dumais : 21/24\n- Léon Morin : 18/24\n- Guy Vézina : 21/24\n- Gaston Lavoie : 20/24\n- André St-Pierre : 24/24\n- Claude Harvey : 20/24\n\nClassement et stats en direct sur le portail Saphir !\n",
         "statut": "en_attente",
         "date": "2026-11-05 23:57:35"
+    },
+    {
+        "id": "cmd_1793923165",
+        "type": "test_sms",
+        "telephone": "4188720836",
+        "message": "[LIGUE SAPHIR] Echo (0) vs Alpha (0)\nDate : 2026-10-26\n\nPointages individuels :\n- Gilles Dumais : 21/24\n- Léon Morin : 18/24\n- Guy Vézina : 21/24\n- Gaston Lavoie : 20/24\n- André St-Pierre : 24/24\n- Claude Harvey : 20/24\n\nClassement et stats en direct sur le portail Saphir !\n",
+        "statut": "en_attente",
+        "date": "2026-11-05 23:59:25"
     }
 ]
