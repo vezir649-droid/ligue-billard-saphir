@@ -10,14 +10,23 @@ android {
         applicationId "com.saphir.sms"
         minSdk 24
         targetSdk 34
-        versionCode 1
-        versionName "1.0.0"
+        versionCode 2
+        versionName "1.0.1"
+    }
+
+    signingConfigs {
+        release {
+            storeFile file('../saphir.keystore')
+            storePassword 'saphir123'
+            keyAlias 'saphir'
+            keyPassword 'saphir123'
+        }
     }
 
     buildTypes {
         release {
             minifyEnabled false
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.release
         }
     }
     compileOptions {
