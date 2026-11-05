@@ -21,6 +21,27 @@
         "actif": true
     },
     {
+        "nom": "Sylvain Derasp",
+        "equipe": "Foxtrot",
+        "telephone": "",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Valérie Turcotte",
+        "equipe": "Foxtrot",
+        "telephone": "",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Gabriel Labrecque",
+        "equipe": "Foxtrot",
+        "telephone": "",
+        "consentement": false,
+        "actif": true
+    },
+    {
         "nom": "André Lauzon",
         "equipe": "Golf",
         "telephone": "",
@@ -86,7 +107,7 @@
     {
         "nom": "Richard Vézina",
         "equipe": "Bravo",
-        "telephone": "",
+        "telephone": "4188720836",
         "consentement": false,
         "actif": true
     },
@@ -100,27 +121,6 @@
     {
         "nom": "Michel Caron",
         "equipe": "Bravo",
-        "telephone": "",
-        "consentement": false,
-        "actif": true
-    },
-    {
-        "nom": "Sylvain Derasp",
-        "equipe": "Foxtrot",
-        "telephone": "",
-        "consentement": false,
-        "actif": true
-    },
-    {
-        "nom": "Valérie Turcotte",
-        "equipe": "Foxtrot",
-        "telephone": "",
-        "consentement": false,
-        "actif": true
-    },
-    {
-        "nom": "Gabriel Labrecque",
-        "equipe": "Foxtrot",
         "telephone": "",
         "consentement": false,
         "actif": true
