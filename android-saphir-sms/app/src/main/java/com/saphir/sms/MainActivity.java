@@ -1,6 +1,7 @@
 package com.saphir.sms;
 
 import android.Manifest;
+import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -10,6 +11,7 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.telephony.SmsManager;
+import android.text.InputType;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
@@ -19,7 +21,10 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
+import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -160,12 +165,56 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void sendTestSms() {
-        String testPhone = "5140000000"; // Test prompt
-        try {
-            SmsManager sms = SmsManager.getDefault();
-            Toast.makeText(this, "📲 Module SMS fonctionnel sur ce téléphone !", Toast.LENGTH_LONG).show();
-        } catch (Exception e) {
-            Toast.makeText(this, "❌ Erreur SMS : " + e.getMessage(), Toast.LENGTH_LONG).show();
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.SEND_SMS}, 123);
+            Toast.makeText(this, "Veuillez accorder la permission d'envoyer des SMS.", Toast.LENGTH_SHORT).show();
+            return;
         }
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("📲 Tester l'envoi d'un SMS");
+        builder.setMessage("Entrez le numéro de cellulaire auquel envoyer le texto de test :");
+
+        final EditText input = new EditText(this);
+        input.setInputType(InputType.TYPE_CLASS_PHONE);
+        input.setHint("ex: 5141234567 ou 4501234567");
+        String savedPhone = prefs.getString("test_phone_number", "");
+        if (!savedPhone.isEmpty()) {
+            input.setText(savedPhone);
+        }
+        builder.setView(input);
+
+        builder.setPositiveButton("ENVOYER", (dialog, which) -> {
+            String phoneNumber = input.getText().toString().replaceAll("[^0-9+]", "").trim();
+            if (phoneNumber.length() < 7) {
+                Toast.makeText(this, "Numéro de téléphone invalide.", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            prefs.edit().putString("test_phone_number", phoneNumber).apply();
+
+            String timeNow = new SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(new Date());
+            String testMessage = "🎱 SAPHIR SMS (TEST) : Connexion réussie à " + timeNow + " ! La Sentinelle de la Ligue de billard est active et prête à transmettre les pointages.";
+
+            try {
+                SmsManager sms = SmsManager.getDefault();
+                ArrayList<String> parts = sms.divideMessage(testMessage);
+                sms.sendMultipartTextMessage(phoneNumber, null, parts, null, null);
+
+                String logEntry = "[" + timeNow + "] ✅ SMS de test envoyé à " + phoneNumber;
+                logBuilder.append(logEntry).append("\n");
+                tvLogs.setText(logBuilder.toString());
+
+                Toast.makeText(this, "✅ SMS de test envoyé à " + phoneNumber + " !", Toast.LENGTH_LONG).show();
+            } catch (Exception e) {
+                String errEntry = "[" + timeNow + "] ❌ Échec envoi test à " + phoneNumber + " : " + e.getMessage();
+                logBuilder.append(errEntry).append("\n");
+                tvLogs.setText(logBuilder.toString());
+                Toast.makeText(this, "❌ Erreur SMS : " + e.getMessage(), Toast.LENGTH_LONG).show();
+            }
+        });
+
+        builder.setNegativeButton("ANNULER", (dialog, which) -> dialog.cancel());
+        builder.show();
     }
 }
