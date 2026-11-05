@@ -87,6 +87,8 @@ EQUIPES_CSV_FILE = get_data_path("equipes-saphir.csv")
 JOUEURS_CSV_FILE = get_data_path("joueurs_stats.csv")
 HORAIRE_SAPHIR_FILE = get_data_path("horaire_saphir.json")
 JOUEURS_SMS_FILE = get_data_path("joueurs_sms.json")
+CONFIG_SMS_FILE = get_data_path("config_sms.json")
+COMMANDES_SMS_FILE = get_data_path("commandes_sms.json")
 ARMOIRIES_FILE = find_armoiries_path()
 LOCK_FILE = get_data_path("session_lock.json")
 LOCK_TIMEOUT = 900  # 15 minutes d'inactivité avant libération automatique
@@ -942,7 +944,9 @@ def lister_fichiers_locaux_donnees():
         HORAIRE_SAPHIR_FILE,
         CONFIG_EMAIL_FILE,
         ADMIN_CONFIG_FILE,
-        JOUEURS_SMS_FILE
+        JOUEURS_SMS_FILE,
+        CONFIG_SMS_FILE,
+        COMMANDES_SMS_FILE
     ]
     for p in fichiers_prioritaires:
         if p and os.path.exists(p) and os.path.isfile(p):
@@ -1986,7 +1990,9 @@ def restaurer_depuis_cloud_au_reveil(forcer=False):
                 ("horaire_saphir.json", HORAIRE_SAPHIR_FILE),
                 ("joueurs_stats.csv", JOUEURS_CSV_FILE),
                 ("config_email.json", CONFIG_EMAIL_FILE),
-                ("joueurs_sms.json", JOUEURS_SMS_FILE)
+                ("joueurs_sms.json", JOUEURS_SMS_FILE),
+                ("config_sms.json", CONFIG_SMS_FILE),
+                ("commandes_sms.json", COMMANDES_SMS_FILE)
             ]:
                 raw_autre = telecharger_fichier_supabase(fn_autre)
                 if raw_autre:
@@ -6824,6 +6830,158 @@ def sauvegarder_joueurs_sms(liste_joueurs):
     except Exception as e:
         return False, str(e)
 
+def charger_config_sms():
+    """Charge la configuration globale des SMS (activation/desactivation)."""
+    cfg_defaut = {
+        "sms_actif": True,
+        "derniere_mise_a_jour": ""
+    }
+    if os.path.exists(CONFIG_SMS_FILE):
+        try:
+            with open(CONFIG_SMS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    cfg_defaut.update(data)
+                    return cfg_defaut
+        except Exception:
+            pass
+    try:
+        raw_sb = telecharger_fichier_supabase("config_sms.json")
+        if raw_sb:
+            data = json.loads(raw_sb)
+            if isinstance(data, dict):
+                cfg_defaut.update(data)
+                try:
+                    with open(CONFIG_SMS_FILE, "w", encoding="utf-8") as f:
+                        json.dump(cfg_defaut, f, ensure_ascii=False, indent=4)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    return cfg_defaut
+
+def sauvegarder_config_sms(cfg):
+    """Sauvegarde la configuration globale des SMS et la synchronise dans le Cloud (Supabase/GitHub)."""
+    try:
+        cfg["derniere_mise_a_jour"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        tmp_p = f"{CONFIG_SMS_FILE}.tmp"
+        with open(tmp_p, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=4)
+        try:
+            os.replace(tmp_p, CONFIG_SMS_FILE)
+        except Exception:
+            with open(CONFIG_SMS_FILE, "w", encoding="utf-8") as f:
+                json.dump(cfg, f, ensure_ascii=False, indent=4)
+            if os.path.exists(tmp_p):
+                try:
+                    os.remove(tmp_p)
+                except Exception:
+                    pass
+
+        statut_txt = "ACTIF" if cfg.get("sms_actif") else "DESACTIVE"
+        ok_cloud, msg_cloud = synchroniser_fichier_cloud(
+            CONFIG_SMS_FILE,
+            commit_message=f"Mise a jour statut SMS: {statut_txt}"
+        )
+        return True, msg_cloud
+    except Exception as e:
+        return False, str(e)
+
+def charger_commandes_sms():
+    """Charge la liste des commandes et tests de SMS recents."""
+    if os.path.exists(COMMANDES_SMS_FILE):
+        try:
+            with open(COMMANDES_SMS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    return data
+        except Exception:
+            pass
+    try:
+        raw_sb = telecharger_fichier_supabase("commandes_sms.json")
+        if raw_sb:
+            data = json.loads(raw_sb)
+            if isinstance(data, list):
+                try:
+                    with open(COMMANDES_SMS_FILE, "w", encoding="utf-8") as f:
+                        json.dump(data, f, ensure_ascii=False, indent=4)
+                except Exception:
+                    pass
+                return data
+    except Exception:
+        pass
+    return []
+
+def sauvegarder_commandes_sms(commandes):
+    """Sauvegarde la liste des commandes de SMS dans commandes_sms.json et synchronise dans le Cloud."""
+    try:
+        tmp_p = f"{COMMANDES_SMS_FILE}.tmp"
+        with open(tmp_p, "w", encoding="utf-8") as f:
+            json.dump(commandes, f, ensure_ascii=False, indent=4)
+        try:
+            os.replace(tmp_p, COMMANDES_SMS_FILE)
+        except Exception:
+            with open(COMMANDES_SMS_FILE, "w", encoding="utf-8") as f:
+                json.dump(commandes, f, ensure_ascii=False, indent=4)
+            if os.path.exists(tmp_p):
+                try:
+                    os.remove(tmp_p)
+                except Exception:
+                    pass
+
+        ok_cloud, msg_cloud = synchroniser_fichier_cloud(
+            COMMANDES_SMS_FILE,
+            commit_message=f"Mise a jour commandes_sms.json ({len(commandes)} elements)"
+        )
+        return True, msg_cloud
+    except Exception as e:
+        return False, str(e)
+
+def envoyer_test_sms_sentinelle(telephone, message_texte):
+    """Envoie un SMS de test directement si Termux:API est present localement, ou cree une commande dans Supabase pour expedition par l'application Android ou le script Termux."""
+    import shutil, subprocess
+    tel_clean = re.sub(r"[^0-9+]", "", str(telephone)).strip()
+    if len(tel_clean) < 7:
+        return False, "Numero de cellulaire invalide (doit contenir au moins 7 chiffres)."
+    if not message_texte or not message_texte.strip():
+        return False, "Le texte du SMS de test ne peut pas etre vide."
+
+    # 1. Envoi direct local si execute dans un environnement Termux avec termux-api
+    if shutil.which("termux-sms-send"):
+        try:
+            res = subprocess.run(
+                ["termux-sms-send", "-n", tel_clean, message_texte],
+                capture_output=True,
+                text=True,
+                timeout=12
+            )
+            if res.returncode == 0:
+                return True, f"✅ SMS expedie directement via la carte SIM du telephone (Termux API) a {tel_clean} !"
+            else:
+                return False, f"Erreur Termux API ({res.returncode}) : {res.stderr}"
+        except Exception as e_term:
+            return False, f"Exception Termux : {str(e_term)}"
+
+    # 2. Sinon : enregistrement de la commande pour la Sentinelle Android SaphirSMS ou Termux via Supabase
+    nouvelle_cmd = {
+        "id": f"cmd_{int(time.time())}",
+        "type": "test_sms",
+        "telephone": tel_clean,
+        "message": message_texte,
+        "statut": "en_attente",
+        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
+
+    commandes = charger_commandes_sms()
+    commandes.append(nouvelle_cmd)
+    commandes = commandes[-25:]  # Conserver les 25 commandes les plus recentes
+
+    ok_save, msg_save = sauvegarder_commandes_sms(commandes)
+    if ok_save:
+        return True, f"✅ Commande de test transmise a Supabase ! Des son prochain cycle de verification (aux 5 min), votre telephone Android (Saphir SMS ou Termux) expediera le texto a {tel_clean}."
+    else:
+        return False, f"Erreur lors de l'enregistrement de la commande : {msg_save}"
+
 def generer_message_sms_match(match):
     """Formate le texte du SMS officiel envoye aux membres de la ligue."""
     if not match or not isinstance(match, dict):
@@ -6834,13 +6992,13 @@ def generer_message_sms_match(match):
     tot_vis = match.get("total_points_visiteur") or match.get("points_visiteur") or 0
     date_m = match.get("date") or match.get("date_enregistrement") or datetime.now().strftime("%d/%m/%Y")
 
-    txt = f"🎱 LIGUE SAPHIR — {rec} ({tot_rec}) vs {vis} ({tot_vis})\n"
+    txt = f"[LIGUE SAPHIR] {rec} ({tot_rec}) vs {vis} ({tot_vis})\n"
     txt += f"Date : {date_m}\n\nPointages individuels :\n"
 
     totaux_j = match.get("totaux_joueurs", {})
     if totaux_j and isinstance(totaux_j, dict):
         for j, pts in totaux_j.items():
-            txt += f"• {j} : {pts}/24\n"
+            txt += f"- {j} : {pts}/24\n"
     else:
         matchs = match.get("matchs", {})
         scores_j = {}
@@ -6853,9 +7011,9 @@ def generer_message_sms_match(match):
             if jb:
                 scores_j[jb] = scores_j.get(jb, 0) + sb
         for j, pts in scores_j.items():
-            txt += f"• {j} : {pts}/24\n"
+            txt += f"- {j} : {pts}/24\n"
 
-    txt += "\nClassement et stats en direct sur l'app !"
+    txt += "\nClassement et stats en direct sur le portail Saphir !\n"
     return txt
 
 def generer_script_termux_saphir():
@@ -6864,13 +7022,13 @@ def generer_script_termux_saphir():
     url_sb = url_sb or "https://votre-projet.supabase.co"
     key_sb = key_sb or "votre-cle-supabase-service-ou-anon"
 
-    script = f'''#!/usr/bin/env python3
+    script_template = """#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-SENTINELLE SMS — LIGUE DE BILLARD BOULE EN MAIN (SALLE LE SAPHIR)
-Script autonome pour telephone Android (Termux)
-Interroge Supabase toutes les 5 minutes et expedie les SMS de resultat via la carte SIM.
-"""
+# SENTINELLE SMS - LIGUE DE BILLARD BOULE EN MAIN (SALLE LE SAPHIR)
+# Script autonome pour telephone Android (Termux)
+# Interroge Supabase toutes les 5 minutes et expedie les SMS de resultat via la carte SIM.
+# Prend en charge l'activation/desactivation globale et l'execution des SMS de test.
+
 
 import time
 import json
@@ -6879,20 +7037,19 @@ import subprocess
 import urllib.request
 import urllib.error
 
-SUPABASE_URL = "{url_sb.rstrip('/')}"
-SUPABASE_KEY = "{key_sb}"
+SUPABASE_URL = "___SUPABASE_URL___"
+SUPABASE_KEY = "___SUPABASE_KEY___"
 FICHIER_MEMOIRE = "dernier_match_envoye.txt"
 INTERVALLE_SECONDES = 300  # 5 minutes
 
-HEADERS = {{
+HEADERS = {
     "apikey": SUPABASE_KEY,
-    "Authorization": f"Bearer {{SUPABASE_KEY}}",
+    "Authorization": f"Bearer {SUPABASE_KEY}",
     "Content-Type": "application/json"
-}}
+}
 
 def recuperer_fichier_supabase(nom_fichier):
-    """Telecharge le contenu JSON d'un fichier stocke dans public.saphir_files."""
-    url = f"{{SUPABASE_URL}}/rest/v1/saphir_files?filename=eq.{{nom_fichier}}&select=content"
+    url = f"{SUPABASE_URL}/rest/v1/saphir_files?filename=eq.{nom_fichier}&select=content"
     try:
         req = urllib.request.Request(url, headers=HEADERS)
         with urllib.request.urlopen(req, timeout=15) as resp:
@@ -6903,11 +7060,22 @@ def recuperer_fichier_supabase(nom_fichier):
                     if raw_content:
                         return json.loads(raw_content)
     except Exception as e:
-        print(f"⚠️ Erreur lors de la lecture de {{nom_fichier}} sur Supabase : {{e}}")
+        print(f"⚠️ Erreur lors de la lecture de {nom_fichier} sur Supabase : {e}")
     return None
 
+def sauvegarder_fichier_supabase(nom_fichier, data_obj):
+    url = f"{SUPABASE_URL}/rest/v1/saphir_files?filename=eq.{nom_fichier}"
+    try:
+        content_str = json.dumps(data_obj, ensure_ascii=False, indent=4)
+        payload = json.dumps({"content": content_str, "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ")}).encode("utf-8")
+        req = urllib.request.Request(url, data=payload, headers=HEADERS, method="PATCH")
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return resp.status in (200, 204)
+    except Exception as e:
+        print(f"⚠️ Erreur sauvegarde {nom_fichier} sur Supabase : {e}")
+        return False
+
 def envoyer_sms_termux(numero, message):
-    """Envoie un SMS natif sur Android via Termux:API."""
     try:
         num_clean = "".join(c for c in str(numero) if c.isdigit() or c == "+")
         if not num_clean:
@@ -6915,35 +7083,34 @@ def envoyer_sms_termux(numero, message):
         res = subprocess.run(["termux-sms-send", "-n", num_clean, message], capture_output=True, text=True)
         return res.returncode == 0
     except Exception as e:
-        print(f"❌ Erreur envoi SMS a {{numero}} : {{e}}")
+        print(f"❌ Erreur envoi SMS a {numero} : {e}")
         return False
 
 def formater_sms(match):
-    """Formate le message SMS a partir des donnees du match."""
     rec = match.get("equipe_receveur") or match.get("receveur") or "Receveur"
     vis = match.get("equipe_visiteur") or match.get("visiteur") or "Visiteur"
     tot_rec = match.get("total_points_receveur") or match.get("points_receveur") or 0
     tot_vis = match.get("total_points_visiteur") or match.get("points_visiteur") or 0
     date_m = match.get("date") or match.get("date_enregistrement") or ""
 
-    txt = f"🎱 LIGUE SAPHIR — {{rec}} ({{tot_rec}}) vs {{vis}} ({{tot_vis}})\n"
-    txt += f"Date : {{date_m}}\n\nPointages individuels :\n"
+    txt = f"[LIGUE SAPHIR] {rec} ({tot_rec}) vs {vis} ({tot_vis})\n"
+    txt += f"Date : {date_m}\n\nPointages individuels :\n"
 
-    totaux_j = match.get("totaux_joueurs", {{}})
+    totaux_j = match.get("totaux_joueurs", {})
     if totaux_j and isinstance(totaux_j, dict):
         for j, pts in totaux_j.items():
-            txt += f"• {{j}} : {{pts}}/24\n"
+            txt += f"- {j} : {pts}/24\n"
     else:
-        matchs = match.get("matchs", {{}})
-        sc_j = {{}}
+        matchs = match.get("matchs", {})
+        sc_j = {}
         for num_s in range(1, 10):
-            m = matchs.get(str(num_s), {{}})
+            m = matchs.get(str(num_s), {})
             ja, jb = m.get("joueur_a"), m.get("joueur_b")
             sa, sb = m.get("score_a", 0), m.get("score_b", 0)
             if ja: sc_j[ja] = sc_j.get(ja, 0) + sa
             if jb: sc_j[jb] = sc_j.get(jb, 0) + sb
         for j, pts in sc_j.items():
-            txt += f"• {{j}} : {{pts}}/24\n"
+            txt += f"- {j} : {pts}/24\n"
 
     txt += "\nClassement en direct sur l'app !"
     return txt
@@ -6951,8 +7118,8 @@ def formater_sms(match):
 def main():
     print("=" * 55)
     print("🎱 SENTINELLE SMS — LIGUE DE BILLARD BOULE EN MAIN")
-    print(f"📡 Connecte a Supabase : {{SUPABASE_URL}}")
-    print(f"⏱️ Intervalle de verification : {{INTERVALLE_SECONDES}}s (5 minutes)")
+    print(f"📡 Connecte a Supabase : {SUPABASE_URL}")
+    print(f"⏱️ Intervalle de verification : {INTERVALLE_SECONDES}s (5 minutes)")
     print("=" * 55)
 
     try:
@@ -6963,7 +7130,37 @@ def main():
 
     while True:
         try:
-            print(f"\n🔍 [{{time.strftime('%H:%M:%S')}}] Verification des nouveaux matchs...")
+            print(f"\n🔍 [{time.strftime('%H:%M:%S')}] Verification Supabase...")
+
+            # 1. Verifier si des SMS de test sont en attente
+            commandes = recuperer_fichier_supabase("commandes_sms.json")
+            if commandes and isinstance(commandes, list):
+                modifie = False
+                for cmd in commandes:
+                    if isinstance(cmd, dict) and cmd.get("statut") == "en_attente":
+                        tel_cmd = cmd.get("telephone", "")
+                        msg_cmd = cmd.get("message", "")
+                        print(f"🧪 Commande de test detectee pour {tel_cmd}...")
+                        ok_test = envoyer_sms_termux(tel_cmd, msg_cmd)
+                        if ok_test:
+                            print(f"   ✅ SMS de test expedie avec succes a {tel_cmd} !")
+                            cmd["statut"] = "envoye"
+                            cmd["date_envoi"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                            modifie = True
+                        else:
+                            print(f"   ❌ Echec expedition test a {tel_cmd}")
+                        time.sleep(1.0)
+                if modifie:
+                    sauvegarder_fichier_supabase("commandes_sms.json", commandes)
+
+            # 2. Verifier si le service SMS est active globalement
+            cfg_sms = recuperer_fichier_supabase("config_sms.json")
+            if cfg_sms and isinstance(cfg_sms, dict) and not cfg_sms.get("sms_actif", True):
+                print("⏸️ Service SMS desactive globalement dans l'administration. Aucun SMS automatique envoye.")
+                time.sleep(INTERVALLE_SECONDES)
+                continue
+
+            # 3. Verifier les nouveaux matchs
             matchs = recuperer_fichier_supabase("historique_matchs.json")
             contacts = recuperer_fichier_supabase("joueurs_sms.json") or []
 
@@ -6972,7 +7169,7 @@ def main():
                 rec = dernier_match.get("equipe_receveur") or dernier_match.get("receveur") or ""
                 vis = dernier_match.get("equipe_visiteur") or dernier_match.get("visiteur") or ""
                 dt = dernier_match.get("date") or dernier_match.get("date_enregistrement") or ""
-                id_match = f"{{rec}}_{{vis}}_{{dt}}"
+                id_match = f"{rec}_{vis}_{dt}"
 
                 dernier_traite = ""
                 if os.path.exists(FICHIER_MEMOIRE):
@@ -6983,7 +7180,7 @@ def main():
                         pass
 
                 if id_match != dernier_traite:
-                    print(f"📢 NOUVEAU MATCH DETECTE : {{rec}} vs {{vis}} ({{dt}})")
+                    print(f"📢 NOUVEAU MATCH DETECTE : {rec} vs {vis} ({dt})")
                     msg_sms = formater_sms(dernier_match)
 
                     destinataires = [
@@ -6994,11 +7191,11 @@ def main():
                     if not destinataires:
                         print("ℹ️ Aucun joueur avec consentement et numero configure dans joueurs_sms.json.")
                     else:
-                        print(f"📲 Envoi des SMS a {{len(destinataires)}} joueur(s) consentant(s)...")
+                        print(f"📲 Envoi des SMS a {len(destinataires)} joueur(s) consentant(s)...")
                         for d in destinataires:
                             nom_d = d.get("nom", "Joueur")
                             tel_d = d.get("telephone", "")
-                            print(f"  -> Envoi a {{nom_d}} ({{tel_d}})...")
+                            print(f"  -> Envoi a {nom_d} ({tel_d})...")
                             ok = envoyer_sms_termux(tel_d, msg_sms)
                             if ok:
                                 print(f"     ✅ Succes !")
@@ -7011,30 +7208,63 @@ def main():
                             fm.write(id_match)
                         print("💾 Match memorise pour eviter tout double envoi.")
                     except Exception as e_mem:
-                        print(f"Erreur memorisation : {{e_mem}}")
+                        print(f"Erreur memorisation : {e_mem}")
                 else:
                     print("✅ Aucun nouveau match. Tout est a jour.")
             else:
                 print("ℹ️ Aucun match trouve dans historique_matchs.json.")
 
         except Exception as e_loop:
-            print(f"⚠️ Erreur dans la boucle : {{e_loop}}")
+            print(f"⚠️ Erreur dans la boucle : {e_loop}")
 
         time.sleep(INTERVALLE_SECONDES)
 
 if __name__ == "__main__":
     main()
-'''
-    return script
+"""
+    return script_template.replace("___SUPABASE_URL___", url_sb.rstrip("/")).replace("___SUPABASE_KEY___", key_sb)
 
 def afficher_onglet_sentinelle_sms():
-    """Module d'administration pour la Sentinelle SMS (Gestion des consentements, deploiment Android APK et script Termux)."""
+    """Module d'administration pour la Sentinelle SMS (Gestion des consentements, activation/desactivation, tests SMS, deploiment Android APK et Termux)."""
     st.markdown("#### 📲 Sentinelle SMS — Passerelle Android (APK & Termux)")
     st.caption(
         "Ce module permet a un telephone Android connecte au forfait cellulaire de la ligue d'interroger "
         "automatiquement Supabase toutes les 5 minutes et d'expedier un SMS contenant les scores d'equipes et "
         "les pointages individuels a tous les membres ayant consenti a etre avises (0 $ via votre carte SIM)."
     )
+
+    # 1. BANNIERE D'ACTIVATION / DESACTIVATION GLOBALE
+    cfg_sms = charger_config_sms()
+    sms_actif = cfg_sms.get("sms_actif", True)
+
+    with st.container(border=True):
+        col_st1, col_st2 = st.columns([2.5, 1.2])
+        with col_st1:
+            if sms_actif:
+                st.markdown("### 🟢 Service SMS : **ACTIVÉ**")
+                st.caption("✅ Les SMS sont transmis automatiquement par la carte SIM du telephone lors de l'archivage de chaque match.")
+            else:
+                st.markdown("### 🔴 Service SMS : **DÉSACTIVÉ**")
+                st.caption("⏸️ L'envoi automatique de SMS est suspendu pour toute la ligue. Aucune notification ne partira lors des prochains matchs.")
+            dt_maj = cfg_sms.get("derniere_mise_a_jour", "")
+            if dt_maj:
+                st.caption(f"Derniere modification : *{dt_maj}*")
+        with col_st2:
+            nouveau_statut = st.toggle(
+                "⚡ Envoi automatique des SMS",
+                value=sms_actif,
+                key="toggle_sms_global_switch",
+                help="Interrupteur general pour allumer ou eteindre l'envoi des SMS de la ligue."
+            )
+            if nouveau_statut != sms_actif:
+                cfg_sms["sms_actif"] = nouveau_statut
+                ok_cfg, msg_cfg = sauvegarder_config_sms(cfg_sms)
+                if ok_cfg:
+                    st.toast(f"Statut SMS mis a jour : {'Active' if nouveau_statut else 'Desactive'} !")
+                    time.sleep(0.5)
+                    st.rerun()
+                else:
+                    st.error(f"Erreur de sauvegarde : {msg_cfg}")
 
     joueurs_sms = charger_joueurs_sms()
     nb_total = len(joueurs_sms)
@@ -7046,8 +7276,9 @@ def afficher_onglet_sentinelle_sms():
     c_m2.metric("📱 Cellulaires enregistres", f"{nb_avec_tel} / {nb_total}")
     c_m3.metric("✅ Consentements actifs", f"{nb_consent} joueur(s)")
 
-    sous_tab_rep, sous_tab_android, sous_tab_simu = st.tabs([
+    sous_tab_rep, sous_tab_test, sous_tab_android, sous_tab_simu = st.tabs([
         "👥 Repertoire & Consentements SMS",
+        "🧪 Tester un SMS",
         "📱 Application Android (APK & Termux)",
         "📜 Dernier match & Simulation SMS"
     ])
@@ -7113,6 +7344,104 @@ def afficher_onglet_sentinelle_sms():
                 use_container_width=True,
                 key="btn_dl_joueurs_sms"
             )
+
+    with sous_tab_test:
+        st.markdown("##### 🧪 Tester l'envoi d'un SMS (Vérification en direct)")
+        st.caption("Cette option permet d'expédier immédiatement un texto de test à vous-même ou à un joueur pour valider la chaîne complète.")
+
+        col_t1, col_t2 = st.columns([1.2, 1])
+        with col_t1:
+            mode_dest = st.radio(
+                "Destinataire du test :",
+                ["Choisir un joueur du répertoire", "Saisir un numéro manuellement"],
+                horizontal=True,
+                key="radio_mode_dest_test"
+            )
+
+            tel_dest_choisi = ""
+            nom_dest_choisi = ""
+            if mode_dest == "Choisir un joueur du répertoire":
+                options_j = [
+                    f"{j.get('nom')} ({j.get('equipe')}) - {j.get('telephone') or 'Aucun tel'}"
+                    for j in joueurs_sms
+                ]
+                j_sel = st.selectbox("Sélectionner le membre :", options_j, key="sel_joueur_test_sms")
+                idx_j = options_j.index(j_sel)
+                j_obj = joueurs_sms[idx_j]
+                tel_dest_choisi = j_obj.get("telephone", "")
+                nom_dest_choisi = j_obj.get("nom", "")
+            else:
+                tel_dest_choisi = st.text_input(
+                    "Numéro de cellulaire de test :",
+                    value=st.session_state.get("dernier_tel_test", ""),
+                    placeholder="ex: 514-123-4567 ou 4501234567",
+                    key="input_tel_manuel_test"
+                )
+                nom_dest_choisi = "Numéro test"
+
+            type_msg_test = st.selectbox(
+                "Type de message pour le test :",
+                [
+                    "📲 Message court de test de liaison",
+                    "🎱 Résultat complet du dernier match enregistré",
+                    "✍️ Message personnalisé libre"
+                ],
+                key="sel_type_msg_test"
+            )
+
+            time_now_str = datetime.now().strftime("%H:%M:%S")
+            if type_msg_test == "📲 Message court de test de liaison":
+                msg_a_tester = f"[SAPHIR SMS TEST] Connexion reussie a {time_now_str} ! La Sentinelle de la Ligue de billard est active et prete."
+            elif type_msg_test == "🎱 Résultat complet du dernier match enregistré":
+                hist = charger_historique_matchs()
+                if hist:
+                    msg_a_tester = generer_message_sms_match(hist[-1])
+                else:
+                    msg_a_tester = f"[LIGUE SAPHIR] Match test : Les Lions (13) vs Les Tigres (11) a {time_now_str}. Classement en direct sur l'app !"
+            else:
+                msg_a_tester = st.text_area(
+                    "Texte personnalisé du SMS :",
+                    value=f"[LIGUE SAPHIR] Message test envoye par l'administrateur a {time_now_str}.",
+                    height=90,
+                    key="textarea_custom_test_sms"
+                )
+
+        with col_t2:
+            st.markdown("###### 📱 Aperçu du SMS sur le téléphone récepteur :")
+            st.text_area("Aperçu du texte :", value=msg_a_tester, height=160, disabled=True, key="preview_box_test")
+            nb_car = len(msg_a_tester)
+            st.caption(f"Longueur : **{nb_car} caractères** (~{max(1, (nb_car - 1) // 153 + 1)} segment(s) SMS standard).")
+
+            st.write("")
+            btn_envoyer_test = st.button("📤 Envoyer le SMS de test", type="primary", use_container_width=True, key="btn_send_test_sms_admin")
+            if btn_envoyer_test:
+                if not str(tel_dest_choisi).strip():
+                    st.error("❌ Veuillez indiquer un numéro de cellulaire valide.")
+                else:
+                    st.session_state["dernier_tel_test"] = tel_dest_choisi
+                    with st.spinner("Transmission de la commande de test..."):
+                        ok_t, msg_t = envoyer_test_sms_sentinelle(tel_dest_choisi, msg_a_tester)
+                    if ok_t:
+                        st.success(msg_t)
+                    else:
+                        st.error(f"❌ Échec du test : {msg_t}")
+
+        st.markdown("---")
+        st.markdown("###### 📋 File d'attente et historique des tests SMS")
+        commandes_list = charger_commandes_sms()
+        if not commandes_list:
+            st.info("Aucun test n'a encore été commandé dans cette session.")
+        else:
+            df_cmd = pd.DataFrame([
+                {
+                    "Date": c.get("date", ""),
+                    "Téléphone": c.get("telephone", ""),
+                    "Message": c.get("message", "")[:45] + ("..." if len(c.get("message", "")) > 45 else ""),
+                    "Statut": "✅ Expédié" if c.get("statut") == "envoye" else "⏳ En attente Sentinelle"
+                }
+                for c in reversed(commandes_list[-10:])
+            ])
+            st.dataframe(df_cmd, use_container_width=True, hide_index=True)
 
     with sous_tab_android:
         st.markdown("##### 📱 Deux options pour votre telephone Android")

@@ -22,8 +22,10 @@ import org.json.JSONObject;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -121,6 +123,50 @@ public class SmsPollingService extends Service {
         broadcastLog("[" + timeNow + "] Vérification Supabase...");
 
         try {
+            // 0. Traiter les commandes de test SMS en attente
+            String cmdJsonStr = fetchFileFromSupabase(supabaseUrl, supabaseKey, "commandes_sms.json");
+            if (cmdJsonStr != null && !cmdJsonStr.isEmpty()) {
+                try {
+                    JSONArray cmdArray = new JSONArray(cmdJsonStr);
+                    boolean modifCmd = false;
+                    for (int k = 0; k < cmdArray.length(); k++) {
+                        JSONObject cmd = cmdArray.getJSONObject(k);
+                        if ("en_attente".equals(cmd.optString("statut", ""))) {
+                            String telTest = cmd.optString("telephone", "");
+                            String msgTest = cmd.optString("message", "");
+                            if (!telTest.isEmpty() && !msgTest.isEmpty()) {
+                                broadcastLog("🧪 Commande test reçue pour " + telTest + "...");
+                                try {
+                                    SmsHelper.sendSafeSms(this, telTest, msgTest);
+                                    cmd.put("statut", "envoye");
+                                    cmd.put("date_envoi", new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date()));
+                                    modifCmd = true;
+                                    broadcastLog("✅ SMS de test envoyé à " + telTest);
+                                } catch (Exception eCmd) {
+                                    broadcastLog("❌ Échec test à " + telTest + " : " + eCmd.getMessage());
+                                }
+                            }
+                        }
+                    }
+                    if (modifCmd) {
+                        saveFileToSupabase(supabaseUrl, supabaseKey, "commandes_sms.json", cmdArray.toString(4));
+                    }
+                } catch (Exception ignored) {}
+            }
+
+            // 0bis. Vérifier l'activation globale dans config_sms.json
+            String cfgSmsStr = fetchFileFromSupabase(supabaseUrl, supabaseKey, "config_sms.json");
+            if (cfgSmsStr != null && !cfgSmsStr.isEmpty()) {
+                try {
+                    JSONObject cfgObj = new JSONObject(cfgSmsStr);
+                    boolean smsActif = cfgObj.optBoolean("sms_actif", true);
+                    if (!smsActif) {
+                        broadcastLog("⏸️ Service SMS désactivé globalement dans l'administration.");
+                        return;
+                    }
+                } catch (Exception ignored) {}
+            }
+
             // 1. Lire historique_matchs.json
             String matchsJsonStr = fetchFileFromSupabase(supabaseUrl, supabaseKey, "historique_matchs.json");
             if (matchsJsonStr == null || matchsJsonStr.isEmpty()) {
@@ -209,6 +255,38 @@ public class SmsPollingService extends Service {
             if (conn != null) conn.disconnect();
         }
         return null;
+    }
+
+    private boolean saveFileToSupabase(String baseUrl, String apiKey, String filename, String content) {
+        HttpURLConnection conn = null;
+        try {
+            URL url = new URL(baseUrl.replaceAll("/$", "") + "/rest/v1/saphir_files?filename=eq." + filename);
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("PATCH");
+            conn.setRequestProperty("apikey", apiKey);
+            conn.setRequestProperty("Authorization", "Bearer " + apiKey);
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setRequestProperty("Prefer", "return=minimal");
+            conn.setDoOutput(true);
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(15000);
+
+            JSONObject body = new JSONObject();
+            body.put("content", content);
+            body.put("updated_at", new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(new Date()));
+
+            OutputStream os = conn.getOutputStream();
+            os.write(body.toString().getBytes(StandardCharsets.UTF_8));
+            os.flush();
+            os.close();
+
+            return conn.getResponseCode() >= 200 && conn.getResponseCode() < 300;
+        } catch (Exception e) {
+            Log.e("SmsPollingService", "Erreur save " + filename, e);
+            return false;
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
     }
 
     private String buildSmsMessage(JSONObject m) {
