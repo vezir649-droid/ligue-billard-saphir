@@ -1,6 +1,6 @@
 # 🎱 Ligue de billard Boule en main — Salle Le Saphir
 
-Application web officielle développée avec [Streamlit](https://streamlit.io/) pour la gestion complète de la **Ligue de billard Boule en main (Salle Le Saphir)** : portail d'accueil multi-rôles (**Spectateur**, **Marqueur**, **Administrateur**), saisie en direct des feuilles de matchs réguliers (**3 contre 3**), **Scanner IA de feuilles de match manuscrites par photo (Gemini Vision)** avec **viseur ergonomique multi-déclencheurs**, **détection des doublons & scans partiels**, **Statistiques avancées, Progression, Face-à-Face & Projections de fin de saison (Joueurs & Équipes)**, organisation de **tournois officiels** (Simple 1v1 & Double 2v2) avec **Mode Téléviseur / Casting TV auto-actualisé**, **Administration sécurisée** et **Synchronisation Cloud GitHub intégrale anti-veille avec fusion intelligente**.
+Application web officielle développée avec [Streamlit](https://streamlit.io/) pour la gestion complète de la **Ligue de billard Boule en main (Salle Le Saphir)** : portail d'accueil multi-rôles (**Spectateur**, **Marqueur**, **Administrateur**), saisie en direct des feuilles de matchs réguliers (**3 contre 3**), **Scanner IA de feuilles de match manuscrites par photo (Gemini Vision)** avec **viseur Portrait vertical (3:4)** et multi-déclencheurs, **transmission automatique officielle vers le site Saphir (`saphirbillard.com`)**, **détection des doublons & scans partiels**, **Statistiques avancées, Progression, Face-à-Face & Projections de fin de saison (Joueurs & Équipes)**, organisation de **tournois officiels** (Simple 1v1 & Double 2v2) avec **Mode Téléviseur / Casting TV auto-actualisé**, **Administration sécurisée** et **Persistance Cloud Hybride (Supabase PostgreSQL Prioritaire + GitHub)** avec **bouclier anti-veille et fusion intelligente**.
 
 ---
 
@@ -26,8 +26,10 @@ Dès l'ouverture de l'application, la page d'accueil présente trois modes d'acc
 ### 2. 📷 Scanner Intelligent de Feuilles de Match (IA Multimodale Gemini Vision)
 L'application intègre un module de pointe basé sur l'IA de vision de Google (**Gemini 2.5 / 3.1 Flash**) capable de lire, corréler et retranscrire automatiquement des feuilles de match papier manuscrites :
 
-* **Ergonomie de prise de vue optimisée (Mobile, Tablette & Ordinateur) :**
-  * **Viseur plein cadre adapté à l'écran (`48vh`, `object-fit: contain`)** sans défilement vertical ni bandeau superposé sur l'image.
+* **Ergonomie de prise de vue & Viseur Portrait vertical (3:4) par défaut :**
+  * **Viseur calibré par défaut en Mode Portrait vertical (`3:4`) :** Résolution vidéo haute définition verticale (`1080 × 1440`) épousant naturellement le format vertical d'une feuille de match papier, sans déformation.
+  * **Bouton de bascule d'orientation en 1 clic :** Commutateur instantané `📱 Format : Portrait vertical (3:4)` ↔ `💻 Format : Paysage (16:9)` pour s'adapter à toutes les prises de vue.
+  * **Aperçu haute visibilité de la capture :** La photo prise s'affiche avec un cadre contrasté vert émeraude et un bandeau lumineux d'état sous le viseur pour confirmer immédiatement la qualité de la prise de vue.
   * **3 modes de déclenchement ergonomiques** pour prendre la photo facilement :
     1. **Tap direct sur l'image vidéo** (un toucher n'importe où sur l'aperçu caméra déclenche la photo).
     2. **Gros bouton de capture (`📸 PRENDRE LA PHOTO`)** placé **au-dessus** du viseur.
@@ -55,7 +57,7 @@ L'application intègre un module de pointe basé sur l'IA de vision de Google (*
   * Tableaux récapitulatifs rendus en **HTML natif 100 % compatible Android / iOS** (zéro erreur de chargement de module dynamique `DataFrame` sur téléphone mobile).
 * **Deux modes d'action en un clic :**
   * **`📥 Injecter dans la saisie du match en direct` :** Pré-remplit automatiquement les équipes, les 6 joueurs et les pointages des 9 manches dans le formulaire principal avec confirmation de sécurité si une saisie était déjà en cours.
-  * **`💾 Archiver directement dans l'historique officiel` :** Sauvegarde instantanément la rencontre dans `historique_matchs.json`, génère la copie `.bak`, pousse sur GitHub et envoie le rapport officiel par courriel.
+  * **`💾 Archiver directement dans l'historique officiel` :** Sauvegarde instantanément la rencontre dans `historique_matchs.json`, enregistre dans le Cloud (Supabase PostgreSQL / GitHub), expédie le rapport officiel par courriel SMTP **ET transmet automatiquement les résultats au site officiel `https://saphirbillard.com/` via requête HTTP POST sécurisée**.
 
 ---
 
@@ -75,7 +77,10 @@ L'application intègre un module de pointe basé sur l'IA de vision de Google (*
   * Saisie libre de **0 à 8 points** par joueur **sans obligation d'un score de 8** pour valider une manche ou enregistrer la feuille de match.
 * **Approbation, Impression A4 & Réactivité instantanée :**
   * Double approbation officielle par un représentant de chaque équipe avant archivage et génération paresseuse (*lazy*) de la **feuille de match officielle calibrée pour une seule page A4**.
-  * **Cache mémoire haute vitesse sur `mtime`** (`equipes-saphir.csv`, `horaire_saphir.json`, `historique_matchs.json`) et **anti-rebond GitHub (*debounce*)** pour une fluidité immédiate à chaque clic.
+  * **Cache mémoire haute vitesse sur `mtime`** (`equipes-saphir.csv`, `horaire_saphir.json`, `historique_matchs.json`) et **anti-rebond Cloud (*debounce*)** pour une fluidité immédiate à chaque clic.
+* **🌐 Transmission automatique officielle vers le site Saphir (`saphirbillard.com`) :**
+  * Dans la fenêtre modale d'approbation finale, une option activée par défaut (`🌐 Transmettre automatiquement les résultats au site Saphir`) expédie les pointages de la rencontre par requête `POST` vers `https://saphirbillard.com/index.php?eID=billardImport` avec l'en-tête `X-API-Key`.
+  * Calcul dynamique de la saison (`saison`, ex. `S2025-2026`) et du numéro de semaine (`semaine`, ex. `Semaine 1` à `14`) à partir de la date de la rencontre et du calendrier `horaire_saphir.json`.
 * **Compatibilité complète Thème Clair (*Light*) & Thème Sombre (*Dark*) :**
   * Adaptation automatique des contrastes pour les cartes de métriques (`st.metric`), les onglets, les podiums, les cartes de rencontres et les aperçus A4.
 
@@ -203,7 +208,7 @@ Le module **« 📈 Statistiques & Progression — Joueurs et Équipes »** (acc
 
 ---
 
-### 8. ⚙️ Espace Administration, API Saphir & Persistance Cloud GitHub Sécurisée
+### 8. ⚙️ Espace Administration, Transmission API Saphir & Persistance Cloud Hybride (Supabase PostgreSQL + GitHub)
 Le volet **`⚙️ Administration`** (réservé exclusivement à l'accès **`🛡️ Administrateur`**) regroupe les outils avancés de gestion de la ligue, de persistance des données, d'interconnexion API et de maintenance du système.
 
 * **Onglets et modules du volet Administration :**
@@ -211,25 +216,38 @@ Le volet **`⚙️ Administration`** (réservé exclusivement à l'accès **`�
   * **📝 Match passé (Saisie de matchs antérieurs ou en retard) :** Formulaire complet permettant d'enregistrer rétroactivement une rencontre disputée avec sélection de la date/heure, composition des équipes et scores des 9 manches selon la rotation officielle alternée.
   * **✏️ Rectifications (Correction ou suppression de matchs archivés) :**
     * Correction ciblée des scores de manche, des présences ou des alignements avec motif officiel et régénération immédiate de la feuille officielle (accessible aussi directement depuis une alerte de doublon du Scanner IA).
-    * **🗑️ Suppression d'un match de l'historique :** Option sécurisée avec confirmation, sauvegarde `.bak` horodatée et synchronisation GitHub automatique.
+    * **🗑️ Suppression d'un match de l'historique :** Option sécurisée avec confirmation, sauvegarde `.bak` horodatée et synchronisation Cloud automatique.
   * **🗓️ Saison (Gestion des cycles de compétition) :** Initialisation d'une nouvelle saison, archivage des statistiques précédentes et remise à zéro sécurisée des classements actifs.
   * **💾 Sauvegardes & Restauration fiabilisée (Nettoyage JSON pur) :**
     * **Nettoyage et allègement JSON pur :** Suppression complète du code HTML verbeux et des images base64 dans `historique_matchs.json`. Le fichier passe de ~448 Ko à ~56 Ko (réduction de plus de **88 %**), accélérant les synchronisations réseau.
     * **Exports & Envois par courriel :** Téléchargement direct des bases JSON et envoi automatisé des bilans par courriel SMTP avec pièces jointes.
-  * **🌐 Test POST Saphir (`billardImport`) :**
-    * Module interactif d'interconnexion avec l'API officielle de la Salle Le Saphir (`POST https://saphirbillard.com/index.php?eID=billardImport`).
-    * En-têtes HTTP `Content-Type: application/json` et `X-API-Key: ...` avec test de latence et coloration syntaxique de la réponse serveur.
+  * **🌐 Module API Saphir (`POST billardImport`) :**
+    * Module interactif et automatisé d'interconnexion avec l'API officielle de la Salle Le Saphir (`POST https://saphirbillard.com/index.php?eID=billardImport`).
+    * **Transmission automatisée :** Déclenchée sans friction lors de l'approbation d'un match en direct ou lors de l'archivage direct depuis le scanner IA de feuilles de match (avec calcul automatique de la saison et de la semaine).
+    * **Banc d'essai administratif :** En-têtes HTTP `Content-Type: application/json` et `X-API-Key: ...` avec test de latence et coloration syntaxique de la réponse serveur pour valider la communication.
   * **📧 SMTP (Notifications et bilans officiels) :** Configuration du serveur d'expédition courriel (prise en charge robuste TLS port 587 / SSL port 465 avec repli automatique et nettoyage des mots de passe d'application Gmail), test d'envoi en direct et routage des alertes administratives.
   * **🔑 Sécurité (Gestion des accès, Clés API & Secrets) :**
     * Modification sécurisée des mots de passe Marqueur et Administrateur avec hachage cryptographique SHA-256 dans `config_auth.json`.
     * **Gestion des clés d'API IA :** Configuration de la clé **Google Gemini API** (`gemini_api_key`) pour la numérisation des photos de feuilles de scores.
-    * **Protection stricte des identifiants sensibles :** Intégration transparente de `st.secrets` (`.streamlit/secrets.toml`) pour stocker en lieu sûr le jeton GitHub, la clé Gemini et les mots de passe SMTP.
+    * **Configuration du Cloud & Sélection du Mode de Persistance :** Renseignement des identifiants Supabase (URL et clé API) et choix du mode actif.
+    * **Protection stricte des identifiants sensibles :** Intégration transparente de `st.secrets` (`.streamlit/secrets.toml`) pour stocker en lieu sûr les clés Supabase, le jeton GitHub, la clé Gemini et les mots de passe SMTP.
 
-* **☁️ Synchronisation automatique GitHub intégrale avec Fusion Intelligente (Anti-écrasement) :**
-  * **Bouclier anti-écrasement :** Le système de synchronisation au réveil compare l'horodatage des fichiers et n'écrase jamais une sauvegarde locale plus récente par un commit distant plus ancien.
-  * **Fusion automatique (Merge) :** Si un match a été saisi localement (ou via le scanner photo), il est automatiquement conservé et fusionné avec les données distantes par sa clé unique (`receveur + visiteur + date`), interdisant toute perte accidentelle de match.
-  * **Dès qu'un fichier est modifié :** Poussée automatique vers GitHub pour **tous les fichiers `.json` et `.csv`** (validation de match, numérisation photo, tournois, équipes CSV, mots de passe).
-  * **Écritures atomiques & Sauvegardes `.bak` :** Toutes les écritures locales sont atomiques avec copies de sauvegarde de secours `.bak` pour une résilience absolue.
+* **🚀 Mode Cloud Hybride (Supabase PostgreSQL Prioritaire) & Élimination des rechargements intempestifs :**
+  * **Pourquoi Supabase PostgreSQL ?** Sur Streamlit Community Cloud, chaque commit git poussé sur la branche `main` déclenche un redémarrage complet du conteneur applicatif, coupant les sessions des marqueurs en direct. L'intégration d'une base relationnelle **Supabase PostgreSQL** via PostgREST résout définitivement ce problème.
+  * **Table relationnelle `public.saphir_files` (11 documents vitaux) :**
+    * Stockage temps réel des 11 fichiers fondamentaux sous forme d'enregistrements `(filename, content, updated_at)` : `equipes-saphir.csv`, `joueurs_stats.csv`, `horaire_saphir.json`, `historique_matchs.json`, `historique_tournois.json`, `tournois_data.json`, `sauvegarde_saisie_secours.json`, `sauvegarde_annulee_secours.json`, `session_lock.json`, `config_email.json`, `config_admin.json`.
+    * Opérations SQL atomiques optimisées en Upsert (`INSERT ... ON CONFLICT (filename) DO UPDATE`) exécutées en moins de 150 ms sans solliciter Git.
+  * **3 modes de persistance au choix dans l'interface (`🔑 Sécurité`) :**
+    1. **Mode 1 — Supabase prioritaire (Recommandé en production) :** Sauvegardes instantanées dans Supabase PostgreSQL. **Zéro commit git** pendant les matchs, garantissant une stabilité absolue sans coupure de session.
+    2. **Mode 2 — Hybride (Supabase + Backup GitHub) :** Écriture en temps réel dans Supabase avec sauvegarde miroir sur GitHub.
+    3. **Mode 3 — GitHub classique :** Persistance exclusive par commits git sur le dépôt distant.
+  * **Sauvegarde intégrale automatique déclenchée au clic :** Dès que l'administrateur clique sur `💾 Enregistrer la configuration Cloud`, l'application pousse immédiatement l'ensemble des 11 fichiers locaux vers la table `saphir_files` de Supabase avec confirmation visuelle détaillée.
+  * **Restauration intelligente au réveil & Repli automatique (*Fallback*) :**
+    * Au réveil du conteneur Streamlit (`restaurer_depuis_cloud_au_reveil`), l'application interroge Supabase en priorité pour recharger la dernière version des données.
+    * **Bouclier anti-écrasement (Fusion intelligente) :** Si un match a été saisi localement, il est conservé et fusionné avec les données distantes par sa clé unique (`receveur + visiteur + date`), interdisant toute perte accidentelle.
+    * En cas d'indisponibilité ou d'absence de configuration Supabase, repli automatique transparent vers GitHub.
+  * **Anti-mise en veille Supabase (Keep-Alive via `cron-job.org`) :**
+    * Pour éviter la mise en pause gratuite des projets Supabase inactifs après 7 jours, une tâche cron quotidienne gratuite (`cron-job.org`) effectue une requête `GET` légère sur `https://<projet>.supabase.co/rest/v1/saphir_files?select=filename&limit=1` avec l'en-tête `apikey`, maintenant la base éveillée et réactive en tout temps.
 
 ---
 
@@ -253,7 +271,13 @@ L'application est alors accessible dans votre navigateur à l'adresse `http://lo
 ### 4. Configuration des secrets Streamlit (Local & Streamlit Cloud)
 Créez un fichier `.streamlit/secrets.toml` (ou renseignez les variables dans le panneau **Settings → Secrets** sur Streamlit Cloud) :
 ```toml
-# Synchronisation automatique GitHub
+# Base de données Cloud Supabase PostgreSQL (Recommandé en production)
+[supabase]
+url = "https://votre-projet.supabase.co"
+key = "votre_cle_supabase_anon_ou_service_role"
+mode = "supabase"   # "supabase" (Mode 1), "hybride" (Mode 2), ou "github" (Mode 3)
+
+# Synchronisation miroir GitHub (Mode 2 et 3)
 [github]
 token = "ghp_votre_jeton_personnel_github"
 repo = "vezir649-droid/ligue-billard-saphir"
@@ -281,23 +305,24 @@ smtp_ssl = false
 
 ## 🗂️ Structure des fichiers principaux
 
-| Fichier | Rôle |
+| Fichier / Ressource | Rôle |
 | :--- | :--- |
-| `app.py` | Code source principal de l'application Streamlit (Saisie, Scanner IA, Tournois, Stats & Projections, Admin, Mode TV) |
+| `app.py` | Code source principal de l'application Streamlit (Saisie, Scanner IA, Tournois, Stats & Projections, Admin, Mode TV, Moteur Cloud Hybride) |
 | `README.md` | Documentation officielle complète (affichée et imprimable au format A4 depuis la page d'ouverture) |
-| `.streamlit/secrets.toml` | Stockage sécurisé des clés d'accès (jeton GitHub, clé Gemini Vision, mots de passe SMTP et Admin) |
-| `equipes-saphir.csv` | Liste officielle des équipes (`Alpha` à `Hotel`) et de leurs 3 joueurs réguliers (synchronisée sur GitHub) |
-| `joueurs_stats.csv` | Statistiques de référence et moyennes officielles des joueurs utilisées pour le calcul des objectifs personnels (`/24`) et des forfaits d'absence |
-| `horaire_saphir.json` | Calendrier officiel des 14 semaines de la saison régulière utilisé pour les projections de fin de saison et l'indice de difficulté |
-| `historique_matchs.json` | Base de données JSON allégée (100 % JSON pur, sans HTML) des feuilles 3v3 validées (synchronisée sur GitHub) |
-| `historique_tournois.json` | Historique officiel complet des tournois Simples & Doubles (synchronisé sur GitHub) |
-| `tournois_data.json` | État en temps réel des tournois actifs (synchronisé sur GitHub) |
-| `sauvegarde_saisie_secours.json` | Sauvegarde temps réel de la feuille de match 3v3 en cours de saisie (synchronisée sur GitHub) |
+| `public.saphir_files` | Table relationnelle PostgreSQL hébergée sur Supabase stockant en temps réel les 11 fichiers fondamentaux de la ligue |
+| `.streamlit/secrets.toml` | Stockage sécurisé des clés d'accès (Supabase, GitHub, Gemini Vision, SMTP et Admin) |
+| `equipes-saphir.csv` | Liste officielle des équipes (`Alpha` à `Hotel`) et de leurs 3 joueurs réguliers (synchronisée Cloud) |
+| `joueurs_stats.csv` | Statistiques de référence et moyennes officielles des joueurs utilisées pour les objectifs (`/24`) et forfaits d'absence |
+| `horaire_saphir.json` | Calendrier officiel des 14 semaines de la saison régulière utilisé pour les projections et le calcul de semaine |
+| `historique_matchs.json` | Base de données allégée (100 % JSON pur) des feuilles 3v3 validées (synchronisée Cloud avec fusion intelligente) |
+| `historique_tournois.json` | Historique officiel complet des tournois Simples & Doubles (synchronisé Cloud) |
+| `tournois_data.json` | État en temps réel des tournois actifs (synchronisé Cloud) |
+| `sauvegarde_saisie_secours.json` | Sauvegarde temps réel de la feuille de match 3v3 en cours de saisie (synchronisée Cloud) |
 | `sauvegarde_annulee_secours.json` | Corbeille de secours permettant d'annuler un « Nouveau match » |
 | `session_lock.json` | Verrouillage multi-utilisateurs de la main active (Marqueur / Administrateur) |
 | `config_auth.json` | Empreintes SHA-256 des mots de passe Marqueur et Administrateur |
-| `config_email.json` | Paramètres SMTP pour l'envoi automatique des rapports, feuilles scannées et sauvegardes (synchronisé sur GitHub) |
-| `config_admin.json` | Configuration administrative locale de la synchronisation GitHub et clé Gemini |
+| `config_email.json` | Paramètres SMTP pour l'envoi automatique des rapports, feuilles scannées et sauvegardes (synchronisé Cloud) |
+| `config_admin.json` | Configuration administrative locale de la persistance Cloud (Supabase / GitHub) et clé Gemini |
 
 ---
 
