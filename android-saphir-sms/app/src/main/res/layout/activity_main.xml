@@ -14,8 +14,8 @@
         android:textSize="22sp"
         android:textStyle="bold"
         android:gravity="center"
-        android:layout_marginTop="20dp"
-        android:layout_marginBottom="10dp"/>
+        android:layout_marginTop="10dp"
+        android:layout_marginBottom="6dp"/>
 
     <TextView
         android:layout_width="match_parent"
@@ -24,7 +24,7 @@
         android:textColor="#AAAAAA"
         android:textSize="13sp"
         android:gravity="center"
-        android:layout_marginBottom="30dp"/>
+        android:layout_marginBottom="20dp"/>
 
     <!-- Carte Statut -->
     <LinearLayout
@@ -32,8 +32,8 @@
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:background="@color/saphir_card"
-        android:padding="16dp"
-        android:layout_marginBottom="20dp">
+        android:padding="14dp"
+        android:layout_marginBottom="16dp">
 
         <TextView
             android:id="@+id/tv_status"
@@ -60,16 +60,17 @@
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:background="@color/saphir_card"
-        android:padding="16dp"
-        android:layout_marginBottom="25dp">
+        android:padding="14dp"
+        android:layout_marginBottom="18dp">
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Configuration Cloud"
+            android:text="Configuration Cloud (Mémorisée en permanence)"
             android:textColor="@color/saphir_accent"
             android:textSize="13sp"
-            android:textStyle="bold"/>
+            android:textStyle="bold"
+            android:layout_marginBottom="4dp"/>
 
         <EditText
             android:id="@+id/et_supabase_url"
@@ -89,27 +90,37 @@
             android:textColor="@color/white"
             android:textColorHint="#777777"
             android:textSize="13sp"/>
+
+        <Button
+            android:id="@+id/btn_save_config"
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:text="💾 Enregistrer et conserver la configuration"
+            android:textColor="@color/white"
+            android:backgroundTint="#34495E"
+            android:textSize="12sp"
+            android:layout_marginTop="6dp"/>
     </LinearLayout>
 
     <!-- Boutons Action -->
     <Button
         android:id="@+id/btn_toggle_service"
         android:layout_width="match_parent"
-        android:layout_height="55dp"
+        android:layout_height="52dp"
         android:text="DÉMARRER LA SURVEILLANCE"
         android:backgroundTint="@color/saphir_accent"
         android:textColor="@color/black"
         android:textStyle="bold"
-        android:layout_marginBottom="12dp"/>
+        android:layout_marginBottom="10dp"/>
 
     <Button
         android:id="@+id/btn_test_sms"
         android:layout_width="match_parent"
-        android:layout_height="48dp"
+        android:layout_height="44dp"
         android:text="📲 TESTER UN SMS DE VÉRIFICATION"
         android:textColor="@color/white"
         android:backgroundTint="@color/saphir_dark"
-        android:layout_marginBottom="20dp"/>
+        android:layout_marginBottom="14dp"/>
 
     <!-- Journal des événements -->
     <TextView

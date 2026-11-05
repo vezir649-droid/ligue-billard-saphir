@@ -11,7 +11,9 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.telephony.SmsManager;
+import android.text.Editable;
 import android.text.InputType;
+import android.text.TextWatcher;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
@@ -28,9 +30,11 @@ import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity {
 
+    private static final String DEFAULT_SUPABASE_URL = "https://ueikhwdfmtnavqqscdoe.supabase.co";
+
     private TextView tvStatus, tvLastCheck, tvLogs;
     private EditText etSupabaseUrl, etSupabaseKey;
-    private Button btnToggleService, btnTestSms;
+    private Button btnToggleService, btnTestSms, btnSaveConfig;
     private SharedPreferences prefs;
 
     private final StringBuilder logBuilder = new StringBuilder();
@@ -60,10 +64,35 @@ public class MainActivity extends AppCompatActivity {
         etSupabaseKey = findViewById(R.id.et_supabase_key);
         btnToggleService = findViewById(R.id.btn_toggle_service);
         btnTestSms = findViewById(R.id.btn_test_sms);
+        btnSaveConfig = findViewById(R.id.btn_save_config);
 
-        // Pré-remplissage depuis préférences
-        etSupabaseUrl.setText(prefs.getString("supabase_url", "https://votre-projet.supabase.co"));
+        // Pré-remplissage avec l'URL officielle par défaut de la ligue
+        String savedUrl = prefs.getString("supabase_url", DEFAULT_SUPABASE_URL);
+        if (savedUrl.isEmpty()) {
+            savedUrl = DEFAULT_SUPABASE_URL;
+        }
+        etSupabaseUrl.setText(savedUrl);
         etSupabaseKey.setText(prefs.getString("supabase_key", ""));
+
+        // Sauvegarde automatique en direct dès que le texte est modifié ou collé
+        TextWatcher autoSaveWatcher = new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override
+            public void onTextChanged(CharSequence s, int start, int count, int after) {
+                saveConfig();
+            }
+            @Override
+            public void afterTextChanged(Editable s) {}
+        };
+        etSupabaseUrl.addTextChangedListener(autoSaveWatcher);
+        etSupabaseKey.addTextChangedListener(autoSaveWatcher);
+
+        // Bouton explicite pour rassurer l'utilisateur
+        btnSaveConfig.setOnClickListener(v -> {
+            saveConfig();
+            Toast.makeText(this, "💾 Configuration Supabase enregistrée et conservée !", Toast.LENGTH_SHORT).show();
+        });
 
         updateUiState(isServiceRunning());
 
@@ -99,9 +128,16 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         super.onPause();
+        saveConfig();
         try {
             unregisterReceiver(logReceiver);
         } catch (Exception ignored) {}
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        saveConfig();
     }
 
     private void checkAndRequestPermissions() {
@@ -124,9 +160,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void saveConfig() {
+        String url = etSupabaseUrl.getText().toString().trim();
+        String key = etSupabaseKey.getText().toString().trim();
         prefs.edit()
-                .putString("supabase_url", etSupabaseUrl.getText().toString().trim())
-                .putString("supabase_key", etSupabaseKey.getText().toString().trim())
+                .putString("supabase_url", url)
+                .putString("supabase_key", key)
                 .apply();
     }
 
