@@ -1,0 +1,8 @@
+<resources>
+    <style name="Theme.SaphirSMS" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/saphir_accent</item>
+        <item name="colorPrimaryVariant">@color/saphir_dark</item>
+        <item name="colorOnPrimary">@color/black</item>
+        <item name="android:statusBarColor">@color/saphir_blue</item>
+    </style>
+</resources>
