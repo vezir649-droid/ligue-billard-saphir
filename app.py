@@ -6982,15 +6982,7 @@ def sauvegarder_config_sms(cfg):
         return False, str(e)
 
 def charger_commandes_sms():
-    """Charge la liste des commandes et tests de SMS recents."""
-    if os.path.exists(COMMANDES_SMS_FILE):
-        try:
-            with open(COMMANDES_SMS_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if isinstance(data, list):
-                    return data
-        except Exception:
-            pass
+    """Charge la liste des commandes et tests de SMS recents en priorisant Supabase."""
     try:
         raw_sb = telecharger_fichier_supabase("commandes_sms.json")
         if raw_sb:
@@ -7004,10 +6996,19 @@ def charger_commandes_sms():
                 return data
     except Exception:
         pass
+
+    if os.path.exists(COMMANDES_SMS_FILE):
+        try:
+            with open(COMMANDES_SMS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    return data
+        except Exception:
+            pass
     return []
 
 def sauvegarder_commandes_sms(commandes):
-    """Sauvegarde la liste des commandes de SMS dans commandes_sms.json et synchronise dans le Cloud."""
+    """Sauvegarde la liste des commandes de SMS dans commandes_sms.json et synchronise simultanement dans Supabase et GitHub."""
     try:
         tmp_p = f"{COMMANDES_SMS_FILE}.tmp"
         with open(tmp_p, "w", encoding="utf-8") as f:
@@ -7023,11 +7024,10 @@ def sauvegarder_commandes_sms(commandes):
                 except Exception:
                     pass
 
-        ok_cloud, msg_cloud = synchroniser_fichier_cloud(
-            COMMANDES_SMS_FILE,
-            commit_message=f"Mise a jour commandes_sms.json ({len(commandes)} elements)"
-        )
-        return True, msg_cloud
+        commit_msg = f"Mise a jour commandes_sms.json ({len(commandes)} elements)"
+        ok_sb, msg_sb = synchroniser_fichier_supabase(COMMANDES_SMS_FILE, commit_msg)
+        ok_gh, msg_gh = synchroniser_fichier_github(COMMANDES_SMS_FILE, commit_msg)
+        return (ok_sb or ok_gh), f"Supabase: {ok_sb} | GitHub: {ok_gh}"
     except Exception as e:
         return False, str(e)
 
