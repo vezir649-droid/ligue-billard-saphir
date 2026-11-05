@@ -40,6 +40,14 @@ public class SmsPollingService extends Service {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private Runnable pollingRunnable;
 
+    private SmsManager getSmsManager() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            return getSystemService(SmsManager.class);
+        } else {
+            return SmsManager.getDefault();
+        }
+    }
+
     @Override
     public void onCreate() {
         super.onCreate();
@@ -152,7 +160,7 @@ public class SmsPollingService extends Service {
             String smsMessage = buildSmsMessage(dernierMatch);
 
             int sentCount = 0;
-            SmsManager smsManager = SmsManager.getDefault();
+            SmsManager smsManager = getSmsManager();
 
             for (int i = 0; i < contactsArray.length(); i++) {
                 JSONObject c = contactsArray.getJSONObject(i);
