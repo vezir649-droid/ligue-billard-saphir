@@ -7480,12 +7480,13 @@ def afficher_onglet_sentinelle_sms():
 
     with sous_tab_test:
         st.markdown("##### 🧪 Tester l'envoi d'un SMS (Vérification en direct)")
-        st.caption("Cette option permet d'expédier immédiatement un texto de test à vous-même ou à un joueur pour valider la chaîne complète.")
+        st.caption("Cette option permet d'expédier un texto de test à vous-même ou à un joueur pour valider la liaison avec l'application Android.")
 
         col_t1, col_t2 = st.columns([1.2, 1])
         with col_t1:
+            st.markdown("###### 🎯 1. Destinataire du test")
             mode_dest = st.radio(
-                "Destinataire du test :",
+                "Mode de sélection du destinataire :",
                 ["Choisir un joueur du répertoire", "Saisir un numéro manuellement"],
                 horizontal=True,
                 key="radio_mode_dest_test"
@@ -7493,27 +7494,37 @@ def afficher_onglet_sentinelle_sms():
 
             tel_dest_choisi = ""
             nom_dest_choisi = ""
+            equipe_dest_choisi = ""
             if mode_dest == "Choisir un joueur du répertoire":
                 options_j = [
                     f"{j.get('nom')} ({j.get('equipe')}) - {j.get('telephone') or 'Aucun tel'}"
                     for j in joueurs_sms
                 ]
-                j_sel = st.selectbox("Sélectionner le membre :", options_j, key="sel_joueur_test_sms")
+                j_sel = st.selectbox("Sélectionner le joueur :", options_j, key="sel_joueur_test_sms")
                 idx_j = options_j.index(j_sel)
                 j_obj = joueurs_sms[idx_j]
                 tel_dest_choisi = j_obj.get("telephone", "")
                 nom_dest_choisi = j_obj.get("nom", "")
+                equipe_dest_choisi = j_obj.get("equipe", "")
+                
+                if tel_dest_choisi:
+                    st.info(f"📱 Destinataire sélectionné : **{nom_dest_choisi}** (`{equipe_dest_choisi}`) ➔ **{tel_dest_choisi}**")
+                else:
+                    st.warning(f"⚠️ Aucun numéro de téléphone enregistré pour **{nom_dest_choisi}**.")
             else:
                 tel_dest_choisi = st.text_input(
                     "Numéro de cellulaire de test :",
                     value=st.session_state.get("dernier_tel_test", ""),
-                    placeholder="ex: 514-123-4567 ou 4501234567",
+                    placeholder="ex: 418-872-0836 ou 5141234567",
                     key="input_tel_manuel_test"
                 )
                 nom_dest_choisi = "Numéro test"
+                if tel_dest_choisi:
+                    st.info(f"📱 Destinataire manuel : **{tel_dest_choisi}**")
 
+            st.markdown("###### ✍️ 2. Message à expédier")
             type_msg_test = st.selectbox(
-                "Type de message pour le test :",
+                "Type de message :",
                 [
                     "📲 Message court de test de liaison",
                     "🎱 Résultat complet du dernier match enregistré",
@@ -7539,39 +7550,36 @@ def afficher_onglet_sentinelle_sms():
                     key="textarea_custom_test_sms"
                 )
 
-            st.write("")
-            btn_env_col1 = st.button("📤 ENVOYER LE SMS DE TEST", type="primary", use_container_width=True, key="btn_send_test_sms_col1")
-            if btn_env_col1:
-                if not str(tel_dest_choisi).strip():
-                    st.error("❌ Veuillez indiquer un numéro de cellulaire valide.")
-                else:
-                    st.session_state["dernier_tel_test"] = tel_dest_choisi
-                    with st.spinner("Transmission de la commande de test..."):
-                        ok_t, msg_t = envoyer_test_sms_sentinelle(tel_dest_choisi, msg_a_tester)
-                    if ok_t:
-                        st.success(msg_t)
-                    else:
-                        st.error(f"❌ Échec du test : {msg_t}")
-
         with col_t2:
-            st.markdown("###### 📱 Aperçu du SMS sur le téléphone récepteur :")
-            st.text_area("Aperçu du texte :", value=msg_a_tester, height=160, disabled=True, key="preview_box_test")
-            nb_car = len(msg_a_tester)
-            st.caption(f"Longueur : **{nb_car} caractères** (~{max(1, (nb_car - 1) // 153 + 1)} segment(s) SMS standard).")
+            st.markdown("###### 📱 Aperçu sur le téléphone récepteur")
+            with st.container(border=True):
+                st.markdown(f"**De :** *Saphir SMS (Sentinelle)*")
+                st.markdown(f"**À :** `{tel_dest_choisi or 'Aucun numéro'}` ({nom_dest_choisi or 'Inconnu'})")
+                st.markdown("---")
+                st.text_area("Texte du SMS qui sera reçu :", value=msg_a_tester, height=180, disabled=True, key="preview_box_test")
+                nb_car = len(msg_a_tester)
+                st.caption(f"📊 Longueur : **{nb_car} caractères** (~{max(1, (nb_car - 1) // 153 + 1)} segment(s) SMS).")
 
-            st.write("")
-            btn_envoyer_test = st.button("📤 Envoyer le SMS de test", type="primary", use_container_width=True, key="btn_send_test_sms_admin")
-            if btn_envoyer_test:
-                if not str(tel_dest_choisi).strip():
-                    st.error("❌ Veuillez indiquer un numéro de cellulaire valide.")
+        st.markdown("---")
+        # Bouton d'action UNIQUE et centré
+        col_btn_t1, col_btn_t2, col_btn_t3 = st.columns([1, 2, 1])
+        with col_btn_t2:
+            btn_envoyer_test_unique = st.button("🚀 ENVOYER CE SMS DE TEST MAINTENANT", type="primary", use_container_width=True, key="btn_send_test_sms_unique")
+        
+        if btn_envoyer_test_unique:
+            if not str(tel_dest_choisi).strip():
+                st.error("❌ Veuillez indiquer un numéro de cellulaire valide avant d'expédier le test.")
+            else:
+                st.session_state["dernier_tel_test"] = tel_dest_choisi
+                with st.spinner("Transmission de la commande de test à Supabase..."):
+                    ok_t, msg_t = envoyer_test_sms_sentinelle(tel_dest_choisi, msg_a_tester)
+                if ok_t:
+                    st.success(f"✅ Commande de test transmise à Supabase pour **{nom_dest_choisi}** (`{tel_dest_choisi}`) !")
+                    st.info("💡 **Sur votre téléphone Android (Saphir SMS) :** appuyez sur le bouton vert **`⚡ VÉRIFIER ET ENVOYER MAINTENANT`** pour expédier le SMS immédiatement sans attendre les 5 minutes.")
+                    time.sleep(1.0)
+                    st.rerun()
                 else:
-                    st.session_state["dernier_tel_test"] = tel_dest_choisi
-                    with st.spinner("Transmission de la commande de test..."):
-                        ok_t, msg_t = envoyer_test_sms_sentinelle(tel_dest_choisi, msg_a_tester)
-                    if ok_t:
-                        st.success(msg_t)
-                    else:
-                        st.error(f"❌ Échec du test : {msg_t}")
+                    st.error(f"❌ Échec de transmission : {msg_t}")
 
         st.markdown("---")
         st.markdown("###### 📋 File d'attente et historique des tests SMS")
@@ -7605,12 +7613,13 @@ def afficher_onglet_sentinelle_sms():
                 )
                 st.success("✅ **Compilation cloud via GitHub Actions** : L'APK est compile automatiquement sur votre depot GitHub !")
                 
-                url_releases = "https://github.com/vezir649-droid/ligue-billard-saphir/actions"
+                url_apk_direct = "https://github.com/vezir649-droid/ligue-billard-saphir/releases/latest/download/SaphirSMS.apk"
                 st.link_button(
-                    label="📲 Telecharger SaphirSMS.apk sur GitHub",
-                    url=url_releases,
+                    label="📲 Télécharger SaphirSMS.apk (Dernière version)",
+                    url=url_apk_direct,
                     use_container_width=True
                 )
+                st.caption("✨ *Version avec configuration Supabase automatique intégrée et bouton de vérification instantané.*")
                 with st.expander("ℹ️ Instructions d'installation de l'APK sur Android", expanded=False):
                     st.markdown("""
                     1. Telechargez le fichier **`SaphirSMS.apk`** sur votre telephone Android.

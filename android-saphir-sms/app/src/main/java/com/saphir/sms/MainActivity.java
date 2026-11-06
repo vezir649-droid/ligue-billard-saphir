@@ -66,13 +66,19 @@ public class MainActivity extends AppCompatActivity {
         btnTestSms = findViewById(R.id.btn_test_sms);
         btnSaveConfig = findViewById(R.id.btn_save_config);
 
-        // Pré-remplissage avec l'URL officielle par défaut de la ligue
+        // Pré-remplissage avec l'URL et la clé officielles par défaut de la ligue
         String savedUrl = prefs.getString("supabase_url", DEFAULT_SUPABASE_URL);
         if (savedUrl.isEmpty()) {
             savedUrl = DEFAULT_SUPABASE_URL;
         }
         etSupabaseUrl.setText(savedUrl);
-        etSupabaseKey.setText(prefs.getString("supabase_key", ""));
+
+        String savedKey = prefs.getString("supabase_key", BuildConfig.DEFAULT_SUPABASE_KEY);
+        if (savedKey.isEmpty()) {
+            savedKey = BuildConfig.DEFAULT_SUPABASE_KEY;
+        }
+        etSupabaseKey.setText(savedKey);
+        saveConfig();
 
         // Sauvegarde automatique en direct dès que le texte est modifié ou collé
         TextWatcher autoSaveWatcher = new TextWatcher() {

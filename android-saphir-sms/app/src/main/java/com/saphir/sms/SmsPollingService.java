@@ -133,8 +133,14 @@ public class SmsPollingService extends Service {
 
     private void checkSupabaseAndSendSms() {
         SharedPreferences prefs = getSharedPreferences("saphir_sms_prefs", Context.MODE_PRIVATE);
-        String supabaseUrl = prefs.getString("supabase_url", "").trim();
-        String supabaseKey = prefs.getString("supabase_key", "").trim();
+        String supabaseUrl = prefs.getString("supabase_url", "https://ueikhwdfmtnavqqscdoe.supabase.co").trim();
+        if (supabaseUrl.isEmpty()) {
+            supabaseUrl = "https://ueikhwdfmtnavqqscdoe.supabase.co";
+        }
+        String supabaseKey = prefs.getString("supabase_key", BuildConfig.DEFAULT_SUPABASE_KEY).trim();
+        if (supabaseKey.isEmpty()) {
+            supabaseKey = BuildConfig.DEFAULT_SUPABASE_KEY;
+        }
 
         if (supabaseUrl.isEmpty() || supabaseKey.isEmpty()) {
             broadcastLog("⚠️ Clé ou URL Supabase manquante dans l'application ! Veuillez la configurer.");
