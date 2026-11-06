@@ -37,21 +37,33 @@ public class SmsHelper {
         }
 
         String phone = destinationAddress.replaceAll("[^0-9+]", "").trim();
-        List<String> parts = splitMessageSafely(text);
+        ArrayList<String> parts = splitMessageSafely(text);
+        if (parts.isEmpty()) return;
 
-        for (int i = 0; i < parts.size(); i++) {
-            String part = parts.get(i);
-            sms.sendTextMessage(phone, null, part, null, null);
-            if (parts.size() > 1 && i < parts.size() - 1) {
-                try {
-                    Thread.sleep(600);
-                } catch (InterruptedException ignored) {}
+        if (parts.size() == 1) {
+            sms.sendTextMessage(phone, null, parts.get(0), null, null);
+        } else {
+            try {
+                // sendMultipartTextMessage inclut les en-têtes de concaténation standard (UDH) :
+                // le téléphone destinataire fusionne ainsi automatiquement les blocs en un seul message continu !
+                sms.sendMultipartTextMessage(phone, null, parts, null, null);
+            } catch (Exception eMultipart) {
+                // Repli sécurisé si le modem réseau refuse le multipart
+                for (int i = 0; i < parts.size(); i++) {
+                    String part = parts.get(i);
+                    sms.sendTextMessage(phone, null, part, null, null);
+                    if (i < parts.size() - 1) {
+                        try {
+                            Thread.sleep(500);
+                        } catch (InterruptedException ignored) {}
+                    }
+                }
             }
         }
     }
 
-    private static List<String> splitMessageSafely(String text) {
-        List<String> parts = new ArrayList<>();
+    private static ArrayList<String> splitMessageSafely(String text) {
+        ArrayList<String> parts = new ArrayList<>();
         if (text == null || text.isEmpty()) {
             return parts;
         }
@@ -65,7 +77,9 @@ public class SmsHelper {
             }
         }
 
-        int maxChunkSize = isUnicode ? 65 : 150;
+        // Limites de concaténation standard des SMS (avec en-tête UDH) :
+        // 153 caractères pour le texte GSM 7-bit, 67 caractères pour Unicode/accents
+        int maxChunkSize = isUnicode ? 67 : 153;
 
         if (text.length() <= maxChunkSize) {
             parts.add(text);
