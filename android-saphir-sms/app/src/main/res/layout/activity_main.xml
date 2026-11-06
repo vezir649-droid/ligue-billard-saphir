@@ -1,160 +1,237 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:background="@color/saphir_blue"
-    android:padding="20dp">
+    android:fillViewport="true"
+    android:background="@color/saphir_blue">
 
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="🎱 SAPHIR SMS SENTINELLE"
-        android:textColor="@color/white"
-        android:textSize="22sp"
-        android:textStyle="bold"
-        android:gravity="center"
-        android:layout_marginTop="10dp"
-        android:layout_marginBottom="6dp"/>
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Ligue de billard Boule en main — Salle Le Saphir"
-        android:textColor="#AAAAAA"
-        android:textSize="13sp"
-        android:gravity="center"
-        android:layout_marginBottom="20dp"/>
-
-    <!-- Carte Statut -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:background="@color/saphir_card"
-        android:padding="14dp"
-        android:layout_marginBottom="16dp">
+        android:padding="16dp">
 
+        <!-- En-tête -->
         <TextView
-            android:id="@+id/tv_status"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="🔴 Surveillance arrêtée"
+            android:text="🎱 SAPHIR SMS SENTINELLE"
             android:textColor="@color/white"
-            android:textSize="16sp"
-            android:textStyle="bold"/>
-
-        <TextView
-            android:id="@+id/tv_last_check"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Aucune vérification effectuée"
-            android:textColor="#CCCCCC"
-            android:textSize="12sp"
-            android:layout_marginTop="6dp"/>
-    </LinearLayout>
-
-    <!-- Configuration Supabase -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:background="@color/saphir_card"
-        android:padding="14dp"
-        android:layout_marginBottom="18dp">
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Configuration Cloud (Mémorisée en permanence)"
-            android:textColor="@color/saphir_accent"
-            android:textSize="13sp"
+            android:textSize="22sp"
             android:textStyle="bold"
+            android:gravity="center"
+            android:layout_marginTop="6dp"
             android:layout_marginBottom="4dp"/>
 
-        <EditText
-            android:id="@+id/et_supabase_url"
+        <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="URL Supabase (https://...)"
-            android:textColor="@color/white"
-            android:textColorHint="#777777"
-            android:textSize="13sp"/>
+            android:text="Ligue de billard Boule en main — Salle Le Saphir"
+            android:textColor="#AAAAAA"
+            android:textSize="13sp"
+            android:gravity="center"
+            android:layout_marginBottom="16dp"/>
 
-        <EditText
-            android:id="@+id/et_supabase_key"
+        <!-- Carte Statut -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Clé API Supabase (anon ou service)"
-            android:inputType="textPassword"
-            android:textColor="@color/white"
-            android:textColorHint="#777777"
-            android:textSize="13sp"/>
+            android:orientation="vertical"
+            android:background="@color/saphir_card"
+            android:padding="14dp"
+            android:layout_marginBottom="14dp">
+
+            <TextView
+                android:id="@+id/tv_status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="🔴 Surveillance arrêtée"
+                android:textColor="@color/white"
+                android:textSize="16sp"
+                android:textStyle="bold"/>
+
+            <TextView
+                android:id="@+id/tv_last_check"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Aucune vérification effectuée"
+                android:textColor="#CCCCCC"
+                android:textSize="12sp"
+                android:layout_marginTop="4dp"/>
+        </LinearLayout>
+
+        <!-- Configuration Supabase (accessible, visible et entièrement éditable) -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@color/saphir_card"
+            android:padding="14dp"
+            android:layout_marginBottom="14dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="⚙️ Configuration Cloud Supabase (Éditable)"
+                android:textColor="@color/saphir_accent"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="10dp"/>
+
+            <!-- Champ URL -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="URL Supabase :"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="4dp"/>
+
+            <EditText
+                android:id="@+id/et_supabase_url"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="https://votre-projet.supabase.co"
+                android:textColor="@color/white"
+                android:textColorHint="#777777"
+                android:background="#152433"
+                android:padding="12dp"
+                android:textSize="13sp"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:textIsSelectable="true"
+                android:cursorVisible="true"
+                android:inputType="textUri"
+                android:layout_marginBottom="12dp"/>
+
+            <!-- Champ Clé API -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Clé API Supabase (visible en clair et modifiable) :"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="4dp"/>
+
+            <EditText
+                android:id="@+id/et_supabase_key"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="sb_secret_... ou anon key"
+                android:textColor="#88FF88"
+                android:textColorHint="#777777"
+                android:background="#152433"
+                android:padding="12dp"
+                android:textSize="12sp"
+                android:minLines="2"
+                android:maxLines="4"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:textIsSelectable="true"
+                android:cursorVisible="true"
+                android:inputType="textMultiLine|textNoSuggestions"
+                android:layout_marginBottom="10dp"/>
+
+            <!-- Boutons d'aide configuration -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="8dp">
+
+                <Button
+                    android:id="@+id/btn_paste_key"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_weight="1"
+                    android:text="📋 COLLER CLÉ"
+                    android:textColor="@color/white"
+                    android:backgroundTint="#243B55"
+                    android:textSize="11sp"
+                    android:layout_marginEnd="6dp"/>
+
+                <Button
+                    android:id="@+id/btn_reset_default"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_weight="1"
+                    android:text="✨ RÉINITIALISER"
+                    android:textColor="@color/white"
+                    android:backgroundTint="#34495E"
+                    android:textSize="11sp"/>
+            </LinearLayout>
+
+            <Button
+                android:id="@+id/btn_save_config"
+                android:layout_width="match_parent"
+                android:layout_height="42dp"
+                android:text="💾 ENREGISTRER LA CONFIGURATION"
+                android:textColor="@color/white"
+                android:backgroundTint="#1976D2"
+                android:textStyle="bold"
+                android:textSize="12sp"/>
+        </LinearLayout>
+
+        <!-- Boutons d'action principaux -->
+        <Button
+            android:id="@+id/btn_toggle_service"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:text="DÉMARRER LA SURVEILLANCE"
+            android:backgroundTint="@color/saphir_accent"
+            android:textColor="@color/black"
+            android:textStyle="bold"
+            android:textSize="15sp"
+            android:layout_marginBottom="10dp"/>
 
         <Button
-            android:id="@+id/btn_save_config"
+            android:id="@+id/btn_sync_now"
             android:layout_width="match_parent"
-            android:layout_height="40dp"
-            android:text="💾 Enregistrer et conserver la configuration"
+            android:layout_height="48dp"
+            android:text="⚡ VÉRIFIER ET ENVOYER MAINTENANT"
             android:textColor="@color/white"
-            android:backgroundTint="#34495E"
-            android:textSize="12sp"
-            android:layout_marginTop="6dp"/>
-    </LinearLayout>
+            android:backgroundTint="#2E7D32"
+            android:textStyle="bold"
+            android:textSize="14sp"
+            android:layout_marginBottom="10dp"/>
 
-    <!-- Boutons Action -->
-    <Button
-        android:id="@+id/btn_toggle_service"
-        android:layout_width="match_parent"
-        android:layout_height="52dp"
-        android:text="DÉMARRER LA SURVEILLANCE"
-        android:backgroundTint="@color/saphir_accent"
-        android:textColor="@color/black"
-        android:textStyle="bold"
-        android:layout_marginBottom="10dp"/>
+        <Button
+            android:id="@+id/btn_test_sms"
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:text="📲 TESTER UN SMS LOCAL (CARTE SIM)"
+            android:textColor="@color/white"
+            android:backgroundTint="@color/saphir_dark"
+            android:textSize="13sp"
+            android:layout_marginBottom="14dp"/>
 
-    <Button
-        android:id="@+id/btn_sync_now"
-        android:layout_width="match_parent"
-        android:layout_height="44dp"
-        android:text="⚡ VÉRIFIER ET ENVOYER MAINTENANT"
-        android:textColor="@color/white"
-        android:backgroundTint="#2E7D32"
-        android:layout_marginBottom="10dp"/>
-
-    <Button
-        android:id="@+id/btn_test_sms"
-        android:layout_width="match_parent"
-        android:layout_height="44dp"
-        android:text="📲 TESTER UN SMS DE VÉRIFICATION"
-        android:textColor="@color/white"
-        android:backgroundTint="@color/saphir_dark"
-        android:layout_marginBottom="14dp"/>
-
-    <!-- Journal des événements -->
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Journal d'activité :"
-        android:textColor="#AAAAAA"
-        android:textSize="12sp"
-        android:layout_marginBottom="4dp"/>
-
-    <ScrollView
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:background="#151E28"
-        android:padding="10dp">
-
+        <!-- Journal des événements -->
         <TextView
-            android:id="@+id/tv_logs"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="En attente de démarrage..."
-            android:textColor="#88FF88"
-            android:textSize="11sp"
-            android:fontFamily="monospace"/>
-    </ScrollView>
+            android:text="Journal d'activité en direct :"
+            android:textColor="#AAAAAA"
+            android:textSize="12sp"
+            android:layout_marginBottom="4dp"/>
 
-</LinearLayout>
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="160dp"
+            android:background="#151E28"
+            android:padding="10dp"
+            android:layout_marginBottom="20dp">
+
+            <TextView
+                android:id="@+id/tv_logs"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Prêt. En attente de démarrage..."
+                android:textColor="#88FF88"
+                android:textSize="11sp"
+                android:fontFamily="monospace"/>
+        </ScrollView>
+
+    </LinearLayout>
+</ScrollView>

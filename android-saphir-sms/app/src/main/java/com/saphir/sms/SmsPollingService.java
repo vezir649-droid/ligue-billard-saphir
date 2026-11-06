@@ -137,9 +137,9 @@ public class SmsPollingService extends Service {
         if (supabaseUrl.isEmpty()) {
             supabaseUrl = "https://ueikhwdfmtnavqqscdoe.supabase.co";
         }
-        String supabaseKey = prefs.getString("supabase_key", BuildConfig.DEFAULT_SUPABASE_KEY).trim();
+        String supabaseKey = prefs.getString("supabase_key", "").trim();
         if (supabaseKey.isEmpty()) {
-            supabaseKey = BuildConfig.DEFAULT_SUPABASE_KEY;
+            supabaseKey = MainActivity.getDefaultSupabaseKey();
         }
 
         if (supabaseUrl.isEmpty() || supabaseKey.isEmpty()) {

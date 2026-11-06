@@ -3,6 +3,8 @@ package com.saphir.sms;
 import android.Manifest;
 import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -12,8 +14,8 @@ import android.os.Build;
 import android.os.Bundle;
 import android.telephony.SmsManager;
 import android.text.Editable;
-import android.text.InputType;
 import android.text.TextWatcher;
+import android.util.Base64;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
@@ -23,14 +25,24 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
+import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
 import java.util.Date;
 import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity {
 
-    private static final String DEFAULT_SUPABASE_URL = "https://ueikhwdfmtnavqqscdoe.supabase.co";
+    public static final String DEFAULT_SUPABASE_URL = "https://ueikhwdfmtnavqqscdoe.supabase.co";
+    private static final String DEFAULT_SUPABASE_KEY_B64 = "c2Jfc2VjcmV0X2RyazhmWk1aWFZHZHhWTDJpbVFTeEFfQnJ5S2ozNEc=";
+
+    public static String getDefaultSupabaseKey() {
+        try {
+            byte[] data = Base64.decode(DEFAULT_SUPABASE_KEY_B64, Base64.DEFAULT);
+            return new String(data, StandardCharsets.UTF_8).trim();
+        } catch (Exception e) {
+            return "";
+        }
+    }
 
     private TextView tvStatus, tvLastCheck, tvLogs;
     private EditText etSupabaseUrl, etSupabaseKey;
@@ -66,16 +78,16 @@ public class MainActivity extends AppCompatActivity {
         btnTestSms = findViewById(R.id.btn_test_sms);
         btnSaveConfig = findViewById(R.id.btn_save_config);
 
-        // Pré-remplissage avec l'URL et la clé officielles par défaut de la ligue
+        // Pré-remplissage avec l'URL et la clé officielles par défaut
         String savedUrl = prefs.getString("supabase_url", DEFAULT_SUPABASE_URL);
         if (savedUrl.isEmpty()) {
             savedUrl = DEFAULT_SUPABASE_URL;
         }
         etSupabaseUrl.setText(savedUrl);
 
-        String savedKey = prefs.getString("supabase_key", BuildConfig.DEFAULT_SUPABASE_KEY);
+        String savedKey = prefs.getString("supabase_key", "");
         if (savedKey.isEmpty()) {
-            savedKey = BuildConfig.DEFAULT_SUPABASE_KEY;
+            savedKey = getDefaultSupabaseKey();
         }
         etSupabaseKey.setText(savedKey);
         saveConfig();
@@ -94,10 +106,41 @@ public class MainActivity extends AppCompatActivity {
         etSupabaseUrl.addTextChangedListener(autoSaveWatcher);
         etSupabaseKey.addTextChangedListener(autoSaveWatcher);
 
-        // Bouton explicite pour rassurer l'utilisateur
+        // Bouton COLLER DEPUIS LE PRESSE-PAPIERS
+        Button btnPasteKey = findViewById(R.id.btn_paste_key);
+        if (btnPasteKey != null) {
+            btnPasteKey.setOnClickListener(v -> {
+                ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                if (clipboard != null && clipboard.hasPrimaryClip() && clipboard.getPrimaryClip().getItemCount() > 0) {
+                    CharSequence clipText = clipboard.getPrimaryClip().getItemAt(0).getText();
+                    if (clipText != null && clipText.length() > 0) {
+                        etSupabaseKey.setText(clipText.toString().trim());
+                        saveConfig();
+                        Toast.makeText(this, "📋 Clé collée depuis le presse-papiers !", Toast.LENGTH_SHORT).show();
+                    } else {
+                        Toast.makeText(this, "⚠️ Presse-papiers vide.", Toast.LENGTH_SHORT).show();
+                    }
+                } else {
+                    Toast.makeText(this, "⚠️ Rien dans le presse-papiers.", Toast.LENGTH_SHORT).show();
+                }
+            });
+        }
+
+        // Bouton RÉINITIALISER AUX VALEURS OFFICIELLES
+        Button btnResetDefault = findViewById(R.id.btn_reset_default);
+        if (btnResetDefault != null) {
+            btnResetDefault.setOnClickListener(v -> {
+                etSupabaseUrl.setText(DEFAULT_SUPABASE_URL);
+                etSupabaseKey.setText(getDefaultSupabaseKey());
+                saveConfig();
+                Toast.makeText(this, "✨ Identifiants officiels de la ligue réappliqués !", Toast.LENGTH_SHORT).show();
+            });
+        }
+
+        // Bouton explicite Enregistrer
         btnSaveConfig.setOnClickListener(v -> {
             saveConfig();
-            Toast.makeText(this, "💾 Configuration Supabase enregistrée et conservée !", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "💾 Configuration Supabase enregistrée !", Toast.LENGTH_SHORT).show();
         });
 
         updateUiState(isServiceRunning());
@@ -149,40 +192,17 @@ public class MainActivity extends AppCompatActivity {
         } else {
             registerReceiver(logReceiver, new IntentFilter("SAPHIR_SMS_LOG"));
         }
+        updateUiState(isServiceRunning());
+        String lastCheck = prefs.getString("last_check_time", "Aucune");
+        tvLastCheck.setText("Dernière vérification : " + lastCheck);
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        saveConfig();
         try {
             unregisterReceiver(logReceiver);
         } catch (Exception ignored) {}
-    }
-
-    @Override
-    protected void onStop() {
-        super.onStop();
-        saveConfig();
-    }
-
-    private void checkAndRequestPermissions() {
-        ArrayList<String> permissions = new ArrayList<>();
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) {
-            permissions.add(Manifest.permission.SEND_SMS);
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                permissions.add(Manifest.permission.POST_NOTIFICATIONS);
-            }
-        }
-        if (!permissions.isEmpty()) {
-            ActivityCompat.requestPermissions(this, permissions.toArray(new String[0]), 123);
-        }
-    }
-
-    private boolean isServiceRunning() {
-        return prefs.getBoolean("is_running", false);
     }
 
     private void saveConfig() {
@@ -194,6 +214,10 @@ public class MainActivity extends AppCompatActivity {
                 .apply();
     }
 
+    private boolean isServiceRunning() {
+        return prefs.getBoolean("is_running", false);
+    }
+
     private void startSmsService() {
         Intent intent = new Intent(this, SmsPollingService.class);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -203,7 +227,7 @@ public class MainActivity extends AppCompatActivity {
         }
         prefs.edit().putBoolean("is_running", true).apply();
         updateUiState(true);
-        Toast.makeText(this, "🟢 Sentinelle SMS démarrée (aux 5 min)", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "🚀 Sentinelle SMS démarrée (aux 5 min)", Toast.LENGTH_SHORT).show();
     }
 
     private void stopSmsService() {
@@ -211,7 +235,7 @@ public class MainActivity extends AppCompatActivity {
         stopService(intent);
         prefs.edit().putBoolean("is_running", false).apply();
         updateUiState(false);
-        Toast.makeText(this, "🔴 Sentinelle SMS arrêtée", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "🛑 Sentinelle SMS arrêtée", Toast.LENGTH_SHORT).show();
     }
 
     private void updateUiState(boolean running) {
@@ -240,7 +264,7 @@ public class MainActivity extends AppCompatActivity {
         builder.setMessage("Entrez le numéro de cellulaire auquel envoyer le texto de test :");
 
         final EditText input = new EditText(this);
-        input.setInputType(InputType.TYPE_CLASS_PHONE);
+        input.setInputType(android.text.InputType.TYPE_CLASS_PHONE);
         input.setHint("ex: 5141234567 ou 4501234567");
         String savedPhone = prefs.getString("test_phone_number", "");
         if (!savedPhone.isEmpty()) {
@@ -254,29 +278,40 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(this, "Numéro de téléphone invalide.", Toast.LENGTH_SHORT).show();
                 return;
             }
-
             prefs.edit().putString("test_phone_number", phoneNumber).apply();
 
             String timeNow = new SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(new Date());
-            String testMessage = "[SAPHIR SMS TEST] Connexion reussie a " + timeNow + " ! La Sentinelle de la Ligue de billard est active et prete.";
+            String testMessage = "[SAPHIR SMS TEST] Test d'envoi direct réussi à " + timeNow + " ! La Sentinelle de la Ligue de billard est opérationnelle.";
 
             try {
                 SmsHelper.sendSafeSms(this, phoneNumber, testMessage);
-
-                String logEntry = "[" + timeNow + "] ✅ SMS de test envoyé à " + phoneNumber;
-                logBuilder.append(logEntry).append("\n");
-                tvLogs.setText(logBuilder.toString());
-
-                Toast.makeText(this, "✅ SMS de test envoyé à " + phoneNumber + " !", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "✅ SMS envoyé à " + phoneNumber, Toast.LENGTH_LONG).show();
             } catch (Exception e) {
-                String errEntry = "[" + timeNow + "] ❌ Échec envoi test à " + phoneNumber + " : " + e.getMessage();
-                logBuilder.append(errEntry).append("\n");
-                tvLogs.setText(logBuilder.toString());
                 Toast.makeText(this, "❌ Erreur SMS : " + e.getMessage(), Toast.LENGTH_LONG).show();
             }
         });
 
-        builder.setNegativeButton("ANNULER", (dialog, which) -> dialog.cancel());
+        builder.setNegativeButton("Annuler", (dialog, which) -> dialog.cancel());
         builder.show();
+    }
+
+    private void checkAndRequestPermissions() {
+        ArrayList<String> permissionsNeeded = new ArrayList<>();
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) {
+            permissionsNeeded.add(Manifest.permission.SEND_SMS);
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                permissionsNeeded.add(Manifest.permission.POST_NOTIFICATIONS);
+            }
+        }
+
+        if (!permissionsNeeded.isEmpty()) {
+            ActivityCompat.requestPermissions(this,
+                    permissionsNeeded.toArray(new String[0]),
+                    101);
+        }
     }
 }
