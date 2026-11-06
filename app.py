@@ -6973,11 +6973,10 @@ def sauvegarder_config_sms(cfg):
                     pass
 
         statut_txt = "ACTIF" if cfg.get("sms_actif") else "DESACTIVE"
-        ok_cloud, msg_cloud = synchroniser_fichier_cloud(
-            CONFIG_SMS_FILE,
-            commit_message=f"Mise a jour statut SMS: {statut_txt}"
-        )
-        return True, msg_cloud
+        commit_msg = f"Mise a jour statut SMS: {statut_txt}"
+        ok_sb, msg_sb = synchroniser_fichier_supabase(CONFIG_SMS_FILE, commit_msg)
+        ok_gh, msg_gh = synchroniser_fichier_github(CONFIG_SMS_FILE, commit_msg)
+        return (ok_sb or ok_gh), f"Supabase: {ok_sb} | GitHub: {ok_gh}"
     except Exception as e:
         return False, str(e)
 
