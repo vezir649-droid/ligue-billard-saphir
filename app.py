@@ -7582,8 +7582,19 @@ def afficher_onglet_sentinelle_sms():
                     st.error(f"❌ Échec de transmission : {msg_t}")
 
         st.markdown("---")
-        st.markdown("###### 📋 File d'attente et historique des tests SMS")
         commandes_list = charger_commandes_sms()
+        nb_en_attente = len([c for c in commandes_list if c.get("statut") == "en_attente"])
+        
+        col_hdr_q1, col_hdr_q2 = st.columns([3, 1])
+        with col_hdr_q1:
+            st.markdown(f"###### 📋 File d'attente et historique des tests SMS ({nb_en_attente} en attente)")
+        with col_hdr_q2:
+            if st.button("🔄 Rafraîchir statut", key="btn_refresh_cmd_queue", use_container_width=True):
+                st.rerun()
+
+        if nb_en_attente > 0:
+            st.info(f"⏳ **{nb_en_attente} SMS de test en attente d'expédition.** Sur votre téléphone Android (Saphir SMS), touchez le bouton vert **`⚡ VÉRIFIER ET ENVOYER MAINTENANT`** pour les expédier instantanément par la carte SIM !")
+
         if not commandes_list:
             st.info("Aucun test n'a encore été commandé dans cette session.")
         else:
@@ -7602,6 +7613,14 @@ def afficher_onglet_sentinelle_sms():
         st.markdown("##### 📱 Deux options pour votre telephone Android")
         st.caption("Le telephone interroge Supabase toutes les 5 minutes. Des qu'un match est archive, il envoie un texto via sa carte SIM aux joueurs consentants.")
 
+        url_sb_sms, key_sb_sms, _ = obtenir_parametres_supabase()
+        with st.expander("🔑 Identifiants Supabase à copier sur le téléphone (si demandé)", expanded=False):
+            st.markdown("**Copiez ces deux valeurs si elles sont vides dans l'application Saphir SMS :**")
+            st.text_input("URL Supabase :", value=url_sb_sms or "https://ueikhwdfmtnavqqscdoe.supabase.co", disabled=True, key="disp_url_sb_sms")
+            st.markdown("**Clé Supabase (cliquez sur l'icône de copie en haut à droite) :**")
+            if key_sb_sms:
+                st.code(key_sb_sms, language="text")
+
         col_opt_apk, col_opt_termux = st.columns(2)
 
         with col_opt_apk:
@@ -7619,7 +7638,7 @@ def afficher_onglet_sentinelle_sms():
                     url=url_apk_direct,
                     use_container_width=True
                 )
-                st.caption("✨ *Version avec configuration Supabase automatique intégrée et bouton de vérification instantané.*")
+                st.caption("✨ *Version avec bouton de vérification instantané et mode anti-veille.*")
                 with st.expander("ℹ️ Instructions d'installation de l'APK sur Android", expanded=False):
                     st.markdown("""
                     1. Telechargez le fichier **`SaphirSMS.apk`** sur votre telephone Android.
