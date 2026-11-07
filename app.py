@@ -13145,136 +13145,181 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
             st.caption(f"🎯 **{len(participants_finaux)} joueur(s) inscrit(s)** participant au tournoi.")
 
         else:
-            # Mode DOUBLE : Sélection des duos de joueurs avec drop boxes
+            # Mode DOUBLE : Sélection préalable des joueurs inscrits, puis constitution des duos
+            st.markdown("##### 👤 Liste des joueurs inscrits au tournoi en double")
+            col_sel_btn1, col_sel_btn2 = st.columns([1.5, 3.5])
+            with col_sel_btn1:
+                if st.button("👥 Sélectionner tous les inscrits", key=f"btn_all_{mode}{key_suffix}", use_container_width=True):
+                    st.session_state[f"sel_participants_{mode}{key_suffix}"] = tous_candidats
+                    st.rerun()
+            with col_sel_btn2:
+                st.caption("ℹ️ Par défaut, **tous les joueurs réguliers inscrits** participent. Retirez les absents si nécessaire.")
+
+            selection_j_double = st.multiselect(
+                "Joueurs participants au tournoi en double :",
+                options=tous_candidats,
+                default=st.session_state.get(f"sel_participants_{mode}{key_suffix}", tous_candidats),
+                key=f"sel_participants_{mode}{key_suffix}",
+                help="Tous les joueurs inscrits sont sélectionnés par défaut. Retirez les absents avant de constituer les duos."
+            )
+            candidats_double = [j for j in selection_j_double if j in tous_candidats]
+            nb_inscrits_d = len(candidats_double)
+            st.caption(f"🎯 **{nb_inscrits_d} joueur(s) inscrit(s)** participant au tournoi en double.")
+
+            st.divider()
+
+            # Sélection des duos de joueurs avec drop boxes
             st.markdown("##### 👥 Sélection des duos de joueurs inscrits (Drop boxes)")
             st.info(
-                "⚖️ **Jumelage officiel selon le classement :** Les duos sont automatiquement équilibrés : "
+                "⚖️ **Jumelage officiel selon le classement :** Les duos sont automatiquement équilibrés parmi les **joueurs inscrits sélectionnés** : "
                 "le **1ᵉʳ** est jumelé au **dernier** (Duo #1), le **2ᵉ** avec l'**avant-dernier** (Duo #2), et ainsi de suite. "
                 "Vous pouvez aussi utiliser le bouton de pige au hasard ou ajuster manuellement n'importe quel joueur ci-dessous."
             )
 
-            col_nb_d1, col_nb_d2 = st.columns([1.3, 3])
-            with col_nb_d1:
-                options_nb_duos = [12, 11, 10, 9, 8, 6, 4, 16, 14, 2] if len(tous_candidats) >= 24 else [8, 9, 10, 11, 12, 6, 4, 16, 14, 2]
-                nb_duos_choisi = st.selectbox(
-                    "Nombre de duos participant :",
-                    options=options_nb_duos,
-                    index=0,
-                    key=f"nb_duos_select_{mode}{key_suffix}",
-                    help="12 duos = 24 joueurs (avec équilibrage automatique de 4 duos promus au 2e tour) ; 8 duos = 16 joueurs."
-                )
-            with col_nb_d2:
-                col_btn_class, col_btn_pige, col_btn_reset = st.columns([1.5, 1.1, 1.0])
-                with col_btn_class:
-                    st.write("")
-                    if st.button("⚖️ Jumeler par classement", key=f"btn_jumelage_class_{mode}{key_suffix}", type="primary", use_container_width=True, help="Jumelle équitablement le 1er avec le dernier, le 2e avec l'avant-dernier, etc."):
-                        pool_class = obtenir_joueurs_tries_classement(tous_candidats)
-                        nb_requis = nb_duos_choisi * 2
-                        pool_j = pool_class[:nb_requis]
-                        len_p = len(pool_j)
-                        for d_idx in range(nb_duos_choisi):
-                            if d_idx < len_p:
-                                st.session_state[f"duo_{d_idx}_j1_{mode}{key_suffix}"] = pool_j[d_idx]
-                            if (len_p - 1 - d_idx) >= 0 and (len_p - 1 - d_idx) < len_p:
-                                st.session_state[f"duo_{d_idx}_j2_{mode}{key_suffix}"] = pool_j[len_p - 1 - d_idx]
-                        st.rerun()
-
-                with col_btn_pige:
-                    st.write("")
-                    if st.button("🎲 Piger au hasard", key=f"btn_pige_drop_{mode}{key_suffix}", use_container_width=True, help="Remplit aléatoirement les drop boxes avec les joueurs inscrits"):
-                        pool_pige = list(tous_candidats)
-                        random.shuffle(pool_pige)
-                        for d_idx in range(nb_duos_choisi):
-                            if len(pool_pige) >= 2:
-                                st.session_state[f"duo_{d_idx}_j1_{mode}{key_suffix}"] = pool_pige.pop(0)
-                                st.session_state[f"duo_{d_idx}_j2_{mode}{key_suffix}"] = pool_pige.pop(0)
-                        st.rerun()
-
-                with col_btn_reset:
-                    st.write("")
-                    if st.button("🔄 Réinitialiser", key=f"btn_reset_duos_{mode}{key_suffix}", use_container_width=True, help="Restaure le jumelage équilibré officiel selon le classement"):
-                        for d_idx in range(16):
-                            st.session_state.pop(f"duo_{d_idx}_j1_{mode}{key_suffix}", None)
-                            st.session_state.pop(f"duo_{d_idx}_j2_{mode}{key_suffix}", None)
-                        st.rerun()
-
-            st.markdown("###### 📋 Composition des duos (équilibrés selon le classement) :")
-
-            pool_class_def = obtenir_joueurs_tries_classement(tous_candidats)
-            nb_requis_def = nb_duos_choisi * 2
-            pool_j_def = pool_class_def[:nb_requis_def] if len(pool_class_def) >= nb_requis_def else pool_class_def
-            len_pool_def = len(pool_j_def)
-
-            duos_selectionnes = []
-            joueurs_dans_duos = []
-            doublons = set()
-
-            cols_duos = st.columns(2)
-            for i in range(nb_duos_choisi):
-                with cols_duos[i % 2]:
-                    with st.container(border=True):
-                        st.markdown(f"**🎯 Duo #{i + 1}**")
-
-                        if len_pool_def >= 2:
-                            nom_def1 = pool_j_def[i] if i < len_pool_def else (tous_candidats[0] if tous_candidats else "")
-                            nom_def2 = pool_j_def[len_pool_def - 1 - i] if (len_pool_def - 1 - i) >= 0 else (tous_candidats[-1] if tous_candidats else "")
-                        else:
-                            nom_def1 = tous_candidats[0] if tous_candidats else ""
-                            nom_def2 = tous_candidats[1] if len(tous_candidats) > 1 else nom_def1
-
-                        def_idx1 = tous_candidats.index(nom_def1) if nom_def1 in tous_candidats else 0
-                        def_idx2 = tous_candidats.index(nom_def2) if nom_def2 in tous_candidats else 0
-
-                        cur_j1 = st.session_state.get(f"duo_{i}_j1_{mode}{key_suffix}", nom_def1)
-                        cur_j2 = st.session_state.get(f"duo_{i}_j2_{mode}{key_suffix}", nom_def2)
-                        info_j1 = obtenir_info_classement_joueur(cur_j1)
-                        info_j2 = obtenir_info_classement_joueur(cur_j2)
-
-                        col_j1, col_j2 = st.columns(2)
-                        with col_j1:
-                            st.caption(f"Joueur 1 : **{info_j1}**")
-                            j1 = st.selectbox(
-                                f"Joueur 1 (Duo {i+1}){key_suffix}",
-                                options=tous_candidats,
-                                index=def_idx1,
-                                key=f"duo_{i}_j1_{mode}{key_suffix}",
-                                label_visibility="collapsed"
-                            )
-                        with col_j2:
-                            st.caption(f"Joueur 2 : **{info_j2}**")
-                            j2 = st.selectbox(
-                                f"Joueur 2 (Duo {i+1}){key_suffix}",
-                                options=tous_candidats,
-                                index=def_idx2,
-                                key=f"duo_{i}_j2_{mode}{key_suffix}",
-                                label_visibility="collapsed"
-                            )
-
-                        if j1 == j2:
-                            st.error(f"⚠️ Un joueur ne peut pas être jumelé avec lui-même ({j1}).")
-                            doublons.add(j1)
-                        if j1 in joueurs_dans_duos:
-                            doublons.add(j1)
-                        joueurs_dans_duos.append(j1)
-                        if j2 in joueurs_dans_duos:
-                            doublons.add(j2)
-                        joueurs_dans_duos.append(j2)
-
-                        moy_j1 = obtenir_moyenne_joueur(j1)
-                        moy_j2 = obtenir_moyenne_joueur(j2)
-                        moy_comb = (moy_j1 + moy_j2) / 2
-
-                        duo_nom = f"{j1} & {j2}"
-                        st.markdown(f"🤝 **Duo #{i+1} :** `{duo_nom}` &nbsp;•&nbsp; 📊 *Moyenne combinée :* **{moy_comb:.3f}**")
-                        duos_selectionnes.append(duo_nom)
-
-            participants_finaux = duos_selectionnes
-
-            if doublons:
-                doublons_str = ", ".join(sorted(list(doublons)))
-                st.warning(f"⚠️ **Joueurs sélectionnés en double :** {doublons_str}. Chaque joueur ne doit figurer que dans un seul duo.")
+            if nb_inscrits_d < 4:
+                st.warning(f"⚠️ Veuillez sélectionner au moins **4 joueurs inscrits** pour constituer des duos (actuellement : **{nb_inscrits_d} joueur(s)**).")
+                participants_finaux = []
+                doublons = set()
             else:
-                st.success(f"🟢 **{len(participants_finaux)} duos constitués** avec succès ({len(set(joueurs_dans_duos))} joueurs distincts prêts pour le tournoi en double).")
+                max_possibles = nb_inscrits_d // 2
+                standard_duos = [16, 14, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2]
+                options_nb_duos = [d for d in standard_duos if d <= max_possibles]
+                if max_possibles not in options_nb_duos and max_possibles >= 2:
+                    options_nb_duos.append(max_possibles)
+                    options_nb_duos = sorted(list(set(options_nb_duos)), reverse=True)
+                if not options_nb_duos:
+                    options_nb_duos = [max_possibles] if max_possibles >= 2 else [2]
+
+                cur_nb_d = st.session_state.get(f"nb_duos_select_{mode}{key_suffix}")
+                if cur_nb_d and cur_nb_d not in options_nb_duos:
+                    st.session_state[f"nb_duos_select_{mode}{key_suffix}"] = options_nb_duos[0]
+
+                col_nb_d1, col_nb_d2 = st.columns([1.3, 3])
+                with col_nb_d1:
+                    nb_duos_choisi = st.selectbox(
+                        "Nombre de duos participant :",
+                        options=options_nb_duos,
+                        index=0,
+                        key=f"nb_duos_select_{mode}{key_suffix}",
+                        help=f"Nombre maximum possible de duos avec les {nb_inscrits_d} joueurs inscrits : {max_possibles} duos."
+                    )
+                with col_nb_d2:
+                    col_btn_class, col_btn_pige, col_btn_reset = st.columns([1.5, 1.1, 1.0])
+                    with col_btn_class:
+                        st.write("")
+                        if st.button("⚖️ Jumeler par classement", key=f"btn_jumelage_class_{mode}{key_suffix}", type="primary", use_container_width=True, help="Jumelle équitablement le 1er avec le dernier, le 2e avec l'avant-dernier parmi les joueurs inscrits"):
+                            pool_class = obtenir_joueurs_tries_classement(candidats_double)
+                            nb_requis = nb_duos_choisi * 2
+                            pool_j = pool_class[:nb_requis]
+                            len_p = len(pool_j)
+                            for d_idx in range(nb_duos_choisi):
+                                if d_idx < len_p:
+                                    st.session_state[f"duo_{d_idx}_j1_{mode}{key_suffix}"] = pool_j[d_idx]
+                                if (len_p - 1 - d_idx) >= 0 and (len_p - 1 - d_idx) < len_p:
+                                    st.session_state[f"duo_{d_idx}_j2_{mode}{key_suffix}"] = pool_j[len_p - 1 - d_idx]
+                            st.rerun()
+
+                    with col_btn_pige:
+                        st.write("")
+                        if st.button("🎲 Piger au hasard", key=f"btn_pige_drop_{mode}{key_suffix}", use_container_width=True, help="Remplit aléatoirement les drop boxes avec les joueurs inscrits"):
+                            pool_pige = list(candidats_double)
+                            random.shuffle(pool_pige)
+                            for d_idx in range(nb_duos_choisi):
+                                if len(pool_pige) >= 2:
+                                    st.session_state[f"duo_{d_idx}_j1_{mode}{key_suffix}"] = pool_pige.pop(0)
+                                    st.session_state[f"duo_{d_idx}_j2_{mode}{key_suffix}"] = pool_pige.pop(0)
+                            st.rerun()
+
+                    with col_btn_reset:
+                        st.write("")
+                        if st.button("🔄 Réinitialiser", key=f"btn_reset_duos_{mode}{key_suffix}", use_container_width=True, help="Restaure le jumelage équilibré officiel selon le classement"):
+                            for d_idx in range(20):
+                                st.session_state.pop(f"duo_{d_idx}_j1_{mode}{key_suffix}", None)
+                                st.session_state.pop(f"duo_{d_idx}_j2_{mode}{key_suffix}", None)
+                            st.rerun()
+
+                st.markdown("###### 📋 Composition des duos (équilibrés selon le classement) :")
+
+                pool_class_def = obtenir_joueurs_tries_classement(candidats_double)
+                nb_requis_def = nb_duos_choisi * 2
+                pool_j_def = pool_class_def[:nb_requis_def] if len(pool_class_def) >= nb_requis_def else pool_class_def
+                len_pool_def = len(pool_j_def)
+
+                duos_selectionnes = []
+                joueurs_dans_duos = []
+                doublons = set()
+
+                cols_duos = st.columns(2)
+                for i in range(nb_duos_choisi):
+                    with cols_duos[i % 2]:
+                        with st.container(border=True):
+                            st.markdown(f"**🎯 Duo #{i + 1}**")
+
+                            if len_pool_def >= 2:
+                                nom_def1 = pool_j_def[i] if i < len_pool_def else (candidats_double[0] if candidats_double else "")
+                                nom_def2 = pool_j_def[len_pool_def - 1 - i] if (len_pool_def - 1 - i) >= 0 else (candidats_double[-1] if candidats_double else "")
+                            else:
+                                nom_def1 = candidats_double[0] if candidats_double else ""
+                                nom_def2 = candidats_double[1] if len(candidats_double) > 1 else nom_def1
+
+                            cur_j1 = st.session_state.get(f"duo_{i}_j1_{mode}{key_suffix}", nom_def1)
+                            cur_j2 = st.session_state.get(f"duo_{i}_j2_{mode}{key_suffix}", nom_def2)
+                            if cur_j1 not in candidats_double:
+                                cur_j1 = nom_def1
+                            if cur_j2 not in candidats_double:
+                                cur_j2 = nom_def2
+
+                            def_idx1 = candidats_double.index(cur_j1) if cur_j1 in candidats_double else 0
+                            def_idx2 = candidats_double.index(cur_j2) if cur_j2 in candidats_double else 0
+
+                            info_j1 = obtenir_info_classement_joueur(cur_j1)
+                            info_j2 = obtenir_info_classement_joueur(cur_j2)
+
+                            col_j1, col_j2 = st.columns(2)
+                            with col_j1:
+                                st.caption(f"Joueur 1 : **{info_j1}**")
+                                j1 = st.selectbox(
+                                    f"Joueur 1 (Duo {i+1}){key_suffix}",
+                                    options=candidats_double,
+                                    index=def_idx1,
+                                    key=f"duo_{i}_j1_{mode}{key_suffix}",
+                                    label_visibility="collapsed"
+                                )
+                            with col_j2:
+                                st.caption(f"Joueur 2 : **{info_j2}**")
+                                j2 = st.selectbox(
+                                    f"Joueur 2 (Duo {i+1}){key_suffix}",
+                                    options=candidats_double,
+                                    index=def_idx2,
+                                    key=f"duo_{i}_j2_{mode}{key_suffix}",
+                                    label_visibility="collapsed"
+                                )
+
+                            if j1 == j2:
+                                st.error(f"⚠️ Un joueur ne peut pas être jumelé avec lui-même ({j1}).")
+                                doublons.add(j1)
+                            if j1 in joueurs_dans_duos:
+                                doublons.add(j1)
+                            joueurs_dans_duos.append(j1)
+                            if j2 in joueurs_dans_duos:
+                                doublons.add(j2)
+                            joueurs_dans_duos.append(j2)
+
+                            moy_j1 = obtenir_moyenne_joueur(j1)
+                            moy_j2 = obtenir_moyenne_joueur(j2)
+                            moy_comb = (moy_j1 + moy_j2) / 2
+
+                            duo_nom = f"{j1} & {j2}"
+                            st.markdown(f"🤝 **Duo #{i+1} :** `{duo_nom}` &nbsp;•&nbsp; 📊 *Moyenne combinée :* **{moy_comb:.3f}**")
+                            duos_selectionnes.append(duo_nom)
+
+                participants_finaux = duos_selectionnes
+
+                if doublons:
+                    doublons_str = ", ".join(sorted(list(doublons)))
+                    st.warning(f"⚠️ **Joueurs sélectionnés en double :** {doublons_str}. Chaque joueur ne doit figurer que dans un seul duo.")
+                else:
+                    st.success(f"🟢 **{len(participants_finaux)} duos constitués** avec succès ({len(set(joueurs_dans_duos))} joueurs distincts prêts pour le tournoi en double).")
 
         st.divider()
 
