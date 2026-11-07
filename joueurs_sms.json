@@ -1,194 +1,194 @@
 [
     {
-        "nom": "Gaston Lavoie",
-        "equipe": "Alpha",
-        "telephone": "418-847-5277",
-        "courriel": "gastonico@yahoo.ca",
-        "consentement": true,
-        "actif": true
-    },
-    {
-        "nom": "Claude Harvey",
-        "equipe": "Alpha",
-        "telephone": "581-849-9683",
-        "courriel": "clauharvey70@gmail.com",
-        "consentement": true,
-        "actif": true
-    },
-    {
-        "nom": "Léon Morin",
-        "equipe": "Alpha",
-        "telephone": "418-678-1265",
-        "courriel": "rivieres3@hotmail.com",
-        "consentement": true,
-        "actif": true
-    },
-    {
-        "nom": "Michel Caron",
-        "equipe": "Bravo",
-        "telephone": "418-376-5548",
-        "courriel": "louise.harvey21@videotron.ca",
-        "consentement": true,
-        "actif": true
-    },
-    {
-        "nom": "Denis Beaudoin",
-        "equipe": "Bravo",
-        "telephone": "418-953-4241",
-        "courriel": "denisguybeaudoin@hotmail.com",
-        "consentement": true,
-        "actif": true
-    },
-    {
-        "nom": "Richard Vézina",
-        "equipe": "Bravo",
-        "telephone": "418-872-0836",
-        "courriel": "vezir649@gmail.com",
-        "consentement": true,
-        "actif": true
-    },
-    {
-        "nom": "Denis Chamberland",
-        "equipe": "Charlie",
-        "telephone": "418-803-2744",
-        "courriel": "chamb56@videotron.ca",
-        "consentement": true,
-        "actif": true
-    },
-    {
-        "nom": "Denis Viens",
-        "equipe": "Charlie",
-        "telephone": "581-886-4341",
-        "courriel": "denisviens25@gmail.com",
-        "consentement": true,
-        "actif": true
-    },
-    {
-        "nom": "Marcel Larouche",
-        "equipe": "Charlie",
-        "telephone": "418-670-6247",
-        "courriel": "larouche1936@gmail.com",
-        "consentement": true,
-        "actif": true
-    },
-    {
-        "nom": "Serge Nollet",
-        "equipe": "Delta",
-        "telephone": "418-609-1385",
-        "courriel": "nolletserge@gmail.com",
-        "consentement": true,
-        "actif": true
-    },
-    {
-        "nom": "Alain Bellemare",
-        "equipe": "Delta",
-        "telephone": "438-404-6870",
-        "courriel": "alain.bellemare@hotmail.com",
-        "consentement": true,
-        "actif": true
-    },
-    {
-        "nom": "Marc Savard",
-        "equipe": "Delta",
-        "telephone": "418-576-6926",
-        "courriel": "masava9@gmail.com",
-        "consentement": true,
-        "actif": true
-    },
-    {
         "nom": "Gilles Dumais",
         "equipe": "Echo",
-        "telephone": "418-843-0300",
+        "telephone": "4188430300",
         "courriel": "claire-gilles@hotmail.com",
-        "consentement": true,
+        "consentement": false,
         "actif": true
     },
     {
         "nom": "Guy Vézina",
         "equipe": "Echo",
-        "telephone": "418-407-7542",
+        "telephone": "4184077542",
         "courriel": "guyvez@hotmail.com",
-        "consentement": true,
+        "consentement": false,
         "actif": true
     },
     {
         "nom": "André St-Pierre",
         "equipe": "Echo",
-        "telephone": "418-931-1177",
+        "telephone": "4189311177",
         "courriel": "andrest-p@hotmail.com",
-        "consentement": true,
-        "actif": true
-    },
-    {
-        "nom": "Gabriel Labrecque",
-        "equipe": "Foxtrot",
-        "telephone": "418-655-5454",
-        "courriel": "glabrecque@videotron.ca",
-        "consentement": true,
-        "actif": true
-    },
-    {
-        "nom": "Valérie Turcotte",
-        "equipe": "Foxtrot",
-        "telephone": "418-576-3878",
-        "courriel": "natoo_girl@hotmail.com",
-        "consentement": true,
-        "actif": true
-    },
-    {
-        "nom": "Sylvain Derasp",
-        "equipe": "Foxtrot",
-        "telephone": "418-473-7404",
-        "courriel": "sderaspsd@gmail.com",
-        "consentement": true,
-        "actif": true
-    },
-    {
-        "nom": "André Lauzon",
-        "equipe": "Golf",
-        "telephone": "418-847-6115",
-        "courriel": "anlauzon2015@gmail.com",
-        "consentement": true,
-        "actif": true
-    },
-    {
-        "nom": "Suzanne Blaquière",
-        "equipe": "Golf",
-        "telephone": "418-580-6222",
-        "courriel": "s.blaquiere@icloud.com",
-        "consentement": true,
-        "actif": true
-    },
-    {
-        "nom": "Yves Pilon",
-        "equipe": "Golf",
-        "telephone": "514-895-2445",
-        "courriel": "ypilon@live.ca",
-        "consentement": true,
-        "actif": true
-    },
-    {
-        "nom": "Richard Théberge",
-        "equipe": "Hotel",
-        "telephone": "418-806-1492",
-        "courriel": "thebergerichard@hotmail.com",
-        "consentement": true,
-        "actif": true
-    },
-    {
-        "nom": "Jean-Yves Brochu",
-        "equipe": "Hotel",
-        "telephone": "367-380-6038",
-        "courriel": "jeanyvesbrochu@videotron.ca",
-        "consentement": true,
+        "consentement": false,
         "actif": true
     },
     {
         "nom": "Richard Lavoie",
         "equipe": "Hotel",
-        "telephone": "418-456-4959",
+        "telephone": "4184564959",
         "courriel": "richardlavoie1951@gmail.com",
-        "consentement": true,
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Richard Théberge",
+        "equipe": "Hotel",
+        "telephone": "4188061492",
+        "courriel": "thebergerichard@hotmail.com",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Jean-Yves Brochu",
+        "equipe": "Hotel",
+        "telephone": "3673806038",
+        "courriel": "jeanyvesbrochu@videotron.ca",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Denis Viens",
+        "equipe": "Charlie",
+        "telephone": "5818864341",
+        "courriel": "denisviens25@gmail.com",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Marcel Larouche",
+        "equipe": "Charlie",
+        "telephone": "4186706247",
+        "courriel": "larouche1936@gmail.com",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Denis Chamberland",
+        "equipe": "Charlie",
+        "telephone": "4188032744",
+        "courriel": "chamb56@videotron.ca",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "André Lauzon",
+        "equipe": "Golf",
+        "telephone": "4188476115",
+        "courriel": "anlauzon2015@gmail.com",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Suzanne Blaquière",
+        "equipe": "Golf",
+        "telephone": "4185806222",
+        "courriel": "s.blaquiere@icloud.com",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Yves Pilon",
+        "equipe": "Golf",
+        "telephone": "5148952445",
+        "courriel": "ypilon@live.ca",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Richard Vézina",
+        "equipe": "Bravo",
+        "telephone": "4188720836",
+        "courriel": "vezir649@gmail.com",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Denis Beaudoin",
+        "equipe": "Bravo",
+        "telephone": "4189534241",
+        "courriel": "denisguybeaudoin@hotmail.com",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Michel Caron",
+        "equipe": "Bravo",
+        "telephone": "4183765548",
+        "courriel": "louise.harvey21@videotron.ca",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Claude Harvey",
+        "equipe": "Alpha",
+        "telephone": "5818499683",
+        "courriel": "clauharvey70@gmail.com",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Gaston Lavoie",
+        "equipe": "Alpha",
+        "telephone": "4188475277",
+        "courriel": "gastonico@yahoo.ca",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Léon Morin",
+        "equipe": "Alpha",
+        "telephone": "4186781265",
+        "courriel": "rivieres3@hotmail.com",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Sylvain Derasp",
+        "equipe": "Foxtrot",
+        "telephone": "4184737404",
+        "courriel": "sderaspsd@gmail.com",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Valérie Turcotte",
+        "equipe": "Foxtrot",
+        "telephone": "4185763878",
+        "courriel": "natoo_girl@hotmail.com",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Gabriel Labrecque",
+        "equipe": "Foxtrot",
+        "telephone": "4186555454",
+        "courriel": "glabrecque@videotron.ca",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Serge Nollet",
+        "equipe": "Delta",
+        "telephone": "4186091385",
+        "courriel": "nolletserge@gmail.com",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Marc Savard",
+        "equipe": "Delta",
+        "telephone": "4185766926",
+        "courriel": "masava9@gmail.com",
+        "consentement": false,
+        "actif": true
+    },
+    {
+        "nom": "Alain Bellemare",
+        "equipe": "Delta",
+        "telephone": "4384046870",
+        "courriel": "alain.bellemare@hotmail.com",
+        "consentement": false,
         "actif": true
     }
 ]
