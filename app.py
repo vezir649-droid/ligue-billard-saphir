@@ -11598,6 +11598,9 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
     mode_str = "Simple (1 contre 1)" if mode == "simple" else "Double / Équipes (2 contre 2)"
     is_double_elim = (tournoi.get("format") == "double_elimination")
     is_elim = (tournoi.get("format") == "elimination")
+    tv_section_winner = ""
+    tv_section_loser = ""
+    tv_section_finale = "" 
 
     if is_double_elim:
         race_p = tournoi.get("race_prelim", 2)
@@ -11780,6 +11783,9 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
             </div>
         </div>
         """
+        tv_section_winner = f'<div class="bracket-wrapper">{"".join(cols_winner)}</div>'
+        tv_section_loser = f'<div class="bracket-wrapper">{"".join(cols_loser)}</div>'
+        tv_section_finale = f'<div class="bracket-wrapper" style="justify-content: flex-start; max-width: 680px; margin: 0 auto;">{"".join(cols_finale)}{champ_col_html}</div>'
     elif is_elim:
         cols_html = []
         tours = tournoi.get("tours", [])
@@ -11891,6 +11897,9 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
             </div>
         </div>
         """
+        tv_section_winner = f'<div class="bracket-wrapper">{"".join(cols_html)}</div>'
+        tv_section_loser = ""
+        tv_section_finale = "" 
     else:
         # Matrice Round-Robin (Face-à-face)
         participants = tournoi.get("participants", [])
@@ -12302,13 +12311,21 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
                     ea = m.get("equipe_a", "")
                     eb = m.get("equipe_b", "")
                     if not m.get("termine") and ea and eb and ea != "À déterminer" and eb != "À déterminer" and not m.get("passe_droit"):
-                        matchs_actifs.append(m)
+                        m_copy = dict(m)
+                        m_copy["tour_nom"] = t.get("nom", "")
+                        m_copy["format_label"] = m.get("format_label", t.get("format_label", "2 de 3"))
+                        m_copy["race_to"] = m.get("race_to", t.get("race_to", 2))
+                        matchs_actifs.append(m_copy)
         else:
             for m in tournoi.get("matchs", []):
                 if not m.get("termine") and m.get("equipe_a") and m.get("equipe_b"):
-                    matchs_actifs.append(m)
+                    m_copy = dict(m)
+                    m_copy["tour_nom"] = "Ronde officielle"
+                    m_copy["format_label"] = tournoi.get("format_label", "2 de 3")
+                    m_copy["race_to"] = tournoi.get("race_to", 2)
+                    matchs_actifs.append(m_copy)
 
-        # Identification exclusive des adversaires sur Table 1 et Table 2
+        # Identification des duels en direct sur Table 1 et Table 2
         match_t1 = None
         match_t2 = None
         for m in matchs_actifs:
@@ -12324,50 +12341,227 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
         if not match_t2 and len(matchs_actifs) > 1:
             match_t2 = matchs_actifs[1]
 
-        def formater_carte_table_tv(m, table_label):
+        # Prochains duels prêts à jouer
+        prochains_matchs = [m for m in matchs_actifs if m != match_t1 and m != match_t2][:4]
+
+        # Formateur de carte XXL pour les tables en direct
+        def formater_carte_hero_tv(m, table_num, accent_color, tag_bg):
+            lbl_table = f"🎱 TABLE {table_num}"
             if not m:
-                return f'''<div class="tv-table-card">
-                    <span class="tv-table-tag">{table_label}</span>
-                    <span class="tv-table-hour" style="opacity:0.65;">Libre</span>
-                    <span class="tv-table-versus" style="color:#94a3b8; font-style:italic; font-size:13px;">En attente de match</span>
-                </div>'''
+                return f"""
+                <div class="tv-hero-card" style="border-color: {accent_color};">
+                    <div class="tv-hero-header">
+                        <span class="tv-hero-tag" style="background: {tag_bg};">{lbl_table}</span>
+                        <span class="tv-hero-round" style="color: #64748b;">DISPONIBLE</span>
+                        <span class="tv-hero-time" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid #10b981;">🟢 Table Libre</span>
+                    </div>
+                    <div class="tv-hero-body" style="justify-content: center; min-height: 140px;">
+                        <div style="color: #94a3b8; font-size: 19px; font-weight: 600; font-style: italic; text-align: center;">
+                            En attente de la prochaine rencontre
+                        </div>
+                    </div>
+                    <div class="tv-hero-footer">
+                        <span>Table prête</span>
+                        <span>Compétition en cours</span>
+                    </div>
+                </div>
+                """
             p1 = formater_nom_abrege_joueur(m.get("equipe_a", ""))
             p2 = formater_nom_abrege_joueur(m.get("equipe_b", ""))
             s1 = m.get("score_a", 0)
             s2 = m.get("score_b", 0)
+            mid = m.get("id", "")
+            tour_nom = m.get("tour_nom", "")
+            fmt = m.get("format_label", "2 de 3")
+            race = m.get("race_to", 2)
             hm = m.get("heure_estimee", "")
-            hm_badge = f'<span class="tv-table-hour">⏰ {hm}</span>' if hm and hm != "—" else '<span class="tv-table-hour">En direct</span>'
+            hm_badge = f'<span class="tv-hero-time">⏰ {hm}</span>' if hm and hm != "—" else '<span class="tv-hero-time" style="background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid #ef4444;">🔴 EN DIRECT</span>'
+
             if s1 > 0 or s2 > 0:
-                score_html = f'<strong class="tv-table-score">{s1} - {s2}</strong>'
-                versus_html = f'<span class="tv-p-name">{p1}</span> {score_html} <span class="tv-p-name">{p2}</span>'
+                vs_score_html = f"""
+                <div class="tv-hero-score-badge">
+                    <span>{s1}</span>
+                    <span style="opacity: 0.5; font-size: 24px; margin: 0 4px;">-</span>
+                    <span>{s2}</span>
+                </div>
+                """
             else:
-                versus_html = f'<span class="tv-p-name">{p1}</span> <span class="tv-vs-badge">VS</span> <span class="tv-p-name">{p2}</span>'
+                vs_score_html = '<div class="tv-hero-vs-badge">VS</div>'
 
-            return f'''<div class="tv-table-card">
-                <span class="tv-table-tag">{table_label}</span>
-                {hm_badge}
-                <span class="tv-table-versus">{versus_html}</span>
-            </div>'''
+            return f"""
+            <div class="tv-hero-card" style="border-color: {accent_color};">
+                <div class="tv-hero-header">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span class="tv-hero-tag" style="background: {tag_bg};">{lbl_table}</span>
+                        <span class="tv-hero-round">{tour_nom or mid}</span>
+                    </div>
+                    {hm_badge}
+                </div>
+                <div class="tv-hero-body">
+                    <div class="tv-hero-player p1">
+                        <div class="tv-hero-pname">{p1}</div>
+                    </div>
+                    {vs_score_html}
+                    <div class="tv-hero-player p2">
+                        <div class="tv-hero-pname">{p2}</div>
+                    </div>
+                </div>
+                <div class="tv-hero-footer">
+                    <span>🎯 Match : <strong>{mid}</strong></span>
+                    <span>⚙️ Format : <strong>{fmt}</strong> (premier à {race} victoires)</span>
+                </div>
+            </div>
+            """
 
-        t1_card_html = formater_carte_table_tv(match_t1, "T1")
-        t2_card_html = formater_carte_table_tv(match_t2, "T2")
+        # Section des prochains duels
+        if prochains_matchs:
+            p_cards = []
+            for pm in prochains_matchs:
+                pa = formater_nom_abrege_joueur(pm.get("equipe_a", ""))
+                pb = formater_nom_abrege_joueur(pm.get("equipe_b", ""))
+                pm_id = pm.get("id", "")
+                pm_tbl = pm.get("table_courte", pm.get("table", "T?"))
+                pm_h = pm.get("heure_estimee", "")
+                pm_h_txt = f"⏰ {pm_h}" if pm_h and pm_h != "—" else "À suivre"
+                pm_fmt = pm.get("format_label", "2 de 3")
+                p_cards.append(f"""
+                <div class="tv-next-card">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span class="tv-next-tag">{pm_tbl}</span>
+                        <span style="font-weight: 800; font-size: 15px; color: #ffffff;">{pa} <span style="color: #38bdf8; font-weight: 900; margin: 0 2px;">vs</span> {pb}</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: #94a3b8;">
+                        <span>{pm_id} ({pm_fmt})</span>
+                        <span class="tv-next-time">{pm_h_txt}</span>
+                    </div>
+                </div>
+                """)
+            prochains_html = f"""
+            <div class="tv-next-section">
+                <div class="tv-next-title">
+                    <span>⏳ PROCHAINS DUELS À SUIVRE SUR LES TABLES :</span>
+                </div>
+                <div class="tv-next-grid">
+                    {''.join(p_cards)}
+                </div>
+            </div>
+            """
+        else:
+            prochains_html = """
+            <div class="tv-next-section" style="text-align: center; color: #94a3b8; font-size: 13.5px; padding: 12px;">
+                <span>ℹ️ Tous les duels immédiatement jouables sont actuellement assignés sur les tables. Les rencontres suivantes s'afficheront dès qu'un match sera complété.</span>
+            </div>
+            """
+
+        # Construction des diapositives (Slides)
+        slide_0_html = f"""
+        <div class="tv-slide active" id="tv-slide-0">
+            <div class="tv-slide-header">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span class="tv-slide-icon">🎱</span>
+                    <span class="tv-slide-title">DUELS EN DIRECT SUR LES TABLES</span>
+                </div>
+                <span class="tv-slide-subtitle">Diffusion officielle en direct • 16:9 Plein Écran</span>
+            </div>
+            <div class="tv-hero-grid">
+                {formater_carte_hero_tv(match_t1, 1, "#0284c7", "#0284c7")}
+                {formater_carte_hero_tv(match_t2, 2, "#d97706", "#d97706")}
+            </div>
+            {prochains_html}
+        </div>
+        """
+
+        if is_double_elim:
+            total_slides = 4
+            slide_1_html = f"""
+            <div class="tv-slide" id="tv-slide-1">
+                <div class="bracket-section-header winner" style="font-size: 13.5px; padding: 6px 14px; margin-bottom: 10px;">
+                    🟦 TABLEAU DES GAGNANTS (WINNER BRACKET)
+                </div>
+                {tv_section_winner}
+            </div>
+            """
+            slide_2_html = f"""
+            <div class="tv-slide" id="tv-slide-2">
+                <div class="bracket-section-header loser" style="font-size: 13.5px; padding: 6px 14px; margin-bottom: 10px;">
+                    🟧 TABLEAU DE SECONDE CHANCE (LOSER BRACKET — REPÊCHAGE)
+                </div>
+                {tv_section_loser}
+            </div>
+            """
+            slide_3_html = f"""
+            <div class="tv-slide" id="tv-slide-3">
+                <div class="bracket-section-header finale" style="font-size: 13.5px; padding: 6px 14px; margin-bottom: 10px;">
+                    🏆 GRANDE FINALE OFFICIELLE & PODIUM
+                </div>
+                {tv_section_finale}
+                {podium_html}
+            </div>
+            """
+            slides_all_html = f"{slide_0_html}{slide_1_html}{slide_2_html}{slide_3_html}"
+            pills_nav_html = """
+            <button class="tv-nav-pill active" onclick="choisirSlide(0)">🎱 Tables en direct</button>
+            <button class="tv-nav-pill" onclick="choisirSlide(1)">🟦 Gagnants</button>
+            <button class="tv-nav-pill" onclick="choisirSlide(2)">🟧 Seconde Chance</button>
+            <button class="tv-nav-pill" onclick="choisirSlide(3)">🏆 Grande Finale</button>
+            <button class="tv-nav-pill tv-nav-viewall" onclick="basculerVueComplete()">📜 Vue complète</button>
+            <button class="tv-nav-pill tv-btn-pause" id="btn-pause-play" onclick="basculerPause()">⏸️ Pause</button>
+            """
+        elif is_elim:
+            total_slides = 2
+            slide_1_html = f"""
+            <div class="tv-slide" id="tv-slide-1">
+                <div class="bracket-section-header winner" style="font-size: 13.5px; padding: 6px 14px; margin-bottom: 10px;">
+                    🏆 ARBORESCENCE DU TOURNOI & GRANDE FINALE
+                </div>
+                {tv_section_winner}
+                {podium_html}
+            </div>
+            """
+            slides_all_html = f"{slide_0_html}{slide_1_html}"
+            pills_nav_html = """
+            <button class="tv-nav-pill active" onclick="choisirSlide(0)">🎱 Tables en direct</button>
+            <button class="tv-nav-pill" onclick="choisirSlide(1)">🏆 Arborescence & Finale</button>
+            <button class="tv-nav-pill tv-nav-viewall" onclick="basculerVueComplete()">📜 Vue complète</button>
+            <button class="tv-nav-pill tv-btn-pause" id="btn-pause-play" onclick="basculerPause()">⏸️ Pause</button>
+            """
+        else:
+            total_slides = 2
+            slide_1_html = f"""
+            <div class="tv-slide" id="tv-slide-1">
+                <div class="bracket-section-header winner" style="font-size: 13.5px; padding: 6px 14px; margin-bottom: 10px;">
+                    📊 CLASSEMENT DU CHAMPIONNAT & RÉSULTATS
+                </div>
+                {arborescence_html}
+                {podium_html}
+            </div>
+            """
+            slides_all_html = f"{slide_0_html}{slide_1_html}"
+            pills_nav_html = """
+            <button class="tv-nav-pill active" onclick="choisirSlide(0)">🎱 Tables en direct</button>
+            <button class="tv-nav-pill" onclick="choisirSlide(1)">📊 Classement & Matchs</button>
+            <button class="tv-nav-pill tv-nav-viewall" onclick="basculerVueComplete()">📜 Vue complète</button>
+            <button class="tv-nav-pill tv-btn-pause" id="btn-pause-play" onclick="basculerPause()">⏸️ Pause</button>
+            """
 
         html_tv = f"""<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    
     <title>Mode TV - {titre_t}</title>
     <style>
         html, body {{
             margin: 0;
-            padding: 3px 6px;
+            padding: 4px 8px;
             background: #080d1a !important;
             color: #f8fafc !important;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             color-scheme: dark !important;
+            overflow-x: hidden;
         }}
+
+        /* Navigation et Barre supérieure TV */
         .tv-top-bar {{
             position: sticky;
             top: 0;
@@ -12378,146 +12572,271 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
             background: linear-gradient(135deg, #09101d 0%, #0f1c30 100%) !important;
             border: 1px solid #1e3a5f;
             border-bottom: 2px solid #0284c7;
-            border-radius: 6px;
-            padding: 3px 8px;
-            margin-bottom: 5px;
+            border-radius: 8px;
+            padding: 4px 10px;
+            margin-bottom: 4px;
             box-shadow: 0 4px 14px rgba(0,0,0,0.7);
-            gap: 8px;
+            gap: 10px;
             white-space: nowrap !important;
-            flex-wrap: nowrap !important;
         }}
-        .tv-tables-container {{
+        .tv-pills-container {{
             display: flex;
             align-items: center;
-            gap: 8px;
-            flex-wrap: nowrap !important;
-            white-space: nowrap !important;
-            flex: 1;
-            min-width: 0;
-            overflow: hidden;
-        }}
-        .tv-cedule-title {{
-            background: #0284c7;
-            color: #ffffff;
-            font-size: 11.5px;
-            font-weight: 900;
-            padding: 2px 8px;
-            border-radius: 4px;
-            letter-spacing: 0.6px;
-            text-transform: uppercase;
-            box-shadow: 0 1px 3px rgba(2, 132, 199, 0.4);
-            white-space: nowrap !important;
-            flex-shrink: 0;
-        }}
-        .tv-table-card {{
-            background: #152238;
-            border: 1.5px solid #0284c7;
-            border-radius: 5px;
-            padding: 2px 7px;
-            display: inline-flex;
-            align-items: center;
             gap: 6px;
-            white-space: nowrap !important;
-            flex-shrink: 0;
+            overflow-x: auto;
+            flex: 1;
         }}
-        .tv-table-tag {{
-            background: #0284c7;
-            color: #ffffff;
-            font-weight: 900;
-            padding: 1px 5px;
-            border-radius: 3px;
-            font-size: 11px;
-            letter-spacing: 0.5px;
-            flex-shrink: 0;
-        }}
-        .tv-table-hour {{
-            color: #ffffff !important;
-            font-weight: 800;
-            font-size: 11.5px;
-            background: rgba(255, 255, 255, 0.15);
-            padding: 1px 5px;
-            border-radius: 3px;
-            border: 1px solid rgba(255, 255, 255, 0.5);
-            letter-spacing: 0.3px;
-            flex-shrink: 0;
-        }}
-        .tv-table-versus {{
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            color: #ffffff;
-            font-weight: 700;
+        .tv-nav-pill {{
+            background: #152238;
+            color: #cbd5e1;
+            border: 1px solid #334155;
+            padding: 4px 10px;
+            border-radius: 6px;
             font-size: 12.5px;
-            white-space: nowrap !important;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            white-space: nowrap;
         }}
-        .tv-p-name {{
+        .tv-nav-pill:hover {{
+            background: #1e3a5f;
             color: #ffffff;
-            font-weight: 800;
-            white-space: nowrap !important;
-            display: inline-block;
-            vertical-align: middle;
+            border-color: #38bdf8;
         }}
-        .tv-vs-badge {{
-            color: #38bdf8;
-            font-weight: 900;
-            font-size: 11px;
-            padding: 0 2px;
-            flex-shrink: 0;
+        .tv-nav-pill.active {{
+            background: #0284c7 !important;
+            color: #ffffff !important;
+            border-color: #38bdf8 !important;
+            box-shadow: 0 2px 8px rgba(2, 132, 199, 0.4);
         }}
-        .tv-table-score {{
-            color: #ffffff;
-            background: #0284c7;
-            font-size: 13.5px;
-            font-weight: 900;
-            padding: 1px 5px;
-            border-radius: 3px;
-            margin: 0 2px;
-            box-shadow: 0 1px 3px rgba(2, 132, 199, 0.4);
-            flex-shrink: 0;
+        .tv-btn-pause {{
+            background: #334155 !important;
+            color: #f1f5f9 !important;
         }}
         .tv-info-right {{
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 8px;
             flex-shrink: 0;
-            white-space: nowrap !important;
         }}
         .tv-clock {{
-            font-size: 13.5px;
+            font-size: 14px;
             font-weight: 800;
             color: #ffffff;
             background: #0f172a;
-            padding: 2px 7px;
-            border-radius: 4px;
+            padding: 3px 8px;
+            border-radius: 5px;
             border: 1px solid #334155;
             letter-spacing: 0.5px;
             flex-shrink: 0;
         }}
-        .tv-btn-fs {{
-            background: #4f46e5;
-            color: white;
-            border: none;
-            padding: 2px 7px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: 700;
-            cursor: pointer;
-            flex-shrink: 0;
-            transition: background 0.2s;
+
+        /* Barre de progression du carrousel */
+        .tv-progress-container {{
+            width: 100%;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 2px;
+            margin-bottom: 8px;
+            overflow: hidden;
         }}
-        .tv-btn-fs:hover {{
-            background: #4338ca;
+        .tv-progress-bar {{
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #0284c7, #38bdf8);
+            transition: width 0.1s linear;
         }}
 
-        /* Bracket Styling TV */
-        .bracket-section {{
-            margin: 2px 0 6px 0;
+        /* Slides du Carrousel */
+        .tv-carousel-track {{
+            position: relative;
+            width: 100%;
+            min-height: calc(100vh - 85px);
         }}
-        .bracket-section-header {{
-            font-size: 11px;
+        .tv-slide {{
+            display: none;
+            opacity: 0;
+            transition: opacity 0.35s ease-in-out;
+        }}
+        .tv-slide.active {{
+            display: block;
+            opacity: 1;
+        }}
+        .tv-slide-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #0f172a;
+            border: 1px solid #1e293b;
+            border-left: 5px solid #0284c7;
+            border-radius: 6px;
+            padding: 6px 14px;
+            margin-bottom: 12px;
+        }}
+        .tv-slide-icon {{
+            font-size: 18px;
+        }}
+        .tv-slide-title {{
+            font-size: 14px;
+            font-weight: 900;
+            color: #ffffff;
+            letter-spacing: 0.6px;
+        }}
+        .tv-slide-subtitle {{
+            font-size: 11.5px;
+            font-weight: 600;
+            color: #94a3b8;
+        }}
+
+        /* Cartes XXL Tables en Direct */
+        .tv-hero-grid {{
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+            margin-bottom: 14px;
+        }}
+        .tv-hero-card {{
+            background: linear-gradient(145deg, #131f37 0%, #0d1527 100%);
+            border: 2px solid #1e3a5f;
+            border-radius: 12px;
+            padding: 16px 20px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.55);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            min-height: 210px;
+        }}
+        .tv-hero-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            padding-bottom: 10px;
+            margin-bottom: 10px;
+        }}
+        .tv-hero-tag {{
+            font-size: 14px;
+            font-weight: 900;
+            padding: 3px 10px;
+            border-radius: 5px;
+            color: #ffffff;
+            letter-spacing: 0.6px;
+        }}
+        .tv-hero-round {{
+            font-size: 13.5px;
             font-weight: 800;
-            padding: 3px 8px;
-            margin: 4px 0 4px 0;
+            color: #94a3b8;
+        }}
+        .tv-hero-time {{
+            font-size: 12px;
+            font-weight: 800;
+            padding: 2px 8px;
+            border-radius: 4px;
+            background: rgba(2, 132, 199, 0.2);
+            color: #38bdf8;
+            border: 1px solid #0284c7;
+        }}
+        .tv-hero-body {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            gap: 12px;
+        }}
+        .tv-hero-player {{
+            flex: 1;
+            text-align: center;
+        }}
+        .tv-hero-pname {{
+            font-size: 24px;
+            font-weight: 800;
+            color: #ffffff;
+            line-height: 1.25;
+            word-break: break-word;
+        }}
+        .tv-hero-vs-badge {{
+            font-size: 22px;
+            font-weight: 900;
+            color: #38bdf8;
+            padding: 0 10px;
+            flex-shrink: 0;
+        }}
+        .tv-hero-score-badge {{
+            background: linear-gradient(135deg, #0284c7, #0369a1);
+            color: #ffffff;
+            font-size: 32px;
+            font-weight: 900;
+            padding: 4px 16px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(2, 132, 199, 0.45);
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+        }}
+        .tv-hero-footer {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px solid rgba(255,255,255,0.08);
+            padding-top: 10px;
+            margin-top: 10px;
+            font-size: 12.5px;
+            color: #94a3b8;
+        }}
+
+        /* Prochains Duels */
+        .tv-next-section {{
+            background: #0f172a;
+            border: 1px solid #1e293b;
+            border-radius: 10px;
+            padding: 12px 16px;
+        }}
+        .tv-next-title {{
+            font-size: 13px;
+            font-weight: 800;
+            color: #38bdf8;
+            letter-spacing: 0.6px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }}
+        .tv-next-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 10px;
+        }}
+        .tv-next-card {{
+            background: #152238;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 8px 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }}
+        .tv-next-tag {{
+            background: #0284c7;
+            color: white;
+            font-size: 11px;
+            font-weight: 900;
+            padding: 1px 6px;
+            border-radius: 4px;
+        }}
+        .tv-next-time {{
+            background: rgba(255, 255, 255, 0.1);
+            color: #cbd5e1;
+            padding: 1px 6px;
+            border-radius: 3px;
+            font-weight: 700;
+        }}
+
+        /* Styles Arborescence TV */
+        .bracket-section-header {{
+            font-size: 12px;
+            font-weight: 800;
+            padding: 4px 10px;
+            margin: 4px 0 6px 0;
             border-radius: 4px;
             letter-spacing: 0.6px;
         }}
@@ -12549,8 +12868,8 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
             display: flex;
             flex-direction: column;
             flex: 1;
-            min-width: 220px;
-            max-width: 300px;
+            min-width: 230px;
+            max-width: 310px;
             background: #111c35;
             border-radius: 10px;
             border: 1.5px solid #233554;
@@ -12681,40 +13000,150 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
 </head>
 <body>
     <div class="tv-top-bar">
-        <div class="tv-tables-container">
-            <div class="tv-cedule-title">📅 Cédule</div>
-            {t1_card_html}
-            {t2_card_html}
+        <div class="tv-pills-container">
+            {pills_nav_html}
         </div>
         <div class="tv-info-right">
-            <div class="tv-clock" id="tv-clock">--:--</div>
+            <div class="tv-clock" id="tv-clock">--:--:--</div>
         </div>
     </div>
-    {podium_html}
-    {arborescence_html}
+    <div class="tv-progress-container">
+        <div class="tv-progress-bar" id="tv-pbar"></div>
+    </div>
+
+    <div class="tv-carousel-track">
+        {slides_all_html}
+    </div>
+
     <script>
+    var dureeSlide = 18000; // 18 secondes par vue
+    var totalSlides = {total_slides};
+    var currentSlide = 0;
+    var isPaused = false;
+    var vueComplete = false;
+    var startTime = Date.now();
+    var animId = null;
+
+    try {{
+        var savedIdx = sessionStorage.getItem('tv_slide_index');
+        if (savedIdx !== null && !isNaN(parseInt(savedIdx, 10))) {{
+            currentSlide = parseInt(savedIdx, 10) % totalSlides;
+        }}
+        var savedVue = sessionStorage.getItem('tv_vue_complete');
+        if (savedVue === 'true') {{
+            vueComplete = true;
+        }}
+        var savedPause = sessionStorage.getItem('tv_is_paused');
+        if (savedPause === 'true') {{
+            isPaused = true;
+        }}
+    }} catch(e) {{}}
+
+    function actualiserAffichage() {{
+        var slides = document.querySelectorAll('.tv-slide');
+        var pills = document.querySelectorAll('.tv-nav-pill:not(.tv-nav-viewall):not(.tv-btn-pause)');
+        var btnVueAll = document.querySelector('.tv-nav-viewall');
+        var btnPause = document.getElementById('btn-pause-play');
+        var pbar = document.getElementById('tv-pbar');
+
+        if (vueComplete) {{
+            slides.forEach(function(s) {{
+                s.style.display = 'block';
+                s.style.opacity = '1';
+                s.style.marginBottom = '20px';
+            }});
+            pills.forEach(function(p) {{ p.classList.remove('active'); }});
+            if (btnVueAll) btnVueAll.classList.add('active');
+            if (btnPause) btnPause.innerText = '⏸️ En pause';
+            if (pbar) pbar.style.width = '0%';
+            return;
+        }}
+
+        if (btnVueAll) btnVueAll.classList.remove('active');
+        slides.forEach(function(s, i) {{
+            if (i === currentSlide) {{
+                s.style.display = 'block';
+                s.style.marginBottom = '0';
+                setTimeout(function() {{ s.style.opacity = '1'; }}, 10);
+            }} else {{
+                s.style.display = 'none';
+                s.style.opacity = '0';
+            }}
+        }});
+
+        pills.forEach(function(p, i) {{
+            if (i === currentSlide) p.classList.add('active');
+            else p.classList.remove('active');
+        }});
+
+        if (btnPause) {{
+            btnPause.innerText = isPaused ? '▶️ Reprendre' : '⏸️ Pause';
+        }}
+    }}
+
+    function choisirSlide(idx) {{
+        vueComplete = false;
+        currentSlide = idx;
+        startTime = Date.now();
+        try {{
+            sessionStorage.setItem('tv_slide_index', idx);
+            sessionStorage.setItem('tv_vue_complete', 'false');
+        }} catch(e) {{}}
+        actualiserAffichage();
+    }}
+
+    function basculerVueComplete() {{
+        vueComplete = !vueComplete;
+        try {{
+            sessionStorage.setItem('tv_vue_complete', vueComplete ? 'true' : 'false');
+        }} catch(e) {{}}
+        actualiserAffichage();
+    }}
+
+    function basculerPause() {{
+        if (vueComplete) {{
+            vueComplete = false;
+            try {{ sessionStorage.setItem('tv_vue_complete', 'false'); }} catch(e) {{}}
+        }}
+        isPaused = !isPaused;
+        startTime = Date.now();
+        try {{
+            sessionStorage.setItem('tv_is_paused', isPaused ? 'true' : 'false');
+        }} catch(e) {{}}
+        actualiserAffichage();
+    }}
+
+    function boucleAnimation() {{
+        if (!vueComplete && !isPaused) {{
+            var elapsed = Date.now() - startTime;
+            var pct = Math.min(100, (elapsed / dureeSlide) * 100);
+            var pbar = document.getElementById('tv-pbar');
+            if (pbar) pbar.style.width = pct + '%';
+
+            if (elapsed >= dureeSlide) {{
+                currentSlide = (currentSlide + 1) % totalSlides;
+                startTime = Date.now();
+                try {{ sessionStorage.setItem('tv_slide_index', currentSlide); }} catch(e) {{}}
+                actualiserAffichage();
+            }}
+        }}
+        animId = requestAnimationFrame(boucleAnimation);
+    }}
+
+    actualiserAffichage();
+    animId = requestAnimationFrame(boucleAnimation);
+
+    // Horloge avec secondes
     function updateClock() {{
         var now = new Date();
         var h = String(now.getHours()).padStart(2, '0');
         var m = String(now.getMinutes()).padStart(2, '0');
+        var s = String(now.getSeconds()).padStart(2, '0');
         var el = document.getElementById('tv-clock');
-        if (el) el.innerText = h + ':' + m;
+        if (el) el.innerText = h + ':' + m + ':' + s;
     }}
     setInterval(updateClock, 1000);
     updateClock();
-
-    // Rafraîchissement automatique de la page désactivé (actualisation propre via le bouton Actualiser)
-
-    function toggleFullScreen() {{
-        var doc = window.parent.document;
-        if (!doc.fullscreenElement) {{
-            if (doc.documentElement.requestFullscreen) doc.documentElement.requestFullscreen();
-            else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
-        }} else {{
-            if (doc.exitFullscreen) doc.exitFullscreen();
-            else if (document.exitFullscreen) document.exitFullscreen();
-        }}
-    }}
     </script>
 </body>
 </html>
