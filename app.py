@@ -93,6 +93,18 @@ ARMOIRIES_FILE = find_armoiries_path()
 LOCK_FILE = get_data_path("session_lock.json")
 LOCK_TIMEOUT = 900  # 15 minutes d'inactivité avant libération automatique
 
+def _cle_match_unique(m):
+    """Génère une clé unique pour un match afin d'éviter les doublons et les pertes lors des synchronisations."""
+    if not isinstance(m, dict):
+        return ""
+    r = str(m.get("receveur") or "").strip().lower()
+    v = str(m.get("visiteur") or "").strip().lower()
+    d = str(m.get("date") or m.get("date_enregistrement") or "").strip()
+    d_clean = "".join(c for c in d[:10] if c.isdigit())
+    tot_r = str(m.get("total_receveur") if m.get("total_receveur") is not None else "")
+    tot_v = str(m.get("total_visiteur") if m.get("total_visiteur") is not None else "")
+    return f"{r}|{v}|{d_clean}|{tot_r}|{tot_v}"
+
 @st.cache_data
 def charger_armoiries_base64(max_taille=(160, 160)):
     """Charge l'image des armoiries, la redimensionne proprement et la renvoie en data URI base64."""
@@ -1036,6 +1048,27 @@ def synchroniser_fichier_github(filepath, commit_message=None):
             except Exception:
                 pass
 
+            if sha_actuel and filename == "historique_matchs.json":
+                try:
+                    gh_raw = telecharger_fichier_brut_depuis_github("historique_matchs.json", ref_override=sha_actuel)
+                    if gh_raw:
+                        gh_m_list = json.loads(gh_raw.decode("utf-8-sig"))
+                        if isinstance(gh_m_list, list) and len(gh_m_list) > 0:
+                            loc_m_list = json.loads(raw_bytes.decode("utf-8-sig"))
+                            if isinstance(loc_m_list, list):
+                                cles_loc = {_cle_match_unique(m) for m in loc_m_list if isinstance(m, dict)}
+                                a_recup = [m for m in gh_m_list if isinstance(m, dict) and _cle_match_unique(m) not in cles_loc]
+                                if a_recup:
+                                    loc_m_list.extend(a_recup)
+                                    raw_bytes = json.dumps(loc_m_list, ensure_ascii=False, indent=4).encode("utf-8")
+                                    with open(filepath, "wb") as f_rew:
+                                        f_rew.write(raw_bytes)
+                                    _FILE_MEM_CACHE.pop("historique_matchs", None)
+                                    git_blob_sha = hashlib.sha1(f"blob {len(raw_bytes)}\0".encode("utf-8") + raw_bytes).hexdigest()
+                                    b64_content = base64.b64encode(raw_bytes).decode("ascii")
+                except Exception:
+                    pass
+
             if sha_actuel and sha_actuel == git_blob_sha:
                 return True, f"Fichier {filename} déjà strictement à jour sur GitHub."
 
@@ -1795,6 +1828,26 @@ def synchroniser_fichier_supabase(filepath, commit_message=None):
             except Exception:
                 pass
 
+        # Protection anti-perte de matchs pour historique_matchs.json
+        if filename == "historique_matchs.json":
+            try:
+                raw_ex = telecharger_fichier_supabase("historique_matchs.json")
+                if raw_ex:
+                    sb_ex_list = json.loads(raw_ex)
+                    if isinstance(sb_ex_list, list) and len(sb_ex_list) > 0:
+                        cur_m_list = json.loads(content)
+                        if isinstance(cur_m_list, list):
+                            cles_loc = {_cle_match_unique(m) for m in cur_m_list if isinstance(m, dict)}
+                            sb_a_garder = [m for m in sb_ex_list if isinstance(m, dict) and _cle_match_unique(m) not in cles_loc]
+                            if sb_a_garder:
+                                cur_m_list.extend(sb_a_garder)
+                                content = json.dumps(cur_m_list, ensure_ascii=False, indent=4)
+                                with open(filepath, "w", encoding="utf-8") as f_rew:
+                                    f_rew.write(content)
+                                _FILE_MEM_CACHE.pop("historique_matchs", None)
+            except Exception:
+                pass
+
         sha1_val = hashlib.sha1(content.encode("utf-8")).hexdigest()
         payload = {
             "filename": filename,
@@ -1898,11 +1951,122 @@ def synchroniser_tous_les_fichiers_github(commit_prefix=None):
     """Route automatiquement toutes les sauvegardes vers le moteur Cloud actif (Supabase ou GitHub)."""
     return synchroniser_tous_les_fichiers_cloud(commit_prefix=commit_prefix)
 
+def restaurer_tout_depuis_supabase(forcer=False):
+    """Restaure l'ensemble des donnees officielles (.json et .csv) depuis la table public.saphir_files de Supabase PostgreSQL avec fusion securisee."""
+    try:
+        nb_maj_sb = 0
+        details_sb = []
+
+        # 1. Historique des matchs (fusion securisee anti-perte)
+        raw_hm = telecharger_fichier_supabase("historique_matchs.json")
+        if raw_hm:
+            sb_matchs = json.loads(raw_hm)
+            if isinstance(sb_matchs, list) and len(sb_matchs) > 0:
+                loc_matchs = []
+                if os.path.exists(HISTORIQUE_FILE):
+                    try:
+                        with open(HISTORIQUE_FILE, "r", encoding="utf-8") as f_r:
+                            loc_matchs = json.load(f_r)
+                        if not isinstance(loc_matchs, list):
+                            loc_matchs = []
+                    except Exception:
+                        loc_matchs = []
+
+                cles_sb = {_cle_match_unique(m) for m in sb_matchs if _cle_match_unique(m)}
+                locaux_a_garder = [m for m in loc_matchs if isinstance(m, dict) and _cle_match_unique(m) not in cles_sb]
+                matchs_fusionnes = sb_matchs + locaux_a_garder
+
+                tmp_p = f"{HISTORIQUE_FILE}.tmp"
+                with open(tmp_p, "w", encoding="utf-8") as f_tmp:
+                    json.dump(matchs_fusionnes, f_tmp, ensure_ascii=False, indent=4)
+                try:
+                    os.replace(tmp_p, HISTORIQUE_FILE)
+                except Exception:
+                    with open(HISTORIQUE_FILE, "w", encoding="utf-8") as f_w:
+                        json.dump(matchs_fusionnes, f_w, ensure_ascii=False, indent=4)
+                    if os.path.exists(tmp_p):
+                        try:
+                            os.remove(tmp_p)
+                        except Exception:
+                            pass
+                try:
+                    _FILE_MEM_CACHE.pop("historique_matchs", None)
+                except Exception:
+                    pass
+                nb_maj_sb += 1
+                details_sb.append(f"historique_matchs.json ({len(matchs_fusionnes)} matchs)")
+
+        # 2. Historique des tournois
+        raw_ht = telecharger_fichier_supabase("historique_tournois.json")
+        if raw_ht:
+            sb_tournois = json.loads(raw_ht)
+            if isinstance(sb_tournois, list) and len(sb_tournois) > 0:
+                with open(HISTORIQUE_TOURNOIS_FILE, "w", encoding="utf-8") as f_wt:
+                    json.dump(sb_tournois, f_wt, ensure_ascii=False, indent=4)
+                try:
+                    _FILE_MEM_CACHE.pop("historique_tournois", None)
+                except Exception:
+                    pass
+                nb_maj_sb += 1
+                details_sb.append(f"historique_tournois.json ({len(sb_tournois)} tournois)")
+
+        # 3. Donnees des tournois actifs
+        raw_td = telecharger_fichier_supabase("tournois_data.json")
+        if raw_td:
+            sb_td = json.loads(raw_td)
+            if isinstance(sb_td, dict) and sb_td:
+                with open(TOURNOIS_FILE, "w", encoding="utf-8") as f_wtd:
+                    json.dump(sb_td, f_wtd, ensure_ascii=False, indent=4)
+                try:
+                    _FILE_MEM_CACHE.pop("tournois_data", None)
+                except Exception:
+                    pass
+                nb_maj_sb += 1
+                details_sb.append("tournois_data.json")
+
+        # 4. Equipes CSV
+        raw_eq = telecharger_fichier_supabase("equipes-saphir.csv")
+        if raw_eq and len(raw_eq.strip()) > 10:
+            with open(EQUIPES_CSV_FILE, "w", encoding="utf-8") as f_weq:
+                f_weq.write(raw_eq)
+            try:
+                _FILE_MEM_CACHE.pop("equipes_csv", None)
+            except Exception:
+                pass
+            nb_maj_sb += 1
+            details_sb.append("equipes-saphir.csv")
+
+        # 5. Autres fichiers
+        for fn_autre, fp_autre in [
+            ("horaire_saphir.json", HORAIRE_SAPHIR_FILE),
+            ("joueurs_stats.csv", JOUEURS_CSV_FILE),
+            ("config_email.json", CONFIG_EMAIL_FILE),
+            ("joueurs_sms.json", JOUEURS_SMS_FILE),
+            ("config_sms.json", CONFIG_SMS_FILE),
+            ("commandes_sms.json", COMMANDES_SMS_FILE)
+        ]:
+            raw_autre = telecharger_fichier_supabase(fn_autre)
+            if raw_autre and len(raw_autre.strip()) > 0:
+                with open(fp_autre, "w", encoding="utf-8") as f_wa:
+                    f_wa.write(raw_autre)
+                try:
+                    _FILE_MEM_CACHE.pop(fn_autre.replace(".", "_"), None)
+                except Exception:
+                    pass
+                nb_maj_sb += 1
+                details_sb.append(fn_autre)
+
+        if nb_maj_sb > 0:
+            return True, f"Donnees restaurees depuis Supabase PostgreSQL : {', '.join(details_sb)}."
+        return False, "Aucun fichier mis a jour depuis Supabase."
+    except Exception as e_sb_rst:
+        return False, f"Erreur lors de la restauration Supabase : {e_sb_rst}"
+
 def restaurer_depuis_cloud_au_reveil(forcer=False):
-    """Au réveil de l'application ou sur demande, restaure les données les plus récentes depuis Supabase (Mode 1/2) ou GitHub (Mode 3)."""
+    """Au reveil de l'application ou sur demande, restaure les donnees les plus recentes depuis Supabase (Mode 1/2) ou GitHub (Mode 3)."""
     try:
         if not forcer and st.session_state.get("cloud_wake_sync_done", False):
-            return False, "Déjà synchronisé pour cette session."
+            return False, "Deja synchronise pour cette session."
     except Exception:
         pass
 
@@ -1910,109 +2074,21 @@ def restaurer_depuis_cloud_au_reveil(forcer=False):
 
     # Si Mode 1 ou Mode 2 : Restauration depuis Supabase prioritaire
     if mode in ("supabase", "supabase_github"):
-        try:
-            nb_maj_sb = 0
-            details_sb = []
-
-            # 1. Historique des matchs (fusion sécurisée des matchs locaux non poussés)
-            raw_hm = telecharger_fichier_supabase("historique_matchs.json")
-            if raw_hm:
-                sb_matchs = json.loads(raw_hm)
-                if isinstance(sb_matchs, list) and len(sb_matchs) > 0:
-                    loc_matchs = []
-                    if os.path.exists(HISTORIQUE_FILE):
-                        try:
-                            with open(HISTORIQUE_FILE, "r", encoding="utf-8") as f_r:
-                                loc_matchs = json.load(f_r)
-                            if not isinstance(loc_matchs, list):
-                                loc_matchs = []
-                        except Exception:
-                            loc_matchs = []
-
-                    def _cle_match_sb(m):
-                        if not isinstance(m, dict):
-                            return ""
-                        r = str(m.get("receveur") or "").strip().lower()
-                        v = str(m.get("visiteur") or "").strip().lower()
-                        d = str(m.get("date") or m.get("date_enregistrement") or "").strip()[:10]
-                        return f"{r}|{v}|{d}"
-
-                    cles_sb = {_cle_match_sb(m) for m in sb_matchs if _cle_match_sb(m)}
-                    locaux_a_garder = [m for m in loc_matchs if isinstance(m, dict) and _cle_match_sb(m) not in cles_sb]
-                    matchs_fusionnes = sb_matchs + locaux_a_garder
-
-                    tmp_p = f"{HISTORIQUE_FILE}.tmp"
-                    with open(tmp_p, "w", encoding="utf-8") as f_tmp:
-                        json.dump(matchs_fusionnes, f_tmp, ensure_ascii=False, indent=4)
-                    try:
-                        os.replace(tmp_p, HISTORIQUE_FILE)
-                    except Exception:
-                        with open(HISTORIQUE_FILE, "w", encoding="utf-8") as f_w:
-                            json.dump(matchs_fusionnes, f_w, ensure_ascii=False, indent=4)
-                        if os.path.exists(tmp_p):
-                            try:
-                                os.remove(tmp_p)
-                            except Exception:
-                                pass
-                    nb_maj_sb += 1
-                    details_sb.append(f"historique_matchs.json ({len(matchs_fusionnes)} matchs)")
-
-            # 2. Historique des tournois
-            raw_ht = telecharger_fichier_supabase("historique_tournois.json")
-            if raw_ht:
-                sb_tournois = json.loads(raw_ht)
-                if isinstance(sb_tournois, list) and len(sb_tournois) > 0:
-                    with open(HISTORIQUE_TOURNOIS_FILE, "w", encoding="utf-8") as f_wt:
-                        json.dump(sb_tournois, f_wt, ensure_ascii=False, indent=4)
-                    nb_maj_sb += 1
-                    details_sb.append(f"historique_tournois.json ({len(sb_tournois)} tournois)")
-
-            # 3. Données des tournois actifs
-            raw_td = telecharger_fichier_supabase("tournois_data.json")
-            if raw_td:
-                sb_td = json.loads(raw_td)
-                if isinstance(sb_td, dict) and sb_td:
-                    with open(TOURNOIS_FILE, "w", encoding="utf-8") as f_wtd:
-                        json.dump(sb_td, f_wtd, ensure_ascii=False, indent=4)
-                    nb_maj_sb += 1
-                    details_sb.append("tournois_data.json")
-
-            # 4. Équipes CSV
-            raw_eq = telecharger_fichier_supabase("equipes-saphir.csv")
-            if raw_eq and len(raw_eq.strip()) > 10:
-                with open(EQUIPES_CSV_FILE, "w", encoding="utf-8") as f_weq:
-                    f_weq.write(raw_eq)
-                nb_maj_sb += 1
-                details_sb.append("equipes-saphir.csv")
-
-            # 5. Autres fichiers (horaire, joueurs_stats, config_email)
-            for fn_autre, fp_autre in [
-                ("horaire_saphir.json", HORAIRE_SAPHIR_FILE),
-                ("joueurs_stats.csv", JOUEURS_CSV_FILE),
-                ("config_email.json", CONFIG_EMAIL_FILE),
-                ("joueurs_sms.json", JOUEURS_SMS_FILE),
-                ("config_sms.json", CONFIG_SMS_FILE),
-                ("commandes_sms.json", COMMANDES_SMS_FILE)
-            ]:
-                raw_autre = telecharger_fichier_supabase(fn_autre)
-                if raw_autre:
-                    with open(fp_autre, "w", encoding="utf-8") as f_wa:
-                        f_wa.write(raw_autre)
-                    nb_maj_sb += 1
-                    details_sb.append(fn_autre)
-
+        ok_sb, msg_sb = restaurer_tout_depuis_supabase(forcer=forcer)
+        if ok_sb:
             try:
                 st.session_state["cloud_wake_sync_done"] = True
             except Exception:
                 pass
-
-            if nb_maj_sb > 0:
-                return True, f"Données restaurées depuis Supabase PostgreSQL : {', '.join(details_sb)}."
-        except Exception:
-            pass
+            return True, msg_sb
 
     # En repli ou en Mode 3 : Restauration depuis GitHub
-    return restaurer_depuis_github_au_reveil(forcer=forcer)
+    res_gh, msg_gh = restaurer_depuis_github_au_reveil(forcer=forcer)
+    try:
+        st.session_state["cloud_wake_sync_done"] = True
+    except Exception:
+        pass
+    return res_gh, msg_gh
 
 import copy
 import threading
@@ -2044,13 +2120,19 @@ def _ecrire_cache_fichier(cle_cache, filepath, data):
     except Exception:
         pass
 
-def declencher_sync_github_arriere_plan(delai=1.5, commit_prefix=None):
-    """Déclenche la synchronisation GitHub en arrière-plan avec anti-rebond (debounce) pour regrouper les saisies rapides sans bloquer l'UI."""
+def declencher_sync_github_arriere_plan(delai=1.5, commit_prefix=None, filepath=None):
+    """Déclenche la synchronisation Cloud en arrière-plan avec anti-rebond (debounce).
+    Si filepath est renseigné, ne synchronise que ce fichier précis pour éviter d'écraser les autres données.
+    Si filepath est None, synchronise tous les fichiers.
+    """
     global _SYNC_GITHUB_TIMER
     delai_effectif = max(float(delai or 1.5), 2.5)
     def _worker():
         try:
-            synchroniser_tous_les_fichiers_github(commit_prefix=commit_prefix)
+            if filepath:
+                synchroniser_fichier_cloud(filepath, commit_prefix)
+            else:
+                synchroniser_tous_les_fichiers_github(commit_prefix=commit_prefix)
         except Exception:
             pass
     with _SYNC_GITHUB_LOCK:
@@ -2170,7 +2252,7 @@ def sauvegarder_donnees(data):
         data["ts_modif"] = time.time()
         with open(BACKUP_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
-        declencher_sync_github_arriere_plan(delai=6.0, commit_prefix="Sauvegarde saisie secours")
+        declencher_sync_github_arriere_plan(delai=6.0, commit_prefix="Sauvegarde saisie secours", filepath=BACKUP_FILE)
     except Exception as e:
         st.error(f"Erreur lors de la sauvegarde automatique : {e}")
 
@@ -2868,7 +2950,7 @@ def sauvegarder_joueurs_stats_csv(joueurs_raw, equipes_raw, filepath=JOUEURS_CSV
             writer = csv.DictWriter(f, fieldnames=["Nom", "Points", "Moyenne", "Semaines", "Rang", "Equipe"])
             writer.writeheader()
             writer.writerows(lignes)
-        declencher_sync_github_arriere_plan(delai=1.0, commit_prefix=f"Sauvegarde joueurs_stats.csv ({len(lignes)} joueurs)")
+        declencher_sync_github_arriere_plan(delai=1.0, commit_prefix=f"Sauvegarde joueurs_stats.csv ({len(lignes)} joueurs)", filepath=JOUEURS_CSV_FILE)
         return True
     except Exception:
         return False
@@ -2961,7 +3043,7 @@ def sauvegarder_horaire_json(lignes_horaire):
     try:
         with open(HORAIRE_SAPHIR_FILE, "w", encoding="utf-8") as f:
             json.dump(lignes_horaire, f, indent=2, ensure_ascii=False)
-        declencher_sync_github_arriere_plan(delai=1.0, commit_prefix=f"Sauvegarde horaire_saphir.json ({len(lignes_horaire)} rencontres)")
+        declencher_sync_github_arriere_plan(delai=1.0, commit_prefix=f"Sauvegarde horaire_saphir.json ({len(lignes_horaire)} rencontres)", filepath=HORAIRE_SAPHIR_FILE)
     except Exception:
         pass
 
@@ -3381,7 +3463,7 @@ def sauvegarder_cle_gemini(cle_api):
     try:
         with open(ADMIN_CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump(cfg, f, ensure_ascii=False, indent=4)
-        declencher_sync_github_arriere_plan(delai=1.0, commit_prefix="Mise a jour cle Gemini API")
+        declencher_sync_github_arriere_plan(delai=1.0, commit_prefix="Mise a jour cle Gemini API", filepath=ADMIN_CONFIG_FILE)
         return True
     except Exception:
         return False
@@ -6239,7 +6321,7 @@ def sauvegarder_config_api_saphir(api_key, url=None):
     try:
         with open(ADMIN_CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump(cfg, f, ensure_ascii=False, indent=4)
-        declencher_sync_github_arriere_plan(delai=1.0, commit_prefix="Mise a jour cle API Saphir")
+        declencher_sync_github_arriere_plan(delai=1.0, commit_prefix="Mise a jour cle API Saphir", filepath=ADMIN_CONFIG_FILE)
         return True
     except Exception:
         return False
@@ -7787,6 +7869,17 @@ def charger_historique_matchs():
                 continue
     # Repli de sécurité : tenter de récupérer la sauvegarde officielle directement depuis GitHub
     try:
+        raw_sb = telecharger_fichier_supabase("historique_matchs.json")
+        if raw_sb:
+            sb_data = json.loads(raw_sb)
+            if isinstance(sb_data, list) and len(sb_data) > 0:
+                with open(HISTORIQUE_FILE, "w", encoding="utf-8") as f_w:
+                    json.dump(sb_data, f_w, ensure_ascii=False, indent=4)
+                _ecrire_cache_fichier("historique_matchs", HISTORIQUE_FILE, sb_data)
+                return sb_data
+    except Exception:
+        pass
+    try:
         gh_data = telecharger_json_depuis_github("historique_matchs.json")
         if isinstance(gh_data, list) and len(gh_data) > 0:
             with open(HISTORIQUE_FILE, "w", encoding="utf-8") as f_w:
@@ -7837,13 +7930,13 @@ def sauvegarder_historique_matchs(historique_list):
                     os.remove(tmp_file)
                 except Exception:
                     pass
-        declencher_sync_github_arriere_plan(delai=1.0, commit_prefix=f"Sauvegarde match ({len(historique_list)} matchs)")
+        declencher_sync_github_arriere_plan(delai=1.0, commit_prefix=f"Sauvegarde match ({len(historique_list)} matchs)", filepath=HISTORIQUE_FILE)
         return True
     except Exception as e:
         try:
             with open(HISTORIQUE_FILE, "w", encoding="utf-8") as f_direct:
                 json.dump(historique_list, f_direct, ensure_ascii=False, indent=4)
-            declencher_sync_github_arriere_plan(delai=1.0, commit_prefix=f"Sauvegarde match ({len(historique_list)} matchs)")
+            declencher_sync_github_arriere_plan(delai=1.0, commit_prefix=f"Sauvegarde match ({len(historique_list)} matchs)", filepath=HISTORIQUE_FILE)
             return True
         except Exception:
             st.error(f"Erreur lors de la sauvegarde de l'historique des matchs : {e}")
@@ -15851,13 +15944,13 @@ def afficher_tableau_de_bord_progression(historique):
 injecter_meta_icones_mobiles()
 injecter_theme_css_saphir()
 
-# Synchronisation au démarrage en arrière-plan (non bloquante pour un chargement instantané de l'interface)
+# Synchronisation sécurisée au réveil de l'application (exécutée une seule fois par session pour garantir la présence intégrale des matchs)
 try:
     if not st.session_state.get("cloud_wake_sync_done", False):
+        maj_wake, msg_wake = restaurer_depuis_cloud_au_reveil(forcer=False)
         st.session_state["cloud_wake_sync_done"] = True
-        import threading
-        t_wake = threading.Thread(target=restaurer_depuis_cloud_au_reveil, daemon=True)
-        t_wake.start()
+        if maj_wake and hasattr(st, "toast"):
+            st.toast(f"☁️ Réveil Cloud : {msg_wake}", icon="⚡")
 except Exception:
     pass
 
@@ -19540,10 +19633,10 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                                 m_c.pop("html", None)
                                 hist_m_clean.append(m_c)
 
-                        col_btn_m1, col_btn_m2 = st.columns(2)
+                        col_btn_m1, col_btn_m2, col_btn_m3 = st.columns(3)
                         with col_btn_m1:
                             st.download_button(
-                                label="📥 Télécharger historique_matchs.json",
+                                label="📥 Télécharger JSON",
                                 data=json.dumps(hist_m_clean, ensure_ascii=False, indent=4),
                                 file_name="historique_matchs.json",
                                 mime="application/json",
@@ -19551,7 +19644,51 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                                 key="btn_dl_json_matchs"
                             )
                         with col_btn_m2:
-                            if st.button("🔄 Récupérer depuis GitHub", use_container_width=True, key="btn_pull_gh_matchs_specifique", help="Télécharge et restaure la sauvegarde la plus récente de l'historique des matchs depuis GitHub"):
+                            if st.button("⚡ Restaurer Supabase", use_container_width=True, key="btn_pull_sb_matchs_specifique", help="Télécharge et restaure l'historique des matchs depuis Supabase PostgreSQL avec fusion intelligente"):
+                                with st.spinner("Restauration depuis Supabase PostgreSQL..."):
+                                    raw_sb_m = telecharger_fichier_supabase("historique_matchs.json")
+                                    if raw_sb_m:
+                                        try:
+                                            sb_list = json.loads(raw_sb_m)
+                                            if isinstance(sb_list, list) and len(sb_list) > 0:
+                                                if os.path.exists(HISTORIQUE_FILE):
+                                                    try:
+                                                        with open(f"{HISTORIQUE_FILE}.bak", "wb") as f_bak:
+                                                            with open(HISTORIQUE_FILE, "rb") as f_cur:
+                                                                f_bak.write(f_cur.read())
+                                                    except Exception:
+                                                        pass
+                                                loc_matchs = []
+                                                if os.path.exists(HISTORIQUE_FILE):
+                                                    try:
+                                                        with open(HISTORIQUE_FILE, "r", encoding="utf-8") as f_r:
+                                                            loc_matchs = json.load(f_r)
+                                                        if not isinstance(loc_matchs, list):
+                                                            loc_matchs = []
+                                                    except Exception:
+                                                        loc_matchs = []
+                                                cles_sb = {_cle_match_unique(m) for m in sb_list if _cle_match_unique(m)}
+                                                locaux_a_garder = [m for m in loc_matchs if isinstance(m, dict) and _cle_match_unique(m) not in cles_sb]
+                                                fusion = sb_list + locaux_a_garder
+                                                with open(HISTORIQUE_FILE, "w", encoding="utf-8") as f_w:
+                                                    json.dump(fusion, f_w, ensure_ascii=False, indent=4)
+                                                try:
+                                                    _FILE_MEM_CACHE.pop("historique_matchs", None)
+                                                except Exception:
+                                                    pass
+                                                st.session_state.pop("select_match_to_rectify", None)
+                                                st.session_state.pop("choix_match_vue", None)
+                                                st.session_state["msg_restauration_matchs_succes"] = f"✅ {len(fusion)} match(s) restauré(s) depuis Supabase PostgreSQL !"
+                                                time.sleep(0.8)
+                                                st.rerun()
+                                            else:
+                                                st.error("Le fichier sur Supabase ne contient aucun match valide.")
+                                        except Exception as e_p_sb:
+                                            st.error(f"Erreur lors de la lecture Supabase : {e_p_sb}")
+                                    else:
+                                        st.error("Impossible de récupérer historique_matchs.json depuis Supabase.")
+                        with col_btn_m3:
+                            if st.button("🐙 Restaurer GitHub", use_container_width=True, key="btn_pull_gh_matchs_specifique", help="Télécharge et restaure l'historique des matchs depuis GitHub avec fusion sécurisée"):
                                 with st.spinner("Téléchargement de la plus récente sauvegarde depuis GitHub..."):
                                     commit_m = obtenir_infos_dernier_commit_github("historique_matchs.json")
                                     gh_raw_m = telecharger_fichier_brut_depuis_github("historique_matchs.json", ref_override=commit_m.get("sha") if commit_m else None)
@@ -19566,12 +19703,28 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                                                                 f_bak.write(f_cur.read())
                                                     except Exception:
                                                         pass
-                                                with open(HISTORIQUE_FILE, "wb") as f_w:
-                                                    f_w.write(gh_raw_m)
+                                                loc_matchs = []
+                                                if os.path.exists(HISTORIQUE_FILE):
+                                                    try:
+                                                        with open(HISTORIQUE_FILE, "r", encoding="utf-8") as f_r:
+                                                            loc_matchs = json.load(f_r)
+                                                        if not isinstance(loc_matchs, list):
+                                                            loc_matchs = []
+                                                    except Exception:
+                                                        loc_matchs = []
+                                                cles_gh = {_cle_match_unique(m) for m in gh_list if _cle_match_unique(m)}
+                                                locaux_a_garder = [m for m in loc_matchs if isinstance(m, dict) and _cle_match_unique(m) not in cles_gh]
+                                                fusion = gh_list + locaux_a_garder
+                                                with open(HISTORIQUE_FILE, "w", encoding="utf-8") as f_w:
+                                                    json.dump(fusion, f_w, ensure_ascii=False, indent=4)
+                                                try:
+                                                    _FILE_MEM_CACHE.pop("historique_matchs", None)
+                                                except Exception:
+                                                    pass
                                                 st.session_state.pop("select_match_to_rectify", None)
                                                 st.session_state.pop("choix_match_vue", None)
                                                 sha_c = commit_m.get("sha", "")[:7] if commit_m else ""
-                                                st.session_state["msg_restauration_matchs_succes"] = f"✅ {len(gh_list)} match(s) restauré(s) depuis la plus récente sauvegarde GitHub (Commit {sha_c}) !"
+                                                st.session_state["msg_restauration_matchs_succes"] = f"✅ {len(fusion)} match(s) restauré(s) depuis GitHub (Commit {sha_c}) !"
                                                 time.sleep(0.8)
                                                 st.rerun()
                                             else:
@@ -19636,10 +19789,10 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                                 t_c.pop("html", None)
                                 hist_t_clean.append(t_c)
 
-                        col_btn_t1, col_btn_t2 = st.columns(2)
+                        col_btn_t1, col_btn_t2, col_btn_t3 = st.columns(3)
                         with col_btn_t1:
                             st.download_button(
-                                label="📥 Télécharger historique_tournois.json",
+                                label="📥 Télécharger JSON",
                                 data=json.dumps(hist_t_clean, ensure_ascii=False, indent=4),
                                 file_name="historique_tournois.json",
                                 mime="application/json",
@@ -19647,7 +19800,44 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                                 key="btn_dl_json_tournois"
                             )
                         with col_btn_t2:
-                            if st.button("🔄 Récupérer depuis GitHub", use_container_width=True, key="btn_pull_gh_tournois_specifique", help="Télécharge et restaure la sauvegarde la plus récente de l'historique des tournois depuis GitHub"):
+                            if st.button("⚡ Restaurer Supabase", use_container_width=True, key="btn_pull_sb_tournois_specifique", help="Télécharge et restaure l'historique des tournois depuis Supabase PostgreSQL"):
+                                with st.spinner("Restauration des tournois depuis Supabase..."):
+                                    raw_sb_t = telecharger_fichier_supabase("historique_tournois.json")
+                                    if raw_sb_t:
+                                        try:
+                                            sb_t_list = json.loads(raw_sb_t)
+                                            if isinstance(sb_t_list, list) and len(sb_t_list) > 0:
+                                                if os.path.exists(HISTORIQUE_TOURNOIS_FILE):
+                                                    try:
+                                                        with open(f"{HISTORIQUE_TOURNOIS_FILE}.bak", "wb") as f_bakt:
+                                                            with open(HISTORIQUE_TOURNOIS_FILE, "rb") as f_curt:
+                                                                f_bakt.write(f_curt.read())
+                                                    except Exception:
+                                                        pass
+                                                with open(HISTORIQUE_TOURNOIS_FILE, "w", encoding="utf-8") as f_wt:
+                                                    json.dump(sb_t_list, f_wt, ensure_ascii=False, indent=4)
+                                                try:
+                                                    td_curr = charger_tournois_data()
+                                                    if isinstance(td_curr, dict):
+                                                        td_curr["historique"] = sb_t_list
+                                                        _ecrire_json_atomique(TOURNOIS_FILE, td_curr)
+                                                except Exception:
+                                                    pass
+                                                try:
+                                                    _FILE_MEM_CACHE.pop("historique_tournois", None)
+                                                except Exception:
+                                                    pass
+                                                st.session_state["msg_restauration_tournois_succes"] = f"✅ {len(sb_t_list)} tournoi(s) restauré(s) depuis Supabase PostgreSQL !"
+                                                time.sleep(0.8)
+                                                st.rerun()
+                                            else:
+                                                st.error("Aucun tournoi valide trouvé sur Supabase.")
+                                        except Exception as e_p_sbt:
+                                            st.error(f"Erreur Supabase tournois : {e_p_sbt}")
+                                    else:
+                                        st.error("Impossible de récupérer historique_tournois.json depuis Supabase.")
+                        with col_btn_t3:
+                            if st.button("🐙 Restaurer GitHub", use_container_width=True, key="btn_pull_gh_tournois_specifique", help="Télécharge et restaure la sauvegarde la plus récente de l'historique des tournois depuis GitHub"):
                                 with st.spinner("Téléchargement de la plus récente sauvegarde depuis GitHub..."):
                                     commit_t = obtenir_infos_dernier_commit_github("historique_tournois.json")
                                     gh_raw_t = telecharger_fichier_brut_depuis_github("historique_tournois.json", ref_override=commit_t.get("sha") if commit_t else None)
@@ -19669,6 +19859,10 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                                                     if isinstance(td_curr, dict):
                                                         td_curr["historique"] = gh_t_list
                                                         _ecrire_json_atomique(TOURNOIS_FILE, td_curr)
+                                                except Exception:
+                                                    pass
+                                                try:
+                                                    _FILE_MEM_CACHE.pop("historique_tournois", None)
                                                 except Exception:
                                                     pass
                                                 sha_t = commit_t.get("sha", "")[:7] if commit_t else ""
@@ -19984,9 +20178,9 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                         saisie_gh_repo = st.text_input("Dépôt GitHub (propriétaire/nom) :", value=repo_gh_actuel, key="input_gh_repo_admin")
 
                 # Boutons d'action globale
-                col_cld_btn1, col_cld_btn2, col_cld_btn3 = st.columns(3)
+                col_cld_btn1, col_cld_btn2, col_cld_btn3, col_cld_btn4 = st.columns(4)
                 with col_cld_btn1:
-                    if st.button("💾 Enregistrer la configuration Cloud", type="primary", use_container_width=True, key="btn_save_cloud_cfg"):
+                    if st.button("💾 Enregistrer la configuration", type="primary", use_container_width=True, key="btn_save_cloud_cfg"):
                         cle_finale = (saisie_sb_key or key_sb_actuel or "").strip()
                         ok_s = sauvegarder_parametres_supabase(saisie_sb_url, cle_finale, nouveau_mode)
                         ok_g = sauvegarder_parametres_github(saisie_gh_token, saisie_gh_repo, branch_gh_actuel)
@@ -20005,7 +20199,7 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                             st.error("❌ Erreur lors de l'enregistrement.")
 
                 with col_cld_btn2:
-                    if st.button("☁️ Sauvegarder tous les fichiers vers le Cloud", use_container_width=True, key="btn_push_all_cloud"):
+                    if st.button("☁️ Sauvegarder tout (Cloud)", use_container_width=True, key="btn_push_all_cloud"):
                         with st.spinner("Sauvegarde vers le Cloud en cours..."):
                             nb_ok, l_ok, l_err = synchroniser_tous_les_fichiers_cloud()
                         if nb_ok > 0 and not l_err:
@@ -20016,11 +20210,22 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                             st.error(f"❌ Échec de la sauvegarde Cloud : {'; '.join(l_err)}")
 
                 with col_cld_btn3:
-                    if st.button("📥 Récupérer la plus récente sauvegarde Cloud", use_container_width=True, key="btn_pull_all_cloud"):
-                        with st.spinner("Restauration depuis le Cloud en cours..."):
-                            maj_ok, msg_pull = restaurer_depuis_cloud_au_reveil(forcer=True)
+                    if st.button("⚡ Tout restaurer de Supabase", use_container_width=True, key="btn_pull_all_supabase", help="Télécharge et restaure l'ensemble des fichiers de la ligue depuis la table public.saphir_files de Supabase PostgreSQL"):
+                        with st.spinner("Restauration complète depuis Supabase PostgreSQL en cours..."):
+                            maj_ok, msg_pull = restaurer_tout_depuis_supabase(forcer=True)
                         if maj_ok:
-                            st.success(f"✅ Données restaurées et fusionnées : {msg_pull}")
+                            st.success(f"✅ Données restaurées depuis Supabase : {msg_pull}")
+                            time.sleep(0.8)
+                            st.rerun()
+                        else:
+                            st.info(f"ℹ️ {msg_pull}")
+
+                with col_cld_btn4:
+                    if st.button("🐙 Tout restaurer de GitHub", use_container_width=True, key="btn_pull_all_github", help="Télécharge et restaure l'ensemble des fichiers de données depuis le dépôt GitHub"):
+                        with st.spinner("Restauration complète depuis GitHub en cours..."):
+                            maj_ok, msg_pull = restaurer_depuis_github_au_reveil(forcer=True)
+                        if maj_ok:
+                            st.success(f"✅ Données restaurées depuis GitHub : {msg_pull}")
                             time.sleep(0.8)
                             st.rerun()
                         else:
