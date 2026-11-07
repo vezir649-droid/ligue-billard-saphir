@@ -12453,6 +12453,198 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
             </div>
             """
 
+        # Identification des matchs de finale pour la diapositive XXL Grande Finale
+        match_gf1 = None
+        match_gf2 = None
+        if is_double_elim:
+            tours_finale = [t for t in tours if t.get("bracket") == "finale"]
+            for tf in tours_finale:
+                for mf in tf.get("matchs", []):
+                    if not match_gf1:
+                        match_gf1 = mf
+                    elif not match_gf2:
+                        match_gf2 = mf
+        elif is_elim:
+            tours_all = tournoi.get("tours", [])
+            if tours_all:
+                dernier_tour = tours_all[-1]
+                m_list = dernier_tour.get("matchs", [])
+                if m_list:
+                    match_gf1 = m_list[0]
+
+        # Formateur de carte XXL pour la Grande Finale (dimensions identiques aux tables en direct)
+        def formater_carte_hero_finale(m, tag_label, accent_color, tag_bg, default_p1="Vainqueur Gagnants", default_p2="Vainqueur Seconde Chance"):
+            if not m:
+                return f"""
+                <div class="tv-hero-card" style="border-color: {accent_color};">
+                    <div class="tv-hero-header">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span class="tv-hero-tag" style="background: {tag_bg};">{tag_label}</span>
+                            <span class="tv-hero-round">FINALE OFFICIELLE</span>
+                        </div>
+                        <span class="tv-hero-time">⏳ EN ATTENTE DES QUALIFIÉS</span>
+                    </div>
+                    <div class="tv-hero-body">
+                        <div class="tv-hero-player p1">
+                            <div class="tv-hero-pname" style="color: #94a3b8; font-size: 22px;">{default_p1}</div>
+                            <div class="tv-hero-pstatus" style="color: #64748b;">Tableau Principal</div>
+                        </div>
+                        <div class="tv-hero-vs-badge" style="border-color: #f59e0b; color: #f59e0b; background: rgba(245, 158, 11, 0.15);">VS</div>
+                        <div class="tv-hero-player p2">
+                            <div class="tv-hero-pname" style="color: #94a3b8; font-size: 22px;">{default_p2}</div>
+                            <div class="tv-hero-pstatus" style="color: #64748b;">Tableau Repêchage</div>
+                        </div>
+                    </div>
+                    <div class="tv-hero-footer">
+                        <span>🏆 Titre officiel en jeu</span>
+                        <span>Diffusion Grande Finale</span>
+                    </div>
+                </div>
+                """
+            p1_raw = m.get("equipe_a", "")
+            p2_raw = m.get("equipe_b", "")
+            p1 = formater_nom_abrege_joueur(p1_raw) if (p1_raw and p1_raw != "À déterminer") else default_p1
+            p2 = formater_nom_abrege_joueur(p2_raw) if (p2_raw and p2_raw != "À déterminer") else default_p2
+            s1 = m.get("score_a", 0)
+            s2 = m.get("score_b", 0)
+            mid = m.get("id", "GF")
+            fmt = m.get("format_label", tournoi.get("format_label", "3 de 5"))
+            race = m.get("race_to", 3)
+            tbl = m.get("table_courte", m.get("table", "Table Finale"))
+            termine = m.get("termine", False)
+            vainq = m.get("vainqueur")
+            hm = m.get("heure_estimee", "")
+
+            if termine:
+                hm_badge = '<span class="tv-hero-time" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid #10b981;">✅ TERMINÉ</span>'
+            elif m in [match_t1, match_t2]:
+                hm_badge = '<span class="tv-hero-time" style="background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid #ef4444;">🔴 EN DIRECT</span>'
+            elif hm and hm != "—":
+                hm_badge = f'<span class="tv-hero-time">⏰ {hm}</span>'
+            else:
+                hm_badge = '<span class="tv-hero-time" style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid #f59e0b;">🏆 PROGRAMMÉ</span>'
+
+            p1_is_w = termine and vainq == p1_raw
+            p2_is_w = termine and vainq == p2_raw
+
+            if s1 > 0 or s2 > 0 or termine:
+                sc1_color = 'color: #34d399; font-weight: 900;' if p1_is_w else ''
+                sc2_color = 'color: #34d399; font-weight: 900;' if p2_is_w else ''
+                vs_score_html = f"""
+                <div class="tv-hero-score-badge" style="border-color: #f59e0b; color: #fbbf24;">
+                    <span style="{sc1_color}">{s1}</span>
+                    <span style="opacity: 0.5; font-size: 24px; margin: 0 4px; color: #f59e0b;">-</span>
+                    <span style="{sc2_color}">{s2}</span>
+                </div>
+                """
+            else:
+                vs_score_html = '<div class="tv-hero-vs-badge" style="border-color: #f59e0b; color: #f59e0b; background: rgba(245, 158, 11, 0.15);">VS</div>'
+
+            p1_crown = " 👑" if p1_is_w else ""
+            p2_crown = " 👑" if p2_is_w else ""
+
+            p1_style = 'color: #34d399; font-weight: 900;' if p1_is_w else ''
+            p2_style = 'color: #34d399; font-weight: 900;' if p2_is_w else ''
+
+            p1_sub = "Finaliste Winner Bracket" if is_double_elim else "Finaliste"
+            p2_sub = "Finaliste Seconde Chance" if is_double_elim else "Finaliste"
+
+            return f"""
+            <div class="tv-hero-card" style="border-color: {accent_color};">
+                <div class="tv-hero-header">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span class="tv-hero-tag" style="background: {tag_bg};">{tag_label}</span>
+                        <span class="tv-hero-round">{tbl}</span>
+                    </div>
+                    {hm_badge}
+                </div>
+                <div class="tv-hero-body">
+                    <div class="tv-hero-player p1">
+                        <div class="tv-hero-pname" style="{p1_style}">{p1}{p1_crown}</div>
+                        <div class="tv-hero-pstatus">{p1_sub}</div>
+                    </div>
+                    {vs_score_html}
+                    <div class="tv-hero-player p2">
+                        <div class="tv-hero-pname" style="{p2_style}">{p2}{p2_crown}</div>
+                        <div class="tv-hero-pstatus">{p2_sub}</div>
+                    </div>
+                </div>
+                <div class="tv-hero-footer">
+                    <span>🎯 Match : <strong>{mid}</strong></span>
+                    <span>⚙️ Format : <strong>{fmt}</strong> (premier à {race} victoires)</span>
+                </div>
+            </div>
+            """
+
+        statut_t = tournoi.get("statut", "en_cours")
+        v_final_raw = tournoi.get("vainqueur_final")
+        fin_final_raw = tournoi.get("finaliste")
+
+        if statut_t == "termine" and v_final_raw:
+            v_final_disp = formater_nom_abrege_joueur(v_final_raw)
+            fin_final_disp = formater_nom_abrege_joueur(fin_final_raw) if fin_final_raw else "Non spécifié"
+            carte_palmares_xxl = f"""
+            <div class="tv-hero-card" style="border-color: #f59e0b; background: linear-gradient(145deg, #181938 0%, #12162d 50%, #241434 100%);">
+                <div class="tv-hero-header">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span class="tv-hero-tag" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: #000; font-weight: 900;">🏆 PALMARÈS OFFICIEL</span>
+                        <span class="tv-hero-round" style="color: #fbbf24;">PODIUM DU TOURNOI</span>
+                    </div>
+                    <span class="tv-hero-time" style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid #f59e0b;">👑 CHAMPION SACRÉ</span>
+                </div>
+                <div class="tv-hero-body" style="flex-direction: column; justify-content: center; align-items: center; text-align: center; gap: 6px; min-height: 140px;">
+                    <div style="font-size: 46px; line-height: 1;">🥇</div>
+                    <div style="font-size: 13px; font-weight: 800; color: #f59e0b; letter-spacing: 1.5px; text-transform: uppercase;">CHAMPION DU TOURNOI</div>
+                    <div style="font-size: 28px; font-weight: 900; color: #fef08a; text-shadow: 0 0 15px rgba(254, 240, 138, 0.5);">{v_final_disp}</div>
+                    <div style="font-size: 16px; font-weight: 700; color: #94a3b8; margin-top: 4px;">🥈 <strong>Finaliste :</strong> <span style="color: #e2e8f0;">{fin_final_disp}</span></div>
+                </div>
+                <div class="tv-hero-footer">
+                    <span>🏆 Ligue de Billard Saphir</span>
+                    <span>Félicitations aux champions !</span>
+                </div>
+            </div>
+            """
+        else:
+            carte_palmares_xxl = f"""
+            <div class="tv-hero-card" style="border-color: #f59e0b; background: linear-gradient(145deg, #181938 0%, #12162d 50%, #241434 100%);">
+                <div class="tv-hero-header">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span class="tv-hero-tag" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: #000; font-weight: 900;">🏆 PALMARÈS OFFICIEL</span>
+                        <span class="tv-hero-round" style="color: #fbbf24;">TITRE DE CHAMPION</span>
+                    </div>
+                    <span class="tv-hero-time" style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid #f59e0b;">⏳ TITRE EN JEU</span>
+                </div>
+                <div class="tv-hero-body" style="flex-direction: column; justify-content: center; align-items: center; text-align: center; gap: 6px; min-height: 140px;">
+                    <div style="font-size: 46px; line-height: 1;">🏆</div>
+                    <div style="font-size: 13px; font-weight: 800; color: #f59e0b; letter-spacing: 1.5px; text-transform: uppercase;">COURONNEMENT À VENIR</div>
+                    <div style="font-size: 22px; font-weight: 800; color: #fef08a; text-align: center;">Le vainqueur de la finale remportera le titre officiel</div>
+                    <div style="font-size: 14px; font-weight: 600; color: #94a3b8;">La remise du trophée aura lieu immédiatement après la finale</div>
+                </div>
+                <div class="tv-hero-footer">
+                    <span>🏆 Ligue de Billard Saphir</span>
+                    <span>Diffusion Officielle</span>
+                </div>
+            </div>
+            """
+
+        carte_gf1_html = formater_carte_hero_finale(match_gf1, "🏆 GRANDE FINALE", "#f59e0b", "linear-gradient(135deg, #d97706, #b45309)", "Vainqueur Gagnants", "Vainqueur Seconde Chance")
+        if match_gf2:
+            carte_gf2_html = formater_carte_hero_finale(match_gf2, "⚡ MATCH DÉCISIF", "#ef4444", "linear-gradient(135deg, #dc2626, #991b1b)", "Finaliste 1", "Finaliste 2")
+            grid_finale_html = f"""
+            <div class="tv-hero-grid">
+                {carte_gf1_html}
+                {carte_gf2_html}
+            </div>
+            {carte_palmares_xxl}
+            """
+        else:
+            grid_finale_html = f"""
+            <div class="tv-hero-grid">
+                {carte_gf1_html}
+                {carte_palmares_xxl}
+            </div>
+            """
+
         # Construction des diapositives (Slides)
         slide_0_html = f"""
         <div class="tv-slide active" id="tv-slide-0">
@@ -12473,6 +12665,7 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
 
         if is_double_elim:
             total_slides = 4
+            diaporama_slides = [0, 1, 2] # Grande Finale (slide 3) exclue du diaporama auto mais accessible en clic
             slide_1_html = f"""
             <div class="tv-slide" id="tv-slide-1">
                 <div class="bracket-section-header winner" style="font-size: 13.5px; padding: 6px 14px; margin-bottom: 10px;">
@@ -12494,8 +12687,7 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
                 <div class="bracket-section-header finale" style="font-size: 13.5px; padding: 6px 14px; margin-bottom: 10px;">
                     🏆 GRANDE FINALE OFFICIELLE & PODIUM
                 </div>
-                {tv_section_finale}
-                {podium_html}
+                {grid_finale_html}
             </div>
             """
             slides_all_html = f"{slide_0_html}{slide_1_html}{slide_2_html}{slide_3_html}"
@@ -12508,25 +12700,35 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
             <button class="tv-nav-pill tv-btn-pause" id="btn-pause-play" onclick="basculerPause()">⏸️ Pause</button>
             """
         elif is_elim:
-            total_slides = 2
+            total_slides = 3
+            diaporama_slides = [0, 1] # Grande Finale (slide 2) exclue du diaporama auto mais accessible en clic
             slide_1_html = f"""
             <div class="tv-slide" id="tv-slide-1">
                 <div class="bracket-section-header winner" style="font-size: 13.5px; padding: 6px 14px; margin-bottom: 10px;">
-                    🏆 ARBORESCENCE DU TOURNOI & GRANDE FINALE
+                    🌳 ARBORESCENCE DU TOURNOI
                 </div>
                 {tv_section_winner}
-                {podium_html}
             </div>
             """
-            slides_all_html = f"{slide_0_html}{slide_1_html}"
+            slide_2_html = f"""
+            <div class="tv-slide" id="tv-slide-2">
+                <div class="bracket-section-header finale" style="font-size: 13.5px; padding: 6px 14px; margin-bottom: 10px;">
+                    🏆 GRANDE FINALE OFFICIELLE & PODIUM
+                </div>
+                {grid_finale_html}
+            </div>
+            """
+            slides_all_html = f"{slide_0_html}{slide_1_html}{slide_2_html}"
             pills_nav_html = """
             <button class="tv-nav-pill active" onclick="choisirSlide(0)">🎱 Tables en direct</button>
-            <button class="tv-nav-pill" onclick="choisirSlide(1)">🏆 Arborescence & Finale</button>
+            <button class="tv-nav-pill" onclick="choisirSlide(1)">🌳 Arborescence</button>
+            <button class="tv-nav-pill" onclick="choisirSlide(2)">🏆 Grande Finale</button>
             <button class="tv-nav-pill tv-nav-viewall" onclick="basculerVueComplete()">📜 Vue complète</button>
             <button class="tv-nav-pill tv-btn-pause" id="btn-pause-play" onclick="basculerPause()">⏸️ Pause</button>
             """
         else:
             total_slides = 2
+            diaporama_slides = [0, 1]
             slide_1_html = f"""
             <div class="tv-slide" id="tv-slide-1">
                 <div class="bracket-section-header winner" style="font-size: 13.5px; padding: 6px 14px; margin-bottom: 10px;">
@@ -12543,6 +12745,8 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
             <button class="tv-nav-pill tv-nav-viewall" onclick="basculerVueComplete()">📜 Vue complète</button>
             <button class="tv-nav-pill tv-btn-pause" id="btn-pause-play" onclick="basculerPause()">⏸️ Pause</button>
             """
+
+        diaporama_json = json.dumps(diaporama_slides)
 
         html_tv = f"""<!DOCTYPE html>
 <html>
@@ -12738,111 +12942,135 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
         }}
         .tv-hero-body {{
             display: flex;
-            justify-content: space-between;
             align-items: center;
-            padding: 10px 0;
+            justify-content: space-between;
+            margin: 12px 0;
             gap: 12px;
         }}
         .tv-hero-player {{
             flex: 1;
-            text-align: center;
+            display: flex;
+            flex-direction: column;
+        }}
+        .tv-hero-player.p2 {{
+            align-items: flex-end;
+            text-align: right;
         }}
         .tv-hero-pname {{
             font-size: 24px;
-            font-weight: 800;
+            font-weight: 900;
             color: #ffffff;
-            line-height: 1.25;
+            line-height: 1.2;
             word-break: break-word;
+        }}
+        .tv-hero-pstatus {{
+            font-size: 12.5px;
+            font-weight: 700;
+            color: #38bdf8;
+            margin-top: 4px;
+        }}
+        .tv-hero-score-badge {{
+            display: flex;
+            align-items: center;
+            background: #0f172a;
+            border: 2px solid #38bdf8;
+            border-radius: 8px;
+            padding: 4px 14px;
+            font-size: 32px;
+            font-weight: 900;
+            color: #38bdf8;
+            letter-spacing: 2px;
+            flex-shrink: 0;
+            box-shadow: 0 0 16px rgba(56, 189, 248, 0.35);
         }}
         .tv-hero-vs-badge {{
             font-size: 22px;
             font-weight: 900;
             color: #38bdf8;
-            padding: 0 10px;
-            flex-shrink: 0;
-        }}
-        .tv-hero-score-badge {{
-            background: linear-gradient(135deg, #0284c7, #0369a1);
-            color: #ffffff;
-            font-size: 32px;
-            font-weight: 900;
-            padding: 4px 16px;
+            background: rgba(56, 189, 248, 0.15);
+            border: 2px solid #38bdf8;
+            padding: 6px 14px;
             border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(2, 132, 199, 0.45);
+            letter-spacing: 2px;
             flex-shrink: 0;
-            display: flex;
-            align-items: center;
+            box-shadow: 0 0 14px rgba(56, 189, 248, 0.25);
         }}
         .tv-hero-footer {{
             display: flex;
             justify-content: space-between;
             align-items: center;
             border-top: 1px solid rgba(255,255,255,0.08);
-            padding-top: 10px;
-            margin-top: 10px;
+            padding-top: 8px;
+            margin-top: 8px;
             font-size: 12.5px;
             color: #94a3b8;
+        }}
+        .tv-hero-footer strong {{
+            color: #ffffff;
         }}
 
         /* Prochains Duels */
         .tv-next-section {{
-            background: #0f172a;
+            background: #0d1527;
             border: 1px solid #1e293b;
-            border-radius: 10px;
-            padding: 12px 16px;
+            border-radius: 8px;
+            padding: 10px 14px;
         }}
         .tv-next-title {{
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 800;
-            color: #38bdf8;
-            letter-spacing: 0.6px;
-            margin-bottom: 10px;
+            color: #f59e0b;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 8px;
             display: flex;
             align-items: center;
             gap: 6px;
         }}
         .tv-next-grid {{
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 10px;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
         }}
         .tv-next-card {{
-            background: #152238;
-            border: 1px solid #334155;
-            border-radius: 8px;
-            padding: 8px 12px;
+            background: #131f37;
+            border: 1px solid #233554;
+            border-radius: 6px;
+            padding: 6px 10px;
             display: flex;
             justify-content: space-between;
             align-items: center;
         }}
         .tv-next-tag {{
-            background: #0284c7;
-            color: white;
             font-size: 11px;
-            font-weight: 900;
-            padding: 1px 6px;
-            border-radius: 4px;
+            font-weight: 800;
+            background: #334155;
+            color: #cbd5e1;
+            padding: 2px 6px;
+            border-radius: 3px;
         }}
         .tv-next-time {{
-            background: rgba(255, 255, 255, 0.1);
-            color: #cbd5e1;
-            padding: 1px 6px;
-            border-radius: 3px;
+            font-size: 11.5px;
             font-weight: 700;
+            color: #38bdf8;
         }}
 
-        /* Styles Arborescence TV */
+        /* Styles de l'Arborescence / Bracket */
+        .bracket-section {{
+            margin-bottom: 20px;
+        }}
         .bracket-section-header {{
-            font-size: 12px;
-            font-weight: 800;
-            padding: 4px 10px;
-            margin: 4px 0 6px 0;
-            border-radius: 4px;
-            letter-spacing: 0.6px;
+            font-size: 14px;
+            font-weight: bold;
+            padding: 8px 14px;
+            border-radius: 6px;
+            margin-bottom: 12px;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
         }}
         .bracket-section-header.winner {{
             background: #1e3a8a;
-            color: #93c5fd;
+            color: #dbeafe;
             border-left: 5px solid #3b82f6;
         }}
         .bracket-section-header.loser {{
@@ -12970,32 +13198,6 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
         .player-row.winner .p-score {{
             background: #10b981;
         }}
-        .champion-box {{
-            background: linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(217, 119, 6, 0.35));
-            border: 2px solid #f59e0b;
-            border-radius: 10px;
-            padding: 18px 10px;
-            text-align: center;
-            box-shadow: 0 0 20px rgba(245, 158, 11, 0.4);
-        }}
-        .champ-trophy {{
-            font-size: 32px;
-            line-height: 1;
-            margin-bottom: 6px;
-        }}
-        .champ-title {{
-            font-size: 11px;
-            font-weight: bold;
-            color: #f59e0b;
-            text-transform: uppercase;
-            letter-spacing: 0.8px;
-            margin-bottom: 4px;
-        }}
-        .champ-name {{
-            font-size: 15px;
-            font-weight: 800;
-            color: #fbbf24;
-        }}
     </style>
 </head>
 <body>
@@ -13018,6 +13220,7 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
     <script>
     var dureeSlide = 18000; // 18 secondes par vue
     var totalSlides = {total_slides};
+    var diaporamaSlides = {diaporama_json}; // Slides incluses dans le cycle automatique
     var currentSlide = 0;
     var isPaused = false;
     var vueComplete = false;
@@ -13027,7 +13230,10 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
     try {{
         var savedIdx = sessionStorage.getItem('tv_slide_index');
         if (savedIdx !== null && !isNaN(parseInt(savedIdx, 10))) {{
-            currentSlide = parseInt(savedIdx, 10) % totalSlides;
+            var parsed = parseInt(savedIdx, 10);
+            if (parsed >= 0 && parsed < totalSlides) {{
+                currentSlide = parsed;
+            }}
         }}
         var savedVue = sessionStorage.getItem('tv_vue_complete');
         if (savedVue === 'true') {{
@@ -13038,6 +13244,11 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
             isPaused = true;
         }}
     }} catch(e) {{}}
+
+    // Si on se trouve sur une slide hors diaporama (Grande Finale), on reste figé dessus
+    if (diaporamaSlides.indexOf(currentSlide) === -1) {{
+        isPaused = true;
+    }}
 
     function actualiserAffichage() {{
         var slides = document.querySelectorAll('.tv-slide');
@@ -13077,7 +13288,15 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
         }});
 
         if (btnPause) {{
-            btnPause.innerText = isPaused ? '▶️ Reprendre' : '⏸️ Pause';
+            if (diaporamaSlides.indexOf(currentSlide) === -1) {{
+                btnPause.innerText = '▶️ Reprendre diaporama';
+            }} else {{
+                btnPause.innerText = isPaused ? '▶️ Reprendre' : '⏸️ Pause';
+            }}
+        }}
+
+        if (isPaused || diaporamaSlides.indexOf(currentSlide) === -1) {{
+            if (pbar) pbar.style.width = '0%';
         }}
     }}
 
@@ -13085,9 +13304,17 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
         vueComplete = false;
         currentSlide = idx;
         startTime = Date.now();
+        // Si l'utilisateur clique manuellement sur Grande Finale (hors diaporama), on fige l'affichage
+        if (diaporamaSlides.indexOf(idx) === -1) {{
+            isPaused = true;
+        }} else {{
+            // Si on clique sur une vue du diaporama, on relance le diaporama
+            isPaused = false;
+        }}
         try {{
             sessionStorage.setItem('tv_slide_index', idx);
             sessionStorage.setItem('tv_vue_complete', 'false');
+            sessionStorage.setItem('tv_is_paused', isPaused ? 'true' : 'false');
         }} catch(e) {{}}
         actualiserAffichage();
     }}
@@ -13105,26 +13332,40 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
             vueComplete = false;
             try {{ sessionStorage.setItem('tv_vue_complete', 'false'); }} catch(e) {{}}
         }}
-        isPaused = !isPaused;
+        if (diaporamaSlides.indexOf(currentSlide) === -1) {{
+            // Si on est sur Grande Finale et qu'on appuie sur Reprendre, on réintègre le diaporama au début
+            currentSlide = diaporamaSlides[0];
+            isPaused = false;
+        }} else {{
+            isPaused = !isPaused;
+        }}
         startTime = Date.now();
         try {{
+            sessionStorage.setItem('tv_slide_index', currentSlide);
             sessionStorage.setItem('tv_is_paused', isPaused ? 'true' : 'false');
         }} catch(e) {{}}
         actualiserAffichage();
     }}
 
     function boucleAnimation() {{
-        if (!vueComplete && !isPaused) {{
+        if (!vueComplete && !isPaused && diaporamaSlides.indexOf(currentSlide) !== -1) {{
             var elapsed = Date.now() - startTime;
             var pct = Math.min(100, (elapsed / dureeSlide) * 100);
             var pbar = document.getElementById('tv-pbar');
             if (pbar) pbar.style.width = pct + '%';
 
             if (elapsed >= dureeSlide) {{
-                currentSlide = (currentSlide + 1) % totalSlides;
+                var currPos = diaporamaSlides.indexOf(currentSlide);
+                var nextPos = (currPos + 1) % diaporamaSlides.length;
+                currentSlide = diaporamaSlides[nextPos];
                 startTime = Date.now();
                 try {{ sessionStorage.setItem('tv_slide_index', currentSlide); }} catch(e) {{}}
                 actualiserAffichage();
+            }}
+        }} else {{
+            var pbar = document.getElementById('tv-pbar');
+            if (pbar && (isPaused || diaporamaSlides.indexOf(currentSlide) === -1)) {{
+                pbar.style.width = '0%';
             }}
         }}
         animId = requestAnimationFrame(boucleAnimation);
