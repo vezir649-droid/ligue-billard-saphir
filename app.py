@@ -7158,22 +7158,39 @@ def envoyer_test_sms_sentinelle(telephone, message_texte):
         return False, f"Erreur lors de l'enregistrement de la commande : {msg_save}"
 
 def generer_message_sms_match(match):
-    """Formate le texte du SMS officiel envoye aux membres de la ligue."""
+    """Formate le texte du SMS officiel concis (initiale prénom + nom, sans /24, sans message de fin)."""
     if not match or not isinstance(match, dict):
         return ""
     rec = match.get("equipe_receveur") or match.get("receveur") or "Receveur"
     vis = match.get("equipe_visiteur") or match.get("visiteur") or "Visiteur"
-    tot_rec = match.get("total_points_receveur") or match.get("points_receveur") or 0
-    tot_vis = match.get("total_points_visiteur") or match.get("points_visiteur") or 0
+    tot_rec = match.get("total_points_receveur") or match.get("points_receveur") or match.get("total_receveur") or 0
+    tot_vis = match.get("total_points_visiteur") or match.get("points_visiteur") or match.get("total_visiteur") or 0
     date_m = match.get("date") or match.get("date_enregistrement") or datetime.now().strftime("%d/%m/%Y")
+    if len(str(date_m)) > 10 and " " in str(date_m):
+        date_m = str(date_m).split()[0]
+
+    def _court(nom):
+        if not nom:
+            return ""
+        p = str(nom).strip().split()
+        if len(p) <= 1:
+            return str(nom).strip()
+        prenom = p[0]
+        nom_famille = " ".join(p[1:])
+        return f"{prenom[0].upper()}. {nom_famille}"
 
     txt = f"[LIGUE SAPHIR] {rec} ({tot_rec}) vs {vis} ({tot_vis})\n"
-    txt += f"Date : {date_m}\n\nPointages individuels :\n"
+    txt += f"Date : {date_m}\n\nPointages :\n"
 
     totaux_j = match.get("totaux_joueurs", {})
     if totaux_j and isinstance(totaux_j, dict):
         for j, pts in totaux_j.items():
-            txt += f"- {j} : {pts}/24\n"
+            txt += f"- {_court(j)} : {pts}\n"
+    elif match.get("points_par_joueur"):
+        for j_id, j_info in match.get("points_par_joueur", {}).items():
+            j_nom = j_info.get("nom", j_id)
+            pts = j_info.get("points", 0)
+            txt += f"- {_court(j_nom)} : {pts}\n"
     else:
         matchs = match.get("matchs", {})
         scores_j = {}
@@ -7186,10 +7203,9 @@ def generer_message_sms_match(match):
             if jb:
                 scores_j[jb] = scores_j.get(jb, 0) + sb
         for j, pts in scores_j.items():
-            txt += f"- {j} : {pts}/24\n"
+            txt += f"- {_court(j)} : {pts}\n"
 
-    txt += "\nClassement et stats en direct sur le portail Saphir !\n"
-    return txt
+    return txt.strip()
 
 def generer_script_termux_saphir():
     """Genere le script Python complet saphir_sms_poller.py pre-configure avec l'URL et la cle Supabase actives."""
@@ -7264,17 +7280,34 @@ def envoyer_sms_termux(numero, message):
 def formater_sms(match):
     rec = match.get("equipe_receveur") or match.get("receveur") or "Receveur"
     vis = match.get("equipe_visiteur") or match.get("visiteur") or "Visiteur"
-    tot_rec = match.get("total_points_receveur") or match.get("points_receveur") or 0
-    tot_vis = match.get("total_points_visiteur") or match.get("points_visiteur") or 0
+    tot_rec = match.get("total_points_receveur") or match.get("points_receveur") or match.get("total_receveur") or 0
+    tot_vis = match.get("total_points_visiteur") or match.get("points_visiteur") or match.get("total_visiteur") or 0
     date_m = match.get("date") or match.get("date_enregistrement") or ""
+    if len(str(date_m)) > 10 and " " in str(date_m):
+        date_m = str(date_m).split()[0]
+
+    def _court(nom):
+        if not nom:
+            return ""
+        p = str(nom).strip().split()
+        if len(p) <= 1:
+            return str(nom).strip()
+        prenom = p[0]
+        nom_famille = " ".join(p[1:])
+        return f"{prenom[0].upper()}. {nom_famille}"
 
     txt = f"[LIGUE SAPHIR] {rec} ({tot_rec}) vs {vis} ({tot_vis})\n"
-    txt += f"Date : {date_m}\n\nPointages individuels :\n"
+    txt += f"Date : {date_m}\n\nPointages :\n"
 
     totaux_j = match.get("totaux_joueurs", {})
     if totaux_j and isinstance(totaux_j, dict):
         for j, pts in totaux_j.items():
-            txt += f"- {j} : {pts}/24\n"
+            txt += f"- {_court(j)} : {pts}\n"
+    elif match.get("points_par_joueur"):
+        for j_id, j_info in match.get("points_par_joueur", {}).items():
+            j_nom = j_info.get("nom", j_id)
+            pts = j_info.get("points", 0)
+            txt += f"- {_court(j_nom)} : {pts}\n"
     else:
         matchs = match.get("matchs", {})
         sc_j = {}
@@ -7285,10 +7318,9 @@ def formater_sms(match):
             if ja: sc_j[ja] = sc_j.get(ja, 0) + sa
             if jb: sc_j[jb] = sc_j.get(jb, 0) + sb
         for j, pts in sc_j.items():
-            txt += f"- {j} : {pts}/24\n"
+            txt += f"- {_court(j)} : {pts}\n"
 
-    txt += "\nClassement en direct sur l'app !"
-    return txt
+    return txt.strip()
 
 def main():
     print("=" * 55)
