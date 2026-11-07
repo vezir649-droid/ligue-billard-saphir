@@ -9412,11 +9412,18 @@ def annuler_completement_tournoi(mode):
     sauvegarder_tournois_data(td)
     return True
 
-def obtenir_joueurs_tries_classement(liste_joueurs):
+def obtenir_joueurs_tries_classement(liste_joueurs, tirage_au_sort_egalites=True):
     """Trie une liste de joueurs selon leur classement officiel (#1 à #24)
-    et leur moyenne issus de joueurs_stats.csv. Les joueurs non classés ou invités sont placés en fin de liste."""
+    et leur moyenne/points issus de joueurs_stats.csv. Les joueurs non classés ou invités sont placés en fin de liste.
+    En cas d'égalité sur le rang et les points (ex: 2 joueurs au même rang avec le même pointage),
+    leur ordre relatif est tiré au sort (random.shuffle) pour garantir l'équité du jumelage."""
+    import random
+    from collections import defaultdict
+
     stats_dict = charger_joueurs_stats_csv()
-    def cle_tri(nom):
+
+    groupes = defaultdict(list)
+    for nom in liste_joueurs:
         c = normaliser_nom_joueur(nom)
         if c in stats_dict:
             item = stats_dict[c]
@@ -9425,14 +9432,29 @@ def obtenir_joueurs_tries_classement(liste_joueurs):
                 r_num = int(r_str)
             except Exception:
                 r_num = 999
-            moy = float(item.get("moyenne", 0.625))
+            try:
+                moy = float(item.get("moyenne", 0.625))
+            except Exception:
+                moy = 0.625
             try:
                 pts = int(item.get("points", 0))
             except Exception:
                 pts = 0
-            return (r_num, -moy, -pts, nom)
-        return (999, -0.625, 0, nom)
-    return sorted(liste_joueurs, key=cle_tri)
+        else:
+            r_num = 999
+            moy = 0.625
+            pts = 0
+
+        cle_groupe = (r_num, -pts, -round(moy, 4))
+        groupes[cle_groupe].append(nom)
+
+    resultat = []
+    for cle in sorted(groupes.keys()):
+        membres = list(groupes[cle])
+        if tirage_au_sort_egalites and len(membres) > 1:
+            random.shuffle(membres)
+        resultat.extend(membres)
+    return resultat
 
 def obtenir_info_classement_joueur(nom_joueur):
     """Retourne un libellé officiel formaté (ex: '#1 • Moy 0.990') pour affichage."""
@@ -13207,8 +13229,8 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
                     col_btn_class, col_btn_pige, col_btn_reset = st.columns([1.5, 1.1, 1.0])
                     with col_btn_class:
                         st.write("")
-                        if st.button("⚖️ Jumeler par classement", key=f"btn_jumelage_class_{mode}{key_suffix}", type="primary", use_container_width=True, help="Jumelle équitablement le 1er avec le dernier, le 2e avec l'avant-dernier parmi les joueurs inscrits"):
-                            pool_class = obtenir_joueurs_tries_classement(candidats_double)
+                        if st.button("⚖️ Jumeler par classement", key=f"btn_jumelage_class_{mode}{key_suffix}", type="primary", use_container_width=True, help="Jumelle équitablement le 1er avec le dernier, le 2e avec l'avant-dernier parmi les joueurs inscrits (avec tirage au sort aléatoire pour les joueurs à égalité de rang et de points)"):
+                            pool_class = obtenir_joueurs_tries_classement(candidats_double, tirage_au_sort_egalites=True)
                             nb_requis = nb_duos_choisi * 2
                             pool_j = pool_class[:nb_requis]
                             len_p = len(pool_j)
@@ -13217,6 +13239,7 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
                                     st.session_state[f"duo_{d_idx}_j1_{mode}{key_suffix}"] = pool_j[d_idx]
                                 if (len_p - 1 - d_idx) >= 0 and (len_p - 1 - d_idx) < len_p:
                                     st.session_state[f"duo_{d_idx}_j2_{mode}{key_suffix}"] = pool_j[len_p - 1 - d_idx]
+                            st.session_state[f"msg_jumelage_{mode}{key_suffix}"] = "⚖️ Duos jumelés selon le classement officiel (avec tirage au sort des rangs à égalité de points) !"
                             st.rerun()
 
                     with col_btn_pige:
@@ -13239,6 +13262,10 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
                             st.rerun()
 
                 st.markdown("###### 📋 Composition des duos (équilibrés selon le classement) :")
+
+                msg_jum = st.session_state.pop(f"msg_jumelage_{mode}{key_suffix}", None)
+                if msg_jum:
+                    st.success(msg_jum)
 
                 pool_class_def = obtenir_joueurs_tries_classement(candidats_double)
                 nb_requis_def = nb_duos_choisi * 2
