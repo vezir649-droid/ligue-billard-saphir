@@ -12413,7 +12413,7 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
             </div>
             """
 
-        # Section des prochains duels
+                # Section des prochains duels
         if prochains_matchs:
             p_cards = []
             for pm in prochains_matchs:
@@ -12424,14 +12424,17 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
                 pm_h = pm.get("heure_estimee", "")
                 pm_h_txt = f"⏰ {pm_h}" if pm_h and pm_h != "—" else "À suivre"
                 pm_fmt = pm.get("format_label", "2 de 3")
+
+                tbl_cls = "t1" if "1" in str(pm_tbl) else ("t2" if "2" in str(pm_tbl) else "")
+
                 p_cards.append(f"""
                 <div class="tv-next-card">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <span class="tv-next-tag">{pm_tbl}</span>
-                        <span style="font-weight: 800; font-size: 15px; color: #ffffff;">{pa} <span style="color: #38bdf8; font-weight: 900; margin: 0 2px;">vs</span> {pb}</span>
+                    <div style="display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0;">
+                        <span class="tv-next-tag {tbl_cls}">{pm_tbl}</span>
+                        <span class="tv-next-players">{pa} <span class="tv-next-vs">VS</span> {pb}</span>
                     </div>
-                    <div style="display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: #94a3b8;">
-                        <span>{pm_id} ({pm_fmt})</span>
+                    <div style="display: flex; align-items: center; gap: 12px; flex-shrink: 0;">
+                        <span class="tv-next-meta">{pm_id} • {pm_fmt}</span>
                         <span class="tv-next-time">{pm_h_txt}</span>
                     </div>
                 </div>
@@ -12448,7 +12451,7 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
             """
         else:
             prochains_html = """
-            <div class="tv-next-section" style="text-align: center; color: #94a3b8; font-size: 13.5px; padding: 12px;">
+            <div class="tv-next-section" style="text-align: center; color: #94a3b8; font-size: 15px; font-weight: 600; padding: 16px;">
                 <span>ℹ️ Tous les duels immédiatement jouables sont actuellement assignés sur les tables. Les rencontres suivantes s'afficheront dès qu'un match sera complété.</span>
             </div>
             """
@@ -13011,48 +13014,91 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
 
         /* Prochains Duels */
         .tv-next-section {{
-            background: #0d1527;
-            border: 1px solid #1e293b;
-            border-radius: 8px;
-            padding: 10px 14px;
+            background: linear-gradient(145deg, #0b1325 0%, #101c33 100%);
+            border: 1.5px solid #1e3a5f;
+            border-radius: 10px;
+            padding: 12px 16px;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.45);
         }}
         .tv-next-title {{
-            font-size: 12px;
-            font-weight: 800;
+            font-size: 14.5px;
+            font-weight: 900;
             color: #f59e0b;
             text-transform: uppercase;
-            letter-spacing: 0.8px;
-            margin-bottom: 8px;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 8px;
         }}
         .tv-next-grid {{
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 8px;
+            gap: 10px;
         }}
         .tv-next-card {{
-            background: #131f37;
-            border: 1px solid #233554;
-            border-radius: 6px;
-            padding: 6px 10px;
+            background: linear-gradient(135deg, #14223d 0%, #0d172a 100%);
+            border: 1.5px solid #233c63;
+            border-left: 5px solid #38bdf8;
+            border-radius: 8px;
+            padding: 10px 14px;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            gap: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            transition: transform 0.15s ease;
+        }}
+        .tv-next-card:hover {{
+            border-color: #38bdf8;
         }}
         .tv-next-tag {{
-            font-size: 11px;
-            font-weight: 800;
-            background: #334155;
+            font-size: 13.5px;
+            font-weight: 900;
+            background: #1e3a5f;
+            color: #ffffff;
+            padding: 4px 9px;
+            border-radius: 4px;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+        }}
+        .tv-next-tag.t1 {{
+            background: #0284c7;
+        }}
+        .tv-next-tag.t2 {{
+            background: #d97706;
+        }}
+        .tv-next-players {{
+            font-size: 19px;
+            font-weight: 900;
+            color: #ffffff;
+            line-height: 1.2;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }}
+        .tv-next-vs {{
+            font-size: 15px;
+            font-weight: 900;
+            color: #38bdf8;
+            margin: 0 6px;
+            letter-spacing: 1px;
+        }}
+        .tv-next-meta {{
+            font-size: 13.5px;
+            font-weight: 700;
             color: #cbd5e1;
-            padding: 2px 6px;
-            border-radius: 3px;
+            white-space: nowrap;
         }}
         .tv-next-time {{
-            font-size: 11.5px;
-            font-weight: 700;
+            font-size: 13.5px;
+            font-weight: 800;
             color: #38bdf8;
+            background: rgba(2, 132, 199, 0.25);
+            border: 1px solid #0284c7;
+            padding: 4px 9px;
+            border-radius: 4px;
+            white-space: nowrap;
         }}
 
         /* Styles de l'Arborescence / Bracket */
