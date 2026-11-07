@@ -10118,7 +10118,7 @@ def planifier_horaires_double_elimination(tours, heure_debut="09:00", duree_min=
     heure_fin = cur_dt.strftime("%Hh%M")
     return heure_fin
 
-def generer_arbre_double_elimination(participants, race_prelim=2, race_finale=3, titre="Tournoi Double Élimination", heure_debut="09:00", duree_min=30, nb_tables=2, passes_droits=None):
+def generer_arbre_double_elimination(participants, race_prelim=2, race_finale=3, titre="Tournoi Double Élimination", heure_debut="09:00", duree_min=30, nb_tables=2, passes_droits=None, race_finale_winner=2, race_finale_loser=2, race_grande_finale=None):
     """
     Génère un tableau complet en Double Élimination (Tableau des Gagnants, Tableau de Seconde Chance et Grande Finale).
     Chaque participant dispose d'une seconde chance après une première défaite.
@@ -10132,6 +10132,19 @@ def generer_arbre_double_elimination(participants, race_prelim=2, race_finale=3,
     # CAS SPÉCIFIQUES N IN (18, 20, 22, 24) EN DOUBLE ÉLIMINATION :
     # Tous les joueurs disputent le 1er tour Gagnants W1 (9, 10, 11 ou 12 matchs, aucun joueur exempté au 1er tour),
     # puis équilibrage au 2e tour W2 (1, 2, 3 ou 4 matchs + 7, 6, 5 ou 4 gagnants de W1 promus en Quarts de finale W3 à 4 matchs).
+    if race_grande_finale is None:
+        race_grande_finale = race_finale
+    if race_finale_winner is None:
+        race_finale_winner = 2
+    if race_finale_loser is None:
+        race_finale_loser = 2
+
+    fmt_p = f"{race_prelim} de {2*race_prelim - 1}"
+    fmt_fw = f"{race_finale_winner} de {2*race_finale_winner - 1}"
+    fmt_fl = f"{race_finale_loser} de {2*race_finale_loser - 1}"
+    fmt_gf = f"{race_grande_finale} de {2*race_grande_finale - 1}"
+    fmt_f = fmt_gf
+
     if n in (18, 20, 22, 24):
         g = n // 2            # 9, 10, 11 ou 12 matchs en W1
         m2 = g - 8            # 1, 2, 3 ou 4 matchs en W2
@@ -10139,8 +10152,6 @@ def generer_arbre_double_elimination(participants, race_prelim=2, race_finale=3,
 
         p_shuf = list(p_liste)
         random.shuffle(p_shuf)
-        fmt_p = f"{race_prelim} de {2*race_prelim - 1}"
-        fmt_f = f"{race_finale} de {2*race_finale - 1}"
 
         # W1 : g matchs (tous les joueurs jouent)
         w1_matchs = []
@@ -10196,7 +10207,7 @@ def generer_arbre_double_elimination(participants, race_prelim=2, race_finale=3,
 
         # W5 (Finale Gagnants : 1 match)
         w5_matchs = [{
-            "id": "W5_M1", "bracket": "winner", "etape": 8,
+            "id": "W5_M1", "bracket": "winner", "etape": 8, "race_to": race_finale_winner, "format_label": fmt_fw,
             "equipe_a": "À déterminer", "equipe_b": "À déterminer",
             "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False,
             "vainqueur": None, "perdant": None,
@@ -10337,10 +10348,10 @@ def generer_arbre_double_elimination(participants, race_prelim=2, race_finale=3,
             "id": "L6_M1", "bracket": "loser", "etape": 8, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": "L5_M1", "source_b": "L5_M2", "type_source_a": "vainqueur", "type_source_b": "vainqueur"
         }]
         l7_matchs = [{
-            "id": "L7_M1", "bracket": "loser", "etape": 9, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": "L6_M1", "source_b": "W5_M1", "type_source_a": "vainqueur", "type_source_b": "perdant"
+            "id": "L7_M1", "bracket": "loser", "etape": 9, "race_to": race_finale_loser, "format_label": fmt_fl, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": "L6_M1", "source_b": "W5_M1", "type_source_a": "vainqueur", "type_source_b": "perdant"
         }]
         gf_matchs = [{
-            "id": "GF_M1", "bracket": "finale", "etape": 10, "race_to": race_finale, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": "W5_M1", "source_b": "L7_M1", "type_source_a": "vainqueur", "type_source_b": "vainqueur"
+            "id": "GF_M1", "bracket": "finale", "etape": 10, "race_to": race_grande_finale, "format_label": fmt_gf, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": "W5_M1", "source_b": "L7_M1", "type_source_a": "vainqueur", "type_source_b": "vainqueur"
         }]
 
         tours = [
@@ -10348,15 +10359,15 @@ def generer_arbre_double_elimination(participants, race_prelim=2, race_finale=3,
             {"numero": 2, "nom": f"Gagnants — 2ᵉ tour Équilibrage ({m2} match{'s' if m2 > 1 else ''})", "section": "winner", "bracket": "winner", "race_to": race_prelim, "format_label": fmt_p, "matchs": w2_matchs},
             {"numero": 3, "nom": "Gagnants — Quarts de finale (4 matchs)", "section": "winner", "bracket": "winner", "race_to": race_prelim, "format_label": fmt_p, "matchs": w3_matchs},
             {"numero": 4, "nom": "Gagnants — Demi-finales", "section": "winner", "bracket": "winner", "race_to": race_prelim, "format_label": fmt_p, "matchs": w4_matchs},
-            {"numero": 5, "nom": "Gagnants — Finale", "section": "winner", "bracket": "winner", "race_to": race_prelim, "format_label": fmt_p, "matchs": w5_matchs},
+            {"numero": 5, "nom": "Gagnants — Finale", "section": "winner", "bracket": "winner", "race_to": race_finale_winner, "format_label": fmt_fw, "matchs": w5_matchs},
             {"numero": 6, "nom": f"Seconde Chance — Tour 1 ({nb_m_l1} matchs)", "section": "loser", "bracket": "loser", "race_to": race_prelim, "format_label": fmt_p, "matchs": l1_matchs},
             {"numero": 7, "nom": "Seconde Chance — Tour 2 (4 matchs)", "section": "loser", "bracket": "loser", "race_to": race_prelim, "format_label": fmt_p, "matchs": l2_matchs},
             {"numero": 8, "nom": "Seconde Chance — Quarts de finale", "section": "loser", "bracket": "loser", "race_to": race_prelim, "format_label": fmt_p, "matchs": l3_matchs},
             {"numero": 9, "nom": "Seconde Chance — Repêchage Quarts", "section": "loser", "bracket": "loser", "race_to": race_prelim, "format_label": fmt_p, "matchs": l4_matchs},
             {"numero": 10, "nom": "Seconde Chance — Repêchage Demi-finales", "section": "loser", "bracket": "loser", "race_to": race_prelim, "format_label": fmt_p, "matchs": l5_matchs},
             {"numero": 11, "nom": "Seconde Chance — Demi-finale", "section": "loser", "bracket": "loser", "race_to": race_prelim, "format_label": fmt_p, "matchs": l6_matchs},
-            {"numero": 12, "nom": "Seconde Chance — Finale", "section": "loser", "bracket": "loser", "race_to": race_prelim, "format_label": fmt_p, "matchs": l7_matchs},
-            {"numero": 13, "nom": "🏆 Grande Finale Officielle", "section": "finale", "bracket": "finale", "race_to": race_finale, "format_label": fmt_f, "matchs": gf_matchs},
+            {"numero": 12, "nom": "Seconde Chance — Finale", "section": "loser", "bracket": "loser", "race_to": race_finale_loser, "format_label": fmt_fl, "matchs": l7_matchs},
+            {"numero": 13, "nom": "🏆 Grande Finale Officielle", "section": "finale", "bracket": "finale", "race_to": race_grande_finale, "format_label": fmt_gf, "matchs": gf_matchs},
         ]
 
         heure_fin = planifier_horaires_double_elimination(tours, heure_debut=heure_debut, duree_min=duree_min, nb_tables=nb_tables)
@@ -10364,9 +10375,12 @@ def generer_arbre_double_elimination(participants, race_prelim=2, race_finale=3,
             "titre": titre,
             "date_creation": datetime.now().strftime("%d/%m/%Y à %H:%M"),
             "format": "double_elimination",
-            "format_label": "Double élimination (Winner & Loser Bracket)",
+            "format_label": f"Double élimination (Gagnants {fmt_fw} • Seconde chance {fmt_fl} • Grande Finale {fmt_gf})",
             "race_prelim": race_prelim,
-            "race_finale": race_finale,
+            "race_finale": race_grande_finale,
+            "race_finale_winner": race_finale_winner,
+            "race_finale_loser": race_finale_loser,
+            "race_grande_finale": race_grande_finale,
             "participants": p_liste,
             "promus_second_tour": [],
             "total_tours": len(tours),
@@ -10412,8 +10426,7 @@ def generer_arbre_double_elimination(participants, race_prelim=2, race_finale=3,
     p_sans_pd = list(candidats_restants)
     random.shuffle(p_sans_pd)
 
-    fmt_p = f"{race_prelim} de {2*race_prelim - 1}"
-    fmt_f = f"{race_finale} de {2*race_finale - 1}"
+    # Formats deja definis en en-tete de fonction
 
     # CAS OÙ IL Y A DES PROMUS AU 1er TOUR (ex: 5, 6, 7, 9, 10, 11, 12, 13, 14, 15 participants / duos) :
     # Aucun match contre un "Exempt (Passe-droit)" n'est généré ni dans le Winner Bracket ni dans le Loser Bracket.
@@ -10576,6 +10589,10 @@ def generer_arbre_double_elimination(participants, race_prelim=2, race_finale=3,
                     "type_source_a": "vainqueur", "type_source_b": "vainqueur"
                 })
             nom_w = "Gagnants — Finale" if curr_w_count == 1 else ("Gagnants — Demi-finales" if curr_w_count == 2 else "Gagnants — Quarts de finale")
+            if curr_w_count == 1:
+                for wm in w_next_matchs:
+                    wm["race_to"] = race_finale_winner
+                    wm["format_label"] = fmt_fw
             winner_rounds.append((nom_w, w_next_matchs))
 
             # Tour Loser accueillant les curr_w_count perdants de W{w_num}
@@ -10592,6 +10609,10 @@ def generer_arbre_double_elimination(participants, race_prelim=2, race_finale=3,
                     "type_source_a": "vainqueur", "type_source_b": "perdant"
                 })
             nom_l_drop = "Seconde Chance — Finale" if curr_w_count == 1 else f"Seconde Chance — Repêchage ({curr_w_count} matchs)"
+            if curr_w_count == 1:
+                for lm in l_drop_matchs:
+                    lm["race_to"] = race_finale_loser
+                    lm["format_label"] = fmt_fl
             loser_rounds.append((nom_l_drop, l_drop_matchs))
 
             if curr_w_count > 1:
@@ -10614,23 +10635,29 @@ def generer_arbre_double_elimination(participants, race_prelim=2, race_finale=3,
         tours = []
         t_idx = 1
         for nom_w, m_list in winner_rounds:
+            is_wf = (nom_w == "Gagnants — Finale")
             tours.append({
                 "numero": t_idx, "nom": nom_w, "section": "winner", "bracket": "winner",
-                "race_to": race_prelim, "format_label": fmt_p, "matchs": m_list
+                "race_to": race_finale_winner if is_wf else race_prelim,
+                "format_label": fmt_fw if is_wf else fmt_p,
+                "matchs": m_list
             })
             t_idx += 1
         for nom_l, m_list in loser_rounds:
+            is_lf = (nom_l == "Seconde Chance — Finale")
             tours.append({
                 "numero": t_idx, "nom": nom_l, "section": "loser", "bracket": "loser",
-                "race_to": race_prelim, "format_label": fmt_p, "matchs": m_list
+                "race_to": race_finale_loser if is_lf else race_prelim,
+                "format_label": fmt_fl if is_lf else fmt_p,
+                "matchs": m_list
             })
             t_idx += 1
 
         tours.append({
             "numero": t_idx, "nom": "🏆 Grande Finale Officielle", "section": "finale", "bracket": "finale",
-            "race_to": race_finale, "format_label": fmt_f,
+            "race_to": race_grande_finale, "format_label": fmt_gf,
             "matchs": [{
-                "id": "GF_M1", "bracket": "finale", "etape": curr_etape + 1, "race_to": race_finale,
+                "id": "GF_M1", "bracket": "finale", "etape": curr_etape + 1, "race_to": race_grande_finale, "format_label": fmt_gf,
                 "equipe_a": "À déterminer", "equipe_b": "À déterminer",
                 "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None,
                 "source_a": f"W{w_num}_M1", "source_b": f"L{last_l_num}_M1",
@@ -10643,9 +10670,12 @@ def generer_arbre_double_elimination(participants, race_prelim=2, race_finale=3,
             "titre": titre,
             "date_creation": datetime.now().strftime("%d/%m/%Y à %H:%M"),
             "format": "double_elimination",
-            "format_label": "Double élimination (Winner & Loser Bracket)",
+            "format_label": f"Double élimination (Gagnants {fmt_fw} • Seconde chance {fmt_fl} • Grande Finale {fmt_gf})",
             "race_prelim": race_prelim,
-            "race_finale": race_finale,
+            "race_finale": race_grande_finale,
+            "race_finale_winner": race_finale_winner,
+            "race_finale_loser": race_finale_loser,
+            "race_grande_finale": race_grande_finale,
             "participants": p_liste,
             "promus_second_tour": promus_places,
             "total_tours": len(tours),
@@ -10699,9 +10729,9 @@ def generer_arbre_double_elimination(participants, race_prelim=2, race_finale=3,
     if b == 4:
         tours.append({
             "numero": 2, "nom": "Gagnants — Finale", "section": "winner", "bracket": "winner",
-            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "race_to": race_finale_winner, "format_label": fmt_fw,
             "matchs": [{
-                "id": "W2_M1", "bracket": "winner", "etape": 2,
+                "id": "W2_M1", "bracket": "winner", "etape": 2, "race_to": race_finale_winner, "format_label": fmt_fw,
                 "equipe_a": w1_matchs[0]["vainqueur"] or "À déterminer",
                 "equipe_b": w1_matchs[1]["vainqueur"] or "À déterminer",
                 "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None,
@@ -10711,7 +10741,7 @@ def generer_arbre_double_elimination(participants, race_prelim=2, race_finale=3,
         })
         tours.append({
             "numero": 3, "nom": "Seconde Chance — Demi-finale", "section": "loser", "bracket": "loser",
-            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "race_to": race_prelim, "format_label": fmt_p,
             "matchs": [{
                 "id": "L1_M1", "bracket": "loser", "etape": 2,
                 "equipe_a": "À déterminer", "equipe_b": "À déterminer",
@@ -10722,9 +10752,9 @@ def generer_arbre_double_elimination(participants, race_prelim=2, race_finale=3,
         })
         tours.append({
             "numero": 4, "nom": "Seconde Chance — Finale", "section": "loser", "bracket": "loser",
-            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "race_to": race_finale_loser, "format_label": fmt_fl,
             "matchs": [{
-                "id": "L2_M1", "bracket": "loser", "etape": 3,
+                "id": "L2_M1", "bracket": "loser", "etape": 3, "race_to": race_finale_loser, "format_label": fmt_fl,
                 "equipe_a": "À déterminer", "equipe_b": "À déterminer",
                 "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None,
                 "source_a": "L1_M1", "source_b": "W2_M1",
@@ -10733,9 +10763,9 @@ def generer_arbre_double_elimination(participants, race_prelim=2, race_finale=3,
         })
         tours.append({
             "numero": 5, "nom": "🏆 Grande Finale Officielle", "section": "finale", "bracket": "finale",
-            "race_to": race_finale, "format_label": f"{race_finale} de {2*race_finale - 1}",
+            "race_to": race_grande_finale, "format_label": fmt_gf,
             "matchs": [{
-                "id": "GF_M1", "bracket": "finale", "etape": 4, "race_to": race_finale,
+                "id": "GF_M1", "bracket": "finale", "etape": 4, "race_to": race_grande_finale, "format_label": fmt_gf,
                 "equipe_a": "À déterminer", "equipe_b": "À déterminer",
                 "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None,
                 "source_a": "W2_M1", "source_b": "L2_M1",
@@ -10768,9 +10798,9 @@ def generer_arbre_double_elimination(participants, race_prelim=2, race_finale=3,
         })
         tours.append({
             "numero": 3, "nom": "Gagnants — Finale", "section": "winner", "bracket": "winner",
-            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "race_to": race_finale_winner, "format_label": fmt_fw,
             "matchs": [{
-                "id": "W3_M1", "bracket": "winner", "etape": 4,
+                "id": "W3_M1", "bracket": "winner", "etape": 4, "race_to": race_finale_winner, "format_label": fmt_fw,
                 "equipe_a": "À déterminer", "equipe_b": "À déterminer",
                 "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None,
                 "source_a": "W2_M1", "source_b": "W2_M2",
@@ -10830,9 +10860,9 @@ def generer_arbre_double_elimination(participants, race_prelim=2, race_finale=3,
         })
         tours.append({
             "numero": 7, "nom": "Seconde Chance — Finale", "section": "loser", "bracket": "loser",
-            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "race_to": race_finale_loser, "format_label": fmt_fl,
             "matchs": [{
-                "id": "L4_M1", "bracket": "loser", "etape": 5,
+                "id": "L4_M1", "bracket": "loser", "etape": 5, "race_to": race_finale_loser, "format_label": fmt_fl,
                 "equipe_a": "À déterminer", "equipe_b": "À déterminer",
                 "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None,
                 "source_a": "L3_M1", "source_b": "W3_M1",
@@ -10841,9 +10871,9 @@ def generer_arbre_double_elimination(participants, race_prelim=2, race_finale=3,
         })
         tours.append({
             "numero": 8, "nom": "🏆 Grande Finale Officielle", "section": "finale", "bracket": "finale",
-            "race_to": race_finale, "format_label": f"{race_finale} de {2*race_finale - 1}",
+            "race_to": race_grande_finale, "format_label": fmt_gf,
             "matchs": [{
-                "id": "GF_M1", "bracket": "finale", "etape": 6, "race_to": race_finale,
+                "id": "GF_M1", "bracket": "finale", "etape": 6, "race_to": race_grande_finale, "format_label": fmt_gf,
                 "equipe_a": "À déterminer", "equipe_b": "À déterminer",
                 "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None,
                 "source_a": "W3_M1", "source_b": "L4_M1",
@@ -10869,9 +10899,9 @@ def generer_arbre_double_elimination(participants, race_prelim=2, race_finale=3,
         })
         tours.append({
             "numero": 4, "nom": "Gagnants — Finale", "section": "winner", "bracket": "winner",
-            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "race_to": race_finale_winner, "format_label": fmt_fw,
             "matchs": [{
-                "id": "W4_M1", "bracket": "winner", "etape": 6, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": "W3_M1", "source_b": "W3_M2", "type_source_a": "vainqueur", "type_source_b": "vainqueur"
+                "id": "W4_M1", "bracket": "winner", "etape": 6, "race_to": race_finale_winner, "format_label": fmt_fw, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": "W3_M1", "source_b": "W3_M2", "type_source_a": "vainqueur", "type_source_b": "vainqueur"
             }]
         })
         tours.append({
@@ -10914,16 +10944,16 @@ def generer_arbre_double_elimination(participants, race_prelim=2, race_finale=3,
         })
         tours.append({
             "numero": 10, "nom": "Seconde Chance — Finale", "section": "loser", "bracket": "loser",
-            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "race_to": race_finale_loser, "format_label": fmt_fl,
             "matchs": [{
-                "id": "L6_M1", "bracket": "loser", "etape": 7, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": "L5_M1", "source_b": "W4_M1", "type_source_a": "vainqueur", "type_source_b": "perdant"
+                "id": "L6_M1", "bracket": "loser", "etape": 7, "race_to": race_finale_loser, "format_label": fmt_fl, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": "L5_M1", "source_b": "W4_M1", "type_source_a": "vainqueur", "type_source_b": "perdant"
             }]
         })
         tours.append({
             "numero": 11, "nom": "🏆 Grande Finale Officielle", "section": "finale", "bracket": "finale",
-            "race_to": race_finale, "format_label": f"{race_finale} de {2*race_finale - 1}",
+            "race_to": race_grande_finale, "format_label": fmt_gf,
             "matchs": [{
-                "id": "GF_M1", "bracket": "finale", "etape": 8, "race_to": race_finale, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": "W4_M1", "source_b": "L6_M1", "type_source_a": "vainqueur", "type_source_b": "vainqueur"
+                "id": "GF_M1", "bracket": "finale", "etape": 8, "race_to": race_grande_finale, "format_label": fmt_gf, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": "W4_M1", "source_b": "L6_M1", "type_source_a": "vainqueur", "type_source_b": "vainqueur"
             }]
         })
 
@@ -10952,9 +10982,9 @@ def generer_arbre_double_elimination(participants, race_prelim=2, race_finale=3,
         })
         tours.append({
             "numero": 5, "nom": "Gagnants — Finale", "section": "winner", "bracket": "winner",
-            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "race_to": race_finale_winner, "format_label": fmt_fw,
             "matchs": [{
-                "id": "W5_M1", "bracket": "winner", "etape": 8, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": "W4_M1", "source_b": "W4_M2", "type_source_a": "vainqueur", "type_source_b": "vainqueur"
+                "id": "W5_M1", "bracket": "winner", "etape": 8, "race_to": race_finale_winner, "format_label": fmt_fw, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": "W4_M1", "source_b": "W4_M2", "type_source_a": "vainqueur", "type_source_b": "vainqueur"
             }]
         })
         # Loser Bracket (L1 à L8)
@@ -11012,16 +11042,16 @@ def generer_arbre_double_elimination(participants, race_prelim=2, race_finale=3,
         })
         tours.append({
             "numero": 13, "nom": "Seconde Chance — Finale", "section": "loser", "bracket": "loser",
-            "race_to": race_prelim, "format_label": f"{race_prelim} de {2*race_prelim - 1}",
+            "race_to": race_finale_loser, "format_label": fmt_fl,
             "matchs": [{
-                "id": "L8_M1", "bracket": "loser", "etape": 9, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": "L7_M1", "source_b": "W5_M1", "type_source_a": "vainqueur", "type_source_b": "perdant"
+                "id": "L8_M1", "bracket": "loser", "etape": 9, "race_to": race_finale_loser, "format_label": fmt_fl, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": "L7_M1", "source_b": "W5_M1", "type_source_a": "vainqueur", "type_source_b": "perdant"
             }]
         })
         tours.append({
             "numero": 14, "nom": "🏆 Grande Finale Officielle", "section": "finale", "bracket": "finale",
-            "race_to": race_finale, "format_label": f"{race_finale} de {2*race_finale - 1}",
+            "race_to": race_grande_finale, "format_label": fmt_gf,
             "matchs": [{
-                "id": "GF_M1", "bracket": "finale", "etape": 10, "race_to": race_finale, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": "W5_M1", "source_b": "L8_M1", "type_source_a": "vainqueur", "type_source_b": "vainqueur"
+                "id": "GF_M1", "bracket": "finale", "etape": 10, "race_to": race_grande_finale, "format_label": fmt_gf, "equipe_a": "À déterminer", "equipe_b": "À déterminer", "score_a": 0, "score_b": 0, "termine": False, "passe_droit": False, "vainqueur": None, "source_a": "W5_M1", "source_b": "L8_M1", "type_source_a": "vainqueur", "type_source_b": "vainqueur"
             }]
         })
 
@@ -11031,9 +11061,12 @@ def generer_arbre_double_elimination(participants, race_prelim=2, race_finale=3,
         "titre": titre,
         "date_creation": datetime.now().strftime("%d/%m/%Y à %H:%M"),
         "format": "double_elimination",
-        "format_label": "Double élimination (Winner & Loser Bracket)",
+        "format_label": f"Double élimination (Gagnants {fmt_fw} • Seconde chance {fmt_fl} • Grande Finale {fmt_gf})",
         "race_prelim": race_prelim,
-        "race_finale": race_finale,
+        "race_finale": race_grande_finale,
+        "race_finale_winner": race_finale_winner,
+        "race_finale_loser": race_finale_loser,
+        "race_grande_finale": race_grande_finale,
         "participants": p_liste,
         "promus_second_tour": promus,
         "total_tours": len(tours),
@@ -11568,8 +11601,13 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
 
     if is_double_elim:
         race_p = tournoi.get("race_prelim", 2)
-        race_f = tournoi.get("race_finale", 3)
-        format_str = f"Double élimination (Gagnants & Seconde chance {race_p} de {2*race_p-1} • Grande Finale {race_f} de {2*race_f-1})"
+        race_f = tournoi.get("race_grande_finale", tournoi.get("race_finale", 3))
+        rf_w = tournoi.get("race_finale_winner", race_p)
+        rf_l = tournoi.get("race_finale_loser", race_p)
+        fmt_w = f"{rf_w} de {2*rf_w-1}"
+        fmt_l = f"{rf_l} de {2*rf_l-1}"
+        fmt_f = f"{race_f} de {2*race_f-1}"
+        format_str = f"Double élimination (Finales : Gagnants {fmt_w} • Seconde chance {fmt_l} • Grande Finale {fmt_f})"
     elif is_elim:
         race_p = tournoi.get("race_prelim", 2)
         race_f = tournoi.get("race_finale", 3)
@@ -13063,7 +13101,7 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
 
     st.caption(f"Configurez les paramètres et inscrivez les participants pour lancer un nouveau {libelle_mode.lower()}.")
     with st.container(border=True):
-        col_cfg1, col_cfg2 = st.columns([2, 1])
+        col_cfg1, col_cfg2 = st.columns([1.5, 1.5])
         with col_cfg1:
             titre_defaut = f"Tournoi {'Simple' if mode == 'simple' else 'Double'} — {datetime.now().strftime('%d/%m/%Y')}"
             titre_saisi = st.text_input("Nom du tournoi :", value=titre_defaut, key=f"tournoi_titre_{mode}{key_suffix}")
@@ -13075,19 +13113,48 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
                 ],
                 key=f"tournoi_format_{mode}{key_suffix}"
             )
+            is_double_elim_cfg = "Double élimination" in type_format
+
         with col_cfg2:
-            st.markdown("**Formule officielle des matchs :**")
-            if "Double élimination" in type_format:
-                st.info(
-                    "🛡️ **Double élimination :** Seconde chance garantie en cas de 1ʳᵉ défaite !\n\n"
-                    "🔹 **Gagnants :** 2 de 3 *(premier à 2)*\n\n"
-                    "🔸 **Seconde chance :** 2 de 3 *(premier à 2)*\n\n"
-                    "🏆 **Grande Finale :** 3 de 5 *(premier à 3)*"
+            st.markdown("**⚙️ Formule officielle des finales :**")
+            if is_double_elim_cfg:
+                col_f1, col_f2 = st.columns(2)
+                with col_f1:
+                    fmt_finale_w = st.selectbox(
+                        "Finale Bracket Gagnants :",
+                        ["2 de 3", "3 de 5"],
+                        index=0,
+                        key=f"tournoi_fin_w_{mode}{key_suffix}",
+                        help="Format pour la finale du tableau des gagnants (Winner Bracket)"
+                    )
+                with col_f2:
+                    fmt_finale_l = st.selectbox(
+                        "Finale Seconde Chance :",
+                        ["2 de 3", "3 de 5"],
+                        index=0,
+                        key=f"tournoi_fin_l_{mode}{key_suffix}",
+                        help="Format pour la finale du tableau de seconde chance (Loser Bracket)"
+                    )
+                fmt_finale_gf = st.selectbox(
+                    "Grande Finale Officielle :",
+                    ["3 de 5", "2 de 3"],
+                    index=0,
+                    key=f"tournoi_fin_gf_{mode}{key_suffix}",
+                    help="Format pour la Grande Finale (Gagnant Winner vs Gagnant Loser)"
+                )
+                st.caption(
+                    f"ℹ️ *Préliminaires : 2 de 3 • Finales Winner/Loser : {fmt_finale_w} / {fmt_finale_l} • Grande Finale : {fmt_finale_gf}*"
                 )
             else:
-                st.info(
-                    "🔹 **Préliminaires :** 2 de 3 *(premier à 2)*\n\n"
-                    "🏆 **Grande Finale :** 3 de 5 *(premier à 3)*"
+                fmt_finale_elim = st.selectbox(
+                    "Grande Finale :",
+                    ["3 de 5", "2 de 3"],
+                    index=0,
+                    key=f"tournoi_fin_elim_{mode}{key_suffix}",
+                    help="Format pour la finale du tournoi"
+                )
+                st.caption(
+                    f"ℹ️ *Préliminaires : 2 de 3 • Grande Finale : {fmt_finale_elim}*"
                 )
 
         st.markdown("##### 📅 Organisation, Disponibilité des tables & Horaires (1 seule journée)")
@@ -13518,10 +13585,16 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
                 sauvegarder_tournoi_dans_historique(mode, notifier_admin=True)
 
             if is_double_elim:
+                race_w = 3 if st.session_state.get(f"tournoi_fin_w_{mode}{key_suffix}", "2 de 3") == "3 de 5" else 2
+                race_l = 3 if st.session_state.get(f"tournoi_fin_l_{mode}{key_suffix}", "2 de 3") == "3 de 5" else 2
+                race_gf = 3 if st.session_state.get(f"tournoi_fin_gf_{mode}{key_suffix}", "3 de 5") == "3 de 5" else 2
                 t_cree = generer_arbre_double_elimination(
                     participants_finaux,
                     race_prelim=2,
-                    race_finale=3,
+                    race_finale=race_gf,
+                    race_finale_winner=race_w,
+                    race_finale_loser=race_l,
+                    race_grande_finale=race_gf,
                     titre=titre_saisi,
                     heure_debut=heure_debut_str,
                     duree_min=duree_min_saisie,
@@ -13529,10 +13602,11 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
                     passes_droits=(promus_selectionnes if (promus_selectionnes and len(promus_selectionnes) == nb_promus) else None)
                 )
             else:
+                race_elim = 3 if st.session_state.get(f"tournoi_fin_elim_{mode}{key_suffix}", "3 de 5") == "3 de 5" else 2
                 t_cree = generer_arbre_elimination(
                     participants_finaux,
                     race_prelim=2,
-                    race_finale=3,
+                    race_finale=race_elim,
                     titre=titre_saisi,
                     heure_debut=heure_debut_str,
                     duree_min=duree_min_saisie,
