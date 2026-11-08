@@ -225,10 +225,11 @@ Le volet **`⚙️ Administration`** (réservé exclusivement à l'accès **`�
     * Module interactif et automatisé d'interconnexion avec l'API officielle de la Salle Le Saphir (`POST https://saphirbillard.com/index.php?eID=billardImport`).
     * **Transmission automatisée :** Déclenchée sans friction lors de l'approbation d'un match en direct ou lors de l'archivage direct depuis le scanner IA de feuilles de match (avec calcul automatique de la saison et de la semaine).
     * **Banc d'essai administratif :** En-têtes HTTP `Content-Type: application/json` et `X-API-Key: ...` avec test de latence et coloration syntaxique de la réponse serveur pour valider la communication.
-  * **📲 Sentinelle SMS (Passerelle Android APK & Termux) :**
+  * **📲 Sentinelle SMS (Passerelle Android APK & Termux avec support Pub/Sub ⚡) :**
     * Module de gestion des 24 membres avec leurs numéros de téléphone et consentement SMS dans `joueurs_sms.json`.
+    * **Architecture Pub/Sub instantanée (Supabase Realtime Broadcast) :** Dès qu'un match est archivé ou qu'un test est ordonné, un événement WebSocket est diffusé en direct sur le canal `realtime:saphir_sms`. L'application mobile réagit en moins d'une seconde, sans délai d'attente (délai de 5 minutes éliminé) !
+    * **Application Android native (`SaphirSMS.apk` v1.1.0) :** Projet Android complet avec client WebSocket OkHttp connecté 24/7, service d'arrière-plan permanent, démarrage automatique et compilation continue via GitHub Actions.
     * **Générateur de script Termux (`saphir_sms_poller.py`) :** Téléchargeable en 1 clic avec clés Supabase pré-remplies pour une exécution instantanée sur Android avec `termux-wake-lock`.
-    * **Application Android native (`SaphirSMS.apk`) :** Projet Android complet avec service d'arrière-plan permanent, démarrage automatique et compilation continue via GitHub Actions.
     * **Simulation & Aperçu SMS :** Visualisation immédiate du message de résultat qui sera envoyé pour le dernier match archivé.
   * **📧 SMTP (Notifications et bilans officiels) :** Configuration du serveur d'expédition courriel (prise en charge robuste TLS port 587 / SSL port 465 avec repli automatique et nettoyage des mots de passe d'application Gmail), test d'envoi en direct et routage des alertes administratives.
   * **🔑 Sécurité (Gestion des accès, Clés API & Secrets) :**
