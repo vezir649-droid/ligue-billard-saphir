@@ -34429,35 +34429,27 @@ if not est_connecte and not est_spectateur:
 
     with col_l2:
 
-        b64_logo_login = charger_armoiries_base64((220, 220))
-
         arm_p = find_armoiries_path()
 
-        if b64_logo_login:
+        if arm_p and os.path.isfile(arm_p):
 
-            st.markdown(
-
-                f"""
-
-                <div style="text-align: center; margin-bottom: 8px;">
-
-                    <img src="{b64_logo_login}" alt="Armoiries Ligue de billard Boule en main" style="width: 130px; height: 130px; object-fit: contain; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.18));">
-
-                </div>
-
-                """,
-
-                unsafe_allow_html=True
-
-            )
-
-        elif os.path.isfile(arm_p):
-
-            col_img1, col_img2, col_img3 = st.columns([1, 1, 1])
+            col_img1, col_img2, col_img3 = st.columns([1, 1.2, 1])
 
             with col_img2:
 
                 st.image(arm_p, width=130)
+
+        else:
+
+            b64_logo_login = charger_armoiries_base64((220, 220))
+
+            if b64_logo_login:
+
+                col_img1, col_img2, col_img3 = st.columns([1, 1.2, 1])
+
+                with col_img2:
+
+                    st.image(b64_logo_login, width=130)
 
 
 
@@ -34803,29 +34795,19 @@ noms_equipes = list(equipes_disponibles.keys())
 
 # --- ENTÊTE DU SITE WEB DE RÉFÉRENCE ---
 
-b64_logo_header = charger_armoiries_base64((140, 140))
+arm_path_header = find_armoiries_path()
+has_arm = bool(arm_path_header and os.path.isfile(arm_path_header))
 
-if b64_logo_header:
+if has_arm or charger_armoiries_base64((140, 140)):
 
     col_hd_logo, col_hd_txt = st.columns([0.10, 0.90])
 
     with col_hd_logo:
 
-        st.markdown(
-
-            f"""
-
-            <div style="display: flex; align-items: center; justify-content: center; padding-top: 10px;">
-
-                <img src="{b64_logo_header}" alt="Armoiries" style="width: 75px; height: 75px; object-fit: contain; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.12));">
-
-            </div>
-
-            """,
-
-            unsafe_allow_html=True
-
-        )
+        if has_arm:
+            st.image(arm_path_header, width=75)
+        else:
+            st.image(charger_armoiries_base64((140, 140)), width=75)
 
     with col_hd_txt:
 
