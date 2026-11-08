@@ -130,7 +130,16 @@
         "type": "test_sms",
         "telephone": "4188720836",
         "message": "[SAPHIR SMS TEST] Connexion reussie a 04:25:01 ! La Sentinelle de la Ligue de billard est active et prete.",
+        "statut": "envoye",
+        "date": "2026-11-08 04:25:01",
+        "date_envoi": "2026-11-07 23:25:02"
+    },
+    {
+        "id": "cmd_1794158257",
+        "type": "test_sms",
+        "telephone": "4188720836",
+        "message": "[SAPHIR SMS TEST] Signal Pub/Sub valide a 17:17:37 ! Sentinelle active.",
         "statut": "en_attente",
-        "date": "2026-11-08 04:25:01"
+        "date": "2026-11-08 17:17:37"
     }
 ]
