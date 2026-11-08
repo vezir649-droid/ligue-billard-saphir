@@ -32,6 +32,8 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -49,6 +51,7 @@ public class MainActivity extends AppCompatActivity {
 
     private TextView tvStatus, tvLastCheck, tvLogs;
     private ScrollView svLogs;
+    private final ExecutorService bgExecutor = Executors.newSingleThreadExecutor();
     private EditText etSupabaseUrl, etSupabaseKey;
     private Button btnToggleService, btnTestSms, btnSaveConfig;
     private SharedPreferences prefs;
@@ -185,14 +188,7 @@ public class MainActivity extends AppCompatActivity {
                 return;
             }
             Toast.makeText(this, "⚡ Vérification Supabase en cours...", Toast.LENGTH_SHORT).show();
-            startSmsService();
-            Intent intent = new Intent(this, SmsPollingService.class);
-            intent.setAction("ACTION_CHECK_NOW");
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(intent);
-            } else {
-                startService(intent);
-            }
+            startSmsService("ACTION_CHECK_NOW");
         });
 
         checkAndRequestPermissions();
@@ -225,11 +221,7 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED) {
-            if (!isServiceRunning()) {
-                startSmsService();
-            }
-        }
+
     }
 
     @Override
@@ -254,15 +246,28 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void startSmsService() {
-        Intent intent = new Intent(this, SmsPollingService.class);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(intent);
-        } else {
-            startService(intent);
+        startSmsService(null);
+    }
+
+    private void startSmsService(String action) {
+        try {
+            Intent intent = new Intent(this, SmsPollingService.class);
+            if (action != null) {
+                intent.setAction(action);
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent);
+            } else {
+                startService(intent);
+            }
+            prefs.edit().putBoolean("is_running", true).apply();
+            updateUiState(true);
+            if (action == null) {
+                Toast.makeText(this, "🚀 Sentinelle SMS démarrée (Pub/Sub Temps Réel ⚡)", Toast.LENGTH_SHORT).show();
+            }
+        } catch (Throwable e) {
+            Toast.makeText(this, "⚠️ Erreur démarrage sentinelle : " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
-        prefs.edit().putBoolean("is_running", true).apply();
-        updateUiState(true);
-        Toast.makeText(this, "🚀 Sentinelle SMS démarrée (Pub/Sub Temps Réel ⚡)", Toast.LENGTH_SHORT).show();
     }
 
     private void stopSmsService() {
@@ -318,20 +323,28 @@ public class MainActivity extends AppCompatActivity {
             String timeNow = new SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(new Date());
             String testMessage = "[SAPHIR SMS TEST] Test d'envoi direct réussi à " + timeNow + " ! La Sentinelle de la Ligue de billard est opérationnelle.";
 
-            logBuilder.append("[").append(timeNow).append("] 📲 Test SMS direct vers ").append(phoneNumber).append("...\n");
+            logBuilder.append("[").append(timeNow).append("] 📲 Test SMS vers ").append(phoneNumber).append("...\n");
             tvLogs.setText(logBuilder.toString());
             if (svLogs != null) svLogs.post(() -> svLogs.fullScroll(ScrollView.FOCUS_DOWN));
 
-            try {
-                SmsHelper.sendSafeSms(this, phoneNumber, testMessage);
-                Toast.makeText(this, "✅ SMS envoyé à " + phoneNumber, Toast.LENGTH_LONG).show();
-                logBuilder.append("  -> ✅ SMS expédié via carte SIM à ").append(phoneNumber).append(" !\n");
-            } catch (Exception e) {
-                Toast.makeText(this, "❌ Erreur SMS : " + e.getMessage(), Toast.LENGTH_LONG).show();
-                logBuilder.append("  -> ❌ Échec envoi : ").append(e.getMessage()).append("\n");
-            }
-            tvLogs.setText(logBuilder.toString());
-            if (svLogs != null) svLogs.post(() -> svLogs.fullScroll(ScrollView.FOCUS_DOWN));
+            bgExecutor.execute(() -> {
+                try {
+                    SmsHelper.sendSafeSms(MainActivity.this, phoneNumber, testMessage);
+                    runOnUiThread(() -> {
+                        Toast.makeText(MainActivity.this, "✅ SMS envoyé à " + phoneNumber, Toast.LENGTH_LONG).show();
+                        logBuilder.append("  -> ✅ SMS expédié via carte SIM à ").append(phoneNumber).append(" !\n");
+                        tvLogs.setText(logBuilder.toString());
+                        if (svLogs != null) svLogs.post(() -> svLogs.fullScroll(ScrollView.FOCUS_DOWN));
+                    });
+                } catch (Exception e) {
+                    runOnUiThread(() -> {
+                        Toast.makeText(MainActivity.this, "❌ Erreur SMS : " + e.getMessage(), Toast.LENGTH_LONG).show();
+                        logBuilder.append("  -> ❌ Échec envoi : ").append(e.getMessage()).append("\n");
+                        tvLogs.setText(logBuilder.toString());
+                        if (svLogs != null) svLogs.post(() -> svLogs.fullScroll(ScrollView.FOCUS_DOWN));
+                    });
+                }
+            });
         });
 
         builder.setNegativeButton("Annuler", (dialog, which) -> dialog.cancel());
