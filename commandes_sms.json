@@ -1,14 +1,5 @@
 [
     {
-        "id": "cmd_1794159542",
-        "type": "test_sms",
-        "telephone": "4188720836",
-        "message": "[SAPHIR SMS TEST] Signal Pub/Sub valide a 17:39:02 ! Sentinelle active.",
-        "statut": "envoye",
-        "date": "2026-11-08 17:39:02",
-        "date_envoi": "2026-11-08 12:39:35"
-    },
-    {
         "id": "cmd_1794159603",
         "type": "test_sms",
         "telephone": "4188720836",
@@ -220,7 +211,16 @@
         "type": "test_sms",
         "telephone": "4188720836",
         "message": "[TOURNOI SAPHIR] Horaire modifie (M4)\nG. Dumais & G. Vezina vs M. Larouche & D. Viens\nVotre match Table 2 est reporte a 20h19. Presentez-vous a cette heure !",
+        "statut": "envoye",
+        "date": "2026-11-08 19:34:17",
+        "date_envoi": "2026-11-08 14:34:18"
+    },
+    {
+        "id": "cmd_1794166500_454",
+        "type": "test_sms",
+        "telephone": "4188720836",
+        "message": "[TOURNOI SAPHIR] Appel Table 2 (M4)\nG. Dumais & G. Vezina vs M. Larouche & D. Viens\nVotre match est prevu a 19h49. Presentez-vous a votre table !",
         "statut": "en_attente",
-        "date": "2026-11-08 19:34:17"
+        "date": "2026-11-08 19:35:00"
     }
 ]
