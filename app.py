@@ -14485,102 +14485,51 @@ def envoyer_test_sms_sentinelle(telephone, message_texte, action_pubsub="TEST_SM
 
 
 def generer_message_sms_match(match):
-
-    """Formate le texte du SMS officiel concis (initiale prénom + nom, sans /24, sans message de fin)."""
-
+    """Formate le texte du SMS officiel concis compatible GSM 7-bit (< 150 car.)."""
     if not match or not isinstance(match, dict):
-
         return ""
+    import unicodedata
 
     rec = match.get("equipe_receveur") or match.get("receveur") or "Receveur"
-
     vis = match.get("equipe_visiteur") or match.get("visiteur") or "Visiteur"
-
     tot_rec = match.get("total_points_receveur") or match.get("points_receveur") or match.get("total_receveur") or 0
-
     tot_vis = match.get("total_points_visiteur") or match.get("points_visiteur") or match.get("total_visiteur") or 0
 
-    date_m = match.get("date") or match.get("date_enregistrement") or datetime.now().strftime("%d/%m/%Y")
-
-    if len(str(date_m)) > 10 and " " in str(date_m):
-
-        date_m = str(date_m).split()[0]
-
-
-
     def _court(nom):
-
         if not nom:
-
             return ""
-
         p = str(nom).strip().split()
-
         if len(p) <= 1:
-
             return str(nom).strip()
+        return f"{p[0][0].upper()}.{p[-1]}"
 
-        prenom = p[0]
-
-        nom_famille = " ".join(p[1:])
-
-        return f"{prenom[0].upper()}. {nom_famille}"
-
-
-
-    txt = f"[LIGUE SAPHIR] {rec} ({tot_rec}) vs {vis} ({tot_vis})\n"
-
-    txt += f"Date : {date_m}\n\nPointages :\n"
-
-
-
-    totaux_j = match.get("totaux_joueurs", {})
-
-    if totaux_j and isinstance(totaux_j, dict):
-
-        for j, pts in totaux_j.items():
-
-            txt += f"- {_court(j)} : {pts}\n"
-
-    elif match.get("points_par_joueur"):
-
-        for j_id, j_info in match.get("points_par_joueur", {}).items():
-
-            j_nom = j_info.get("nom", j_id)
-
-            pts = j_info.get("points", 0)
-
-            txt += f"- {_court(j_nom)} : {pts}\n"
-
-    else:
-
-        matchs = match.get("matchs", {})
-
-        scores_j = {}
-
+    matchs = match.get("matchs", {})
+    scores_a = {}
+    scores_b = {}
+    if matchs and isinstance(matchs, dict):
         for num_s in range(1, 10):
-
             m = matchs.get(str(num_s), {})
-
             ja, jb = m.get("joueur_a"), m.get("joueur_b")
-
             sa, sb = m.get("score_a", 0), m.get("score_b", 0)
-
             if ja:
-
-                scores_j[ja] = scores_j.get(ja, 0) + sa
-
+                scores_a[ja] = scores_a.get(ja, 0) + sa
             if jb:
+                scores_b[jb] = scores_b.get(jb, 0) + sb
 
-                scores_j[jb] = scores_j.get(jb, 0) + sb
+    txt = f"[LIGUE SAPHIR] {rec} ({tot_rec}) vs {vis} ({tot_vis})
+"
+    if scores_a:
+        txt += f"{rec}: " + ", ".join(f"{_court(j)}:{pts}" for j, pts in scores_a.items()) + "
+"
+    if scores_b:
+        txt += f"{vis}: " + ", ".join(f"{_court(j)}:{pts}" for j, pts in scores_b.items())
+    elif not scores_a and not scores_b:
+        totaux_j = match.get("totaux_joueurs", {}) or {}
+        if totaux_j and isinstance(totaux_j, dict):
+            txt += "Scores: " + ", ".join(f"{_court(j)}:{pts}" for j, pts in list(totaux_j.items())[:6])
 
-        for j, pts in scores_j.items():
-
-            txt += f"- {_court(j)} : {pts}\n"
-
-
-
-    return txt.strip()
+    txt_norm = unicodedata.normalize("NFD", txt)
+    return "".join(c for c in txt_norm if unicodedata.category(c) != "Mn").strip()
 
 def raccourcir_equipe(equipe_str):
     """Raccourcit les noms d'une equipe (simple ou double) pour respecter le format GSM 7-bit < 160 car."""
