@@ -423,6 +423,9 @@ public class SmsPollingService extends Service {
                                     modifCmd = true;
                                     broadcastLog("✅ SMS de test envoyé avec succès à " + telTest + " !");
                                 } catch (Exception eCmd) {
+                                    cmd.put("statut", "erreur");
+                                    cmd.put("erreur", eCmd.getMessage());
+                                    modifCmd = true;
                                     broadcastLog("❌ Échec envoi test à " + telTest + " : " + eCmd.getMessage());
                                 }
                             }
