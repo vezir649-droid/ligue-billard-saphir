@@ -15687,7 +15687,7 @@ def afficher_onglet_sentinelle_sms():
 
             with st.container(border=True):
 
-                st.markdown("###### 📦 Option 1 : Application Dédiée (`SaphirSMS.apk` v1.1.0 — Pub/Sub ⚡)")
+                st.markdown("###### 📦 Option 1 : Application Dédiée (`SaphirSMS.apk` v1.1.7 — Anti-Doublon & Pub/Sub ⚡)")
 
                 st.markdown(
 
@@ -15705,7 +15705,7 @@ def afficher_onglet_sentinelle_sms():
 
                 st.link_button(
 
-                    label="📲 Télécharger SaphirSMS.apk (v1.1.0 Pub/Sub ⚡)",
+                    label="📲 Télécharger SaphirSMS.apk (v1.1.7 Anti-Doublon & Pub/Sub ⚡)",
 
                     url=url_apk_direct,
 
@@ -15713,7 +15713,7 @@ def afficher_onglet_sentinelle_sms():
 
                 )
 
-                st.caption("✨ *Version 1.1.0 avec écoute en direct WebSocket Pub/Sub (délai de 5 minutes éliminé).*")
+                st.caption("✨ *Version 1.1.7 avec verrou atomique anti-doublon et écoute en direct WebSocket Pub/Sub.*")
 
                 with st.expander("ℹ️ Instructions d'installation de l'APK sur Android", expanded=False):
 

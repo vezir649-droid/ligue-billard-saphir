@@ -10,8 +10,8 @@ android {
         applicationId "com.saphir.sms"
         minSdk 24
         targetSdk 33
-        versionCode 14
-        versionName "1.1.6"
+        versionCode 15
+        versionName "1.1.7"
 
         def envSupabaseKey = System.getenv("SUPABASE_KEY") ?: ""
         buildConfigField "String", "DEFAULT_SUPABASE_KEY", "\"${envSupabaseKey}\""
