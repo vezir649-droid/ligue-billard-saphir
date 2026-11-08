@@ -1,14 +1,5 @@
 [
     {
-        "id": "cmd_1794163505_846",
-        "type": "test_sms",
-        "telephone": "4188720836",
-        "message": "[TOURNOI SAPHIR] Horaire modifie (M4)\nG. Dumais & G. Vezina vs M. Larouche & D. Viens\nVotre match Table 2 est reporte a 19h26. Presentez-vous a cette heure !",
-        "statut": "envoye",
-        "date": "2026-11-08 18:45:05",
-        "date_envoi": "2026-11-08 13:45:08"
-    },
-    {
         "id": "cmd_1794163546_355",
         "type": "nouveau_match",
         "telephone": "4188720836",
@@ -220,7 +211,16 @@
         "type": "test_sms",
         "telephone": "5818499683",
         "message": "[TOURNOI SAPHIR] Horaire modifie (M4)\nG. Dumais & G. Vezina vs M. Larouche & D. Viens\nMatch Table 2 reporte a 22h27. Soyez presents !",
+        "statut": "envoye",
+        "date": "2026-11-08 21:42:08",
+        "date_envoi": "2026-11-08 16:42:08"
+    },
+    {
+        "id": "cmd_1794174689_363",
+        "type": "test_sms",
+        "telephone": "5818499683",
+        "message": "[TOURNOI SAPHIR] Horaire modifie (M4)\nG. Dumais & G. Vezina vs M. Larouche & D. Viens\nMatch Table 2 reporte a 22h27. Soyez presents !",
         "statut": "en_attente",
-        "date": "2026-11-08 21:42:08"
+        "date": "2026-11-08 21:51:29"
     }
 ]
