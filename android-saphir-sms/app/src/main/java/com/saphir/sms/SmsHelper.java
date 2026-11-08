@@ -58,7 +58,8 @@ public class SmsHelper {
             throw new IllegalArgumentException("Numéro de téléphone invalide : " + destinationAddress);
         }
 
-        ArrayList<String> parts = splitMessageSafely(text);
+        String cleanText = cleanGsmText(text);
+        ArrayList<String> parts = splitMessageSafely(cleanText);
         if (parts.isEmpty()) return;
 
         if (parts.size() == 1) {
@@ -77,6 +78,13 @@ public class SmsHelper {
                 }
             }
         }
+    }
+
+    public static String cleanGsmText(String text) {
+        if (text == null) return "";
+        String norm = java.text.Normalizer.normalize(text, java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "");
+        return norm.replace("’", "'").replace("œ", "oe").replace("Œ", "OE");
     }
 
     private static ArrayList<String> splitMessageSafely(String text) {
