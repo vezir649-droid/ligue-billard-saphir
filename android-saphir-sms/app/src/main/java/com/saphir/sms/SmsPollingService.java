@@ -49,6 +49,7 @@ public class SmsPollingService extends Service {
     private static final int NOTIF_ID = 101;
     private static final long HEARTBEAT_INTERVAL_MS = 25000; // 25s Phoenix heartbeat
     private static final long RECONNECT_DELAY_MS = 10000; // 10s auto-reconnect
+    private static final long SAFETY_POLL_INTERVAL_MS = 30000; // 30s safety net fallback
     private static final String TOPIC_REALTIME = "realtime:saphir_sms";
 
     public static final List<String> RECENT_LOGS = Collections.synchronizedList(new ArrayList<>());
@@ -64,6 +65,7 @@ public class SmsPollingService extends Service {
     private final AtomicBoolean isWsConnected = new AtomicBoolean(false);
     private Runnable heartbeatRunnable;
     private Runnable reconnectRunnable;
+    private Runnable safetyPollRunnable;
 
     private synchronized OkHttpClient getOkHttpClient() {
         if (wsHttpClient == null) {
@@ -97,9 +99,7 @@ public class SmsPollingService extends Service {
         // Vérification immédiate à l'initialisation ou sur demande
         executor.execute(() -> checkSupabaseAndSendSms());
 
-        if (intent != null && "ACTION_CHECK_NOW".equals(intent.getAction())) {
-            return START_STICKY;
-        }
+        startSafetyPoll();
 
         // Connexion immédiate au flux Pub/Sub Supabase Realtime (écoute 24/7 en continu)
         initOrConnectRealtimeWebSocket();
@@ -114,6 +114,7 @@ public class SmsPollingService extends Service {
                 wakeLock.release();
             } catch (Exception ignored) {}
         }
+        stopSafetyPoll();
         stopHeartbeat();
         if (reconnectRunnable != null) {
             handler.removeCallbacks(reconnectRunnable);
@@ -302,6 +303,25 @@ public class SmsPollingService extends Service {
             }
         };
         handler.postDelayed(heartbeatRunnable, HEARTBEAT_INTERVAL_MS);
+    }
+
+    private void startSafetyPoll() {
+        stopSafetyPoll();
+        safetyPollRunnable = new Runnable() {
+            @Override
+            public void run() {
+                executor.execute(() -> checkSupabaseAndSendSms());
+                handler.postDelayed(this, SAFETY_POLL_INTERVAL_MS);
+            }
+        };
+        handler.postDelayed(safetyPollRunnable, SAFETY_POLL_INTERVAL_MS);
+    }
+
+    private void stopSafetyPoll() {
+        if (safetyPollRunnable != null) {
+            handler.removeCallbacks(safetyPollRunnable);
+            safetyPollRunnable = null;
+        }
     }
 
     private void stopHeartbeat() {
