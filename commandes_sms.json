@@ -1,14 +1,5 @@
 [
     {
-        "id": "cmd_1794158587",
-        "type": "test_sms",
-        "telephone": "4188720836",
-        "message": "[SAPHIR SMS TEST] Signal Pub/Sub valide a 17:23:07 ! Sentinelle active.",
-        "statut": "envoye",
-        "date": "2026-11-08 17:23:07",
-        "date_envoi": "2026-11-08 12:23:08"
-    },
-    {
         "id": "cmd_1794159497",
         "type": "test_sms",
         "telephone": "4188720836",
@@ -220,7 +211,16 @@
         "type": "test_sms",
         "telephone": "4188720836",
         "message": "[SAPHIR SMS TEST] Connexion reussie a 19:33:18 ! La Sentinelle de la Ligue de billard est active et prete.",
+        "statut": "envoye",
+        "date": "2026-11-08 19:33:25",
+        "date_envoi": "2026-11-08 14:33:26"
+    },
+    {
+        "id": "cmd_1794166435_732",
+        "type": "test_sms",
+        "telephone": "4188720836",
+        "message": "[TOURNOI SAPHIR] Appel Table 2 (M4)\nG. Dumais & G. Vezina vs M. Larouche & D. Viens\nVotre match est prevu a 19h48. Presentez-vous a votre table !",
         "statut": "en_attente",
-        "date": "2026-11-08 19:33:25"
+        "date": "2026-11-08 19:33:55"
     }
 ]
