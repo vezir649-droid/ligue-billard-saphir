@@ -184,7 +184,16 @@
         "type": "test_sms",
         "telephone": "4188720836",
         "message": "[SAPHIR SMS TEST] Signal Pub/Sub valide a 17:21:45 ! Sentinelle active.",
+        "statut": "envoye",
+        "date": "2026-11-08 17:21:45",
+        "date_envoi": "2026-11-08 12:21:46"
+    },
+    {
+        "id": "cmd_1794158587",
+        "type": "test_sms",
+        "telephone": "4188720836",
+        "message": "[SAPHIR SMS TEST] Signal Pub/Sub valide a 17:23:07 ! Sentinelle active.",
         "statut": "en_attente",
-        "date": "2026-11-08 17:21:45"
+        "date": "2026-11-08 17:23:07"
     }
 ]
