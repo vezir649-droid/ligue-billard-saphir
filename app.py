@@ -14516,11 +14516,9 @@ def generer_message_sms_match(match):
             if jb:
                 scores_b[jb] = scores_b.get(jb, 0) + sb
 
-    txt = f"[LIGUE SAPHIR] {rec} ({tot_rec}) vs {vis} ({tot_vis})
-"
+    txt = f"[LIGUE SAPHIR] {rec} ({tot_rec}) vs {vis} ({tot_vis})\n"
     if scores_a:
-        txt += f"{rec}: " + ", ".join(f"{_court(j)}:{pts}" for j, pts in scores_a.items()) + "
-"
+        txt += f"{rec}: " + ", ".join(f"{_court(j)}:{pts}" for j, pts in scores_a.items()) + "\n"
     if scores_b:
         txt += f"{vis}: " + ", ".join(f"{_court(j)}:{pts}" for j, pts in scores_b.items())
     elif not scores_a and not scores_b:
