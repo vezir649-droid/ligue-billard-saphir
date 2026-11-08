@@ -2,7 +2,7 @@
     <string name="app_name">Saphir SMS</string>
     <string name="title_status">Statut de la Sentinelle</string>
     <string name="status_stopped">🔴 Surveillance arrêtée</string>
-    <string name="status_running">🟢 Surveillance active (aux 5 min)</string>
+    <string name="status_running">🟢 Surveillance active (Pub/Sub Temps Réel ⚡)</string>
     <string name="btn_start">DÉMARRER LA SURVEILLANCE</string>
     <string name="btn_stop">ARRÊTER LA SURVEILLANCE</string>
     <string name="btn_test">TESTER UN SMS</string>
