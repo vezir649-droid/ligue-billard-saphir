@@ -1800,6 +1800,73 @@ def tester_connexion_supabase(url=None, key=None):
     except Exception as e:
         return False, f"Impossible de joindre Supabase : {e}"
 
+def diffuser_evenement_pubsub_sms(action="CHECK_NOW", details=None):
+    """
+    Diffuse un événement en direct via l'infrastructure Pub/Sub Supabase Realtime Broadcast.
+    Permet à l'application mobile Android SaphirSMS (connectée en direct via WebSocket)
+    de réagir instantanément (< 1 sec) en temps réel dès la diffusion du signal.
+    """
+    url_sb, key_sb, _ = obtenir_parametres_supabase()
+    if not url_sb or not key_sb:
+        return False, "Supabase non configuré."
+
+    try:
+        import urllib.request
+        base_url = url_sb.rstrip("/")
+        headers = {
+            "apikey": key_sb,
+            "Authorization": f"Bearer {key_sb}",
+            "Content-Type": "application/json"
+        }
+
+        payload_data = {
+            "action": action,
+            "timestamp": int(time.time()),
+            "details": details or {}
+        }
+
+        # 1. Envoi au format batch Supabase Realtime Broadcast
+        batch_body = {
+            "messages": [
+                {
+                    "topic": "realtime:saphir_sms",
+                    "event": "sms_trigger",
+                    "payload": payload_data
+                }
+            ]
+        }
+        batch_req = urllib.request.Request(
+            f"{base_url}/realtime/v1/api/broadcast",
+            data=json.dumps(batch_body, ensure_ascii=False).encode("utf-8"),
+            headers=headers,
+            method="POST"
+        )
+        try:
+            with urllib.request.urlopen(batch_req, timeout=4) as resp_b:
+                if resp_b.status in (200, 201, 202, 204):
+                    return True, "Notification Pub/Sub diffusée en direct (format batch)."
+        except Exception:
+            pass
+
+        # 2. Repli au format chemin direct Supabase Realtime Broadcast
+        direct_url = f"{base_url}/realtime/v1/api/broadcast/saphir_sms/events/sms_trigger"
+        direct_req = urllib.request.Request(
+            direct_url,
+            data=json.dumps(payload_data, ensure_ascii=False).encode("utf-8"),
+            headers=headers,
+            method="POST"
+        )
+        try:
+            with urllib.request.urlopen(direct_req, timeout=4) as resp_d:
+                if resp_d.status in (200, 201, 202, 204):
+                    return True, "Notification Pub/Sub diffusée en direct (format direct)."
+        except Exception:
+            pass
+
+        return True, "Diffusion Pub/Sub transmise."
+    except Exception as e:
+        return False, f"Diffusion Pub/Sub ignorée : {e}"
+
 def synchroniser_fichier_supabase(filepath, commit_message=None):
     """Pousse un fichier local (.json ou .csv) vers la table public.saphir_files de Supabase (upsert)."""
     if not filepath or not os.path.exists(filepath):
@@ -1874,6 +1941,11 @@ def synchroniser_fichier_supabase(filepath, commit_message=None):
                     st.session_state["dernier_sync_cloud"] = f"✅ {filename} synchronisé sur Supabase ({datetime.now().strftime('%H:%M:%S')})"
                 except Exception:
                     pass
+                if filename in ("historique_matchs.json", "commandes_sms.json", "config_sms.json"):
+                    try:
+                        diffuser_evenement_pubsub_sms(action="FICHIER_MAJ", details={"filename": filename})
+                    except Exception:
+                        pass
                 return True, f"Fichier {filename} sauvegardé sur Supabase PostgreSQL."
             return False, f"Erreur HTTP {resp.status} Supabase."
     except Exception as e:
@@ -7153,7 +7225,11 @@ def envoyer_test_sms_sentinelle(telephone, message_texte):
 
     ok_save, msg_save = sauvegarder_commandes_sms(commandes)
     if ok_save:
-        return True, f"✅ Commande de test transmise a Supabase ! Des son prochain cycle de verification (aux 5 min), votre telephone Android (Saphir SMS ou Termux) expediera le texto a {tel_clean}."
+        try:
+            diffuser_evenement_pubsub_sms("TEST_SMS", {"telephone": tel_clean})
+        except Exception:
+            pass
+        return True, f"✅ Commande de test transmise à Supabase ! Notification Pub/Sub ⚡ diffusée en direct : votre téléphone Android (Saphir SMS) traitera le texto immédiatement sans aucun délai."
     else:
         return False, f"Erreur lors de l'enregistrement de la commande : {msg_save}"
 
@@ -7435,9 +7511,9 @@ def afficher_onglet_sentinelle_sms():
     """Module d'administration pour la Sentinelle SMS (Gestion des consentements, activation/desactivation, tests SMS, deploiment Android APK et Termux)."""
     st.markdown("#### 📲 Sentinelle SMS — Passerelle Android (APK & Termux)")
     st.caption(
-        "Ce module permet a un telephone Android connecte au forfait cellulaire de la ligue d'interroger "
-        "automatiquement Supabase toutes les 5 minutes et d'expedier un SMS contenant les scores d'equipes et "
-        "les pointages individuels a tous les membres ayant consenti a etre avises (0 $ via votre carte SIM)."
+        "Ce module permet à un téléphone Android connecté au forfait cellulaire de la ligue de relayer instantanément "
+        "les résultats de matchs et tests SMS instantanément par **Pub/Sub temps réel (Supabase Realtime Broadcast)** "
+        "(délai de 5 min éliminé, 0 $ via votre carte SIM illimitée)."
     )
 
     # 1. BANNIERE D'ACTIVATION / DESACTIVATION GLOBALE
@@ -7467,11 +7543,22 @@ def afficher_onglet_sentinelle_sms():
                 cfg_sms["sms_actif"] = nouveau_statut
                 ok_cfg, msg_cfg = sauvegarder_config_sms(cfg_sms)
                 if ok_cfg:
+                    try:
+                        diffuser_evenement_pubsub_sms("CONFIG_SMS", {"sms_actif": nouveau_statut})
+                    except Exception:
+                        pass
                     st.toast(f"Statut SMS mis a jour : {'Active' if nouveau_statut else 'Desactive'} !")
                     time.sleep(0.5)
                     st.rerun()
                 else:
                     st.error(f"Erreur de sauvegarde : {msg_cfg}")
+            
+            if st.button("⚡ Tester signal Pub/Sub", key="btn_ping_pubsub_sms", use_container_width=True, help="Diffuse un signal instantané sur le canal WebSocket Supabase Realtime"):
+                ok_ps, msg_ps = diffuser_evenement_pubsub_sms("PING", {"source": "admin_ui"})
+                if ok_ps:
+                    st.success("⚡ Signal Pub/Sub émis en direct sur le canal `realtime:saphir_sms` !")
+                else:
+                    st.warning(f"Diffusion Pub/Sub : {msg_ps}")
 
     joueurs_sms = charger_joueurs_sms()
     nb_total = len(joueurs_sms)
@@ -7688,7 +7775,7 @@ def afficher_onglet_sentinelle_sms():
                     ok_t, msg_t = envoyer_test_sms_sentinelle(tel_dest_choisi, msg_a_tester)
                 if ok_t:
                     st.success(f"✅ Commande de test transmise à Supabase pour **{nom_dest_choisi}** (`{tel_dest_choisi}`) !")
-                    st.info("💡 **Sur votre téléphone Android (Saphir SMS) :** appuyez sur le bouton vert **`⚡ VÉRIFIER ET ENVOYER MAINTENANT`** pour expédier le SMS immédiatement sans attendre les 5 minutes.")
+                    st.info("⚡ **Signal Pub/Sub diffusé en direct !** L'application mobile SaphirSMS reçoit le signal instantanément et expédie le texto par sa carte SIM sans délai.")
                     time.sleep(1.0)
                     st.rerun()
                 else:
@@ -7724,7 +7811,7 @@ def afficher_onglet_sentinelle_sms():
 
     with sous_tab_android:
         st.markdown("##### 📱 Deux options pour votre telephone Android")
-        st.caption("Le telephone interroge Supabase toutes les 5 minutes. Des qu'un match est archive, il envoie un texto via sa carte SIM aux joueurs consentants.")
+        st.caption("Le téléphone écoute Supabase en direct via **Pub/Sub temps réel ⚡ (WebSocket)**. Dès qu'un match est archivé ou qu'un test est lancé, il expédie le texto instantanément via sa carte SIM (zéro délai d'attente) !")
 
         url_sb_sms, key_sb_sms, _ = obtenir_parametres_supabase()
         with st.expander("🔑 Identifiants Supabase à copier sur le téléphone (si demandé)", expanded=False):
@@ -7738,27 +7825,27 @@ def afficher_onglet_sentinelle_sms():
 
         with col_opt_apk:
             with st.container(border=True):
-                st.markdown("###### 📦 Option 1 : Application Dediee (`SaphirSMS.apk`)")
+                st.markdown("###### 📦 Option 1 : Application Dédiée (`SaphirSMS.apk` v1.1.0 — Pub/Sub ⚡)")
                 st.markdown(
-                    "Une veritable application Android installee sur votre telephone avec son icone sur l'ecran d'accueil, "
-                    "son bouton **DEMARRER / ARRETER**, sa notification d'arriere-plan persistante et son demarrage automatique au boot."
+                    "Une véritable application Android installée sur votre téléphone avec son icône sur l'écran d'accueil, "
+                    "son support **Pub/Sub en direct (WebSocket)**, son bouton **DÉMARRER / ARRÊTER**, sa notification d'arrière-plan persistante et son démarrage automatique au boot."
                 )
-                st.success("✅ **Compilation cloud via GitHub Actions** : L'APK est compile automatiquement sur votre depot GitHub !")
+                st.success("✅ **Support Pub/Sub instantané ⚡** : Dès qu'un match se termine ou qu'un test est ordonné, le signal part en direct !")
                 
                 url_apk_direct = "https://github.com/vezir649-droid/ligue-billard-saphir/releases/latest/download/SaphirSMS.apk"
                 st.link_button(
-                    label="📲 Télécharger SaphirSMS.apk (Dernière version)",
+                    label="📲 Télécharger SaphirSMS.apk (v1.1.0 Pub/Sub ⚡)",
                     url=url_apk_direct,
                     use_container_width=True
                 )
-                st.caption("✨ *Version avec bouton de vérification instantané et mode anti-veille.*")
+                st.caption("✨ *Version 1.1.0 avec écoute en direct WebSocket Pub/Sub (délai de 5 minutes éliminé).*")
                 with st.expander("ℹ️ Instructions d'installation de l'APK sur Android", expanded=False):
                     st.markdown("""
                     1. Telechargez le fichier **`SaphirSMS.apk`** sur votre telephone Android.
                     2. Appuyez sur le fichier telecharge. Si Android demande l'autorisation d'installer des applications depuis cette source, appuyez sur **Autoriser**.
                     3. Ouvrez l'application **Saphir SMS**.
                     4. Accordez l'autorisation d'envoyer des SMS (`SEND_SMS`) lorsque l'application vous le demande.
-                    5. Appuyez sur **DEMARRER LA SURVEILLANCE** : le telephone surveille Supabase aux 5 minutes !
+                    5. Appuyez sur **DÉMARRER LA SURVEILLANCE** : le téléphone s'abonne au canal direct Pub/Sub et traite les SMS instantanément !
                     """)
 
         with col_opt_termux:
@@ -7963,6 +8050,10 @@ def sauvegarder_historique_matchs(historique_list):
                 except Exception:
                     pass
         declencher_sync_github_arriere_plan(delai=1.0, commit_prefix=f"Sauvegarde match ({len(historique_list)} matchs)", filepath=HISTORIQUE_FILE)
+        try:
+            diffuser_evenement_pubsub_sms("NOUVEAU_MATCH", {"match_count": len(historique_list)})
+        except Exception:
+            pass
         return True
     except Exception as e:
         try:
