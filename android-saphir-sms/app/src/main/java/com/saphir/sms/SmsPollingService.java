@@ -16,10 +16,15 @@ import android.os.PowerManager;
 import android.telephony.SmsManager;
 import android.util.Log;
 
+import android.Manifest;
+import android.content.pm.PackageManager;
 import androidx.core.app.NotificationCompat;
+import androidx.core.content.ContextCompat;
 
+import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
+import okhttp3.RequestBody;
 import okhttp3.Response;
 import okhttp3.WebSocket;
 import okhttp3.WebSocketListener;
@@ -27,16 +32,12 @@ import okhttp3.WebSocketListener;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
+import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -50,8 +51,11 @@ public class SmsPollingService extends Service {
     private static final long RECONNECT_DELAY_MS = 10000; // 10s auto-reconnect
     private static final String TOPIC_REALTIME = "realtime:saphir_sms";
 
+    public static final List<String> RECENT_LOGS = Collections.synchronizedList(new ArrayList<>());
+    private static final int MAX_LOGS = 60;
+
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final ExecutorService executor = Executors.newFixedThreadPool(2);
     private PowerManager.WakeLock wakeLock;
 
     // Support Pub/Sub en direct via Supabase Realtime WebSocket
@@ -60,6 +64,18 @@ public class SmsPollingService extends Service {
     private final AtomicBoolean isWsConnected = new AtomicBoolean(false);
     private Runnable heartbeatRunnable;
     private Runnable reconnectRunnable;
+
+    private synchronized OkHttpClient getOkHttpClient() {
+        if (wsHttpClient == null) {
+            wsHttpClient = new OkHttpClient.Builder()
+                    .readTimeout(15, TimeUnit.SECONDS)
+                    .connectTimeout(15, TimeUnit.SECONDS)
+                    .writeTimeout(15, TimeUnit.SECONDS)
+                    .pingInterval(20, TimeUnit.SECONDS)
+                    .build();
+        }
+        return wsHttpClient;
+    }
 
     @Override
     public void onCreate() {
@@ -376,6 +392,10 @@ public class SmsPollingService extends Service {
                             String msgTest = cmd.optString("message", "");
                             if (!telTest.isEmpty() && !msgTest.isEmpty()) {
                                 broadcastLog("🧪 Commande test trouvée pour " + telTest + "...");
+                                if (ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) {
+                                    broadcastLog("❌ ERREUR : Permission SEND_SMS non accordée sur ce téléphone ! Veuillez autoriser Saphir SMS dans Paramètres > Applications > Saphir SMS.");
+                                    break;
+                                }
                                 try {
                                     SmsHelper.sendSafeSms(this, telTest, msgTest);
                                     cmd.put("statut", "envoye");
@@ -478,67 +498,71 @@ public class SmsPollingService extends Service {
     }
 
     private String fetchFileFromSupabase(String baseUrl, String apiKey, String filename) {
-        HttpURLConnection conn = null;
         try {
-            URL url = new URL(baseUrl.replaceAll("/$", "") + "/rest/v1/saphir_files?filename=eq." + filename + "&select=content");
-            conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("GET");
-            conn.setRequestProperty("apikey", apiKey);
-            conn.setRequestProperty("Authorization", "Bearer " + apiKey);
-            conn.setConnectTimeout(15000);
-            conn.setReadTimeout(15000);
+            OkHttpClient client = getOkHttpClient();
+            String url = baseUrl.replaceAll("/$", "") + "/rest/v1/saphir_files?filename=eq." + filename + "&select=content";
+            Request request = new Request.Builder()
+                    .url(url)
+                    .addHeader("apikey", apiKey)
+                    .addHeader("Authorization", "Bearer " + apiKey)
+                    .addHeader("User-Agent", "SaphirSMS/1.1.0")
+                    .build();
 
-            if (conn.getResponseCode() == 200) {
-                BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-                StringBuilder sb = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) sb.append(line);
-                reader.close();
-
-                JSONArray arr = new JSONArray(sb.toString());
-                if (arr.length() > 0) {
-                    return arr.getJSONObject(0).optString("content", null);
+            try (Response response = client.newCall(request).execute()) {
+                if (response.isSuccessful() && response.body() != null) {
+                    String bodyStr = response.body().string();
+                    JSONArray arr = new JSONArray(bodyStr);
+                    if (arr.length() > 0) {
+                        return arr.getJSONObject(0).optString("content", null);
+                    }
+                    return null;
+                } else {
+                    String err = response.body() != null ? response.body().string() : "";
+                    broadcastLog("❌ Supabase " + filename + " HTTP " + response.code() + " : " + err);
+                    return null;
                 }
             }
         } catch (Exception e) {
-            Log.e("SmsPollingService", "Erreur fetch " + filename, e);
-        } finally {
-            if (conn != null) conn.disconnect();
+            broadcastLog("❌ Erreur lecture Supabase (" + filename + ") : " + e.getMessage());
+            return null;
         }
-        return null;
     }
 
     private boolean saveFileToSupabase(String baseUrl, String apiKey, String filename, String content) {
-        HttpURLConnection conn = null;
         try {
-            URL url = new URL(baseUrl.replaceAll("/$", "") + "/rest/v1/saphir_files");
-            conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("POST");
-            conn.setRequestProperty("apikey", apiKey);
-            conn.setRequestProperty("Authorization", "Bearer " + apiKey);
-            conn.setRequestProperty("Content-Type", "application/json");
-            conn.setRequestProperty("Prefer", "resolution=merge-duplicates");
-            conn.setDoOutput(true);
-            conn.setConnectTimeout(15000);
-            conn.setReadTimeout(15000);
+            OkHttpClient client = getOkHttpClient();
+            String url = baseUrl.replaceAll("/$", "") + "/rest/v1/saphir_files";
 
             JSONObject body = new JSONObject();
             body.put("filename", filename);
             body.put("content", content);
             body.put("updated_at", new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(new Date()));
 
-            OutputStream os = conn.getOutputStream();
-            os.write(body.toString().getBytes(StandardCharsets.UTF_8));
-            os.flush();
-            os.close();
+            MediaType mediaType = MediaType.parse("application/json; charset=utf-8");
+            RequestBody reqBody = RequestBody.create(body.toString(), mediaType);
 
-            int code = conn.getResponseCode();
-            return code >= 200 && code < 300;
+            Request request = new Request.Builder()
+                    .url(url)
+                    .addHeader("apikey", apiKey)
+                    .addHeader("Authorization", "Bearer " + apiKey)
+                    .addHeader("Content-Type", "application/json")
+                    .addHeader("Prefer", "resolution=merge-duplicates")
+                    .addHeader("User-Agent", "SaphirSMS/1.1.0")
+                    .post(reqBody)
+                    .build();
+
+            try (Response response = client.newCall(request).execute()) {
+                if (response.isSuccessful()) {
+                    return true;
+                } else {
+                    String err = response.body() != null ? response.body().string() : "";
+                    broadcastLog("❌ Supabase écriture " + filename + " HTTP " + response.code() + " : " + err);
+                    return false;
+                }
+            }
         } catch (Exception e) {
-            Log.e("SmsPollingService", "Erreur save " + filename, e);
+            broadcastLog("❌ Erreur écriture Supabase (" + filename + ") : " + e.getMessage());
             return false;
-        } finally {
-            if (conn != null) conn.disconnect();
         }
     }
 
@@ -569,7 +593,14 @@ public class SmsPollingService extends Service {
     }
 
     private void broadcastLog(String logMsg) {
+        synchronized (RECENT_LOGS) {
+            RECENT_LOGS.add(logMsg);
+            if (RECENT_LOGS.size() > MAX_LOGS) {
+                RECENT_LOGS.remove(0);
+            }
+        }
         Intent intent = new Intent("SAPHIR_SMS_LOG");
+        intent.setPackage(getPackageName());
         intent.putExtra("log", logMsg);
         sendBroadcast(intent);
     }
