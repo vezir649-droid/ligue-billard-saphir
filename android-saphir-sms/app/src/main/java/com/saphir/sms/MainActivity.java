@@ -229,7 +229,7 @@ public class MainActivity extends AppCompatActivity {
         }
         prefs.edit().putBoolean("is_running", true).apply();
         updateUiState(true);
-        Toast.makeText(this, "🚀 Sentinelle SMS démarrée (aux 5 min)", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "🚀 Sentinelle SMS démarrée (Pub/Sub Temps Réel ⚡)", Toast.LENGTH_SHORT).show();
     }
 
     private void stopSmsService() {
@@ -242,7 +242,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void updateUiState(boolean running) {
         if (running) {
-            tvStatus.setText("🟢 Surveillance active (aux 5 min)");
+            tvStatus.setText("🟢 Surveillance active (Pub/Sub Temps Réel ⚡)");
             tvStatus.setTextColor(getResources().getColor(R.color.saphir_accent));
             btnToggleService.setText("ARRÊTER LA SURVEILLANCE");
             btnToggleService.setBackgroundColor(0xFFE53935); // Rouge
