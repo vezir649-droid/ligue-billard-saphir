@@ -18,6 +18,7 @@ import android.util.Log;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
+import android.content.pm.ServiceInfo;
 import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
 
@@ -87,14 +88,25 @@ public class SmsPollingService extends Service {
             PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
             if (powerManager != null) {
                 wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "SaphirSMS:WakeLock");
-                wakeLock.acquire();
+                wakeLock.setReferenceCounted(false);
+                wakeLock.acquire(10 * 60 * 1000L); // 10 min timeout
             }
         } catch (Exception ignored) {}
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        startForeground(NOTIF_ID, createNotification("🎱 Sentinelle active (Pub/Sub Temps Réel ⚡)"));
+                try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIF_ID, createNotification("🎱 Sentinelle active (Pub/Sub Temps Réel ⚡)"), ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
+            } else {
+                startForeground(NOTIF_ID, createNotification("🎱 Sentinelle active (Pub/Sub Temps Réel ⚡)"));
+            }
+        } catch (Throwable eFg) {
+            try {
+                startForeground(NOTIF_ID, createNotification("🎱 Sentinelle active"));
+            } catch (Throwable ignored) {}
+        }
 
         // Vérification immédiate à l'initialisation ou sur demande
         executor.execute(() -> checkSupabaseAndSendSms());
