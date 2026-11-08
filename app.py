@@ -15262,7 +15262,10 @@ def afficher_onglet_sentinelle_sms():
                 else:
                     st.error(f"Échec envoi : {msg_ps}")
 
-    joueurs_sms = charger_joueurs_sms()
+    if "joueurs_sms_modifies" in st.session_state and st.session_state["joueurs_sms_modifies"]:
+        joueurs_sms = st.session_state["joueurs_sms_modifies"]
+    else:
+        joueurs_sms = charger_joueurs_sms()
 
     nb_total = len(joueurs_sms)
 
@@ -15318,9 +15321,126 @@ def afficher_onglet_sentinelle_sms():
 
             if st.button("🔄 Forcer recharge Cloud", help="Recharge les donnees les plus fraiches depuis Supabase / GitHub", key="btn_refresh_sms_cloud"):
 
+                st.session_state.pop("joueurs_sms_modifies", None)
+
                 st.session_state["sms_editor_version"] = st.session_state.get("sms_editor_version", 1) + 1
 
                 st.rerun()
+
+
+
+        # Actions rapides globales (Activer tous / Désactiver tous)
+        with st.container(border=True):
+
+            st.markdown("###### ⚡ Gestion globale des consentements SMS")
+
+            col_act1, col_act2, col_act3 = st.columns([1.3, 1.3, 2.4])
+
+            with col_act1:
+
+                if st.button("✅ Activer tous les SMS", use_container_width=True, key="btn_activer_tous_sms", help="Coche le consentement SMS pour tous les membres du répertoire"):
+
+                    curr_editor_key = f"editor_joueurs_sms_{st.session_state.get('sms_editor_version', 1)}"
+
+                    edits = st.session_state.get(curr_editor_key, {}).get("edited_rows", {})
+
+                    edits_map = {int(k): v for k, v in edits.items()} if isinstance(edits, dict) else {}
+
+                    base = []
+
+                    for idx, j in enumerate(joueurs_sms):
+
+                        item = dict(j)
+
+                        if idx in edits_map:
+
+                            if "Cellulaire" in edits_map[idx]:
+
+                                item["telephone"] = edits_map[idx]["Cellulaire"]
+
+                            if "Courriel" in edits_map[idx]:
+
+                                item["courriel"] = edits_map[idx]["Courriel"]
+
+                            if "Actif" in edits_map[idx]:
+
+                                item["actif"] = edits_map[idx]["Actif"]
+
+                        item["consentement"] = True
+
+                        base.append(item)
+
+                    st.session_state["joueurs_sms_modifies"] = base
+
+                    st.session_state["sms_editor_version"] = st.session_state.get("sms_editor_version", 1) + 1
+
+                    st.toast("✅ Tous les consentements SMS ont été cochés !", icon="📲")
+
+                    st.rerun()
+
+            with col_act2:
+
+                if st.button("❌ Désactiver tous les SMS", use_container_width=True, key="btn_desactiver_tous_sms", help="Décoche le consentement SMS pour tous les membres du répertoire"):
+
+                    curr_editor_key = f"editor_joueurs_sms_{st.session_state.get('sms_editor_version', 1)}"
+
+                    edits = st.session_state.get(curr_editor_key, {}).get("edited_rows", {})
+
+                    edits_map = {int(k): v for k, v in edits.items()} if isinstance(edits, dict) else {}
+
+                    base = []
+
+                    for idx, j in enumerate(joueurs_sms):
+
+                        item = dict(j)
+
+                        if idx in edits_map:
+
+                            if "Cellulaire" in edits_map[idx]:
+
+                                item["telephone"] = edits_map[idx]["Cellulaire"]
+
+                            if "Courriel" in edits_map[idx]:
+
+                                item["courriel"] = edits_map[idx]["Courriel"]
+
+                            if "Actif" in edits_map[idx]:
+
+                                item["actif"] = edits_map[idx]["Actif"]
+
+                        item["consentement"] = False
+
+                        base.append(item)
+
+                    st.session_state["joueurs_sms_modifies"] = base
+
+                    st.session_state["sms_editor_version"] = st.session_state.get("sms_editor_version", 1) + 1
+
+                    st.toast("❌ Tous les consentements SMS ont été décochés !", icon="⏸️")
+
+                    st.rerun()
+
+            with col_act3:
+
+                st.caption("💡 *Ces boutons cochent ou décochent toute la colonne d'un seul coup. Vous pouvez ensuite **cocher ou décocher individuellement** chaque joueur dans le tableau ci-dessous avant d'enregistrer.*")
+
+            if "joueurs_sms_modifies" in st.session_state and st.session_state["joueurs_sms_modifies"]:
+
+                col_mod1, col_mod2 = st.columns([3, 1.2])
+
+                with col_mod1:
+
+                    st.info("ℹ️ Des modifications globales de consentement sont appliquées dans le tableau. Pensez à cliquer sur **💾 ENREGISTRER DANS POSTGRESQL & GITHUB** ci-dessous pour les officialiser.")
+
+                with col_mod2:
+
+                    if st.button("↩️ Annuler (recharger)", use_container_width=True, key="btn_annuler_modifs_sms", help="Annule les modifications globales non enregistrées"):
+
+                        st.session_state.pop("joueurs_sms_modifies", None)
+
+                        st.session_state["sms_editor_version"] = st.session_state.get("sms_editor_version", 1) + 1
+
+                        st.rerun()
 
 
 
@@ -15461,6 +15581,8 @@ def afficher_onglet_sentinelle_sms():
                     ok_s, msg_s = sauvegarder_joueurs_sms(nouvelle_liste)
 
                 if ok_s:
+
+                    st.session_state.pop("joueurs_sms_modifies", None)
 
                     st.success(f"✅ Sauvegarde terminee avec succes !\n\n**Rapport de synchronisation :** {msg_s}")
 

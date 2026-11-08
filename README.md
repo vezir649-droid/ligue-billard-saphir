@@ -234,7 +234,7 @@ Le volet **`⚙️ Administration`** (réservé exclusivement à l'accès **`�
     * **Transmission automatisée :** Déclenchée sans friction lors de l'approbation d'un match en direct ou lors de l'archivage direct depuis le scanner IA de feuilles de match (avec calcul automatique de la saison et de la semaine).
     * **Banc d'essai administratif :** En-têtes HTTP `Content-Type: application/json` et `X-API-Key: ...` avec test de latence et coloration syntaxique de la réponse serveur pour valider la communication.
   * **📲 Sentinelle SMS (Passerelle Android APK & Termux avec support Pub/Sub ⚡) :**
-    * Module de gestion des 24 membres avec leurs numéros de téléphone et consentement SMS dans `joueurs_sms.json`.
+    * Module de gestion des 24 membres avec leurs numéros de téléphone et consentement SMS dans `joueurs_sms.json` (avec commandes rapides pour **activer ou désactiver tous les consentements en 1 clic** tout en conservant l'ajustement individuel par joueur).
     * **Architecture Pub/Sub instantanée (Supabase Realtime Broadcast) :** Dès qu'un match est archivé, qu'un rappel de tournoi est lancé ou qu'un test est ordonné, un événement WebSocket est diffusé en direct sur le canal `realtime:saphir_sms`. L'application mobile réagit en moins d'une seconde, sans délai d'attente (délai de 5 minutes éliminé) !
     * **Application Android native (`SaphirSMS.apk` v1.1.7 — versionCode 15) :**
       * Projet Android complet (disponible directement à la racine sous `SaphirSMS.apk` et via GitHub Releases) compilé avec `targetSdk 33` / `compileSdk 34`.
