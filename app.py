@@ -3884,7 +3884,7 @@ def synchroniser_fichier_supabase(filepath, commit_message=None):
 
                     pass
 
-                if filename in ("historique_matchs.json", "commandes_sms.json", "config_sms.json"):
+                if filename in ("historique_matchs.json", "config_sms.json"):
 
                     try:
 
@@ -14448,6 +14448,16 @@ def envoyer_test_sms_sentinelle(telephone, message_texte):
 
     commandes = charger_commandes_sms()
 
+    # Protection anti-doublon : verifier si une commande identique est deja en attente
+    for cmd_ex in commandes:
+        if (
+            isinstance(cmd_ex, dict)
+            and cmd_ex.get("statut") == "en_attente"
+            and cmd_ex.get("telephone") == tel_clean
+            and cmd_ex.get("message") == message_texte
+        ):
+            return True, "✅ Une commande identique est déjà en file d'attente pour ce numéro."
+
     commandes.append(nouvelle_cmd)
 
     commandes = commandes[-25:]  # Conserver les 25 commandes les plus recentes
@@ -15515,7 +15525,8 @@ def afficher_onglet_sentinelle_sms():
 
                 st.markdown("---")
 
-                st.text_area("Texte du SMS qui sera reçu :", value=msg_a_tester, height=180, disabled=True, key="preview_box_test")
+                st.caption("👁️ **Aperçu unique** (prévisualisation du message avant expédition) :")
+                st.text_area("Texte du SMS qui sera reçu :", value=msg_a_tester, height=160, disabled=True, key="preview_box_test", label_visibility="collapsed")
 
                 nb_car = len(msg_a_tester)
 
@@ -15537,12 +15548,17 @@ def afficher_onglet_sentinelle_sms():
 
         if btn_envoyer_test_unique:
 
-            if not str(tel_dest_choisi).strip():
+            t_now_click = time.time()
+            dernier_clic = st.session_state.get("dernier_clic_test_sms", 0)
+
+            if t_now_click - dernier_clic < 3.5:
+                st.warning("⚠️ Envoi de test déjà en cours de transmission. Veuillez patienter quelques instants.")
+            elif not str(tel_dest_choisi).strip():
 
                 st.error("❌ Veuillez indiquer un numéro de cellulaire valide avant d'expédier le test.")
 
             else:
-
+                st.session_state["dernier_clic_test_sms"] = t_now_click
                 st.session_state["dernier_tel_test"] = tel_dest_choisi
 
                 with st.spinner("Transmission de la commande de test à Supabase..."):

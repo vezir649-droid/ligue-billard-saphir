@@ -57,7 +57,9 @@ public class SmsPollingService extends Service {
     private static final int MAX_LOGS = 60;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private final ExecutorService executor = Executors.newFixedThreadPool(2);
+    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final AtomicBoolean isChecking = new AtomicBoolean(false);
+    private final java.util.Set<String> sentCmdIds = Collections.synchronizedSet(new java.util.HashSet<>());
     private PowerManager.WakeLock wakeLock;
 
     // Support Pub/Sub en direct via Supabase Realtime WebSocket
@@ -389,6 +391,10 @@ public class SmsPollingService extends Service {
     }
 
     private void checkSupabaseAndSendSms() {
+        if (!isChecking.compareAndSet(false, true)) {
+            broadcastLog("⏳ Cycle de vérification déjà en cours, signal ignoré pour éviter les envois en double.");
+            return;
+        }
         SharedPreferences prefs = getSharedPreferences("saphir_sms_prefs", Context.MODE_PRIVATE);
         String supabaseUrl = prefs.getString("supabase_url", "https://ueikhwdfmtnavqqscdoe.supabase.co").trim();
         if (supabaseUrl.isEmpty()) {
@@ -419,6 +425,10 @@ public class SmsPollingService extends Service {
                     for (int k = 0; k < cmdArray.length(); k++) {
                         JSONObject cmd = cmdArray.getJSONObject(k);
                         if ("en_attente".equals(cmd.optString("statut", ""))) {
+                            String cmdId = cmd.optString("id", "");
+                            if (!cmdId.isEmpty() && sentCmdIds.contains(cmdId)) {
+                                continue;
+                            }
                             testsTrouves++;
                             String telTest = cmd.optString("telephone", "");
                             String msgTest = cmd.optString("message", "");
@@ -430,6 +440,9 @@ public class SmsPollingService extends Service {
                                 }
                                 try {
                                     SmsHelper.sendSafeSms(this, telTest, msgTest);
+                                    if (!cmdId.isEmpty()) {
+                                        sentCmdIds.add(cmdId);
+                                    }
                                     cmd.put("statut", "envoye");
                                     cmd.put("date_envoi", new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date()));
                                     modifCmd = true;
@@ -530,7 +543,10 @@ public class SmsPollingService extends Service {
         } catch (Exception e) {
             broadcastLog("❌ Erreur cycle vérification : " + e.getMessage());
         } finally {
-            uploadLogsToSupabase(supabaseUrl, supabaseKey);
+            try {
+                uploadLogsToSupabase(supabaseUrl, supabaseKey);
+            } catch (Exception ignored) {}
+            isChecking.set(false);
         }
     }
 
