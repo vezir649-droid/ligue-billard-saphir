@@ -14582,6 +14582,188 @@ def generer_message_sms_match(match):
 
     return txt.strip()
 
+def raccourcir_equipe(equipe_str):
+    """Raccourcit les noms d'une equipe (simple ou double) pour respecter le format GSM 7-bit < 160 car."""
+    if not equipe_str:
+        return ""
+    import unicodedata
+    def _court(nom):
+        if not nom:
+            return ""
+        p = str(nom).strip().split()
+        if len(p) <= 1:
+            return str(nom).strip()
+        return f"{p[0][0].upper()}. {' '.join(p[1:])}"
+
+    membres = re.split(r'\s*(?:&|/)\s*', str(equipe_str))
+    if len(membres) > 1:
+        return " & ".join(_court(m) for m in membres if m.strip())
+    return _court(equipe_str)
+
+
+def trouver_destinataires_match_tournoi(ea, eb, base_sms=None):
+    """Localise les numeros de cellulaire des joueurs d'une rencontre de tournoi (simple ou double)."""
+    if base_sms is None:
+        try:
+            base_sms = charger_joueurs_sms()
+        except Exception:
+            base_sms = []
+
+    import unicodedata
+    def _norm(s):
+        if not s:
+            return ""
+        s = unicodedata.normalize("NFD", str(s))
+        s = "".join(c for c in s if unicodedata.category(c) != "Mn")
+        return re.sub(r"[^a-zA-Z0-9]", "", s).lower()
+
+    joueurs_noms = [j.strip() for j in re.split(r'\s*(?:&|/)\s*', f"{ea} & {eb}") if j.strip() and j not in ["À déterminer", "Exempt (Passe-droit)", ""]]
+    destinataires = []
+    vus = set()
+    for nom_j in joueurs_noms:
+        nom_norm = _norm(nom_j)
+        if nom_norm in vus:
+            continue
+        vus.add(nom_norm)
+        trouve = None
+        for j_entry in base_sms:
+            entry_norm = _norm(j_entry.get("nom", ""))
+            if entry_norm == nom_norm:
+                trouve = j_entry
+                break
+            if nom_norm and entry_norm and (nom_norm in entry_norm or entry_norm in nom_norm):
+                trouve = j_entry
+                break
+        tel = re.sub(r"[^0-9+]", "", str(trouve.get("telephone", ""))) if trouve else ""
+        if len(tel) >= 7:
+            destinataires.append({"nom": nom_j, "telephone": tel})
+        else:
+            destinataires.append({"nom": nom_j, "telephone": None})
+    return destinataires
+
+
+def formater_sms_convocation_tournoi(mid, ea, eb, table, heure=None):
+    """Genere le texte d'un SMS de convocation concis compatible GSM 7-bit."""
+    import unicodedata
+    ea_court = raccourcir_equipe(ea)
+    eb_court = raccourcir_equipe(eb)
+    table_str = str(table or "Table").strip()
+    mid_str = str(mid or "").strip()
+
+    txt = f"[TOURNOI SAPHIR] Appel {table_str} ({mid_str})\n{ea_court} vs {eb_court}\n"
+    if heure and str(heure).strip() not in ("—", "-", "", "None"):
+        h_propre = str(heure).strip().replace(":", "h")
+        txt += f"Votre match est prevu a {h_propre}. Presentez-vous a votre table !"
+    else:
+        txt += "Votre match debute maintenant. Presentez-vous a votre table !"
+
+    txt_norm = unicodedata.normalize("NFD", txt)
+    return "".join(c for c in txt_norm if unicodedata.category(c) != "Mn").strip()
+
+
+def formater_sms_changement_horaire_tournoi(mid, ea, eb, table, nouvelle_heure):
+    """Genere le texte d'un SMS d'avis de changement d'horaire ou de table (< 160 car.)."""
+    import unicodedata
+    ea_court = raccourcir_equipe(ea)
+    eb_court = raccourcir_equipe(eb)
+    table_str = str(table or "Table").strip()
+    mid_str = str(mid or "").strip()
+    h_propre = str(nouvelle_heure).strip().replace(":", "h")
+
+    txt = f"[TOURNOI SAPHIR] Horaire modifie ({mid_str})\n{ea_court} vs {eb_court}\n"
+    txt += f"Votre match {table_str} est reporte a {h_propre}. Presentez-vous a cette heure !"
+
+    txt_norm = unicodedata.normalize("NFD", txt)
+    return "".join(c for c in txt_norm if unicodedata.category(c) != "Mn").strip()
+
+
+def envoyer_sms_groupe_tournoi(destinataires, message_texte):
+    """Enregistre un lot de SMS pour les joueurs du tournoi et diffuse un signal Pub/Sub unique."""
+    if not destinataires:
+        return 0, "Aucun destinataire."
+
+    valides = [d for d in destinataires if d.get("telephone") and len(str(d.get("telephone", "")).strip()) >= 7]
+    if not valides:
+        return 0, "Aucun numero de cellulaire valide parmi les participants."
+
+    commandes = charger_commandes_sms()
+    nb_ajoutes = 0
+    t_now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ts = int(time.time())
+
+    for i, dest in enumerate(valides):
+        tel_clean = re.sub(r"[^0-9+]", "", str(dest.get("telephone", ""))).strip()
+
+        deja_present = False
+        for cmd_ex in commandes:
+            if (
+                isinstance(cmd_ex, dict)
+                and cmd_ex.get("statut") == "en_attente"
+                and cmd_ex.get("telephone") == tel_clean
+                and cmd_ex.get("message") == message_texte
+            ):
+                deja_present = True
+                break
+        if deja_present:
+            continue
+
+        nouvelle_cmd = {
+            "id": f"cmd_t_{ts}_{i}_{int(random.random()*10000)}",
+            "type": "tournoi_sms",
+            "telephone": tel_clean,
+            "message": message_texte,
+            "statut": "en_attente",
+            "date": t_now_str
+        }
+        commandes.append(nouvelle_cmd)
+        nb_ajoutes += 1
+
+    if nb_ajoutes > 0:
+        commandes = commandes[-40:]
+        sauvegarder_commandes_sms(commandes)
+        try:
+            diffuser_evenement_pubsub_sms("TEST_SMS", {"nb_tournoi": nb_ajoutes})
+        except Exception:
+            pass
+        return nb_ajoutes, f"{nb_ajoutes} SMS transmis a Sentinelle pour expedition."
+    return 0, "SMS deja en file d'attente ou aucun nouveau message a expedier."
+
+
+def diffuser_convocation_match_tournoi(match_obj, tournoi):
+    """Prepare et expedie les convocations SMS pour un match de tournoi pret aux tables."""
+    if not match_obj or not isinstance(match_obj, dict):
+        return 0, "Match invalide."
+    mid = match_obj.get("id", "")
+    ea = match_obj.get("equipe_a", "")
+    eb = match_obj.get("equipe_b", "")
+    table = match_obj.get("table", "Table 1")
+    heure = match_obj.get("heure_estimee", "")
+
+    if ea in ["À déterminer", "Exempt (Passe-droit)", ""] or eb in ["À déterminer", "Exempt (Passe-droit)", ""]:
+        return 0, "Match incomplet."
+
+    dests = trouver_destinataires_match_tournoi(ea, eb)
+    msg_txt = formater_sms_convocation_tournoi(mid, ea, eb, table, heure)
+    return envoyer_sms_groupe_tournoi(dests, msg_txt)
+
+
+def diffuser_changement_horaire_match_tournoi(match_obj, nouvelle_table, nouvelle_heure, tournoi):
+    """Prepare et expedie les SMS d'avis de changement d'horaire pour une rencontre."""
+    if not match_obj or not isinstance(match_obj, dict):
+        return 0, "Match invalide."
+    mid = match_obj.get("id", "")
+    ea = match_obj.get("equipe_a", "")
+    eb = match_obj.get("equipe_b", "")
+    table = nouvelle_table or match_obj.get("table", "Table 1")
+
+    if ea in ["À déterminer", "Exempt (Passe-droit)", ""] or eb in ["À déterminer", "Exempt (Passe-droit)", ""]:
+        return 0, "Match incomplet."
+
+    dests = trouver_destinataires_match_tournoi(ea, eb)
+    msg_txt = formater_sms_changement_horaire_tournoi(mid, ea, eb, table, nouvelle_heure)
+    return envoyer_sms_groupe_tournoi(dests, msg_txt)
+
+
 
 
 def generer_script_termux_saphir():
@@ -29641,9 +29823,47 @@ def afficher_section_tournoi(mode="simple"):
 
                 elif prochains_jouables:
 
-                    st.markdown("**🎱 En direct / Prochains matchs prêts à appeler aux tables :**")
-
                     nb_tables_aff = max(2, int(tournoi.get("nb_tables", 2)))
+
+                    col_hdr_p1, col_hdr_p2 = st.columns([1.5, 1.2])
+                    with col_hdr_p1:
+                        st.markdown("**🎱 En direct / Prochains matchs prêts à appeler aux tables :**")
+                    with col_hdr_p2:
+                        if est_editeur:
+                            sms_auto_val = st.toggle(
+                                "🔔 Convocations & Avis SMS automatiques",
+                                value=bool(tournoi.get("sms_tournoi_actif", False)),
+                                key=f"tgl_sms_auto_{mode}",
+                                help="Quand activé, les joueurs reçoivent automatiquement un texto dès que leur match monte à une table disponible ou si leur horaire est modifié."
+                            )
+                            if sms_auto_val != tournoi.get("sms_tournoi_actif", False):
+                                tournoi["sms_tournoi_actif"] = sms_auto_val
+                                sauvegarder_tournois_data(tournois_data)
+                                st.rerun()
+
+                    # Automatisation des convocations SMS si option activée
+                    convocations = tournoi.setdefault("convocations_sms_envoyees", {})
+                    if tournoi.get("sms_tournoi_actif", False):
+                        nb_nouv_sms = 0
+                        for m_p in prochains_jouables[:nb_tables_aff]:
+                            mid_p = m_p.get("id", "")
+                            ea_p = m_p.get("equipe_a", "")
+                            eb_p = m_p.get("equipe_b", "")
+                            tbl_p = m_p.get("table", "Table 1")
+                            cle_m = f"{mid_p}_{ea_p}_{eb_p}_{tbl_p}"
+                            if cle_m not in convocations:
+                                nb_e, msg_e = diffuser_convocation_match_tournoi(m_p, tournoi)
+                                convocations[cle_m] = {
+                                    "date": datetime.now().strftime("%H:%M"),
+                                    "nb": nb_e,
+                                    "table": tbl_p,
+                                    "heure": m_p.get("heure_estimee", "")
+                                }
+                                if nb_e > 0:
+                                    nb_nouv_sms += nb_e
+                                    st.toast(f"🔔 SMS de convocation envoyé aux joueurs de la {tbl_p} ({ea_p} vs {eb_p}) !", icon="📲")
+                        if nb_nouv_sms > 0:
+                            sauvegarder_tournois_data(tournois_data)
 
                     cartes_html = []
 
@@ -29661,13 +29881,20 @@ def afficher_section_tournoi(mode="simple"):
 
                         hr_badge = f" • ⏰ {hr_p}" if (hr_p and hr_p != "—") else ""
 
+                        cle_m = f"{mid_p}_{ea_p}_{eb_p}_{tbl_p}"
+                        if cle_m in convocations:
+                            info_c = convocations[cle_m]
+                            sms_badge = f" &nbsp;•&nbsp; <span style='background:#e8f5e9; color:#2e7d32; padding:1px 6px; border-radius:3px; font-weight:600; font-size:11px;'>📱 Convoqué ({info_c.get('date')})</span>"
+                        else:
+                            sms_badge = ""
+
                         cartes_html.append(
 
                             f"<div class='saphir-light-card' style='background:#f0f7ff; border:1px solid #90caf9; border-left:4px solid #0b3c5d; border-radius:6px; padding:6px 10px; font-size:12.5px;'>"
 
                             f"<strong class='saphir-primary'>🎱 {tbl_p}{hr_badge} ({mid_p}) :</strong> "
 
-                            f"<strong>{ea_p}</strong> <span class='saphir-muted'>vs</span> <strong>{eb_p}</strong>"
+                            f"<strong>{ea_p}</strong> <span class='saphir-muted'>vs</span> <strong>{eb_p}</strong>{sms_badge}"
 
                             f"</div>"
 
@@ -29930,6 +30157,8 @@ def afficher_section_tournoi(mode="simple"):
                                 if st.button("💾 Mettre à jour le tableau", type="primary", use_container_width=True, key=f"btn_save_hr_{mode}_{m_id}"):
 
                                     str_h = nouv_t.strftime("%Hh%M")
+                                    old_h_prec = m.get("heure_estimee", "")
+                                    old_tbl_prec = m.get("table", "")
 
                                     if decaler_suivants and m_h and m_h != "—":
 
@@ -29949,9 +30178,16 @@ def afficher_section_tournoi(mode="simple"):
 
                                     recalculer_heure_fin_tournoi(tournoi)
 
+                                    msg_sms_extra = ""
+                                    if (str_h != old_h_prec or nouv_tbl != old_tbl_prec) and tournoi.get("sms_tournoi_actif", False):
+                                        if ea not in ["À déterminer", "Exempt (Passe-droit)", ""] and eb not in ["À déterminer", "Exempt (Passe-droit)", ""]:
+                                            nb_av, _ = diffuser_changement_horaire_match_tournoi(m, nouv_tbl, str_h, tournoi)
+                                            if nb_av > 0:
+                                                msg_sms_extra = f" et {nb_av} joueur(s) avisé(s) par SMS 📲 !"
+
                                     sauvegarder_tournois_data(tournois_data)
 
-                                    st.success(f"✅ Heure du match {m_id} mise à jour à {str_h} ({nouv_tbl}) et tableau actualisé !")
+                                    st.success(f"✅ Heure du match {m_id} mise à jour à {str_h} ({nouv_tbl}){msg_sms_extra} et tableau actualisé !")
 
                                     time.sleep(0.5)
 
@@ -30356,6 +30592,8 @@ def afficher_section_tournoi(mode="simple"):
                                 if st.button("💾 Mettre à jour le calendrier", type="primary", use_container_width=True, key=f"btn_save_hr_rr_{mode}_{m_id}"):
 
                                     str_h = nouv_t.strftime("%Hh%M")
+                                    old_h_prec = m.get("heure_estimee", "")
+                                    old_tbl_prec = m.get("table", "")
 
                                     if decaler_suivants and m_h and m_h != "—":
 
@@ -30375,9 +30613,18 @@ def afficher_section_tournoi(mode="simple"):
 
                                     recalculer_heure_fin_tournoi(tournoi)
 
+                                    msg_sms_extra = ""
+                                    if (str_h != old_h_prec or nouv_tbl != old_tbl_prec) and tournoi.get("sms_tournoi_actif", False):
+                                        ea_rr = m.get("equipe_a", "")
+                                        eb_rr = m.get("equipe_b", "")
+                                        if ea_rr not in ["À déterminer", "Exempt (Passe-droit)", ""] and eb_rr not in ["À déterminer", "Exempt (Passe-droit)", ""]:
+                                            nb_av, _ = diffuser_changement_horaire_match_tournoi(m, nouv_tbl, str_h, tournoi)
+                                            if nb_av > 0:
+                                                msg_sms_extra = f" et {nb_av} joueur(s) avisé(s) par SMS 📲 !"
+
                                     sauvegarder_tournois_data(tournois_data)
 
-                                    st.success(f"✅ Rencontre {m_id} reprogrammée à {str_h} ({nouv_tbl}) et calendrier actualisé !")
+                                    st.success(f"✅ Rencontre {m_id} reprogrammée à {str_h} ({nouv_tbl}){msg_sms_extra} et calendrier actualisé !")
 
                                     time.sleep(0.5)
 
