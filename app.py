@@ -15108,19 +15108,14 @@ def afficher_onglet_sentinelle_sms():
 
             
 
-            if st.button("⚡ Tester signal Pub/Sub", key="btn_ping_pubsub_sms", use_container_width=True, help="Diffuse un signal instantané sur le canal WebSocket Supabase Realtime"):
-
-                ok_ps, msg_ps = diffuser_evenement_pubsub_sms("PING", {"source": "admin_ui"})
-
+            if st.button("⚡ Tester signal Pub/Sub (Expédier SMS test)", key="btn_ping_pubsub_sms", use_container_width=True, help="Diffuse un signal instantané et commande un SMS de test vers votre cellulaire"):
+                time_now_ps = datetime.now().strftime("%H:%M:%S")
+                msg_ping = f"[SAPHIR SMS TEST] Signal Pub/Sub valide a {time_now_ps} ! Sentinelle active."
+                ok_ps, msg_ps = envoyer_test_sms_sentinelle("4188720836", msg_ping)
                 if ok_ps:
-
-                    st.success("⚡ Signal Pub/Sub émis en direct sur le canal `realtime:saphir_sms` !")
-
+                    st.success("⚡ Signal Pub/Sub émis en direct et SMS de test commandé vers votre cellulaire (418-872-0836) !")
                 else:
-
-                    st.warning(f"Diffusion Pub/Sub : {msg_ps}")
-
-
+                    st.error(f"Échec envoi : {msg_ps}")
 
     joueurs_sms = charger_joueurs_sms()
 
