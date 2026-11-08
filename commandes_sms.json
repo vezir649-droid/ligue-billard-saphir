@@ -1,14 +1,5 @@
 [
     {
-        "id": "cmd_1794105273",
-        "type": "test_sms",
-        "telephone": "4184077542",
-        "message": "[SAPHIR SMS TEST] Connexion reussie a 02:34:33 ! La Sentinelle de la Ligue de billard est active et prete.",
-        "statut": "envoye",
-        "date": "2026-11-08 02:34:33",
-        "date_envoi": "2026-11-07 21:34:34"
-    },
-    {
         "id": "cmd_1794111813",
         "type": "test_sms",
         "telephone": "4184077542",
@@ -220,7 +211,16 @@
         "type": "nouveau_match",
         "telephone": "4184077542",
         "message": "[LIGUE SAPHIR] Echo (66) vs Alpha (58)\nDate : 2026-10-26\n\nPointages :\n- G. Dumais : 21\n- L. Morin : 18\n- G. Vézina : 21\n- G. Lavoie : 20\n- A. St-Pierre : 24\n- C. Harvey : 20",
+        "statut": "envoye",
+        "date": "2026-11-08 18:56:36",
+        "date_envoi": "2026-11-08 13:56:38"
+    },
+    {
+        "id": "cmd_1794164462_523",
+        "type": "nouveau_match",
+        "telephone": "4188720836",
+        "message": "[LIGUE SAPHIR] Echo (66) vs Alpha (58)\nDate : 2026-10-26\n\nPointages :\n- G. Dumais : 21\n- L. Morin : 18\n- G. Vézina : 21\n- G. Lavoie : 20\n- A. St-Pierre : 24\n- C. Harvey : 20",
         "statut": "en_attente",
-        "date": "2026-11-08 18:56:36"
+        "date": "2026-11-08 19:01:02"
     }
 ]
