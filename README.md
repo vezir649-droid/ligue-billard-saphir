@@ -1,6 +1,6 @@
 # 🎱 Ligue de billard Boule en main — Salle Le Saphir
 
-Application web officielle développée avec [Streamlit](https://streamlit.io/) pour la gestion complète de la **Ligue de billard Boule en main (Salle Le Saphir)** : portail d'accueil multi-rôles (**Spectateur**, **Marqueur**, **Administrateur**), saisie en direct des feuilles de matchs réguliers (**3 contre 3**), **Scanner IA de feuilles de match manuscrites par photo (Gemini Vision)** avec **viseur Portrait vertical (3:4)** et multi-déclencheurs, **transmission automatique officielle vers le site Saphir (`saphirbillard.com`)**, **détection des doublons & scans partiels**, **Statistiques avancées, Progression, Face-à-Face & Projections de fin de saison (Joueurs & Équipes)**, organisation de **tournois officiels** (Simple 1v1 & Double 2v2) avec **Mode Téléviseur / Casting TV auto-actualisé**, **Passerelle Sentinelle SMS native Android (`SaphirSMS.apk` v1.1.6) avec Pub/Sub instantané (Supabase Realtime Broadcast)** pour relayer sans frais les résultats via carte SIM dédiée, **Administration sécurisée** et **Persistance Cloud Hybride (Supabase PostgreSQL Prioritaire + GitHub)** avec **bouclier anti-veille et fusion intelligente**.
+Application web officielle développée avec [Streamlit](https://streamlit.io/) pour la gestion complète de la **Ligue de billard Boule en main (Salle Le Saphir)** : portail d'accueil multi-rôles (**Spectateur**, **Marqueur**, **Administrateur**), saisie en direct des feuilles de matchs réguliers (**3 contre 3**), **Scanner IA de feuilles de match manuscrites par photo (Gemini Vision)** avec **viseur Portrait vertical (3:4)** et multi-déclencheurs, **transmission automatique officielle vers le site Saphir (`saphirbillard.com`)**, **détection des doublons & scans partiels**, **Statistiques avancées, Progression, Face-à-Face & Projections de fin de saison (Joueurs & Équipes)**, organisation de **tournois officiels** (Simple 1v1 & Double 2v2) avec **Mode Téléviseur / Casting TV auto-actualisé**, **Passerelle Sentinelle SMS native Android (`SaphirSMS.apk` v1.1.7) avec Pub/Sub instantané (Supabase Realtime Broadcast)**, verrou atomique anti-doublon, format compact GSM 7-bit mono-segment (< 150 car.) et **convocations automatiques de tournois aux tables**, **Administration sécurisée** et **Persistance Cloud Hybride (Supabase PostgreSQL Prioritaire + GitHub)** avec **bouclier anti-veille et fusion intelligente**.
 
 ---
 
@@ -83,6 +83,9 @@ L'application intègre un module de pointe basé sur l'IA de vision de Google (*
   * Calcul dynamique de la saison (`saison`, ex. `S2025-2026`) et du numéro de semaine (`semaine`, ex. `Semaine 1` à `14`) à partir de la date de la rencontre et du calendrier `horaire_saphir.json`.
 * **Compatibilité complète Thème Clair (*Light*) & Thème Sombre (*Dark*) :**
   * Adaptation automatique des contrastes pour les cartes de métriques (`st.metric`), les onglets, les podiums, les cartes de rencontres et les aperçus A4.
+* **⚡ Composants Streamlit natifs & Rendu mobile ultra-fluide :**
+  * Remplacement des anciens blocs HTML bruts et chaînes base64 par des composants Streamlit natifs pour le scoreboard en direct, les cartes de manches et les armoiries, éliminant tout bloc de code parasite et accélérant le rendu sur mobile.
+  * Formulaire de saisie et liste déroulante d'historique épurés et fiabilisés.
 
 ---
 
@@ -155,6 +158,11 @@ La barre latérale **« 📋 Paramètres du Match »** regroupe tous les réglag
     * Option accessible en un clic dans la boîte de dialogue d'arborescence, dans la barre de commandes du tournoi actif et dans l'historique des tournois archivés.
     * Génère et attache la **page HTML complète de l'arborescence** ainsi que le fichier `historique_tournois.json` en pièces jointes.
   * Gestion des **passes-droits en cours de tournoi** (`🎟️ Passe-droit`) pour promouvoir un joueur ou un duo au tour suivant.
+* **📲 Convocations SMS automatiques aux tables & Notifications d'horaire :**
+  * **Appel des matchs en 1 clic (`📲 Convoquer par SMS`) :** Directement depuis le panneau des matchs prêts à jouer ou l'arborescence, l'organisateur peut envoyer une convocation SMS instantanée aux joueurs ou duos assignés à une table (avec mention de la table et de l'heure du match).
+  * **Badge visuel dynamique `📱 Convoqué` :** Marquage en temps réel sur les cartes de rencontres actives et dans la liste des tables pour identifier immédiatement les joueurs déjà alertés.
+  * **Avis automatique de changement d'horaire / table (`⏰ TOURNOI_HORAIRE`) :** En cas de reprogrammation d'une heure ou de réattribution de table, un texto d'alerte est automatiquement diffusé aux compétiteurs concernés si l'option SMS est activée pour le tournoi.
+  * **Format ultra-concis GSM 7-bit mono-segment (< 150 car.) :** Raccourcissement intelligent des noms d'équipes et joueurs pour garantir une expédition en un seul segment SMS (mono-segment 160 caractères max).
 
 ---
 
@@ -227,18 +235,29 @@ Le volet **`⚙️ Administration`** (réservé exclusivement à l'accès **`�
     * **Banc d'essai administratif :** En-têtes HTTP `Content-Type: application/json` et `X-API-Key: ...` avec test de latence et coloration syntaxique de la réponse serveur pour valider la communication.
   * **📲 Sentinelle SMS (Passerelle Android APK & Termux avec support Pub/Sub ⚡) :**
     * Module de gestion des 24 membres avec leurs numéros de téléphone et consentement SMS dans `joueurs_sms.json`.
-    * **Architecture Pub/Sub instantanée (Supabase Realtime Broadcast) :** Dès qu'un match est archivé ou qu'un test est ordonné, un événement WebSocket est diffusé en direct sur le canal `realtime:saphir_sms`. L'application mobile réagit en moins d'une seconde, sans délai d'attente (délai de 5 minutes éliminé) !
-    * **Application Android native (`SaphirSMS.apk` v1.1.6 — versionCode 14) :**
+    * **Architecture Pub/Sub instantanée (Supabase Realtime Broadcast) :** Dès qu'un match est archivé, qu'un rappel de tournoi est lancé ou qu'un test est ordonné, un événement WebSocket est diffusé en direct sur le canal `realtime:saphir_sms`. L'application mobile réagit en moins d'une seconde, sans délai d'attente (délai de 5 minutes éliminé) !
+    * **Application Android native (`SaphirSMS.apk` v1.1.7 — versionCode 15) :**
       * Projet Android complet (disponible directement à la racine sous `SaphirSMS.apk` et via GitHub Releases) compilé avec `targetSdk 33` / `compileSdk 34`.
-      * **Normalisation automatique GSM 7-bit :** Conversion transparente de tous les caractères accentués et spéciaux vers l'alphabet standard GSM 7-bit, garantissant 100 % de compatibilité avec tous les opérateurs mobiles nord-américains sans corruption d'encodage et sans découpage inutile en plusieurs segments SMS.
+      * **Verrou atomique anti-doublon (`AtomicBoolean`) & Dédoublonnage :** Sécurité stricte éliminant tout risque de double expédition SMS lors de la réception simultanée d'un signal Pub/Sub et du cycle de scrutation de sécurité.
+      * **Découpage optimisé GSM 7-bit mono-segment (jusqu'à 160 car.) :** Algorithme perfectionné dans `SmsHelper.java` permettant aux textos de 160 caractères ou moins d'être transmis en un unique segment SMS sans découpage prématuré.
+      * **Normalisation automatique GSM 7-bit :** Conversion transparente de tous les caractères accentués et spéciaux vers l'alphabet standard GSM 7-bit, garantissant 100 % de compatibilité avec tous les opérateurs mobiles nord-américains sans corruption d'encodage.
       * **Suivi d'expédition modem & Repli indicatif +1 :** Écoute via `PendingIntent` du résultat renvoyé par le modem cellulaire (accusé `RESULT_OK`), consignation explicite des erreurs et tentative de repli automatique avec l'indicatif international `+1` si nécessaire.
       * **Téléversement du Journal en direct (`journal_sentinelle.txt`) :** L'application Android pousse automatiquement ses journaux d'activité vers Supabase en temps réel, permettant aux administrateurs de surveiller le statut du téléphone relais sans quitter l'interface Streamlit.
       * **Protection Android 14 FGS & WakeLock sécurisé :** Service d'arrière-plan permanent (*Foreground Service*) avec notification persistante et maintien d'éveil pour éviter toute mise en veille forcée par le système d'exploitation.
       * Client WebSocket OkHttp connecté 24/7, bouton Démarrer/Arrêter la surveillance, démarrage automatique au démarrage de l'appareil (*boot completed*) et compilation continue via GitHub Actions.
-    * **Bouton de test Pub/Sub avec expédition réelle :** Pré-remplissage du numéro administrateur par défaut (`418-872-0836`), commande instantanée et émission du signal en direct.
+    * **Format ultra-compact GSM (< 150 caractères) pour les résultats de match (`NOUVEAU_MATCH`) :**
+      * Synthèse condensée affichant le score global et les points individuels (`J.Nom:Pts`) sur une seule ligne par équipe, garantissant un texto complet tenant sur un seul segment SMS.
+    * **Banc d'essai Pub/Sub avec sélection de signal & Modèles types :**
+      * Sélecteur de signal intégré avec pré-remplissage du modèle associé :
+        1. `⚡ TEST_SMS` : test direct de connectivité de la Sentinelle.
+        2. `📢 NOUVEAU_MATCH` : expédition du sommaire officiel d'un match de ligue (format compact).
+        3. `🎱 TOURNOI_CONVOCATION` : appel d'un match aux tables de tournoi (heure + table).
+        4. `⏰ TOURNOI_HORAIRE` : avis de report ou changement de table en tournoi.
+        5. `🔍 CHECK_NOW` : signal Ping / diagnostic forçant le téléversement immédiat du journal `journal_sentinelle.txt`.
+        6. `✍️ PERSONNALISE` : saisie libre de message.
+      * Compteur de caractères en direct, prévisualisation du rendu GSM 7-bit, estimation des segments et pré-remplissage du numéro administrateur par défaut (`418-872-0836`).
     * **Interrupteur global de service & File d'attente Cloud :** Commutateur marche/arrêt instantané (`sms_actif` dans `config_sms.json` avec diffusion immédiate WebSocket `CONFIG_SMS`) et file d'attente horodatée dans `commandes_sms.json`.
     * **Générateur de script Termux (`saphir_sms_poller.py`) :** Téléchargeable en 1 clic avec clés Supabase pré-remplies pour une exécution instantanée sur Android avec `termux-wake-lock`.
-    * **Simulation & Aperçu SMS :** Visualisation immédiate du message de résultat qui sera envoyé pour le dernier match archivé.
   * **📧 SMTP (Notifications et bilans officiels) :** Configuration du serveur d'expédition courriel (prise en charge robuste TLS port 587 / SSL port 465 avec repli automatique et nettoyage des mots de passe d'application Gmail), test d'envoi en direct et routage des alertes administratives.
   * **🔑 Sécurité (Gestion des accès, Clés API & Secrets) :**
     * Modification sécurisée des mots de passe Marqueur et Administrateur avec hachage cryptographique SHA-256 dans `config_auth.json`.
@@ -323,7 +342,7 @@ smtp_ssl = false
 | :--- | :--- |
 | `app.py` | Code source principal de l'application Streamlit (Saisie, Scanner IA, Tournois, Stats & Projections, Admin, Mode TV, Moteur Cloud Hybride) |
 | `README.md` | Documentation officielle complète (affichée et imprimable au format A4 depuis la page d'ouverture) |
-| `SaphirSMS.apk` | Paquet binaire Android APK prêt à installer (v1.1.6) de la passerelle Sentinelle SMS (support WebSocket Pub/Sub et normalisation GSM 7-bit) |
+| `SaphirSMS.apk` | Paquet binaire Android APK prêt à installer (v1.1.7 — versionCode 15) de la passerelle Sentinelle SMS (verrou atomique anti-doublon, Pub/Sub temps réel, découpage mono-segment 160 car., convocations tournois) |
 | `public.saphir_files` | Table relationnelle PostgreSQL hébergée sur Supabase stockant en temps réel les 14 fichiers fondamentaux de la ligue |
 | `.streamlit/secrets.toml` | Stockage sécurisé des clés d'accès (Supabase, GitHub, Gemini Vision, SMTP et Admin) |
 | `equipes-saphir.csv` | Liste officielle des équipes (`Alpha` à `Hotel`) et de leurs 3 joueurs réguliers (synchronisée Cloud) |
@@ -338,7 +357,7 @@ smtp_ssl = false
 | `joueurs_sms.json` | Répertoire des contacts cellulaires et consentements SMS des membres de la ligue (synchronisé Cloud) |
 | `config_sms.json` | Configuration et statut d'activation du service SMS de la ligue (`sms_actif`, synchronisé Cloud) |
 | `commandes_sms.json` | File d'attente et historique des commandes d'envoi SMS de résultats et tests (synchronisé Cloud) |
-| `android-saphir-sms/` | Code source complet du projet Android natif Saphir SMS v1.1.6 (WebSocket Pub/Sub temps réel, service d'arrière-plan FGS) |
+| `android-saphir-sms/` | Code source complet du projet Android natif Saphir SMS v1.1.7 (verrou atomique anti-doublon, WebSocket Pub/Sub temps réel, service FGS Android 14) |
 | `config_auth.json` | Empreintes SHA-256 des mots de passe Marqueur et Administrateur |
 | `config_email.json` | Paramètres SMTP pour l'envoi automatique des rapports, feuilles scannées et sauvegardes (synchronisé Cloud) |
 | `config_admin.json` | Configuration administrative locale de la persistance Cloud (Supabase / GitHub) et clé Gemini |
