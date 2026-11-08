@@ -1,7 +1,9 @@
 # Fichiers de configuration sensibles et sauvegardes temporaires
 sauvegarde_saisie_secours.json
 session_lock.json
+anciennes_sauvegardes/
 *.log
+*.bak
 
 # Fichiers de données locales
 
