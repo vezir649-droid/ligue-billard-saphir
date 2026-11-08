@@ -306,7 +306,7 @@ public class MainActivity extends AppCompatActivity {
         final EditText input = new EditText(this);
         input.setInputType(android.text.InputType.TYPE_CLASS_PHONE);
         input.setHint("ex: 5141234567 ou 4501234567");
-        String savedPhone = prefs.getString("test_phone_number", "");
+        String savedPhone = prefs.getString("test_phone_number", "4188720836");
         if (!savedPhone.isEmpty()) {
             input.setText(savedPhone);
         }
@@ -321,7 +321,7 @@ public class MainActivity extends AppCompatActivity {
             prefs.edit().putString("test_phone_number", phoneNumber).apply();
 
             String timeNow = new SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(new Date());
-            String testMessage = "[SAPHIR SMS TEST] Test d'envoi direct réussi à " + timeNow + " ! La Sentinelle de la Ligue de billard est opérationnelle.";
+            String testMessage = "[SAPHIR SMS TEST] Test local direct reussi a " + timeNow + " ! Sentinelle active.";
 
             logBuilder.append("[").append(timeNow).append("] 📲 Test SMS vers ").append(phoneNumber).append("...\n");
             tvLogs.setText(logBuilder.toString());
