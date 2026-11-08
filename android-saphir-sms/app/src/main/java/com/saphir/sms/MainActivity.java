@@ -17,6 +17,7 @@ import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.Base64;
 import android.widget.Button;
+import android.widget.ScrollView;
 import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -47,6 +48,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private TextView tvStatus, tvLastCheck, tvLogs;
+    private ScrollView svLogs;
     private EditText etSupabaseUrl, etSupabaseKey;
     private Button btnToggleService, btnTestSms, btnSaveConfig;
     private SharedPreferences prefs;
@@ -60,6 +62,9 @@ public class MainActivity extends AppCompatActivity {
             if (log != null) {
                 logBuilder.append(log).append("\n");
                 tvLogs.setText(logBuilder.toString());
+                if (svLogs != null) {
+                    svLogs.post(() -> svLogs.fullScroll(ScrollView.FOCUS_DOWN));
+                }
             }
         }
     };
@@ -74,6 +79,7 @@ public class MainActivity extends AppCompatActivity {
         tvStatus = findViewById(R.id.tv_status);
         tvLastCheck = findViewById(R.id.tv_last_check);
         tvLogs = findViewById(R.id.tv_logs);
+        svLogs = findViewById(R.id.sv_logs);
         etSupabaseUrl = findViewById(R.id.et_supabase_url);
         etSupabaseKey = findViewById(R.id.et_supabase_key);
         btnToggleService = findViewById(R.id.btn_toggle_service);
@@ -214,6 +220,15 @@ public class MainActivity extends AppCompatActivity {
             logBuilder.setLength(0);
             logBuilder.append(sb);
             tvLogs.setText(logBuilder.toString());
+            if (svLogs != null) {
+                svLogs.post(() -> svLogs.fullScroll(ScrollView.FOCUS_DOWN));
+            }
+        }
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED) {
+            if (!isServiceRunning()) {
+                startSmsService();
+            }
         }
     }
 
@@ -303,12 +318,20 @@ public class MainActivity extends AppCompatActivity {
             String timeNow = new SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(new Date());
             String testMessage = "[SAPHIR SMS TEST] Test d'envoi direct réussi à " + timeNow + " ! La Sentinelle de la Ligue de billard est opérationnelle.";
 
+            logBuilder.append("[").append(timeNow).append("] 📲 Test SMS direct vers ").append(phoneNumber).append("...\n");
+            tvLogs.setText(logBuilder.toString());
+            if (svLogs != null) svLogs.post(() -> svLogs.fullScroll(ScrollView.FOCUS_DOWN));
+
             try {
                 SmsHelper.sendSafeSms(this, phoneNumber, testMessage);
                 Toast.makeText(this, "✅ SMS envoyé à " + phoneNumber, Toast.LENGTH_LONG).show();
+                logBuilder.append("  -> ✅ SMS expédié via carte SIM à ").append(phoneNumber).append(" !\n");
             } catch (Exception e) {
                 Toast.makeText(this, "❌ Erreur SMS : " + e.getMessage(), Toast.LENGTH_LONG).show();
+                logBuilder.append("  -> ❌ Échec envoi : ").append(e.getMessage()).append("\n");
             }
+            tvLogs.setText(logBuilder.toString());
+            if (svLogs != null) svLogs.post(() -> svLogs.fullScroll(ScrollView.FOCUS_DOWN));
         });
 
         builder.setNegativeButton("Annuler", (dialog, which) -> dialog.cancel());
