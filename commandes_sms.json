@@ -1,14 +1,5 @@
 [
     {
-        "id": "cmd_1793927108",
-        "type": "test_sms",
-        "telephone": "5818499683",
-        "message": "[LIGUE SAPHIR] Echo (0) vs Alpha (0)\nDate : 2026-10-26\n\nPointages individuels :\n- Gilles Dumais : 21/24\n- Léon Morin : 18/24\n- Guy Vézina : 21/24\n- Gaston Lavoie : 20/24\n- André St-Pierre : 24/24\n- Claude Harvey : 20/24\n\nClassement et stats en direct sur le portail Saphir !\n",
-        "statut": "envoye",
-        "date": "2026-11-06 01:05:08",
-        "date_envoi": "2026-11-05 20:05:17"
-    },
-    {
         "id": "cmd_1794099201",
         "type": "test_sms",
         "telephone": "4188720836",
@@ -220,7 +211,16 @@
         "type": "test_sms",
         "telephone": "4188720836",
         "message": "[TOURNOI SAPHIR] Horaire modifie (M4)\nG. Dumais & G. Vezina vs M. Larouche & D. Viens\nVotre match Table 2 est reporte a 19h26. Presentez-vous a cette heure !",
+        "statut": "envoye",
+        "date": "2026-11-08 18:42:54",
+        "date_envoi": "2026-11-08 13:42:56"
+    },
+    {
+        "id": "cmd_1794163422_727",
+        "type": "test_sms",
+        "telephone": "4188720836",
+        "message": "[TOURNOI SAPHIR] Horaire modifie (M4)\nG. Dumais & G. Vezina vs M. Larouche & D. Viens\nVotre match Table 2 est reporte a 19h26. Presentez-vous a cette heure !",
         "statut": "en_attente",
-        "date": "2026-11-08 18:42:54"
+        "date": "2026-11-08 18:43:42"
     }
 ]
