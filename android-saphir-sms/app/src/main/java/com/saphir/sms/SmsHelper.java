@@ -3,6 +3,7 @@ package com.saphir.sms;
 import android.content.Context;
 import android.os.Build;
 import android.telephony.SmsManager;
+import android.telephony.SubscriptionManager;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -11,12 +12,25 @@ public class SmsHelper {
     public static SmsManager getSmsManager(Context context) {
         SmsManager sms = null;
         try {
-            sms = SmsManager.getDefault();
+            int subId = SubscriptionManager.getDefaultSmsSubscriptionId();
+            if (subId != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    sms = context.getSystemService(SmsManager.class).createForSubscriptionId(subId);
+                } else {
+                    sms = SmsManager.getSmsManagerForSubscriptionId(subId);
+                }
+            }
         } catch (Throwable ignored) {}
 
         if (sms == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             try {
                 sms = context.getSystemService(SmsManager.class);
+            } catch (Throwable ignored) {}
+        }
+
+        if (sms == null) {
+            try {
+                sms = SmsManager.getDefault();
             } catch (Throwable ignored) {}
         }
         return sms;
