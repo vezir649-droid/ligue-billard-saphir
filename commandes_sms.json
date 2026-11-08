@@ -1,14 +1,5 @@
 [
     {
-        "id": "cmd_1794158450",
-        "type": "test_sms",
-        "telephone": "4188720836",
-        "message": "[SAPHIR SMS TEST] Signal Pub/Sub valide a 17:20:50 ! Sentinelle active.",
-        "statut": "envoye",
-        "date": "2026-11-08 17:20:50",
-        "date_envoi": "2026-11-08 12:20:52"
-    },
-    {
         "id": "cmd_1794158476",
         "type": "test_sms",
         "telephone": "4188720836",
@@ -220,7 +211,16 @@
         "type": "nouveau_match",
         "telephone": "4188720836",
         "message": "[LIGUE SAPHIR] Echo (66) vs Alpha (58)\nDate : 2026-10-26\n\nPointages :\n- G. Dumais : 21\n- L. Morin : 18\n- G. Vézina : 21\n- G. Lavoie : 20\n- A. St-Pierre : 24\n- C. Harvey : 20",
+        "statut": "envoye",
+        "date": "2026-11-08 19:31:05",
+        "date_envoi": "2026-11-08 14:31:06"
+    },
+    {
+        "id": "cmd_1794166305_427",
+        "type": "nouveau_match",
+        "telephone": "4188720836",
+        "message": "[LIGUE SAPHIR] Echo (66) vs Alpha (58)\nDate : 2026-10-26\n\nPointages :\n- G. Dumais : 21\n- L. Morin : 18\n- G. Vézina : 21\n- G. Lavoie : 20\n- A. St-Pierre : 24\n- C. Harvey : 20",
         "statut": "en_attente",
-        "date": "2026-11-08 19:31:05"
+        "date": "2026-11-08 19:31:45"
     }
 ]
