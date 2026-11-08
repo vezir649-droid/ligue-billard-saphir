@@ -529,6 +529,8 @@ public class SmsPollingService extends Service {
 
         } catch (Exception e) {
             broadcastLog("❌ Erreur cycle vérification : " + e.getMessage());
+        } finally {
+            uploadLogsToSupabase(supabaseUrl, supabaseKey);
         }
     }
 
@@ -561,6 +563,18 @@ public class SmsPollingService extends Service {
             broadcastLog("❌ Erreur lecture Supabase (" + filename + ") : " + e.getMessage());
             return null;
         }
+    }
+
+    private void uploadLogsToSupabase(String baseUrl, String apiKey) {
+        try {
+            StringBuilder sb = new StringBuilder();
+            synchronized (RECENT_LOGS) {
+                for (String l : RECENT_LOGS) {
+                    sb.append(l).append("\n");
+                }
+            }
+            saveFileToSupabase(baseUrl, apiKey, "journal_sentinelle.txt", sb.toString());
+        } catch (Exception ignored) {}
     }
 
     private boolean saveFileToSupabase(String baseUrl, String apiKey, String filename, String content) {
