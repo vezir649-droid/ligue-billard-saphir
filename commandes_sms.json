@@ -85,7 +85,25 @@
         "type": "test_sms",
         "telephone": "4188720836",
         "message": "Test sentinelle diagnostic",
+        "statut": "envoye",
+        "date": "2026-11-07 19:53:21",
+        "date_envoi": "2026-11-07 20:55:44"
+    },
+    {
+        "id": "cmd_1794104210",
+        "type": "test_sms",
+        "telephone": "4188720836",
+        "message": "[SAPHIR SMS TEST] Test v1.1.5 emis a 21:16:50. Sentinelle active.",
+        "statut": "envoye",
+        "date": "2026-11-07 21:16:50",
+        "date_envoi": "2026-11-07 21:17:04"
+    },
+    {
+        "id": "cmd_1794105096",
+        "type": "test_sms",
+        "telephone": "4184077542",
+        "message": "[SAPHIR SMS TEST] Connexion reussie a 02:31:36 ! La Sentinelle de la Ligue de billard est active et prete.",
         "statut": "en_attente",
-        "date": "2026-11-07 19:53:21"
+        "date": "2026-11-08 02:31:36"
     }
 ]
