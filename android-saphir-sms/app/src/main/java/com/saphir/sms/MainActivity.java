@@ -173,7 +173,13 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(this, "⚠️ Veuillez renseigner l'URL et la clé Supabase avant de vérifier.", Toast.LENGTH_LONG).show();
                 return;
             }
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) {
+                Toast.makeText(this, "⚠️ Autorisation d'envoi SMS requise ! Veuillez l'accorder.", Toast.LENGTH_LONG).show();
+                checkAndRequestPermissions();
+                return;
+            }
             Toast.makeText(this, "⚡ Vérification Supabase en cours...", Toast.LENGTH_SHORT).show();
+            startSmsService();
             Intent intent = new Intent(this, SmsPollingService.class);
             intent.setAction("ACTION_CHECK_NOW");
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -197,6 +203,18 @@ public class MainActivity extends AppCompatActivity {
         updateUiState(isServiceRunning());
         String lastCheck = prefs.getString("last_check_time", "Aucune");
         tvLastCheck.setText("Dernière vérification : " + lastCheck);
+
+        if (!SmsPollingService.RECENT_LOGS.isEmpty()) {
+            StringBuilder sb = new StringBuilder();
+            synchronized (SmsPollingService.RECENT_LOGS) {
+                for (String l : SmsPollingService.RECENT_LOGS) {
+                    sb.append(l).append("\n");
+                }
+            }
+            logBuilder.setLength(0);
+            logBuilder.append(sb);
+            tvLogs.setText(logBuilder.toString());
+        }
     }
 
     @Override
@@ -314,6 +332,28 @@ public class MainActivity extends AppCompatActivity {
             ActivityCompat.requestPermissions(this,
                     permissionsNeeded.toArray(new String[0]),
                     101);
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 101) {
+            boolean smsGranted = false;
+            for (int i = 0; i < permissions.length; i++) {
+                if (Manifest.permission.SEND_SMS.equals(permissions[i])) {
+                    smsGranted = (grantResults[i] == PackageManager.PERMISSION_GRANTED);
+                }
+            }
+            if (smsGranted) {
+                Toast.makeText(this, "✅ Autorisation SMS accordée !", Toast.LENGTH_SHORT).show();
+                logBuilder.append("✅ Autorisation SMS accordée avec succès.\n");
+                tvLogs.setText(logBuilder.toString());
+            } else {
+                Toast.makeText(this, "❌ Autorisation SMS refusée ! Activez-la dans Paramètres.", Toast.LENGTH_LONG).show();
+                logBuilder.append("❌ Autorisation SMS refusée. Activez-la dans Paramètres Android > Applications > Saphir SMS.\n");
+                tvLogs.setText(logBuilder.toString());
+            }
         }
     }
 }
