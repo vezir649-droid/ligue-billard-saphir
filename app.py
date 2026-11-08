@@ -14376,7 +14376,7 @@ def sauvegarder_commandes_sms(commandes):
 
 
 
-def envoyer_test_sms_sentinelle(telephone, message_texte):
+def envoyer_test_sms_sentinelle(telephone, message_texte, action_pubsub="TEST_SMS"):
 
     """Envoie un SMS de test directement si Termux:API est present localement, ou cree une commande dans Supabase pour expedition par l'application Android ou le script Termux."""
 
@@ -14430,9 +14430,9 @@ def envoyer_test_sms_sentinelle(telephone, message_texte):
 
     nouvelle_cmd = {
 
-        "id": f"cmd_{int(time.time())}",
+        "id": f"cmd_{int(time.time())}_{int(random.random()*1000)}",
 
-        "type": "test_sms",
+        "type": str(action_pubsub).lower(),
 
         "telephone": tel_clean,
 
@@ -14470,13 +14470,13 @@ def envoyer_test_sms_sentinelle(telephone, message_texte):
 
         try:
 
-            diffuser_evenement_pubsub_sms("TEST_SMS", {"telephone": tel_clean})
+            diffuser_evenement_pubsub_sms(action_pubsub, {"telephone": tel_clean, "action_choisie": action_pubsub})
 
         except Exception:
 
             pass
 
-        return True, f"✅ Commande de test transmise à Supabase ! Notification Pub/Sub ⚡ diffusée en direct : votre téléphone Android (Saphir SMS) traitera le texto immédiatement sans aucun délai."
+        return True, f"✅ Commande enregistrée sur Supabase ! Signal Pub/Sub ⚡ [{action_pubsub}] diffusé en direct : votre téléphone Android (Saphir SMS) traitera le texto immédiatement."
 
     else:
 
@@ -15639,67 +15639,77 @@ def afficher_onglet_sentinelle_sms():
 
 
 
-            st.markdown("###### ✍️ 2. Message à expédier")
+            st.markdown("###### 📡 2. Choix du Signal Pub/Sub & Modèle de message")
 
-            type_msg_test = st.selectbox(
+            options_signaux = [
+                "⚡ TEST_SMS — Test direct de liaison Sentinelle",
+                "📢 NOUVEAU_MATCH — Résultats d'un match de ligue",
+                "🎱 TOURNOI_CONVOCATION — Appel d'un match aux tables (Tournoi)",
+                "⏰ TOURNOI_HORAIRE — Avis de changement d'horaire / table (Tournoi)",
+                "🔍 CHECK_NOW — Signal Ping / Diagnostic Sentinelle",
+                "✍️ PERSONNALISE — Message personnalisé libre"
+            ]
 
-                "Type de message :",
-
-                [
-
-                    "📲 Message court de test de liaison",
-
-                    "🎱 Résultat complet du dernier match enregistré",
-
-                    "✍️ Message personnalisé libre"
-
-                ],
-
-                key="sel_type_msg_test"
-
+            signal_selectionne = st.selectbox(
+                "Sélectionner le signal et son message type :",
+                options_signaux,
+                key="sel_signal_type_test_sms"
             )
-
-
 
             time_now_str = datetime.now().strftime("%H:%M:%S")
 
-            if type_msg_test == "📲 Message court de test de liaison":
+            if signal_selectionne.startswith("⚡ TEST_SMS"):
+                action_signal = "TEST_SMS"
+                modele_texte = f"[SAPHIR SMS TEST] Connexion reussie a {time_now_str} ! La Sentinelle de la Ligue de billard est active et prete."
+                desc_signal = "Expédie un message de test standard et diffuse le signal instantané `TEST_SMS`."
 
-                msg_a_tester = f"[SAPHIR SMS TEST] Connexion reussie a {time_now_str} ! La Sentinelle de la Ligue de billard est active et prete."
-
-            elif type_msg_test == "🎱 Résultat complet du dernier match enregistré":
-
+            elif signal_selectionne.startswith("📢 NOUVEAU_MATCH"):
+                action_signal = "NOUVEAU_MATCH"
                 hist = charger_historique_matchs()
-
                 if hist:
-
-                    msg_a_tester = generer_message_sms_match(hist[-1])
-
+                    modele_texte = generer_message_sms_match(hist[-1])
                 else:
+                    modele_texte = f"[LIGUE SAPHIR] Match test : Echo (66) vs Alpha (58) a {time_now_str}.\nClassement en direct sur l'app !"
+                desc_signal = "Expédie le résumé officiel des scores du dernier match et diffuse le signal `NOUVEAU_MATCH`."
 
-                    msg_a_tester = f"[LIGUE SAPHIR] Match test : Les Lions (13) vs Les Tigres (11) a {time_now_str}. Classement en direct sur l'app !"
+            elif signal_selectionne.startswith("🎱 TOURNOI_CONVOCATION"):
+                action_signal = "TEST_SMS"
+                heure_conv = (datetime.now() + timedelta(minutes=15)).strftime("%H:%M")
+                modele_texte = formater_sms_convocation_tournoi("M4", "Gilles Dumais & Guy Vezina", "Marcel Larouche & Denis Viens", "Table 2", heure_conv)
+                desc_signal = "Expédie la convocation officielle à une table de tournoi avec l'heure de la partie."
+
+            elif signal_selectionne.startswith("⏰ TOURNOI_HORAIRE"):
+                action_signal = "TEST_SMS"
+                heure_rep = (datetime.now() + timedelta(minutes=45)).strftime("%H:%M")
+                modele_texte = formater_sms_changement_horaire_tournoi("M4", "Gilles Dumais & Guy Vezina", "Marcel Larouche & Denis Viens", "Table 2", heure_rep)
+                desc_signal = "Expédie l'avis officiel de changement d'horaire ou de table pour une rencontre."
+
+            elif signal_selectionne.startswith("🔍 CHECK_NOW"):
+                action_signal = "CHECK_NOW"
+                modele_texte = f"[SAPHIR SMS PING] Signal CHECK_NOW emis a {time_now_str}. Diagnostic et verification de la Sentinelle."
+                desc_signal = "Diffuse le signal de présence `CHECK_NOW` et force le téléversement du journal Sentinelle."
 
             else:
+                action_signal = "TEST_SMS"
+                modele_texte = f"[LIGUE SAPHIR] Message test envoye par l'administrateur a {time_now_str}."
+                desc_signal = "Permet de rédiger n'importe quel texte libre pour l'expédier via le téléphone Sentinelle."
 
-                msg_a_tester = st.text_area(
+            st.caption(f"ℹ️ **Action :** {desc_signal}")
 
-                    "Texte personnalisé du SMS :",
-
-                    value=f"[LIGUE SAPHIR] Message test envoye par l'administrateur a {time_now_str}.",
-
-                    height=90,
-
-                    key="textarea_custom_test_sms"
-
-                )
-
-
+            msg_a_tester = st.text_area(
+                "Texte du SMS qui sera expédié (modifiable) :",
+                value=modele_texte,
+                height=110,
+                key=f"textarea_test_sms_{signal_selectionne.split(' ')[1]}"
+            )
 
         with col_t2:
 
             st.markdown("###### 📱 Aperçu sur le téléphone récepteur")
 
             with st.container(border=True):
+
+                st.markdown(f"**Signal Pub/Sub :** `⚡ {action_signal}`")
 
                 st.markdown(f"**De :** *Saphir SMS (Sentinelle)*")
 
@@ -15708,11 +15718,12 @@ def afficher_onglet_sentinelle_sms():
                 st.markdown("---")
 
                 st.caption("👁️ **Aperçu unique** (prévisualisation du message avant expédition) :")
-                st.text_area("Texte du SMS qui sera reçu :", value=msg_a_tester, height=160, disabled=True, key="preview_box_test", label_visibility="collapsed")
+
+                st.text_area("Texte du SMS qui sera reçu :", value=msg_a_tester, height=140, disabled=True, key=f"preview_box_test_{signal_selectionne.split(' ')[1]}", label_visibility="collapsed")
 
                 nb_car = len(msg_a_tester)
 
-                st.caption(f"📊 Longueur : **{nb_car} caractères** (~{max(1, (nb_car - 1) // 153 + 1)} segment(s) SMS).")
+                st.caption(f"📊 Longueur : **{nb_car} caractères** (~{max(1, (nb_car - 1) // 153 + 1)} segment(s) SMS GSM 7-bit).")
 
 
 
@@ -15745,7 +15756,7 @@ def afficher_onglet_sentinelle_sms():
 
                 with st.spinner("Transmission de la commande de test à Supabase..."):
 
-                    ok_t, msg_t = envoyer_test_sms_sentinelle(tel_dest_choisi, msg_a_tester)
+                    ok_t, msg_t = envoyer_test_sms_sentinelle(tel_dest_choisi, msg_a_tester, action_pubsub=action_signal)
 
                 if ok_t:
 
