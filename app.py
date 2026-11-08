@@ -15566,6 +15566,24 @@ def afficher_onglet_sentinelle_sms():
 
         st.markdown("---")
 
+        # Affichage du journal d'activite distant du telephone
+        st.markdown("---")
+        col_j_hdr1, col_j_hdr2 = st.columns([3, 1])
+        with col_j_hdr1:
+            st.markdown("###### 📋 Journal d'activité en direct de l'application Android (Téléphone)")
+            st.caption("Ce journal est téléversé en temps réel par le téléphone passerelle pour suivre les envois.")
+        with col_j_hdr2:
+            if st.button("🔄 Rafraîchir journal", key="btn_refresh_sentinelle_log", use_container_width=True):
+                st.rerun()
+
+        try:
+            raw_j = telecharger_fichier_supabase("journal_sentinelle.txt")
+            contenu_j = raw_j.strip() if (raw_j and str(raw_j).strip()) else "Aucun journal reçu pour le moment. Démarrez Saphir SMS sur le téléphone pour synchroniser."
+        except Exception as e_j:
+            contenu_j = f"Erreur lecture journal : {e_j}"
+        st.text_area("Journal téléphone :", value=contenu_j, height=200, disabled=True, key="textarea_log_sentinelle_live")
+
+        st.markdown("---")
         commandes_list = charger_commandes_sms()
 
         nb_en_attente = len([c for c in commandes_list if c.get("statut") == "en_attente"])
