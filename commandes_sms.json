@@ -1,14 +1,5 @@
 [
     {
-        "id": "cmd_1794158505",
-        "type": "test_sms",
-        "telephone": "4188720836",
-        "message": "[SAPHIR SMS TEST] Signal Pub/Sub valide a 17:21:45 ! Sentinelle active.",
-        "statut": "envoye",
-        "date": "2026-11-08 17:21:45",
-        "date_envoi": "2026-11-08 12:21:46"
-    },
-    {
         "id": "cmd_1794158587",
         "type": "test_sms",
         "telephone": "4188720836",
@@ -220,7 +211,16 @@
         "type": "nouveau_match",
         "telephone": "4188720836",
         "message": "[LIGUE SAPHIR] Echo (66) vs Alpha (58)\nDate : 2026-10-26\n\nPointages :\n- G. Dumais : 21\n- L. Morin : 18\n- G. Vézina : 21\n- G. Lavoie : 20\n- A. St-Pierre : 24\n- C. Harvey : 20",
+        "statut": "envoye",
+        "date": "2026-11-08 19:32:42",
+        "date_envoi": "2026-11-08 14:32:43"
+    },
+    {
+        "id": "cmd_1794166405_85",
+        "type": "test_sms",
+        "telephone": "4188720836",
+        "message": "[SAPHIR SMS TEST] Connexion reussie a 19:33:18 ! La Sentinelle de la Ligue de billard est active et prete.",
         "statut": "en_attente",
-        "date": "2026-11-08 19:32:42"
+        "date": "2026-11-08 19:33:25"
     }
 ]
