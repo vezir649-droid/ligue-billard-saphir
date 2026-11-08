@@ -1,14 +1,5 @@
 [
     {
-        "id": "cmd_1794111901",
-        "type": "test_sms",
-        "telephone": "4188720836",
-        "message": "[SAPHIR SMS TEST] Connexion reussie a 04:25:01 ! La Sentinelle de la Ligue de billard est active et prete.",
-        "statut": "envoye",
-        "date": "2026-11-08 04:25:01",
-        "date_envoi": "2026-11-07 23:25:02"
-    },
-    {
         "id": "cmd_1794158257",
         "type": "test_sms",
         "telephone": "4188720836",
@@ -220,7 +211,16 @@
         "type": "nouveau_match",
         "telephone": "4188720836",
         "message": "[LIGUE SAPHIR] Echo (66) vs Alpha (58)\nDate : 2026-10-26\n\nPointages :\n- G. Dumais : 21\n- L. Morin : 18\n- G. Vézina : 21\n- G. Lavoie : 20\n- A. St-Pierre : 24\n- C. Harvey : 20",
+        "statut": "envoye",
+        "date": "2026-11-08 19:23:50",
+        "date_envoi": "2026-11-08 14:23:52"
+    },
+    {
+        "id": "cmd_1794165899_374",
+        "type": "test_sms",
+        "telephone": "4188720836",
+        "message": "[TOURNOI SAPHIR] Horaire modifie (M4)\nG. Dumais & G. Vezina vs M. Larouche & D. Viens\nVotre match Table 2 est reporte a 20h09. Presentez-vous a cette heure !",
         "statut": "en_attente",
-        "date": "2026-11-08 19:23:50"
+        "date": "2026-11-08 19:24:59"
     }
 ]
