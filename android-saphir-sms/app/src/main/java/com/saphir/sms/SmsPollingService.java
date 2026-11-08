@@ -18,6 +18,12 @@ import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
 
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+import okhttp3.WebSocket;
+import okhttp3.WebSocketListener;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -26,6 +32,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -33,16 +40,26 @@ import java.util.Date;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class SmsPollingService extends Service {
     private static final String CHANNEL_ID = "SaphirSmsChannel";
     private static final int NOTIF_ID = 101;
-    private static final long INTERVAL_MS = 300000; // 5 minutes
+    private static final long HEARTBEAT_INTERVAL_MS = 25000; // 25s Phoenix heartbeat
+    private static final long RECONNECT_DELAY_MS = 10000; // 10s auto-reconnect
+    private static final String TOPIC_REALTIME = "realtime:saphir_sms";
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
-    private Runnable pollingRunnable;
     private PowerManager.WakeLock wakeLock;
+
+    // Support Pub/Sub en direct via Supabase Realtime WebSocket
+    private OkHttpClient wsHttpClient;
+    private WebSocket realtimeWebSocket;
+    private final AtomicBoolean isWsConnected = new AtomicBoolean(false);
+    private Runnable heartbeatRunnable;
+    private Runnable reconnectRunnable;
 
     @Override
     public void onCreate() {
@@ -59,23 +76,17 @@ public class SmsPollingService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        startForeground(NOTIF_ID, createNotification("🎱 Surveillance active (aux 5 min)"));
+        startForeground(NOTIF_ID, createNotification("🎱 Sentinelle active (Pub/Sub Temps Réel ⚡)"));
+
+        // Vérification immédiate à l'initialisation ou sur demande
+        executor.execute(() -> checkSupabaseAndSendSms());
 
         if (intent != null && "ACTION_CHECK_NOW".equals(intent.getAction())) {
-            executor.execute(() -> checkSupabaseAndSendSms());
             return START_STICKY;
         }
 
-        if (pollingRunnable == null) {
-            pollingRunnable = new Runnable() {
-                @Override
-                public void run() {
-                    executor.execute(() -> checkSupabaseAndSendSms());
-                    handler.postDelayed(this, INTERVAL_MS);
-                }
-            };
-            handler.post(pollingRunnable);
-        }
+        // Connexion immédiate au flux Pub/Sub Supabase Realtime (écoute 24/7 en continu)
+        initOrConnectRealtimeWebSocket();
 
         return START_STICKY;
     }
@@ -87,9 +98,22 @@ public class SmsPollingService extends Service {
                 wakeLock.release();
             } catch (Exception ignored) {}
         }
-        if (pollingRunnable != null) {
-            handler.removeCallbacks(pollingRunnable);
-            pollingRunnable = null;
+        stopHeartbeat();
+        if (reconnectRunnable != null) {
+            handler.removeCallbacks(reconnectRunnable);
+            reconnectRunnable = null;
+        }
+        if (realtimeWebSocket != null) {
+            try {
+                realtimeWebSocket.close(1000, "Service arrêté");
+            } catch (Exception ignored) {}
+            realtimeWebSocket = null;
+        }
+        if (wsHttpClient != null) {
+            try {
+                wsHttpClient.dispatcher().executorService().shutdown();
+            } catch (Exception ignored) {}
+            wsHttpClient = null;
         }
         executor.shutdown();
         super.onDestroy();
@@ -131,6 +155,191 @@ public class SmsPollingService extends Service {
                 .build();
     }
 
+    private void initOrConnectRealtimeWebSocket() {
+        SharedPreferences prefs = getSharedPreferences("saphir_sms_prefs", Context.MODE_PRIVATE);
+        String supabaseUrl = prefs.getString("supabase_url", "https://ueikhwdfmtnavqqscdoe.supabase.co").trim();
+        if (supabaseUrl.isEmpty()) {
+            supabaseUrl = "https://ueikhwdfmtnavqqscdoe.supabase.co";
+        }
+        String supabaseKey = prefs.getString("supabase_key", "").trim();
+        if (supabaseKey.isEmpty()) {
+            supabaseKey = MainActivity.getDefaultSupabaseKey();
+        }
+
+        if (supabaseUrl.isEmpty() || supabaseKey.isEmpty()) {
+            return;
+        }
+
+        final String finalUrl = supabaseUrl;
+        final String finalKey = supabaseKey;
+
+        executor.execute(() -> {
+            try {
+                if (wsHttpClient == null) {
+                    wsHttpClient = new OkHttpClient.Builder()
+                            .readTimeout(0, TimeUnit.MILLISECONDS)
+                            .connectTimeout(15, TimeUnit.SECONDS)
+                            .pingInterval(20, TimeUnit.SECONDS)
+                            .build();
+                }
+
+                if (realtimeWebSocket != null) {
+                    try {
+                        realtimeWebSocket.close(1000, "Reconnexion");
+                    } catch (Exception ignored) {}
+                    realtimeWebSocket = null;
+                }
+
+                String baseWs = finalUrl.replaceFirst("^http://", "ws://").replaceFirst("^https://", "wss://");
+                if (!baseWs.endsWith("/")) {
+                    baseWs += "/";
+                }
+                String wsUrl = baseWs + "realtime/v1/websocket?apikey=" + URLEncoder.encode(finalKey, "UTF-8") + "&vsn=1.0.0";
+
+                Request request = new Request.Builder()
+                        .url(wsUrl)
+                        .addHeader("apikey", finalKey)
+                        .addHeader("Authorization", "Bearer " + finalKey)
+                        .build();
+
+                broadcastLog("⚡ [Pub/Sub] Connexion au flux en direct Supabase Realtime...");
+
+                realtimeWebSocket = wsHttpClient.newWebSocket(request, new WebSocketListener() {
+                    @Override
+                    public void onOpen(WebSocket webSocket, Response response) {
+                        isWsConnected.set(true);
+                        broadcastLog("⚡ [Pub/Sub] Connecté au serveur Realtime ! Inscription au canal 'saphir_sms'...");
+                        sendJoinChannel(webSocket, finalKey);
+                        startHeartbeat();
+                        executor.execute(() -> checkSupabaseAndSendSms());
+                    }
+
+                    @Override
+                    public void onMessage(WebSocket webSocket, String text) {
+                        handleIncomingRealtimeMessage(text);
+                    }
+
+                    @Override
+                    public void onClosed(WebSocket webSocket, int code, String reason) {
+                        isWsConnected.set(false);
+                        stopHeartbeat();
+                        broadcastLog("⚠️ [Pub/Sub] Déconnecté (" + reason + "). Reconnexion programmée...");
+                        scheduleReconnect();
+                    }
+
+                    @Override
+                    public void onFailure(WebSocket webSocket, Throwable t, Response response) {
+                        isWsConnected.set(false);
+                        stopHeartbeat();
+                        String err = (t != null && t.getMessage() != null) ? t.getMessage() : "Échec réseau";
+                        broadcastLog("⚠️ [Pub/Sub] Interruption flux (" + err + "). Reconnexion dans 10s...");
+                        scheduleReconnect();
+                    }
+                });
+            } catch (Exception e) {
+                isWsConnected.set(false);
+                broadcastLog("❌ [Pub/Sub] Erreur WebSocket : " + e.getMessage());
+                scheduleReconnect();
+            }
+        });
+    }
+
+    private void sendJoinChannel(WebSocket webSocket, String apiKey) {
+        try {
+            JSONObject payload = new JSONObject();
+            JSONObject config = new JSONObject();
+            JSONObject broadcast = new JSONObject();
+            broadcast.put("self", true);
+            config.put("broadcast", broadcast);
+            payload.put("config", config);
+            payload.put("access_token", apiKey);
+
+            JSONObject msg = new JSONObject();
+            msg.put("topic", TOPIC_REALTIME);
+            msg.put("event", "phx_join");
+            msg.put("payload", payload);
+            msg.put("ref", "join_saphir");
+            msg.put("join_ref", "join_saphir");
+
+            webSocket.send(msg.toString());
+        } catch (Exception e) {
+            Log.e("SmsPollingService", "Erreur sendJoinChannel", e);
+        }
+    }
+
+    private void startHeartbeat() {
+        stopHeartbeat();
+        heartbeatRunnable = new Runnable() {
+            @Override
+            public void run() {
+                if (isWsConnected.get() && realtimeWebSocket != null) {
+                    try {
+                        JSONObject hb = new JSONObject();
+                        hb.put("topic", "phoenix");
+                        hb.put("event", "heartbeat");
+                        hb.put("payload", new JSONObject());
+                        hb.put("ref", "hb_" + System.currentTimeMillis());
+                        realtimeWebSocket.send(hb.toString());
+                    } catch (Exception ignored) {}
+                    handler.postDelayed(this, HEARTBEAT_INTERVAL_MS);
+                }
+            }
+        };
+        handler.postDelayed(heartbeatRunnable, HEARTBEAT_INTERVAL_MS);
+    }
+
+    private void stopHeartbeat() {
+        if (heartbeatRunnable != null) {
+            handler.removeCallbacks(heartbeatRunnable);
+            heartbeatRunnable = null;
+        }
+    }
+
+    private void scheduleReconnect() {
+        if (reconnectRunnable != null) {
+            handler.removeCallbacks(reconnectRunnable);
+        }
+        reconnectRunnable = () -> {
+            if (!isWsConnected.get()) {
+                initOrConnectRealtimeWebSocket();
+            }
+        };
+        handler.postDelayed(reconnectRunnable, RECONNECT_DELAY_MS);
+    }
+
+    private void handleIncomingRealtimeMessage(String text) {
+        try {
+            JSONObject json = new JSONObject(text);
+            String topic = json.optString("topic", "");
+            String event = json.optString("event", "");
+            JSONObject payload = json.optJSONObject("payload");
+
+            if ("phx_reply".equals(event)) {
+                if (payload != null && "ok".equals(payload.optString("status"))) {
+                    broadcastLog("✅ [Pub/Sub] Canal 'realtime:saphir_sms' ACTIF en direct ! Prêt à relayer.");
+                }
+                return;
+            }
+
+            if (TOPIC_REALTIME.equals(topic) || "broadcast".equals(event)) {
+                String subEvent = "";
+                if (payload != null) {
+                    subEvent = payload.optString("event", "");
+                }
+                broadcastLog("⚡ [Pub/Sub] Signal reçu en direct (" + (!subEvent.isEmpty() ? subEvent : event) + ") ! Exécution immédiate...");
+                executor.execute(() -> checkSupabaseAndSendSms());
+                return;
+            }
+
+            if (text.contains("sms_trigger") || text.contains("CHECK_NOW") || text.contains("TEST_SMS")) {
+                broadcastLog("⚡ [Pub/Sub] Notification détectée ! Exécution immédiate...");
+                executor.execute(() -> checkSupabaseAndSendSms());
+            }
+        } catch (Exception e) {
+            Log.e("SmsPollingService", "Erreur parse msg realtime", e);
+        }
+    }
+
     private void checkSupabaseAndSendSms() {
         SharedPreferences prefs = getSharedPreferences("saphir_sms_prefs", Context.MODE_PRIVATE);
         String supabaseUrl = prefs.getString("supabase_url", "https://ueikhwdfmtnavqqscdoe.supabase.co").trim();
@@ -148,6 +357,7 @@ public class SmsPollingService extends Service {
         }
 
         String timeNow = new SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(new Date());
+        prefs.edit().putString("last_check_time", timeNow).apply();
         broadcastLog("[" + timeNow + "] 🔍 Vérification Supabase...");
 
         try {
