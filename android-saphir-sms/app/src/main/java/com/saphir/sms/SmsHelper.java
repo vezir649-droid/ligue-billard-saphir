@@ -101,9 +101,10 @@ public class SmsHelper {
             }
         }
 
-        int maxChunkSize = isUnicode ? 67 : 153;
+        int maxSingleSize = isUnicode ? 70 : 160;
+        int maxConcatSize = isUnicode ? 67 : 153;
 
-        if (text.length() <= maxChunkSize) {
+        if (text.length() <= maxSingleSize) {
             parts.add(text);
             return parts;
         }
@@ -111,7 +112,7 @@ public class SmsHelper {
         int start = 0;
         int totalLen = text.length();
         while (start < totalLen) {
-            int end = Math.min(start + maxChunkSize, totalLen);
+            int end = Math.min(start + maxConcatSize, totalLen);
             if (end < totalLen && Character.isHighSurrogate(text.charAt(end - 1))) {
                 end--;
             }

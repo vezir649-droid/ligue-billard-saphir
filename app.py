@@ -14643,7 +14643,7 @@ def trouver_destinataires_match_tournoi(ea, eb, base_sms=None):
 
 
 def formater_sms_convocation_tournoi(mid, ea, eb, table, heure=None):
-    """Genere le texte d'un SMS de convocation concis compatible GSM 7-bit."""
+    """Genere le texte d'un SMS de convocation concis compatible GSM 7-bit (< 150 car.)."""
     import unicodedata
     ea_court = raccourcir_equipe(ea)
     eb_court = raccourcir_equipe(eb)
@@ -14653,16 +14653,16 @@ def formater_sms_convocation_tournoi(mid, ea, eb, table, heure=None):
     txt = f"[TOURNOI SAPHIR] Appel {table_str} ({mid_str})\n{ea_court} vs {eb_court}\n"
     if heure and str(heure).strip() not in ("—", "-", "", "None"):
         h_propre = str(heure).strip().replace(":", "h")
-        txt += f"Votre match est prevu a {h_propre}. Presentez-vous a votre table !"
+        txt += f"Match prevu a {h_propre}. Presentez-vous a votre table !"
     else:
-        txt += "Votre match debute maintenant. Presentez-vous a votre table !"
+        txt += "Match debute maintenant. Presentez-vous a votre table !"
 
     txt_norm = unicodedata.normalize("NFD", txt)
     return "".join(c for c in txt_norm if unicodedata.category(c) != "Mn").strip()
 
 
 def formater_sms_changement_horaire_tournoi(mid, ea, eb, table, nouvelle_heure):
-    """Genere le texte d'un SMS d'avis de changement d'horaire ou de table (< 160 car.)."""
+    """Genere le texte d'un SMS d'avis de changement d'horaire ou de table (< 150 car.)."""
     import unicodedata
     ea_court = raccourcir_equipe(ea)
     eb_court = raccourcir_equipe(eb)
@@ -14671,7 +14671,7 @@ def formater_sms_changement_horaire_tournoi(mid, ea, eb, table, nouvelle_heure):
     h_propre = str(nouvelle_heure).strip().replace(":", "h")
 
     txt = f"[TOURNOI SAPHIR] Horaire modifie ({mid_str})\n{ea_court} vs {eb_court}\n"
-    txt += f"Votre match {table_str} est reporte a {h_propre}. Presentez-vous a cette heure !"
+    txt += f"Match {table_str} reporte a {h_propre}. Soyez presents !"
 
     txt_norm = unicodedata.normalize("NFD", txt)
     return "".join(c for c in txt_norm if unicodedata.category(c) != "Mn").strip()
