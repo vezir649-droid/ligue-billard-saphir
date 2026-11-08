@@ -1,125 +1,131 @@
 {
-    "date": "2026-11-04 17:46",
-    "receveur": "Alpha",
-    "visiteur": "Bravo",
-    "choix_rec": "Alpha",
-    "choix_vis": "Bravo",
-    "sel_j1_rec": "Claude Harvey",
-    "sel_j2_rec": "Gaston Lavoie",
-    "sel_j1_vis": "Richard Vézina",
-    "sel_j2_vis": "Denis Beaudoin",
+    "date": "2026-11-07 20:34",
+    "receveur": "Echo",
+    "visiteur": "Charlie",
+    "choix_rec": "Echo",
+    "choix_vis": "Charlie",
+    "input_custom_rec": "",
+    "input_custom_vis": "",
+    "sel_j1_rec": "Gilles Dumais",
+    "sel_j2_rec": "Guy Vézina",
+    "sel_j3_rec": "André St-Pierre",
+    "sel_j1_vis": "Denis Viens",
+    "sel_j2_vis": "Marcel Larouche",
+    "sel_j3_vis": "Denis Chamberland",
     "joueurs": {
         "j1_rec": {
-            "nom": "Claude Harvey",
+            "nom": "Gilles Dumais",
             "present": true,
-            "moyenne": 0.859,
+            "moyenne": 0.852,
             "pts_absent": 7
         },
         "j2_rec": {
-            "nom": "Gaston Lavoie",
+            "nom": "Guy Vézina",
             "present": true,
-            "moyenne": 0.797,
-            "pts_absent": 6
+            "moyenne": 0.87,
+            "pts_absent": 7
         },
         "j3_rec": {
-            "nom": "Léon Morin",
+            "nom": "André St-Pierre",
             "present": true,
-            "moyenne": 0.729,
-            "pts_absent": 6
+            "moyenne": 0.926,
+            "pts_absent": 7
         },
         "j1_vis": {
-            "nom": "Richard Vézina",
+            "nom": "Denis Viens",
             "present": true,
-            "moyenne": 0.891,
+            "moyenne": 0.843,
             "pts_absent": 7
         },
         "j2_vis": {
-            "nom": "Denis Beaudoin",
+            "nom": "Marcel Larouche",
             "present": true,
-            "moyenne": 0.0,
-            "pts_absent": 0
+            "moyenne": 0.727,
+            "pts_absent": 6
         },
         "j3_vis": {
-            "nom": "Michel Caron",
+            "nom": "Denis Chamberland",
             "present": true,
-            "moyenne": 0.781,
-            "pts_absent": 6
+            "moyenne": 0.935,
+            "pts_absent": 7
         }
     },
     "matchs": {
         "1": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "",
-            "joueur_b": "",
+            "joueur_a": "Gilles Dumais",
+            "joueur_b": "Denis Viens",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "2": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "",
-            "joueur_b": "",
+            "joueur_a": "Guy Vézina",
+            "joueur_b": "Marcel Larouche",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "3": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "",
-            "joueur_b": "",
+            "joueur_a": "André St-Pierre",
+            "joueur_b": "Denis Chamberland",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "4": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "",
-            "joueur_b": "",
+            "joueur_a": "Gilles Dumais",
+            "joueur_b": "Marcel Larouche",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "5": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "",
-            "joueur_b": "",
+            "joueur_a": "Guy Vézina",
+            "joueur_b": "Denis Chamberland",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "6": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "",
-            "joueur_b": "",
+            "joueur_a": "André St-Pierre",
+            "joueur_b": "Denis Viens",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "7": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "",
-            "joueur_b": "",
+            "joueur_a": "Gilles Dumais",
+            "joueur_b": "Denis Chamberland",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "8": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "",
-            "joueur_b": "",
+            "joueur_a": "Guy Vézina",
+            "joueur_b": "Denis Viens",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "9": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "",
-            "joueur_b": "",
+            "joueur_a": "André St-Pierre",
+            "joueur_b": "Marcel Larouche",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         }
     },
-    "derniere_mise_a_jour": "17:46:11",
-    "ts_modif": 1793814371.4197571
+    "total_receveur": 0,
+    "total_visiteur": 0,
+    "derniere_mise_a_jour": "20:34:29",
+    "ts_modif": 1794101669.4556122
 }
