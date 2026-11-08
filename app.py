@@ -7310,6 +7310,8 @@ def cb_scanner_feuille():
 
     """Bascule immédiatement la vue active sur le Scanner IA."""
 
+    st.session_state["mode_vue_active"] = "scanner"
+
     label_scan = "📷 Numériser une feuille de match (Scanner IA)"
 
     st.session_state["choix_match_vue"] = label_scan
@@ -8402,6 +8404,8 @@ def cb_scanner_feuille():
 
     """Bascule immédiatement la vue active sur le Scanner IA."""
 
+    st.session_state["mode_vue_active"] = "scanner"
+
     label_scan = "📷 Numériser une feuille de match (Scanner IA)"
 
     st.session_state["choix_match_vue"] = label_scan
@@ -8917,6 +8921,8 @@ def cb_injecter_donnees_scanner(data_s, label_direct=None):
 
 
     lbl_direct = label_direct or "🔴 Saisie du match en direct (En cours)"
+
+    st.session_state["mode_vue_active"] = None
 
     st.session_state["choix_match_vue"] = lbl_direct
 
@@ -34849,7 +34855,11 @@ if "message_validation_reussie" in st.session_state:
 
 def cb_consulter_saphir():
 
-    st.session_state["choix_match_vue"] = "🌐 Consulter https://saphirbillard.com (Joueurs, Équipes, Horaire)"
+    st.session_state["mode_vue_active"] = "saphir"
+
+    st.session_state["choix_match_vue"] = "saphir"
+
+    st.session_state["pending_choix_match_vue"] = "saphir"
 
 
 
@@ -34857,7 +34867,11 @@ def cb_retour_match_en_cours():
 
     lbl_direct = "🔴 Saisie du match en direct (En cours)" if not st.session_state.get("est_spectateur", False) else "🔴 Match en direct (En cours)"
 
+    st.session_state["mode_vue_active"] = None
+
     st.session_state["choix_match_vue"] = lbl_direct
+
+    st.session_state["pending_choix_match_vue"] = lbl_direct
 
 
 
@@ -36971,7 +36985,8 @@ with tab_feuille:
 
     label_saphir = "🌐 Consulter https://saphirbillard.com (Joueurs, Équipes, Horaire)"
 
-    options_matchs = [label_direct, label_scan, label_saphir]
+    # L'historique des matchs contient uniquement le match en direct et les rencontres archivées
+    options_matchs = [label_direct]
 
     mapping_matchs = {}
 
@@ -37083,17 +37098,17 @@ with tab_feuille:
 
 
 
-    # 0. Si le scanner de feuille de match par IA est sélectionné
+    # 0. Si le scanner de feuille de match par IA est actif
 
-    if choix_vue == label_scan:
+    if st.session_state.get("mode_vue_active") == "scanner" or choix_vue == label_scan:
 
         afficher_vue_scanner_feuille_match(label_direct)
 
 
 
-    # 1. Si la consultation externe saphirbillard.com est sélectionnée
+    # 1. Si la consultation externe saphirbillard.com est active
 
-    elif choix_vue == label_saphir:
+    elif st.session_state.get("mode_vue_active") == "saphir" or choix_vue in [label_saphir, "saphir"]:
 
         st.session_state["venant_de_archive"] = True
 
@@ -37440,8 +37455,39 @@ with tab_feuille:
                         st.error(f"❌ {msg_envoi}")
 
         
+            # Affichage structuré du match archivé (comme le formulaire de saisie)
+            c_sc1, c_sc2 = st.columns(2)
+            c_sc1.metric(f"🏠 Total {rec_m}", f"{tot_r} pts")
+            c_sc2.metric(f"🚗 Total {vis_m}", f"{tot_v} pts")
 
-            st.components.v1.html(html_arch, height=650, scrolling=True)
+            matchs_dict_arch = m_arch.get("matchs", {})
+            if matchs_dict_arch:
+                st.markdown("##### 📋 État des 9 manches du match archivé")
+                lignes_arch_md = [
+                    f"| Manche | Joueur ({rec_m}) | Pts {rec_m} | Pts {vis_m} | Joueur ({vis_m}) | Statut |",
+                    "| :---: | :--- | :---: | :---: | :--- | :--- |"
+                ]
+                for i_m in range(1, 10):
+                    m_info = matchs_dict_arch.get(str(i_m), {})
+                    ja_n = m_info.get("joueur_a", f"J{i_m} Rec")
+                    jb_n = m_info.get("joueur_b", f"J{i_m} Vis")
+                    ja_a = f"**{ja_n}**" + (" *(Absent)*" if m_info.get("joueur_a_absent") else "")
+                    jb_a = f"**{jb_n}**" + (" *(Absent)*" if m_info.get("joueur_b_absent") else "")
+                    sa_a = int(m_info.get("score_a", 0))
+                    sb_a = int(m_info.get("score_b", 0))
+                    if sa_a > sb_a:
+                        stat_m = f"🏆 **Gagné ({ja_n})**"
+                    elif sb_a > sa_a:
+                        stat_m = f"🏆 **Gagné ({jb_n})**"
+                    elif sa_a > 0 and sa_a == sb_a:
+                        stat_m = f"⚖️ **Égalité ({sa_a}-{sb_a})**"
+                    else:
+                        stat_m = "⚪ *Non disputé*"
+                    lignes_arch_md.append(f"| **Manche {i_m}** | {ja_a} | **{sa_a}** | **{sb_a}** | {jb_a} | {stat_m} |")
+                st.markdown("\n".join(lignes_arch_md))
+
+            with st.expander("📄 Afficher la feuille officielle originale (Version imprimable / HTML)", expanded=False):
+                st.components.v1.html(html_arch, height=650, scrolling=True)
 
 
 
