@@ -35443,7 +35443,7 @@ with tab_feuille:
 
             else:
 
-                st.markdown(f"🔵 **{rencontre_active['receveur']}** *(Receveur)*<br>vs 🟠 **{rencontre_active['visiteur']}** *(Visiteur)*", unsafe_allow_html=True)
+                st.markdown(f"🔵 **{rencontre_active['receveur']}** *(Receveur)*\n\nvs 🟠 **{rencontre_active['visiteur']}** *(Visiteur)*")
 
                 st.button("🔄 Charger le match du jour et alignements", key="btn_apply_match_jour_sb", on_click=cb_appliquer_match_du_jour_btn, use_container_width=True, help="Configure automatiquement les équipes et les joueurs selon l'horaire officiel")
 
@@ -37647,17 +37647,7 @@ with tab_feuille:
 
                     with col_t_badge:
 
-                        st.markdown(
-
-                            f"<div style='text-align: right; font-size: 13px; color: #2e7d32; font-weight: bold; padding-top: 5px;'>"
-
-                            f"🟢 En direct (Synchro auto : {heure_maj})"
-
-                            f"</div>",
-
-                            unsafe_allow_html=True
-
-                        )
+                        st.caption(f"🟢 **En direct (Synchro auto : {heure_maj})**")
 
 
 
@@ -38233,17 +38223,7 @@ with tab_feuille:
 
                     gagnant_txt = f"🏆 {joueur_a}" if cur_sa > cur_sb else (f"🏆 {joueur_b}" if cur_sb > cur_sa else "⚖️ Égalité")
 
-                    st.markdown(
-
-                        f"<div style='background:#f0fdf4;border:1px solid #bbf7d0;border-left:4px solid #16a34a;border-radius:8px;padding:6px 12px;margin-bottom:4px;font-size:13.5px;color:#14532d;'>"
-
-                        f"✅ <strong>Manche {num_manche} terminée :</strong> {joueur_a} (<strong>{cur_sa}</strong>) — (<strong>{cur_sb}</strong>) {joueur_b} &nbsp;•&nbsp; {gagnant_txt}"
-
-                        f"</div>",
-
-                        unsafe_allow_html=True
-
-                    )
+                    st.success(f"✅ **Manche {num_manche} terminée :** {joueur_a} (**{cur_sa}**) — (**{cur_sb}**) {joueur_b} • {gagnant_txt}")
 
 
 
@@ -38447,107 +38427,47 @@ with tab_feuille:
 
         if total_pts_receveur > total_pts_visiteur:
 
-            statut_live_html = f"🏆 <strong>{equipe_receveur}</strong> mène par <strong>+{total_pts_receveur - total_pts_visiteur} pt(s)</strong>"
+            statut_live_txt = f"🏆 **{equipe_receveur}** mène par **+{total_pts_receveur - total_pts_visiteur} pt(s)**"
 
         elif total_pts_visiteur > total_pts_receveur:
 
-            statut_live_html = f"🏆 <strong>{equipe_visiteur}</strong> mène par <strong>+{total_pts_visiteur - total_pts_receveur} pt(s)</strong>"
+            statut_live_txt = f"🏆 **{equipe_visiteur}** mène par **+{total_pts_visiteur - total_pts_receveur} pt(s)**"
 
         else:
 
-            statut_live_html = f"🤝 <strong>Égalité parfaite</strong> ({total_pts_receveur} - {total_pts_visiteur})"
+            statut_live_txt = f"🤝 **Égalité parfaite** ({total_pts_receveur} - {total_pts_visiteur})"
 
 
 
         with conteneur_scoreboard_live:
 
-            st.markdown(
+            with st.container(border=True):
 
-                f"""
+                col_sb1, col_sb2, col_sb3 = st.columns([1.5, 2, 1.5])
 
-                <style>
+                with col_sb1:
 
-                div[data-testid="stVerticalBlock"] > div:has(.saphir-sticky-scoreboard) {{
+                    st.caption("🔵 ÉQUIPE RECEVEUSE (🏠)")
 
-                    position: sticky !important;
+                    st.subheader(equipe_receveur)
 
-                    top: 2.85rem !important;
+                    st.metric("Total", f"{total_pts_receveur} pts")
 
-                    z-index: 95 !important;
+                with col_sb2:
 
-                }}
+                    st.markdown(f"##### {statut_live_txt}")
 
-                @media (max-width: 768px) {{
+                    st.caption(f"✅ {nb_manches_term}/9 manches terminées ({pct_manches}%)")
 
-                    .saphir-sticky-scoreboard {{
+                    st.progress(nb_manches_term / 9.0)
 
-                        padding: 8px 12px !important;
+                with col_sb3:
 
-                        margin: 4px 0 8px 0 !important;
+                    st.caption("🟠 ÉQUIPE VISITEUSE (🚗)")
 
-                    }}
+                    st.subheader(equipe_visiteur)
 
-                    .saphir-sticky-scoreboard .sb-team-name {{
-
-                        font-size: 14px !important;
-
-                    }}
-
-                    .saphir-sticky-scoreboard .sb-score-big {{
-
-                        font-size: 20px !important;
-
-                    }}
-
-                }}
-
-                </style>
-
-                <div class="saphir-sticky-scoreboard" style="background: linear-gradient(135deg, rgba(11, 60, 93, 0.97) 0%, rgba(22, 82, 122, 0.97) 100%); backdrop-filter: blur(8px); color: white; border-radius: 12px; padding: 14px 20px; margin: 8px 0 12px 0; box-shadow: 0 6px 16px rgba(11, 60, 93, 0.28); border-bottom: 4px solid #f59e0b;">
-
-                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-
-                        <div style="flex: 1; min-width: 120px;">
-
-                            <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: #93c5fd; font-weight: 700;">🔵 Équipe Receveuse (🏠)</div>
-
-                            <div class="sb-team-name" style="font-size: 18px; font-weight: 800; color: #ffffff;">{equipe_receveur}</div>
-
-                        </div>
-
-                        <div style="text-align: center; padding: 4px 14px; background: rgba(255,255,255,0.12); border-radius: 10px; border: 1px solid rgba(255,255,255,0.22);">
-
-                            <div class="sb-score-big" style="font-size: 26px; font-weight: 900; letter-spacing: 1px; color: #fbbf24;">
-
-                                {total_pts_receveur} <span style="font-size: 15px; color: #e2e8f0; font-weight: 600;">pts</span>
-
-                                &nbsp;—&nbsp;
-
-                                {total_pts_visiteur} <span style="font-size: 15px; color: #e2e8f0; font-weight: 600;">pts</span>
-
-                            </div>
-
-                            <div style="font-size: 12px; color: #f8fafc; margin-top: 2px;">{statut_live_html} &nbsp;•&nbsp; ✅ {nb_manches_term}/9 manches ({pct_manches}%)</div>
-
-                        </div>
-
-                        <div style="flex: 1; min-width: 120px; text-align: right;">
-
-                            <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: #fdba74; font-weight: 700;">🟠 Équipe Visiteuse (🚗)</div>
-
-                            <div class="sb-team-name" style="font-size: 18px; font-weight: 800; color: #ffffff;">{equipe_visiteur}</div>
-
-                        </div>
-
-                    </div>
-
-                </div>
-
-                """,
-
-                unsafe_allow_html=True
-
-            )
+                    st.metric("Total", f"{total_pts_visiteur} pts")
 
 
 
