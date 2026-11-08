@@ -10,13 +10,14 @@ public class SmsHelper {
 
     public static SmsManager getSmsManager(Context context) {
         SmsManager sms = null;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        try {
+            sms = SmsManager.getDefault();
+        } catch (Throwable ignored) {}
+
+        if (sms == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             try {
                 sms = context.getSystemService(SmsManager.class);
             } catch (Throwable ignored) {}
-        }
-        if (sms == null) {
-            sms = SmsManager.getDefault();
         }
         return sms;
     }
