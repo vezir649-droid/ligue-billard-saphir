@@ -103,7 +103,16 @@
         "type": "test_sms",
         "telephone": "4184077542",
         "message": "[SAPHIR SMS TEST] Connexion reussie a 02:31:36 ! La Sentinelle de la Ligue de billard est active et prete.",
+        "statut": "envoye",
+        "date": "2026-11-08 02:31:36",
+        "date_envoi": "2026-11-07 21:31:37"
+    },
+    {
+        "id": "cmd_1794105273",
+        "type": "test_sms",
+        "telephone": "4184077542",
+        "message": "[SAPHIR SMS TEST] Connexion reussie a 02:34:33 ! La Sentinelle de la Ligue de billard est active et prete.",
         "statut": "en_attente",
-        "date": "2026-11-08 02:31:36"
+        "date": "2026-11-08 02:34:33"
     }
 ]
