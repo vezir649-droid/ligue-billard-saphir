@@ -19724,6 +19724,97 @@ def parse_heure_str_vers_time(h_str):
 
 
 
+def calculer_minutes_avant_match(h_str, now_dt=None):
+    """
+    Calcule le nombre de minutes entre maintenant et l'heure estimée du match.
+    Positif = dans le futur (ex: +25 = dans 25 minutes).
+    Négatif = dans le passé (ex: -10 = il y a 10 minutes).
+    Gère le passage circulaire de minuit.
+    """
+    if not h_str or str(h_str).strip() in ("—", "-", "", "None"):
+        return None
+    if now_dt is None:
+        now_dt = datetime.now()
+    t_obj = parse_heure_str_vers_time(h_str)
+    now_min = now_dt.hour * 60 + now_dt.minute
+    m_min = t_obj.hour * 60 + t_obj.minute
+    diff = m_min - now_min
+    if diff < -720:
+        diff += 1440
+    elif diff > 720:
+        diff -= 1440
+    return diff
+
+
+def verifier_et_diffuser_sms_tournoi_prochaine_demi_heure(tournoi, tous_les_matchs=None, nb_tables=2):
+    """
+    Vérifie l'ensemble des rencontres du tournoi et expédie automatiquement les SMS de convocation
+    pour tous les matchs prévus dans la prochaine demi-heure (30 minutes à l'avance),
+    plutôt qu'au moment de la validation du match précédent.
+    """
+    if not tournoi or not isinstance(tournoi, dict) or not tournoi.get("sms_tournoi_actif", False):
+        return 0, []
+
+    if tous_les_matchs is None:
+        tous_les_matchs = []
+        if "tours" in tournoi and isinstance(tournoi["tours"], list):
+            for t in tournoi["tours"]:
+                if isinstance(t, dict):
+                    tous_les_matchs.extend(t.get("matchs", []))
+        elif "matchs" in tournoi and isinstance(tournoi["matchs"], list):
+            tous_les_matchs = list(tournoi.get("matchs", []))
+
+    convocations = tournoi.setdefault("convocations_sms_envoyees", {})
+    nb_nouv_sms = 0
+    matchs_convoques = []
+    now_dt = datetime.now()
+
+    matchs_jouables = [
+        m for m in tous_les_matchs
+        if not m.get("termine", False)
+        and m.get("equipe_a") not in ["À déterminer", "Exempt (Passe-droit)", "", None]
+        and m.get("equipe_b") not in ["À déterminer", "Exempt (Passe-droit)", "", None]
+    ]
+
+    for m in matchs_jouables:
+        mid = m.get("id", "")
+        ea = m.get("equipe_a", "")
+        eb = m.get("equipe_b", "")
+        tbl = m.get("table", "Table 1")
+        hr = m.get("heure_estimee", "")
+        cle_m = f"{mid}_{ea}_{eb}_{tbl}"
+
+        if cle_m in convocations:
+            continue
+
+        diff_min = calculer_minutes_avant_match(hr, now_dt)
+        doit_convoquer = False
+
+        if diff_min is not None:
+            # Prévu dans la prochaine demi-heure (30 minutes à l'avance jusqu'à 60 min de retard non joué)
+            if -60 <= diff_min <= 30:
+                doit_convoquer = True
+        else:
+            # Fallback si aucun horaire configuré : matchs immédiats aux tables disponibles
+            if m in matchs_jouables[:nb_tables]:
+                doit_convoquer = True
+
+        if doit_convoquer:
+            nb_e, msg_e = diffuser_convocation_match_tournoi(m, tournoi)
+            convocations[cle_m] = {
+                "date": now_dt.strftime("%H:%M"),
+                "nb": nb_e,
+                "table": tbl,
+                "heure": hr,
+                "diff_min": diff_min
+            }
+            if nb_e > 0:
+                nb_nouv_sms += nb_e
+                matchs_convoques.append(f"{tbl} ({ea} vs {eb})")
+
+    return nb_nouv_sms, matchs_convoques
+
+
 def recalculer_heure_fin_tournoi(tournoi):
 
     """Recalcule et met à jour l'heure de fin estimée du tournoi selon l'horaire de toutes les rencontres."""
@@ -30342,47 +30433,44 @@ def afficher_section_tournoi(mode="simple"):
 
                     col_hdr_p1, col_hdr_p2 = st.columns([1.5, 1.2])
                     with col_hdr_p1:
-                        st.markdown("**🎱 En direct / Prochains matchs prêts à appeler aux tables :**")
+                        st.markdown("**🎱 En direct / Matchs prévus dans la prochaine demi-heure :**")
                     with col_hdr_p2:
                         if est_editeur:
                             sms_auto_val = st.toggle(
-                                "🔔 Convocations & Avis SMS automatiques",
+                                "🔔 Convocations SMS automatiques (Prochaine 1/2 h)",
                                 value=bool(tournoi.get("sms_tournoi_actif", False)),
                                 key=f"tgl_sms_auto_{mode}",
-                                help="Quand activé, les joueurs reçoivent automatiquement un texto dès que leur match monte à une table disponible ou si leur horaire est modifié."
+                                help="Quand activé, les joueurs prévus dans la prochaine demi-heure (30 min à l'avance) reçoivent automatiquement un texto de convocation avec leur table et leur heure de match plutôt qu'au moment de la validation."
                             )
                             if sms_auto_val != tournoi.get("sms_tournoi_actif", False):
                                 tournoi["sms_tournoi_actif"] = sms_auto_val
+                                if sms_auto_val:
+                                    verifier_et_diffuser_sms_tournoi_prochaine_demi_heure(tournoi, tous_les_matchs_t, nb_tables=nb_tables_aff)
                                 sauvegarder_tournois_data(tournois_data)
                                 st.rerun()
 
-                    # Automatisation des convocations SMS si option activée
+                    # Automatisation des convocations SMS : envoi pour les joueurs prévus dans la prochaine demi-heure
                     convocations = tournoi.setdefault("convocations_sms_envoyees", {})
                     if tournoi.get("sms_tournoi_actif", False):
-                        nb_nouv_sms = 0
-                        for m_p in prochains_jouables[:nb_tables_aff]:
-                            mid_p = m_p.get("id", "")
-                            ea_p = m_p.get("equipe_a", "")
-                            eb_p = m_p.get("equipe_b", "")
-                            tbl_p = m_p.get("table", "Table 1")
-                            cle_m = f"{mid_p}_{ea_p}_{eb_p}_{tbl_p}"
-                            if cle_m not in convocations:
-                                nb_e, msg_e = diffuser_convocation_match_tournoi(m_p, tournoi)
-                                convocations[cle_m] = {
-                                    "date": datetime.now().strftime("%H:%M"),
-                                    "nb": nb_e,
-                                    "table": tbl_p,
-                                    "heure": m_p.get("heure_estimee", "")
-                                }
-                                if nb_e > 0:
-                                    nb_nouv_sms += nb_e
-                                    st.toast(f"🔔 SMS de convocation envoyé aux joueurs de la {tbl_p} ({ea_p} vs {eb_p}) !", icon="📲")
+                        nb_nouv_sms, liste_convoques = verifier_et_diffuser_sms_tournoi_prochaine_demi_heure(
+                            tournoi, tous_les_matchs_t, nb_tables=nb_tables_aff
+                        )
                         if nb_nouv_sms > 0:
                             sauvegarder_tournois_data(tournois_data)
+                            for c_txt in liste_convoques:
+                                st.toast(f"🔔 SMS de convocation envoyé aux joueurs de la {c_txt} (prévu dans la prochaine demi-heure) !", icon="📲")
+
+                    # Sélection des cartes : matchs prévus dans la demi-heure en priorité, sinon les prochains jouables
+                    matchs_demi_h = [
+                        m for m in prochains_jouables
+                        if calculer_minutes_avant_match(m.get("heure_estimee")) is not None
+                        and -60 <= calculer_minutes_avant_match(m.get("heure_estimee")) <= 30
+                    ]
+                    cartes_selectionnees = (matchs_demi_h[:max(nb_tables_aff, 4)]) if matchs_demi_h else prochains_jouables[:nb_tables_aff]
 
                     cartes_html = []
 
-                    for m_p in prochains_jouables[:nb_tables_aff]:
+                    for m_p in cartes_selectionnees:
 
                         mid_p = m_p.get("id", "")
 
@@ -30401,7 +30489,13 @@ def afficher_section_tournoi(mode="simple"):
                             info_c = convocations[cle_m]
                             sms_badge = f" &nbsp;•&nbsp; <span style='background:#e8f5e9; color:#2e7d32; padding:1px 6px; border-radius:3px; font-weight:600; font-size:11px;'>📱 Convoqué ({info_c.get('date')})</span>"
                         else:
-                            sms_badge = ""
+                            diff_p = calculer_minutes_avant_match(hr_p)
+                            if diff_p is not None and diff_p > 30:
+                                sms_badge = f" &nbsp;•&nbsp; <span style='background:#f5f5f5; color:#616161; padding:1px 6px; border-radius:3px; font-size:11px;'>⏳ SMS à H-30m ({diff_p}m)</span>"
+                            elif diff_p is not None and -60 <= diff_p <= 30:
+                                sms_badge = f" &nbsp;•&nbsp; <span style='background:#fff3e0; color:#e65100; padding:1px 6px; border-radius:3px; font-size:11px;'>⚡ En cours de convocation</span>"
+                            else:
+                                sms_badge = ""
 
                         cartes_html.append(
 
@@ -30432,6 +30526,19 @@ def afficher_section_tournoi(mode="simple"):
                     st.info("⏳ En attente de la fin des rencontres précédentes pour déterminer les prochaines affiches.")
 
 
+
+        # Veille automatique périodique (toutes les 30s) pour expédier les SMS dès qu'un match entre dans la demi-heure
+        if est_editeur and tournoi.get("sms_tournoi_actif", False) and statut == "en_cours":
+            @st.fragment(run_every="30s")
+            def fragment_veille_sms_auto():
+                td_v = charger_tournois_data()
+                t_v = td_v.get(mode)
+                if t_v and isinstance(t_v, dict) and t_v.get("sms_tournoi_actif", False) and t_v.get("statut") == "en_cours":
+                    nb_v, list_v = verifier_et_diffuser_sms_tournoi_prochaine_demi_heure(t_v)
+                    if nb_v > 0:
+                        sauvegarder_tournois_data(td_v)
+                        st.rerun()
+            fragment_veille_sms_auto()
 
         with st.expander("📅 Tableau récapitulatif des horaires de toutes les rencontres", expanded=False):
 
