@@ -1,5 +1,5 @@
 {
-    "date": "2026-11-07 20:34",
+    "date": "2026-11-09 15:55",
     "receveur": "Echo",
     "visiteur": "Charlie",
     "choix_rec": "Echo",
@@ -126,6 +126,6 @@
     },
     "total_receveur": 0,
     "total_visiteur": 0,
-    "derniere_mise_a_jour": "20:34:29",
-    "ts_modif": 1794101669.4556122
+    "derniere_mise_a_jour": "15:55:54",
+    "ts_modif": 1794257754.1839988
 }

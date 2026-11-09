@@ -1,5 +1,226 @@
 [
     {
+        "titre": "Tournoi Simple — 10/11/2026",
+        "date_creation": "09/11/2026 à 18:36",
+        "format": "elimination",
+        "race_prelim": 2,
+        "race_finale": 3,
+        "participants": [
+            "Claude Harvey",
+            "Guy Vézina",
+            "Richard Vézina",
+            "Valérie Turcotte"
+        ],
+        "promus_second_tour": [],
+        "total_tours": 2,
+        "tours": [
+            {
+                "numero": 1,
+                "nom": "Demi-finales",
+                "race_to": 2,
+                "format_label": "2 de 3",
+                "matchs": [
+                    {
+                        "id": "T1_M1",
+                        "equipe_a": "Guy Vézina",
+                        "equipe_b": "Richard Vézina",
+                        "score_a": 1,
+                        "score_b": 2,
+                        "termine": true,
+                        "vainqueur": "Richard Vézina",
+                        "source_a": null,
+                        "source_b": null,
+                        "passe_droit": false,
+                        "race_to": 2,
+                        "format_label": "2 de 3",
+                        "heure_estimee": "09h00",
+                        "table": "Table 1",
+                        "table_courte": "T1",
+                        "perdant": "Guy Vézina"
+                    },
+                    {
+                        "id": "T1_M2",
+                        "equipe_a": "Valérie Turcotte",
+                        "equipe_b": "Claude Harvey",
+                        "score_a": 2,
+                        "score_b": 1,
+                        "termine": true,
+                        "vainqueur": "Valérie Turcotte",
+                        "source_a": null,
+                        "source_b": null,
+                        "passe_droit": false,
+                        "race_to": 2,
+                        "format_label": "2 de 3",
+                        "heure_estimee": "09h30",
+                        "table": "Table 1",
+                        "table_courte": "T1",
+                        "perdant": "Claude Harvey"
+                    }
+                ]
+            },
+            {
+                "numero": 2,
+                "nom": "Finale",
+                "race_to": 3,
+                "format_label": "3 de 5",
+                "matchs": [
+                    {
+                        "id": "T2_M1",
+                        "equipe_a": "Richard Vézina",
+                        "equipe_b": "Valérie Turcotte",
+                        "score_a": 3,
+                        "score_b": 2,
+                        "termine": true,
+                        "vainqueur": "Richard Vézina",
+                        "source_a": "T1_M1",
+                        "source_b": "T1_M2",
+                        "passe_droit": false,
+                        "race_to": 3,
+                        "format_label": "3 de 5",
+                        "heure_estimee": "10h00",
+                        "table": "Table 1",
+                        "table_courte": "T1",
+                        "perdant": "Valérie Turcotte"
+                    }
+                ]
+            }
+        ],
+        "heure_debut": "09:00",
+        "duree_match_min": 30,
+        "nb_tables": 1,
+        "heure_fin_estimee": "10h30",
+        "statut": "termine",
+        "vainqueur_final": "Richard Vézina",
+        "finaliste": "Valérie Turcotte",
+        "sms_tournoi_actif": true,
+        "convocations_sms_envoyees": {
+            "T2_M1_Richard Vézina_Valérie Turcotte_Table 1": {
+                "date": "19:06",
+                "nb": 2,
+                "table": "Table 1",
+                "heure": "10h00",
+                "diff_min": -546
+            }
+        },
+        "mode": "simple",
+        "date_derniere_sauvegarde": "09/11/2026 à 19:34:57",
+        "id_archive": "TOURNOI_SIMPLE_20261109_183605_871",
+        "date_archivage": "09/11/2026 à 20:12"
+    },
+    {
+        "titre": "Tournoi Simple — 09/11/2026",
+        "date_creation": "09/11/2026 à 16:03",
+        "format": "elimination",
+        "race_prelim": 2,
+        "race_finale": 3,
+        "participants": [
+            "Claude Harvey",
+            "Guy Vézina",
+            "Richard Vézina",
+            "Valérie Turcotte"
+        ],
+        "promus_second_tour": [],
+        "total_tours": 2,
+        "tours": [
+            {
+                "numero": 1,
+                "nom": "Demi-finales",
+                "race_to": 2,
+                "format_label": "2 de 3",
+                "matchs": [
+                    {
+                        "id": "T1_M1",
+                        "equipe_a": "Claude Harvey",
+                        "equipe_b": "Richard Vézina",
+                        "score_a": 1,
+                        "score_b": 2,
+                        "termine": true,
+                        "vainqueur": "Richard Vézina",
+                        "source_a": null,
+                        "source_b": null,
+                        "passe_droit": false,
+                        "race_to": 2,
+                        "format_label": "2 de 3",
+                        "heure_estimee": "13h00",
+                        "table": "Table 1",
+                        "table_courte": "T1",
+                        "perdant": "Claude Harvey"
+                    },
+                    {
+                        "id": "T1_M2",
+                        "equipe_a": "Valérie Turcotte",
+                        "equipe_b": "Guy Vézina",
+                        "score_a": 2,
+                        "score_b": 1,
+                        "termine": true,
+                        "vainqueur": "Valérie Turcotte",
+                        "source_a": null,
+                        "source_b": null,
+                        "passe_droit": false,
+                        "race_to": 2,
+                        "format_label": "2 de 3",
+                        "heure_estimee": "13h30",
+                        "table": "Table 1",
+                        "table_courte": "T1",
+                        "perdant": "Guy Vézina"
+                    }
+                ]
+            },
+            {
+                "numero": 2,
+                "nom": "Finale",
+                "race_to": 3,
+                "format_label": "3 de 5",
+                "matchs": [
+                    {
+                        "id": "T2_M1",
+                        "equipe_a": "Richard Vézina",
+                        "equipe_b": "Valérie Turcotte",
+                        "score_a": 2,
+                        "score_b": 3,
+                        "termine": true,
+                        "vainqueur": "Valérie Turcotte",
+                        "source_a": "T1_M1",
+                        "source_b": "T1_M2",
+                        "passe_droit": false,
+                        "race_to": 3,
+                        "format_label": "3 de 5",
+                        "heure_estimee": "14h00",
+                        "table": "Table 1",
+                        "table_courte": "T1",
+                        "perdant": "Richard Vézina"
+                    }
+                ]
+            }
+        ],
+        "heure_debut": "13:00",
+        "duree_match_min": 30,
+        "nb_tables": 1,
+        "heure_fin_estimee": "14h30",
+        "statut": "termine",
+        "vainqueur_final": "Valérie Turcotte",
+        "finaliste": "Richard Vézina",
+        "mode": "simple",
+        "date_derniere_sauvegarde": "09/11/2026 à 18:30:15",
+        "id_archive": "TOURNOI_SIMPLE_20261109_160348_699",
+        "convocations_sms_envoyees": {
+            "T1_M2_Valérie Turcotte_Guy Vézina_Table 1": {
+                "date": "16:05",
+                "nb": 2,
+                "table": "Table 1",
+                "heure": "13h30"
+            },
+            "T2_M1_Richard Vézina_Valérie Turcotte_Table 1": {
+                "date": "16:19",
+                "nb": 2,
+                "table": "Table 1",
+                "heure": "14h00"
+            }
+        },
+        "sms_tournoi_actif": true,
+        "date_archivage": "09/11/2026 à 18:35"
+    },
+    {
         "titre": "Tournoi Test Duos 6",
         "date_creation": "26/10/2026 à 15:48",
         "format": "double_elimination",
