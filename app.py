@@ -2996,6 +2996,22 @@ def restaurer_depuis_github_au_reveil(forcer=False):
 
                 if doit_restaurer_td:
 
+                    # Préserver les tournois locaux actifs pour ne jamais écraser un tournoi en cours par une archive distante vide
+                    try:
+                        loc_td_obj = charger_tournois_data()
+                        fusion_gh_td = False
+                        for m_ch in ["simple", "double"]:
+                            t_loc = loc_td_obj.get(m_ch)
+                            t_gh = gh_td.get(m_ch)
+                            if t_loc and isinstance(t_loc, dict) and t_loc.get("statut") == "en_cours":
+                                if not t_gh or not isinstance(t_gh, dict):
+                                    gh_td[m_ch] = t_loc
+                                    fusion_gh_td = True
+                        if fusion_gh_td:
+                            gh_raw_td = json.dumps(gh_td, ensure_ascii=False, indent=4).encode("utf-8")
+                    except Exception:
+                        pass
+
                     if os.path.exists(TOURNOIS_FILE) and len(loc_raw_td) > 0:
 
                         try:
@@ -4172,13 +4188,29 @@ def restaurer_tout_depuis_supabase(forcer=False):
 
         if raw_td:
 
-            sb_td = json.loads(raw_td)
+            try:
 
-            if isinstance(sb_td, dict) and sb_td:
+                sb_td = json.loads(raw_td)
 
-                with open(TOURNOIS_FILE, "w", encoding="utf-8") as f_wtd:
+                if isinstance(sb_td, dict) and sb_td:
 
-                    json.dump(sb_td, f_wtd, ensure_ascii=False, indent=4)
+                    loc_td_obj = charger_tournois_data()
+
+                    for m_ch in ["simple", "double"]:
+
+                        t_loc = loc_td_obj.get(m_ch)
+
+                        t_sb = sb_td.get(m_ch)
+
+                        if t_loc and isinstance(t_loc, dict) and t_loc.get("statut") == "en_cours":
+
+                            if not t_sb or not isinstance(t_sb, dict):
+
+                                sb_td[m_ch] = t_loc
+
+                    with open(TOURNOIS_FILE, "w", encoding="utf-8") as f_wtd:
+
+                        json.dump(sb_td, f_wtd, ensure_ascii=False, indent=4)
 
                 try:
 
@@ -4191,6 +4223,10 @@ def restaurer_tout_depuis_supabase(forcer=False):
                 nb_maj_sb += 1
 
                 details_sb.append("tournois_data.json")
+
+            except Exception:
+
+                pass
 
 
 
@@ -18127,7 +18163,13 @@ def sauvegarder_tournois_data(data, marqueur_session=None, action="sauvegarde", 
 
             hist_disque = [h for h in data["historique"] if isinstance(h, dict) and not h.get("est_actif")]
 
-
+        # Si un mode est None dans data (inactif ou annulé), purger tout snapshot orphelin "en_cours" de ce mode dans l'historique
+        for m_pur in ["simple", "double"]:
+            if data.get(m_pur) is None:
+                hist_disque = [
+                    h for h in hist_disque
+                    if not (isinstance(h, dict) and h.get("mode") == m_pur and h.get("statut") == "en_cours")
+                ]
 
         for m in ["simple", "double"]:
 
@@ -18413,15 +18455,18 @@ def charger_historique_tournois(inclure_actifs=False):
 
             # Fusionner tout tournoi présent dans td["historique"] qui manquerait dans historique
 
-            ids_connus = {h.get("id_archive") for h in historique if isinstance(h, dict) and h.get("id_archive")}
+            ids_connus = {str(h.get("id_archive")) for h in historique if isinstance(h, dict) and h.get("id_archive")}
 
             for h_td in td["historique"]:
 
-                if isinstance(h_td, dict) and h_td.get("id_archive") and h_td.get("id_archive") not in ids_connus:
+                if isinstance(h_td, dict) and h_td.get("id_archive") and str(h_td.get("id_archive")) not in ids_connus:
 
                     historique.append(copy.deepcopy(h_td))
 
-
+    # Nettoyer d'office tout indicateur est_actif résiduel dans l'historique archivé
+    for h in historique:
+        if isinstance(h, dict):
+            h.pop("est_actif", None)
 
     if inclure_actifs and isinstance(td, dict):
 
@@ -18433,9 +18478,10 @@ def charger_historique_tournois(inclure_actifs=False):
 
                 t_act = td.get(m)
 
-                if t_act and isinstance(t_act, dict):
+                # Un tournoi est actif UNIQUEMENT si statut == "en_cours" ET a des tours ou matchs
+                if t_act and isinstance(t_act, dict) and t_act.get("statut") == "en_cours" and (t_act.get("tours") or t_act.get("matchs")):
 
-                    id_a = t_act.get("id_archive")
+                    id_a = str(t_act.get("id_archive", ""))
 
                     titre_a = t_act.get("titre")
 
@@ -18445,7 +18491,12 @@ def charger_historique_tournois(inclure_actifs=False):
 
                     for idx_h, h in enumerate(historique):
 
-                        if (id_a and h.get("id_archive") == id_a) or (
+                        if not isinstance(h, dict):
+                            continue
+
+                        h_id = str(h.get("id_archive", ""))
+
+                        if (id_a and h_id == id_a) or (
 
                             h.get("titre") == titre_a and h.get("date_creation") == date_c and h.get("mode") == m
 
@@ -18455,9 +18506,7 @@ def charger_historique_tournois(inclure_actifs=False):
 
                             t_cop["mode"] = m
 
-                            if t_cop.get("statut") != "termine":
-
-                                t_cop["est_actif"] = True
+                            t_cop["est_actif"] = True
 
                             if id_a:
 
@@ -18479,9 +18528,7 @@ def charger_historique_tournois(inclure_actifs=False):
 
                         t_cop["mode"] = m
 
-                        if t_cop.get("statut") != "termine":
-
-                            t_cop["est_actif"] = True
+                        t_cop["est_actif"] = True
 
                         if not t_cop.get("id_archive"):
 
@@ -19315,55 +19362,111 @@ def sauvegarder_tournoi_dans_historique(mode, notifier_admin=True):
 
 
 
-def annuler_completement_tournoi(mode):
+def annuler_completement_tournoi(mode=None, id_archive=None):
 
-    """Annule complètement le tournoi sans aucune sauvegarde ni envoi de courriel."""
+    """
+    Annule complètement le tournoi sans aucune sauvegarde ni envoi de courriel.
+    Garantit qu'il ne reste actif nulle part (tournois_data.json, historique_tournois.json).
+    """
 
     td = charger_tournois_data()
 
-    t = td.get(mode)
+    cibles_id = set()
 
-    if t and isinstance(t, dict):
+    if id_archive:
 
-        id_a = t.get("id_archive")
+        cibles_id.add(str(id_archive))
 
-        titre = t.get("titre")
+    modes_a_vider = []
 
-        date_c = t.get("date_creation")
+    if mode in ("simple", "double"):
 
-        # Si ce tournoi avait déjà été archivé dans l'historique lors d'une sauvegarde intermédiaire, le retirer
+        modes_a_vider.append(mode)
 
-        try:
+        t_mod = td.get(mode)
 
-            hist = charger_historique_tournois()
+        if t_mod and isinstance(t_mod, dict) and t_mod.get("id_archive"):
 
-            hist_nettoye = [
+            cibles_id.add(str(t_mod["id_archive"]))
 
-                h for h in hist
+    # Si id_archive spécifié, trouver le mode correspondant dans td
+    for m_chk in ["simple", "double"]:
 
-                if not (
+        t_m = td.get(m_chk)
 
-                    (id_a and h.get("id_archive") == id_a) or
+        if t_m and isinstance(t_m, dict):
 
-                    (h.get("titre") == titre and h.get("date_creation") == date_c and h.get("mode") == mode)
+            id_m = str(t_m.get("id_archive", ""))
 
-                )
+            if id_archive and id_m and id_m == str(id_archive):
 
-            ]
+                if m_chk not in modes_a_vider:
 
-            if len(hist_nettoye) != len(hist):
+                    modes_a_vider.append(m_chk)
 
-                sauvegarder_historique_tournois(hist_nettoye)
+                cibles_id.add(id_m)
 
-        except Exception:
+    # 1. Nettoyer l'historique sur disque (HISTORIQUE_TOURNOIS_FILE)
+    try:
 
-            pass
+        hist = charger_historique_tournois(inclure_actifs=False)
 
+        hist_nettoye = []
 
+        for h in hist:
 
-    td[mode] = None
+            if not isinstance(h, dict):
 
-    sauvegarder_tournois_data(td)
+                continue
+
+            h_id = str(h.get("id_archive", ""))
+
+            h_mode = h.get("mode")
+
+            supprimer_h = False
+
+            if h_id and h_id in cibles_id:
+
+                supprimer_h = True
+
+            elif mode and h_mode == mode and h.get("statut") == "en_cours" and not id_archive:
+
+                supprimer_h = True
+
+            if not supprimer_h:
+
+                hist_nettoye.append(h)
+
+        _ecrire_json_atomique(HISTORIQUE_TOURNOIS_FILE, hist_nettoye)
+
+    except Exception:
+
+        hist_nettoye = None
+
+    # 2. Vider les modes ciblés dans td et purger les clés de session
+    for m in modes_a_vider:
+
+        td[m] = None
+
+        for k in list(st.session_state.keys()):
+
+            if (k.startswith(f"sc_a_{m}_") or k.startswith(f"sc_b_{m}_") or
+
+                k.startswith(f"rr_a_{m}_") or k.startswith(f"rr_b_{m}_") or
+
+                k.startswith(f"corr_sc_a_{m}_") or k.startswith(f"corr_sc_b_{m}_") or
+
+                k.startswith(f"chk_f_{m}_") or k.startswith(f"rad_pd_{m}_") or
+
+                k.startswith(f"rad_pd_rr_{m}_")):
+
+                st.session_state.pop(k, None)
+
+    if hist_nettoye is not None:
+
+        td["historique"] = hist_nettoye
+
+    sauvegarder_tournois_data(td, action="annulation_complete")
 
     return True
 
@@ -28339,7 +28442,7 @@ def afficher_bandeau_verrou_tournoi():
 
                             if st.button(f"🔴 Confirmer annulation {lbl_m}", key=f"btn_bnd_cancel_act_{m_act}", type="primary", use_container_width=True):
 
-                                annuler_completement_tournoi(m_act)
+                                annuler_completement_tournoi(mode=m_act, id_archive=t_act.get("id_archive") if isinstance(t_act, dict) else None)
 
                                 st.session_state[f"msg_annulation_{m_act}"] = f"❌ Le tournoi {lbl_m} a été complètement annulé (aucune sauvegarde)."
 
@@ -29445,11 +29548,15 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
 
         if btn_lancer and est_editeur:
 
-            # Archivage automatique si un tournoi existait déjà dans ce mode
+            # Recharger systématiquement les données fraîches du disque pour ne jamais écraser l'autre mode actif
+            td_current = charger_tournois_data()
 
-            if tournois_data.get(mode):
+            # Archivage automatique si un tournoi existait déjà dans ce mode
+            if td_current.get(mode):
 
                 sauvegarder_tournoi_dans_historique(mode, notifier_admin=True)
+
+                td_current = charger_tournois_data()
 
 
 
@@ -29517,9 +29624,9 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
 
                 t_cree["mode"] = mode
 
-                tournois_data[mode] = t_cree
+                td_current[mode] = t_cree
 
-                sauvegarder_tournois_data(tournois_data)
+                sauvegarder_tournois_data(td_current)
 
                 st.session_state[f"ouvrir_arborescence_auto_{mode}"] = True
 
@@ -29987,9 +30094,11 @@ def afficher_section_tournoi(mode="simple"):
 
                         sauvegarder_tournoi_dans_historique(mode, notifier_admin=True)
 
-                        tournois_data[mode] = None
+                        td_fresh = charger_tournois_data()
 
-                        sauvegarder_tournois_data(tournois_data)
+                        td_fresh[mode] = None
+
+                        sauvegarder_tournois_data(td_fresh)
 
                         st.rerun()
 
@@ -30035,9 +30144,11 @@ def afficher_section_tournoi(mode="simple"):
 
                                 sauvegarder_tournoi_dans_historique(mode, notifier_admin=True)
 
-                                tournois_data[mode] = None
+                                td_fresh = charger_tournois_data()
 
-                                sauvegarder_tournois_data(tournois_data)
+                                td_fresh[mode] = None
+
+                                sauvegarder_tournois_data(td_fresh)
 
                             st.session_state[f"msg_annulation_{mode}"] = f"🏆 Le {libelle_mode.lower()} a été clôturé et archivé avec succès."
 
@@ -30057,7 +30168,7 @@ def afficher_section_tournoi(mode="simple"):
 
                     if st.button("🔴 Confirmer l'annulation", type="primary", use_container_width=True, key=f"btn_confirm_cancel_action_{mode}", help="Annule complètement le tournoi sans aucune sauvegarde"):
 
-                        annuler_completement_tournoi(mode)
+                        annuler_completement_tournoi(mode=mode, id_archive=tournoi.get("id_archive") if isinstance(tournoi, dict) else None)
 
                         st.session_state[f"msg_annulation_{mode}"] = f"❌ Le {libelle_mode.lower()} a été complètement annulé (aucune sauvegarde effectuée)."
 
@@ -30669,7 +30780,11 @@ def afficher_section_tournoi(mode="simple"):
 
                                             actualiser_score_elimination(tournoi, tour_num, m_id, sc_a_in, sc_b_in)
 
-                                            sauvegarder_tournois_data(tournois_data)
+                                            td_fresh = charger_tournois_data()
+
+                                            td_fresh[mode] = tournoi
+
+                                            sauvegarder_tournois_data(td_fresh)
 
                                             st.rerun()
 
@@ -30707,7 +30822,11 @@ def afficher_section_tournoi(mode="simple"):
 
                                                 attribuer_passe_droit_elimination(tournoi, tour_num, m_id, choix_promo)
 
-                                                sauvegarder_tournois_data(tournois_data)
+                                                td_fresh = charger_tournois_data()
+
+                                                td_fresh[mode] = tournoi
+
+                                                sauvegarder_tournois_data(td_fresh)
 
                                                 st.success(f"🎟️ Passe-droit accordé ! {choix_promo} est promu au tour suivant.")
 
@@ -30769,7 +30888,9 @@ def afficher_section_tournoi(mode="simple"):
                                             else:
                                                 ok, msg = corriger_score_elimination(tournoi, m_id, sc_a_corr, sc_b_corr, forcer_cascade=chk_force)
                                                 if ok:
-                                                    sauvegarder_tournois_data(tournois_data)
+                                                    td_fresh = charger_tournois_data()
+                                                    td_fresh[mode] = tournoi
+                                                    sauvegarder_tournois_data(td_fresh)
                                                     st.success(f"✅ {msg}")
                                                     time.sleep(0.5)
                                                     st.rerun()
@@ -30787,7 +30908,9 @@ def afficher_section_tournoi(mode="simple"):
                                             if ok:
                                                 st.session_state[f"sc_a_{mode}_{m_id}"] = sa
                                                 st.session_state[f"sc_b_{mode}_{m_id}"] = sb
-                                                sauvegarder_tournois_data(tournois_data)
+                                                td_fresh = charger_tournois_data()
+                                                td_fresh[mode] = tournoi
+                                                sauvegarder_tournois_data(td_fresh)
                                                 st.success(f"🔄 {msg}")
                                                 time.sleep(0.5)
                                                 st.rerun()
@@ -31416,7 +31539,7 @@ def afficher_section_historique_tournois():
 
                             if st.button("🔴 Confirmer l'annulation", type="primary", use_container_width=True, key=f"btn_top_hist_cancel_{m_act}"):
 
-                                annuler_completement_tournoi(m_act)
+                                annuler_completement_tournoi(mode=m_act, id_archive=t_act.get("id_archive") if isinstance(t_act, dict) else None)
 
                                 st.session_state[f"msg_annulation_{m_act}"] = f"❌ Le tournoi {lbl_m} a été complètement annulé (aucune sauvegarde)."
 
@@ -31488,11 +31611,19 @@ def afficher_section_historique_tournois():
 
         date_c = h.get("date_creation", h.get("date_archivage", ""))
 
-        v_fin = h.get("vainqueur_final") or ("En cours" if h.get("statut") == "en_cours" or h.get("est_actif") else "")
+        statut_h = h.get("statut")
+        if h.get("est_actif"):
+            statut_tag = "🟢 Actif"
+        elif statut_h == "annule":
+            statut_tag = "❌ Annulé"
+        elif statut_h == "termine":
+            statut_tag = "🏆 Terminé"
+        else:
+            statut_tag = "💾 Archivé"
+
+        v_fin = h.get("vainqueur_final") or ("En cours" if h.get("est_actif") else "")
 
         champ_txt = f" • 🥇 {v_fin}" if v_fin else ""
-
-        statut_tag = "🟢 Actif" if h.get("est_actif") else ("🏆 Terminé" if h.get("statut") == "termine" else "💾 Archivé")
 
         options_select.append((idx, f"{mode_icon} [{statut_tag}] {titre} — {date_c}{champ_txt}"))
 
@@ -31700,7 +31831,7 @@ def afficher_section_historique_tournois():
 
                             if st.button("🔴 Confirmer l'annulation", type="primary", use_container_width=True, key=f"btn_hist_cancel_t_{choix_idx}"):
 
-                                annuler_completement_tournoi(mode_c)
+                                annuler_completement_tournoi(mode=mode_c, id_archive=tournoi_choisi.get("id_archive"))
 
                                 st.session_state[f"msg_annulation_{mode_c}"] = f"❌ Le tournoi a été complètement annulé (aucune sauvegarde)."
 
@@ -31864,103 +31995,34 @@ def afficher_onglet_tournois():
 
 
 
-    # Si un tournoi est actif, son onglet est positionné en premier pour afficher immédiatement son arborescence à jour
+    # Disposition stable et constante des onglets pour garantir une navigation fluide sans permutation d'index
+    tabs = st.tabs([
 
-    if double_actif and not simple_actif:
+        lbl_simple,
 
-        tabs = st.tabs([
+        lbl_double,
 
-            lbl_double,
+        "➕ Créer un nouveau tournoi",
 
-            lbl_simple,
+        "📜 Liste des tournois sauvegardés & Historique"
 
-            "➕ Créer un nouveau tournoi",
+    ])
 
-            "📜 Liste des tournois sauvegardés & Historique"
+    with tabs[0]:
 
-        ])
+        afficher_section_tournoi(mode="simple")
 
-        with tabs[0]:
+    with tabs[1]:
 
-            afficher_section_tournoi(mode="double")
+        afficher_section_tournoi(mode="double")
 
-        with tabs[1]:
+    with tabs[2]:
 
-            afficher_section_tournoi(mode="simple")
+        afficher_onglet_nouveau_tournoi()
 
-        with tabs[2]:
+    with tabs[3]:
 
-            afficher_onglet_nouveau_tournoi()
-
-        with tabs[3]:
-
-            afficher_section_historique_tournois()
-
-
-
-    elif simple_actif:
-
-        tabs = st.tabs([
-
-            lbl_simple,
-
-            lbl_double,
-
-            "➕ Créer un nouveau tournoi",
-
-            "📜 Liste des tournois sauvegardés & Historique"
-
-        ])
-
-        with tabs[0]:
-
-            afficher_section_tournoi(mode="simple")
-
-        with tabs[1]:
-
-            afficher_section_tournoi(mode="double")
-
-        with tabs[2]:
-
-            afficher_onglet_nouveau_tournoi()
-
-        with tabs[3]:
-
-            afficher_section_historique_tournois()
-
-
-
-    else:
-
-        # Aucun tournoi actif : affichage du formulaire de création au premier plan
-
-        tabs = st.tabs([
-
-            "➕ Créer un nouveau tournoi",
-
-            lbl_simple,
-
-            lbl_double,
-
-            "📜 Liste des tournois sauvegardés & Historique"
-
-        ])
-
-        with tabs[0]:
-
-            afficher_onglet_nouveau_tournoi()
-
-        with tabs[1]:
-
-            afficher_section_tournoi(mode="simple")
-
-        with tabs[2]:
-
-            afficher_section_tournoi(mode="double")
-
-        with tabs[3]:
-
-            afficher_section_historique_tournois()
+        afficher_section_historique_tournois()
 
 
 
