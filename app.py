@@ -29803,6 +29803,8 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
 
             if t_cree:
 
+                t_cree["id"] = t_cree.get("id") or f"tournoi_{mode}_{int(time.time())}"
+
                 t_cree["mode"] = mode
 
                 t_cree["sms_tournoi_actif"] = False
@@ -29814,8 +29816,6 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
                 sauvegarder_tournois_data(td_current)
 
                 st.session_state[f"ouvrir_arborescence_auto_{mode}"] = True
-
-                st.session_state[f"tgl_sms_auto_{mode}"] = False
 
                 promus_msg = t_cree.get("promus_second_tour", [])
 
@@ -30525,7 +30525,7 @@ def afficher_section_tournoi(mode="simple"):
                             sms_auto_val = st.toggle(
                                 "🔔 Convocations SMS automatiques (Prochaine 1/2 h)",
                                 value=bool(tournoi.get("sms_tournoi_actif", False)),
-                                key=f"tgl_sms_auto_{mode}",
+                                key=f"tgl_sms_auto_{mode}_{re.sub(r'[^a-zA-Z0-9_]', '_', str(tournoi.get('id') or tournoi.get('date_creation') or tournoi.get('titre') or 'defaut'))}",
                                 help="Désactivé au lancement du tournoi. Lorsque vous activez l'option, les convocations SMS sont immédiatement expédiées aux joueurs cédulés, puis 30 minutes avant chaque partie."
                             )
                             if sms_auto_val != tournoi.get("sms_tournoi_actif", False):
