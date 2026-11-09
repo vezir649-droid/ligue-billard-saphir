@@ -3003,7 +3003,7 @@ def restaurer_depuis_github_au_reveil(forcer=False):
                         for m_ch in ["simple", "double"]:
                             t_loc = loc_td_obj.get(m_ch)
                             t_gh = gh_td.get(m_ch)
-                            if t_loc and isinstance(t_loc, dict) and t_loc.get("statut") == "en_cours":
+                            if t_loc and isinstance(t_loc, dict) and t_loc.get("statut") in ("en_cours", "termine"):
                                 if not t_gh or not isinstance(t_gh, dict):
                                     gh_td[m_ch] = t_loc
                                     fusion_gh_td = True
@@ -4202,7 +4202,7 @@ def restaurer_tout_depuis_supabase(forcer=False):
 
                         t_sb = sb_td.get(m_ch)
 
-                        if t_loc and isinstance(t_loc, dict) and t_loc.get("statut") == "en_cours":
+                        if t_loc and isinstance(t_loc, dict) and t_loc.get("statut") in ("en_cours", "termine"):
 
                             if not t_sb or not isinstance(t_sb, dict):
 
@@ -18479,7 +18479,7 @@ def charger_historique_tournois(inclure_actifs=False):
                 t_act = td.get(m)
 
                 # Un tournoi est actif UNIQUEMENT si statut == "en_cours" ET a des tours ou matchs
-                if t_act and isinstance(t_act, dict) and t_act.get("statut") == "en_cours" and (t_act.get("tours") or t_act.get("matchs")):
+                if t_act and isinstance(t_act, dict) and t_act.get("statut") in ("en_cours", "termine") and (t_act.get("tours") or t_act.get("matchs")):
 
                     id_a = str(t_act.get("id_archive", ""))
 
@@ -19358,11 +19358,7 @@ def sauvegarder_tournoi_dans_historique(mode, notifier_admin=True):
 
     archiver_tournoi(t, mode=mode, notifier_admin=notifier_admin)
 
-    # Lorsqu'un tournoi est sauvegardé et terminé, il n'est plus actif : libérer immédiatement la grille active
-    if t.get("statut") == "termine":
-        td_fresh = charger_tournois_data()
-        td_fresh[mode] = None
-        sauvegarder_tournois_data(td_fresh, action="cloture_tournoi_termine")
+    # Le tournoi terminé reste visible sur la grille avec podium jusqu'à clôture manuelle ou nouveau tournoi
 
     return True, "Tournoi sauvegardé dans l'historique avec succès !"
 
@@ -23569,7 +23565,7 @@ def actualiser_score_elimination(tournoi, tour_num, match_id, score_a, score_b):
 
         tournoi["statut"] = "termine"
 
-        archiver_tournoi(tournoi, mode=tournoi.get("mode", "simple"))
+        archiver_tournoi(tournoi, mode=tournoi.get("mode", "simple"), notifier_admin=False)
 
     return True
 
@@ -23910,7 +23906,7 @@ def corriger_score_elimination(tournoi, match_id, score_a, score_b, forcer_casca
             tournoi["vainqueur_final"] = nouv_vainqueur
             tournoi["finaliste"] = nouv_perdant
             tournoi["statut"] = "termine"
-            archiver_tournoi(tournoi, mode=tournoi.get("mode", "simple"))
+            archiver_tournoi(tournoi, mode=tournoi.get("mode", "simple"), notifier_admin=False)
         return True, f"Score du match {match_id} corrigé ({score_a}-{score_b})."
     
     desc_termines = obtenir_matchs_descendants_termines(tournoi, match_id)
@@ -24010,7 +24006,7 @@ def corriger_score_elimination(tournoi, match_id, score_a, score_b, forcer_casca
         tournoi["vainqueur_final"] = nouv_vainqueur
         tournoi["finaliste"] = nouv_perdant
         tournoi["statut"] = "termine"
-        archiver_tournoi(tournoi, mode=tournoi.get("mode", "simple"))
+        archiver_tournoi(tournoi, mode=tournoi.get("mode", "simple"), notifier_admin=False)
     else:
         if tournoi.get("statut") == "termine":
             tournoi["statut"] = "en_cours"
@@ -24061,7 +24057,7 @@ def corriger_score_round_robin(tournoi, match_id, score_a, score_b):
                 if classement:
                     tournoi["vainqueur_final"] = classement[0][0]
                     tournoi["finaliste"] = classement[1][0] if len(classement) > 1 else None
-                archiver_tournoi(tournoi, mode=tournoi.get("mode", "simple"))
+                archiver_tournoi(tournoi, mode=tournoi.get("mode", "simple"), notifier_admin=False)
             else:
                 if tournoi.get("statut") == "termine":
                     tournoi["statut"] = "en_cours"
@@ -28557,7 +28553,7 @@ def afficher_bandeau_verrou_tournoi():
 
 
 
-    modes_actifs = [m for m in ["simple", "double"] if td.get(m) and isinstance(td.get(m), dict) and td.get(m).get("statut") == "en_cours"]
+    modes_actifs = [m for m in ["simple", "double"] if td.get(m) and isinstance(td.get(m), dict) and td.get(m).get("statut") in ("en_cours", "termine")]
 
     tournoi_actif = bool(modes_actifs)
 
@@ -30224,9 +30220,11 @@ def afficher_deroulement_matchs_tournoi(tournoi, mode="simple", est_editeur=True
 
                                         td_fresh = charger_tournois_data()
 
-                                        td_fresh[mode] = tournoi
-
-                                        sauvegarder_tournois_data(td_fresh)
+                                        if not key_prefix or (td_fresh.get(mode) and td_fresh[mode].get("id_archive") == tournoi.get("id_archive")):
+                                            td_fresh[mode] = tournoi
+                                            sauvegarder_tournois_data(td_fresh)
+                                        else:
+                                            archiver_tournoi(tournoi, mode=mode, notifier_admin=False)
 
                                         st.rerun()
 
@@ -30331,8 +30329,11 @@ def afficher_deroulement_matchs_tournoi(tournoi, mode="simple", est_editeur=True
                                             ok, msg = corriger_score_elimination(tournoi, m_id, sc_a_corr, sc_b_corr, forcer_cascade=chk_force)
                                             if ok:
                                                 td_fresh = charger_tournois_data()
-                                                td_fresh[mode] = tournoi
-                                                sauvegarder_tournois_data(td_fresh)
+                                                if not key_prefix or (td_fresh.get(mode) and td_fresh[mode].get("id_archive") == tournoi.get("id_archive")):
+                                                    td_fresh[mode] = tournoi
+                                                    sauvegarder_tournois_data(td_fresh)
+                                                else:
+                                                    archiver_tournoi(tournoi, mode=mode, notifier_admin=False)
                                                 st.success(f"✅ {msg}")
                                                 time.sleep(0.5)
                                                 st.rerun()
@@ -30351,8 +30352,11 @@ def afficher_deroulement_matchs_tournoi(tournoi, mode="simple", est_editeur=True
                                             st.session_state[f"sc_a_{key_prefix}{mode}_{m_id}"] = sa
                                             st.session_state[f"sc_b_{key_prefix}{mode}_{m_id}"] = sb
                                             td_fresh = charger_tournois_data()
-                                            td_fresh[mode] = tournoi
-                                            sauvegarder_tournois_data(td_fresh)
+                                            if not key_prefix or (td_fresh.get(mode) and td_fresh[mode].get("id_archive") == tournoi.get("id_archive")):
+                                                td_fresh[mode] = tournoi
+                                                sauvegarder_tournois_data(td_fresh)
+                                            else:
+                                                archiver_tournoi(tournoi, mode=mode, notifier_admin=False)
                                             st.success(f"🔄 {msg}")
                                             time.sleep(0.5)
                                             st.rerun()
@@ -30857,7 +30861,7 @@ def afficher_deroulement_matchs_tournoi(tournoi, mode="simple", est_editeur=True
 
                 tournoi["finaliste"] = classement_rr[1][0]
 
-            archiver_tournoi(tournoi, mode=mode)
+            archiver_tournoi(tournoi, mode=mode, notifier_admin=False)
 
             sauvegarder_tournois_data(tournois_data)
 
@@ -31346,31 +31350,91 @@ def afficher_section_tournoi(mode="simple"):
 
 
 
-        # Podium si terminé
-
+        # Podium et récapitulatif officiel si terminé
         if statut == "termine" and tournoi.get("vainqueur_final"):
+            m_fin_trouve = None
+            if format_type in ["elimination", "double_elimination"]:
+                for t_iter in reversed(tournoi.get("tours", [])):
+                    for m_iter in t_iter.get("matchs", []):
+                        if m_iter.get("id") == "GF_M1" or t_iter.get("numero") == tournoi.get("total_tours"):
+                            m_fin_trouve = m_iter
+                            break
+                    if m_fin_trouve:
+                        break
+
+            score_fin_badge = ""
+            if m_fin_trouve and m_fin_trouve.get("termine"):
+                score_fin_badge = f"<div style='margin-top:8px; font-size:15px; font-weight:800; color:#0b3c5d; background:#e0f2fe; border:1px solid #7dd3fc; border-radius:6px; padding:6px 12px; display:inline-block;'>🏆 Score validé de la finale : {m_fin_trouve.get('equipe_a')} ({m_fin_trouve.get('score_a')}) — ({m_fin_trouve.get('score_b')}) {m_fin_trouve.get('equipe_b')}</div>"
 
             with st.container(border=True):
-
                 st.markdown(
-
                     f"""
-
-                    <div class="saphir-light-card" style="background: linear-gradient(135deg, #fff9c4, #fffde7); border: 2px solid #fbc02d; border-radius: 8px; padding: 14px; text-align: center;">
-
-                        <div class="saphir-gold-title" style="font-size: 18px; font-weight: bold; margin-bottom: 6px;">🎉 FÉLICITATIONS AU CHAMPION 🎉</div>
-
-                        <div class="saphir-primary" style="font-size: 20px; font-weight: bold; margin-bottom: 4px;">🥇 {tournoi['vainqueur_final']}</div>
-
-                        <div class="saphir-muted" style="font-size: 15px;">🥈 Finaliste : <strong>{tournoi.get('finaliste', 'N/D')}</strong></div>
-
+                    <div class="saphir-light-card" style="background: linear-gradient(135deg, #fff9c4, #fffde7); border: 2px solid #fbc02d; border-radius: 8px; padding: 16px; text-align: center;">
+                        <div class="saphir-gold-title" style="font-size: 19px; font-weight: bold; margin-bottom: 6px;">🎉 FÉLICITATIONS AU CHAMPION 🎉</div>
+                        <div class="saphir-primary" style="font-size: 22px; font-weight: 900; margin-bottom: 4px;">🥇 {tournoi['vainqueur_final']}</div>
+                        <div class="saphir-muted" style="font-size: 16px;">🥈 Finaliste : <strong>{tournoi.get('finaliste', 'N/D')}</strong></div>
+                        {score_fin_badge}
                     </div>
-
                     """,
-
                     unsafe_allow_html=True
-
                 )
+                if est_editeur:
+                    col_pod_act1, col_pod_act2 = st.columns([1, 1])
+                    with col_pod_act1:
+                        if m_fin_trouve:
+                            with st.popover("✏️ Reprendre / Corriger la finale", use_container_width=True, help="Corriger le score ou reprendre la finale"):
+                                st.markdown(f"###### ✏️ Correction de la finale ({m_fin_trouve.get('id')})")
+                                sc_fa = m_fin_trouve.get("score_a", 0)
+                                sc_fb = m_fin_trouve.get("score_b", 0)
+                                ea_f = m_fin_trouve.get("equipe_a", "")
+                                eb_f = m_fin_trouve.get("equipe_b", "")
+                                m_race_f = m_fin_trouve.get("race_to", 3)
+                                opts_f = list(range(int(m_race_f) + 1))
+                                col_fa, col_fb = st.columns(2)
+                                with col_fa:
+                                    sc_a_c = int(st.selectbox(f"🎱 {formater_nom_abrege_joueur(ea_f)}", options=opts_f, index=opts_f.index(sc_fa) if sc_fa in opts_f else 0, key=f"pod_sc_a_{mode}"))
+                                with col_fb:
+                                    sc_b_c = int(st.selectbox(f"🎱 {formater_nom_abrege_joueur(eb_f)}", options=opts_f, index=opts_f.index(sc_fb) if sc_fb in opts_f else 0, key=f"pod_sc_b_{mode}"))
+                                if st.button("💾 Enregistrer la correction de la finale", type="primary", use_container_width=True, key=f"btn_save_corr_pod_{mode}"):
+                                    if sc_a_c == sc_b_c:
+                                        st.error("Match nul impossible.")
+                                    elif sc_a_c < m_race_f and sc_b_c < m_race_f:
+                                        st.warning(f"Un joueur doit remporter {m_race_f} manches.")
+                                    else:
+                                        ok_c, msg_c = corriger_score_elimination(tournoi, m_fin_trouve.get("id"), sc_a_c, sc_b_c, forcer_cascade=True)
+                                        if ok_c:
+                                            td_fresh = charger_tournois_data()
+                                            td_fresh[mode] = tournoi
+                                            sauvegarder_tournois_data(td_fresh)
+                                            st.success(f"✅ {msg_c}")
+                                            time.sleep(0.5)
+                                            st.rerun()
+                                        else:
+                                            st.error(msg_c)
+                                st.divider()
+                                if st.button("🔄 Reprendre la finale (Remettre en jeu)", type="secondary", use_container_width=True, key=f"btn_repr_pod_{mode}"):
+                                    ok_r, msg_r = reprendre_validation_match_elimination(tournoi, m_fin_trouve.get("id"), forcer_cascade=True)
+                                    if ok_r:
+                                        td_fresh = charger_tournois_data()
+                                        td_fresh[mode] = tournoi
+                                        sauvegarder_tournois_data(td_fresh)
+                                        st.success(f"🔄 {msg_r}")
+                                        time.sleep(0.5)
+                                        st.rerun()
+                                    else:
+                                        st.error(msg_r)
+                    with col_pod_act2:
+                        with st.popover("🏁 Clôturer & Libérer la grille", use_container_width=True, help="Archiver définitivement le tournoi et libérer la grille pour un nouveau tournoi"):
+                            st.markdown("###### 🏁 Clôture définitive du tournoi")
+                            st.write(f"Voulez-vous clôturer ce {libelle_mode.lower()} et libérer la grille pour le prochain tournoi ?")
+                            st.caption("✅ Le tournoi complet avec ses résultats et son podium restera consultable dans l'historique officiel.")
+                            if st.button("🏁 Confirmer la clôture", type="primary", use_container_width=True, key=f"btn_confirm_pod_close_{mode}"):
+                                sauvegarder_tournoi_dans_historique(mode, notifier_admin=True)
+                                td_f = charger_tournois_data()
+                                td_f[mode] = None
+                                sauvegarder_tournois_data(td_f, action="cloture_tournoi_termine")
+                                st.session_state[f"msg_annulation_{mode}"] = f"🏆 Le {libelle_mode.lower()} a été clôturé et archivé avec succès. La grille est libre."
+                                st.rerun()
 
 
 
@@ -31710,7 +31774,7 @@ def afficher_section_historique_tournois():
 
         td_active = charger_tournois_data()
 
-        tournois_actifs_h = [m for m in ["simple", "double"] if td_active.get(m) and isinstance(td_active.get(m), dict) and td_active.get(m).get("statut") == "en_cours"]
+        tournois_actifs_h = [m for m in ["simple", "double"] if td_active.get(m) and isinstance(td_active.get(m), dict) and td_active.get(m).get("statut") in ("en_cours", "termine")]
 
         if tournois_actifs_h:
 
@@ -31728,7 +31792,8 @@ def afficher_section_historique_tournois():
 
                     with c_info:
 
-                        st.write(f"🟢 **Tournoi {lbl_m} actif :** *{t_act.get('titre')}* ({t_act.get('format')})")
+                        badge_act = "🟢 Actif" if t_act.get("statut") == "en_cours" else "🏆 Terminé"
+                        st.write(f"**Tournoi {lbl_m} ({badge_act}) :** *{t_act.get('titre')}* ({t_act.get('format')})")
 
                     with c_save:
 
@@ -32219,14 +32284,24 @@ def afficher_onglet_tournois():
     t_double = td.get("double")
 
     simple_actif = bool(t_simple and isinstance(t_simple, dict) and t_simple.get("statut") == "en_cours" and (t_simple.get("tours") or t_simple.get("matchs")))
+    simple_termine = bool(t_simple and isinstance(t_simple, dict) and t_simple.get("statut") == "termine")
 
     double_actif = bool(t_double and isinstance(t_double, dict) and t_double.get("statut") == "en_cours" and (t_double.get("tours") or t_double.get("matchs")))
+    double_termine = bool(t_double and isinstance(t_double, dict) and t_double.get("statut") == "termine")
 
+    if simple_actif:
+        lbl_simple = "👤 Tournoi Simple 🟢 (Actif)"
+    elif simple_termine:
+        lbl_simple = "👤 Tournoi Simple 🏆 (Terminé)"
+    else:
+        lbl_simple = "👤 Tournoi Simple"
 
-
-    lbl_simple = "👤 Tournoi Simple 🟢 (Actif)" if simple_actif else "👤 Tournoi Simple"
-
-    lbl_double = "👥 Tournoi Double 🟢 (Actif)" if double_actif else "👥 Tournoi Double"
+    if double_actif:
+        lbl_double = "👥 Tournoi Double 🟢 (Actif)"
+    elif double_termine:
+        lbl_double = "👥 Tournoi Double 🏆 (Terminé)"
+    else:
+        lbl_double = "👥 Tournoi Double"
 
 
 
