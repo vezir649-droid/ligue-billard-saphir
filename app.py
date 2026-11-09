@@ -29023,83 +29023,23 @@ def afficher_bandeau_verrou_tournoi():
 
     if est_editeur:
 
-        col_lk1, col_lk2 = st.columns([2.6, 1.8] if modes_actifs else [3.2, 1.2])
+        col_lk1, col_lk2 = st.columns([3.2, 1.2])
 
         col_lk1.success(f"🟢 **Vous avez la main exclusive pour marquer et configurer le tournoi.**{mention_sauv}")
 
         with col_lk2:
 
-            if modes_actifs:
+            if st.button("🔓 Céder la main", key="btn_ceder_main_tournoi", use_container_width=True, help="Sauvegarde automatiquement le tournoi sur le disque et libère la main"):
 
-                cb1, cb2, cb3 = st.columns([1.0, 1.3, 1.2])
+                with st.spinner("Sauvegarde du tournoi et libération..."):
 
-                with cb1:
+                    ceder_la_main_avec_sauvegarde(my_session_id)
 
-                    if st.button("🔓 Céder", key="btn_ceder_main_tournoi", use_container_width=True, help="Sauvegarde le tournoi sur disque et libère la main"):
-
-                        with st.spinner("Sauvegarde et libération..."):
-
-                            ceder_la_main_avec_sauvegarde(my_session_id)
-
-                        st.rerun()
-
-                with cb2:
-
-                    with st.popover("💾 Sauvegarder", use_container_width=True, help="Sauvegarder dans l'historique du tournoi"):
-
-                        st.markdown("##### 💾 Sauvegarde dans l'historique du tournoi")
-
-                        for m_act in modes_actifs:
-
-                            t_act = td.get(m_act)
-
-                            lbl_m = "Simple (1 vs 1)" if m_act == "simple" else "Double (2 vs 2)"
-
-                            if st.button(f"💾 Sauvegarder {lbl_m}", key=f"btn_bnd_save_hist_{m_act}", use_container_width=True, help=f"Sauvegarde le tournoi {lbl_m} dans l'historique officiel"):
-
-                                sauvegarder_tournoi_dans_historique(m_act, notifier_admin=True)
-
-                                st.success(f"✅ {lbl_m} sauvegardé dans l'historique !")
-
-                                time.sleep(0.8)
-
-                                st.rerun()
-
-                with cb3:
-
-                    with st.popover("❌ Annuler", use_container_width=True, help="Annulation complète du tournoi sans aucune sauvegarde"):
-
-                        st.markdown("##### ⚠️ Annulation complète du tournoi")
-
-                        st.write("Confirmez l'annulation complète. **Dans ce cas, aucune sauvegarde ne sera effectuée** :")
-
-                        for m_act in modes_actifs:
-
-                            t_act = td.get(m_act)
-
-                            lbl_m = "Simple" if m_act == "simple" else "Double"
-
-                            if st.button(f"🔴 Confirmer annulation {lbl_m}", key=f"btn_bnd_cancel_act_{m_act}", type="primary", use_container_width=True):
-
-                                annuler_completement_tournoi(mode=m_act, id_archive=t_act.get("id_archive") if isinstance(t_act, dict) else None)
-
-                                st.session_state[f"msg_annulation_{m_act}"] = f"❌ Le tournoi {lbl_m} a été complètement annulé (aucune sauvegarde)."
-
-                                st.rerun()
-
-            else:
-
-                if st.button("🔓 Céder la main", key="btn_ceder_main_tournoi", use_container_width=True, help="Sauvegarde automatiquement le tournoi sur le disque et libère la main"):
-
-                    with st.spinner("Sauvegarde du tournoi et libération..."):
-
-                        ceder_la_main_avec_sauvegarde(my_session_id)
-
-                    st.rerun()
+                st.rerun()
 
     elif est_spectateur:
 
-        col_lk1, col_lk2 = st.columns([3.2, 1.2])
+        col_lk1, col_lk2 = st.columns([3.2, 1.2] if not tournoi_actif else [1, 0.01])
 
         texte_spec = "👁️ **Mode spectateur (Lecture seule) :** Consultation en direct du tournoi actif." if tournoi_actif else "👁️ **Mode spectateur (Lecture seule) :** Consultation des tournois. La saisie des scores est réservée au marqueur."
 
@@ -29107,15 +29047,17 @@ def afficher_bandeau_verrou_tournoi():
 
         col_lk1.caption("🔄 *Veille automatique active : dès que le marqueur met à jour le tournoi, les résultats sont actualisés systématiquement.*")
 
-        with col_lk2:
+        if not tournoi_actif:
 
-            if st.button("🔄 Actualiser", key="btn_refresh_t_spec", type="primary" if tournoi_actif else "secondary", use_container_width=True, help="Recharge les derniers résultats et scores en direct du tournoi"):
+            with col_lk2:
 
-                actualiser_resultats_tournoi()
+                if st.button("🔄 Actualiser", key="btn_refresh_t_spec", type="secondary", use_container_width=True, help="Recharge les derniers résultats et scores en direct du tournoi"):
+
+                    actualiser_resultats_tournoi()
 
     else:
 
-        col_lk1, col_lk2 = st.columns([2.8, 1.4])
+        col_lk1, col_lk2 = st.columns([3.0, 1.2])
 
         if autre_editeur_actif:
 
@@ -29135,35 +29077,13 @@ def afficher_bandeau_verrou_tournoi():
 
         with col_lk2:
 
-            if tournoi_actif:
+            if st.button("⚡ Prendre la main", key="btn_prendre_main_tournoi", use_container_width=True, help="Prend le contrôle de la saisie, charge la dernière sauvegarde du tournoi et active l'édition"):
 
-                col_pm, col_act = st.columns([1.2, 1.2])
+                with st.spinner("Prise de la main et chargement..."):
 
-                with col_pm:
+                    prendre_la_main_avec_rechargement(my_session_id)
 
-                    if st.button("⚡ Prendre la main", key="btn_prendre_main_tournoi", use_container_width=True, help="Prend le contrôle de la saisie, charge la dernière sauvegarde du tournoi et active l'édition"):
-
-                        with st.spinner("Prise de la main et chargement..."):
-
-                            prendre_la_main_avec_rechargement(my_session_id)
-
-                        st.rerun()
-
-                with col_act:
-
-                    if st.button("🔄 Actualiser", key="btn_refresh_t_ed_consult", use_container_width=True, help="Recharge les résultats du tournoi sans prendre la main"):
-
-                        actualiser_resultats_tournoi()
-
-            else:
-
-                if st.button("⚡ Prendre la main", key="btn_prendre_main_tournoi", use_container_width=True, help="Prend le contrôle de la saisie, charge la dernière sauvegarde du tournoi et active l'édition"):
-
-                    with st.spinner("Prise de la main et chargement..."):
-
-                        prendre_la_main_avec_rechargement(my_session_id)
-
-                    st.rerun()
+                st.rerun()
 
 
 
@@ -30664,8 +30584,6 @@ def afficher_deroulement_matchs_tournoi(tournoi, mode="simple", est_editeur=True
 
                                 ))
 
-                                st.markdown(f"<div style='text-align:center; font-size:15px; font-weight:900; background:#0284c7; color:#ffffff; border-radius:6px; padding:2px 0; margin-top:2px;'>Score : {sc_a_in}</div>", unsafe_allow_html=True)
-
                             with col_s2:
 
                                 sc_b_in = int(st.selectbox(
@@ -30685,8 +30603,6 @@ def afficher_deroulement_matchs_tournoi(tournoi, mode="simple", est_editeur=True
                                     disabled=not ronde_prete
 
                                 ))
-
-                                st.markdown(f"<div style='text-align:center; font-size:15px; font-weight:900; background:#0284c7; color:#ffffff; border-radius:6px; padding:2px 0; margin-top:2px;'>Score : {sc_b_in}</div>", unsafe_allow_html=True)
 
                             with col_s_btns:
 
@@ -31214,8 +31130,6 @@ def afficher_deroulement_matchs_tournoi(tournoi, mode="simple", est_editeur=True
 
                                 ))
 
-                                st.markdown(f"<div style='text-align:center; font-size:15px; font-weight:900; background:#0284c7; color:#ffffff; border-radius:6px; padding:2px 0; margin-top:2px;'>Score : {sc_a_in}</div>", unsafe_allow_html=True)
-
                             with col_s2:
 
                                 sc_b_in = int(st.selectbox(
@@ -31233,8 +31147,6 @@ def afficher_deroulement_matchs_tournoi(tournoi, mode="simple", est_editeur=True
                                     help=f"Score de {eb} (0 à {rr_race})"
 
                                 ))
-
-                                st.markdown(f"<div style='text-align:center; font-size:15px; font-weight:900; background:#0284c7; color:#ffffff; border-radius:6px; padding:2px 0; margin-top:2px;'>Score : {sc_b_in}</div>", unsafe_allow_html=True)
 
                             with col_s_btns:
 
@@ -31821,32 +31733,6 @@ def afficher_section_tournoi(mode="simple"):
 
 
 
-                    if statut == "termine":
-
-                        st.divider()
-
-                        st.markdown("#### 🏆 Clôture définitive")
-
-                        st.write("Le tournoi est terminé. Vous pouvez clôturer la session pour archiver le tournoi et libérer la grille.")
-
-                        if st.button("🏁 Clôturer & Libérer la grille", type="primary", use_container_width=True, key=f"btn_confirm_cloture_{mode}"):
-
-                            with st.spinner("Clôture et archivage final..."):
-
-                                sauvegarder_tournoi_dans_historique(mode, notifier_admin=True)
-
-                                td_fresh = charger_tournois_data()
-
-                                td_fresh[mode] = None
-
-                                sauvegarder_tournois_data(td_fresh)
-
-                            st.session_state[f"msg_annulation_{mode}"] = f"🏆 Le {libelle_mode.lower()} a été clôturé et archivé avec succès."
-
-                            st.rerun()
-
-
-
             with col_top5:
 
                 with st.popover("❌ Annulation complète", use_container_width=True, help="Annulation complète du tournoi sans aucune sauvegarde"):
@@ -31948,62 +31834,17 @@ def afficher_section_tournoi(mode="simple"):
                     unsafe_allow_html=True
                 )
                 if est_editeur:
-                    col_pod_act1, col_pod_act2 = st.columns([1, 1])
-                    with col_pod_act1:
-                        if m_fin_trouve:
-                            with st.popover("✏️ Reprendre / Corriger la finale", use_container_width=True, help="Corriger le score ou reprendre la finale"):
-                                st.markdown(f"###### ✏️ Correction de la finale ({m_fin_trouve.get('id')})")
-                                sc_fa = m_fin_trouve.get("score_a", 0)
-                                sc_fb = m_fin_trouve.get("score_b", 0)
-                                ea_f = m_fin_trouve.get("equipe_a", "")
-                                eb_f = m_fin_trouve.get("equipe_b", "")
-                                m_race_f = m_fin_trouve.get("race_to", 3)
-                                opts_f = list(range(int(m_race_f) + 1))
-                                col_fa, col_fb = st.columns(2)
-                                with col_fa:
-                                    sc_a_c = int(st.selectbox(f"🎱 {formater_nom_abrege_joueur(ea_f)}", options=opts_f, index=opts_f.index(sc_fa) if sc_fa in opts_f else 0, key=f"pod_sc_a_{mode}"))
-                                with col_fb:
-                                    sc_b_c = int(st.selectbox(f"🎱 {formater_nom_abrege_joueur(eb_f)}", options=opts_f, index=opts_f.index(sc_fb) if sc_fb in opts_f else 0, key=f"pod_sc_b_{mode}"))
-                                if st.button("💾 Enregistrer la correction de la finale", type="primary", use_container_width=True, key=f"btn_save_corr_pod_{mode}"):
-                                    if sc_a_c == sc_b_c:
-                                        st.error("Match nul impossible.")
-                                    elif sc_a_c < m_race_f and sc_b_c < m_race_f:
-                                        st.warning(f"Un joueur doit remporter {m_race_f} manches.")
-                                    else:
-                                        ok_c, msg_c = corriger_score_elimination(tournoi, m_fin_trouve.get("id"), sc_a_c, sc_b_c, forcer_cascade=True)
-                                        if ok_c:
-                                            td_fresh = charger_tournois_data()
-                                            td_fresh[mode] = tournoi
-                                            sauvegarder_tournois_data(td_fresh)
-                                            st.success(f"✅ {msg_c}")
-                                            time.sleep(0.5)
-                                            st.rerun()
-                                        else:
-                                            st.error(msg_c)
-                                st.divider()
-                                if st.button("🔄 Reprendre la finale (Remettre en jeu)", type="secondary", use_container_width=True, key=f"btn_repr_pod_{mode}"):
-                                    ok_r, msg_r = reprendre_validation_match_elimination(tournoi, m_fin_trouve.get("id"), forcer_cascade=True)
-                                    if ok_r:
-                                        td_fresh = charger_tournois_data()
-                                        td_fresh[mode] = tournoi
-                                        sauvegarder_tournois_data(td_fresh)
-                                        st.success(f"🔄 {msg_r}")
-                                        time.sleep(0.5)
-                                        st.rerun()
-                                    else:
-                                        st.error(msg_r)
-                    with col_pod_act2:
-                        with st.popover("🏁 Clôturer & Libérer la grille", use_container_width=True, help="Archiver définitivement le tournoi et libérer la grille pour un nouveau tournoi"):
-                            st.markdown("###### 🏁 Clôture définitive du tournoi")
-                            st.write(f"Voulez-vous clôturer ce {libelle_mode.lower()} et libérer la grille pour le prochain tournoi ?")
-                            st.caption("✅ Le tournoi complet avec ses résultats et son podium restera consultable dans l'historique officiel.")
-                            if st.button("🏁 Confirmer la clôture", type="primary", use_container_width=True, key=f"btn_confirm_pod_close_{mode}"):
-                                sauvegarder_tournoi_dans_historique(mode, notifier_admin=True)
-                                td_f = charger_tournois_data()
-                                td_f[mode] = None
-                                sauvegarder_tournois_data(td_f, action="cloture_tournoi_termine")
-                                st.session_state[f"msg_annulation_{mode}"] = f"🏆 Le {libelle_mode.lower()} a été clôturé et archivé avec succès. La grille est libre."
-                                st.rerun()
+                    with st.popover("🏁 Clôturer & Libérer la grille", use_container_width=True, help="Archiver définitivement le tournoi et libérer la grille pour un nouveau tournoi"):
+                        st.markdown("###### 🏁 Clôture définitive du tournoi")
+                        st.write(f"Voulez-vous clôturer ce {libelle_mode.lower()} et libérer la grille pour le prochain tournoi ?")
+                        st.caption("✅ Le tournoi complet avec ses résultats et son podium restera consultable dans l'historique officiel.")
+                        if st.button("🏁 Confirmer la clôture", type="primary", use_container_width=True, key=f"btn_confirm_pod_close_{mode}"):
+                            sauvegarder_tournoi_dans_historique(mode, notifier_admin=True)
+                            td_f = charger_tournois_data()
+                            td_f[mode] = None
+                            sauvegarder_tournois_data(td_f, action="cloture_tournoi_termine")
+                            st.session_state[f"msg_annulation_{mode}"] = f"🏆 Le {libelle_mode.lower()} a été clôturé et archivé avec succès. La grille est libre."
+                            st.rerun()
 
 
 
@@ -32336,63 +32177,6 @@ def afficher_section_historique_tournois():
                 else:
 
                     st.warning(f"⚠️ {msg_s}")
-
-
-
-    if est_editeur:
-
-        td_active = charger_tournois_data()
-
-        tournois_actifs_h = [m for m in ["simple", "double"] if td_active.get(m) and isinstance(td_active.get(m), dict) and td_active.get(m).get("statut") in ("en_cours", "termine")]
-
-        if tournois_actifs_h:
-
-            with st.container(border=True):
-
-                st.markdown("##### ⚡ Marqueur officiel — Actions sur le tournoi en cours")
-
-                for m_act in tournois_actifs_h:
-
-                    t_act = td_active.get(m_act)
-
-                    lbl_m = "Simple (1 vs 1)" if m_act == "simple" else "Double (2 vs 2)"
-
-                    c_info, c_save, c_annul = st.columns([2.4, 1.4, 1.4])
-
-                    with c_info:
-
-                        badge_act = "🟢 Actif" if t_act.get("statut") == "en_cours" else "🏆 Terminé"
-                        st.write(f"**Tournoi {lbl_m} ({badge_act}) :** *{t_act.get('titre')}* ({t_act.get('format')})")
-
-                    with c_save:
-
-                        if st.button(f"💾 Sauvegarder dans l'historique", key=f"btn_top_hist_save_{m_act}", use_container_width=True, help="Sauvegarder l'état actuel dans l'historique officiel"):
-
-                            sauvegarder_tournoi_dans_historique(m_act, notifier_admin=True)
-
-                            st.success(f"✅ Tournoi {lbl_m} sauvegardé dans l'historique !")
-
-                            time.sleep(0.8)
-
-                            st.rerun()
-
-                    with c_annul:
-
-                        with st.popover(f"❌ Annulation complète", use_container_width=True, help="Annulation complète sans aucune sauvegarde"):
-
-                            st.markdown("###### ⚠️ Annulation complète du tournoi")
-
-                            st.warning(f"Voulez-vous vraiment annuler complètement le tournoi {lbl_m} ?")
-
-                            st.write("🛑 **Dans ce cas, aucune sauvegarde ne sera effectuée.**")
-
-                            if st.button("🔴 Confirmer l'annulation", type="primary", use_container_width=True, key=f"btn_top_hist_cancel_{m_act}"):
-
-                                annuler_completement_tournoi(mode=m_act, id_archive=t_act.get("id_archive") if isinstance(t_act, dict) else None)
-
-                                st.session_state[f"msg_annulation_{m_act}"] = f"❌ Le tournoi {lbl_m} a été complètement annulé (aucune sauvegarde)."
-
-                                st.rerun()
 
 
 
@@ -37098,63 +36882,9 @@ with tab_feuille:
 
     st.sidebar.info(f"🏆 **Saison {no_sais_sb}** ({type_sais_sb}) • 📅 **{sem_sais_sb}**")
 
+    if "msg_match_applique" in st.session_state:
 
-
-    if rencontre_active:
-
-        tag_match = "Aujourd'hui" if rencontre_active.get("est_aujourdhui") else f"Prévu ({rencontre_active.get('date_texte', '')})"
-
-        with st.sidebar.container(border=True):
-
-            st.markdown(f"**📅 Matchs programmés — {tag_match}**")
-
-            st.markdown(f"🏆 **Saison {no_sais_sb}** ({type_sais_sb}) • **{sem_sais_sb}**")
-
-            matchs_sem_sb = obtenir_matchs_semaine_courante()
-
-            if len(matchs_sem_sb) > 1:
-
-                st.caption("Cliquez sur votre table pour charger les 6 joueurs :")
-
-                for idx_sb_m, m_sb_it in enumerate(matchs_sem_sb):
-
-                    r_sb = m_sb_it.get("receveur", "")
-
-                    v_sb = m_sb_it.get("visiteur", "")
-
-                    st.button(
-
-                        f"🏠 {r_sb} vs 🚗 {v_sb}",
-
-                        key=f"btn_sb_match_sem_{idx_sb_m}",
-
-                        on_click=cb_appliquer_match_semaine,
-
-                        args=(m_sb_it,),
-
-                        use_container_width=True,
-
-                        help=f"Charger {r_sb} vs {v_sb} ({m_sb_it.get('texte', '')})"
-
-                    )
-
-            else:
-
-                st.markdown(f"🔵 **{rencontre_active['receveur']}** *(Receveur)*\n\nvs 🟠 **{rencontre_active['visiteur']}** *(Visiteur)*")
-
-                st.button("🔄 Charger le match du jour et alignements", key="btn_apply_match_jour_sb", on_click=cb_appliquer_match_du_jour_btn, use_container_width=True, help="Configure automatiquement les équipes et les joueurs selon l'horaire officiel")
-
-        if "msg_match_applique" in st.session_state:
-
-            st.sidebar.success(st.session_state.pop("msg_match_applique"))
-
-
-
-    with st.sidebar.expander("📷 Numériser une feuille (IA)", expanded=False):
-
-        st.caption("Prenez une photo de votre feuille de match manuscrite pour importer et calculer les scores automatiquement.")
-
-        st.button("📸 Ouvrir le scanner photo IA", key="btn_sb_open_scanner_ia", on_click=cb_scanner_feuille, use_container_width=True)
+        st.sidebar.success(st.session_state.pop("msg_match_applique"))
 
 
 
@@ -37167,14 +36897,6 @@ with tab_feuille:
     role_badge_sb = "🛡️ Administrateur" if st.session_state.get("est_admin", False) else ("👁️ Spectateur" if est_spectateur else "🔒 Marqueur / Éditeur")
 
     st.sidebar.caption(f"Profil connecté : **{role_badge_sb}**")
-
-    if st.sidebar.button("📺 Mode Téléviseur (Tournoi)", use_container_width=True, key="btn_sb_tv_direct", help="Afficher l'arborescence du tournoi plein écran sur téléviseur"):
-
-        st.session_state["mode_tv_actif"] = True
-
-        st.query_params["view"] = "tv"
-
-        st.rerun()
 
     if st.sidebar.button("🚪 Déconnexion / Accueil", use_container_width=True, help="Sauvegarde les tournois et le match, libère la main et retourne à l'écran d'accueil"):
 
@@ -37935,6 +37657,10 @@ with tab_feuille:
 
 
         st.markdown(f"**👥 Alignement — {equipe_receveur}**")
+        b_sw_r1, b_sw_r2, b_sw_r3 = st.columns(3)
+        b_sw_r1.button("🔀 J1↔J2", key="btn_sw_r_12", use_container_width=True, disabled=not est_editeur, on_click=cb_inverser_ordre_joueurs_rapide, args=("rec", "j1", "j2"), help="Permuter Joueur 1 et Joueur 2")
+        b_sw_r2.button("🔀 J2↔J3", key="btn_sw_r_23", use_container_width=True, disabled=not est_editeur, on_click=cb_inverser_ordre_joueurs_rapide, args=("rec", "j2", "j3"), help="Permuter Joueur 2 et Joueur 3")
+        b_sw_r3.button("🔀 J1↔J3", key="btn_sw_r_13", use_container_width=True, disabled=not est_editeur, on_click=cb_inverser_ordre_joueurs_rapide, args=("rec", "j1", "j3"), help="Permuter Joueur 1 et Joueur 3")
 
 
 
@@ -38235,6 +37961,10 @@ with tab_feuille:
 
 
         st.markdown(f"**👥 Alignement — {equipe_visiteur}**")
+        b_sw_v1, b_sw_v2, b_sw_v3 = st.columns(3)
+        b_sw_v1.button("🔀 J1↔J2", key="btn_sw_v_12", use_container_width=True, disabled=not est_editeur, on_click=cb_inverser_ordre_joueurs_rapide, args=("vis", "j1", "j2"), help="Permuter Joueur 1 et Joueur 2")
+        b_sw_v2.button("🔀 J2↔J3", key="btn_sw_v_23", use_container_width=True, disabled=not est_editeur, on_click=cb_inverser_ordre_joueurs_rapide, args=("vis", "j2", "j3"), help="Permuter Joueur 2 et Joueur 3")
+        b_sw_v3.button("🔀 J1↔J3", key="btn_sw_v_13", use_container_width=True, disabled=not est_editeur, on_click=cb_inverser_ordre_joueurs_rapide, args=("vis", "j1", "j3"), help="Permuter Joueur 1 et Joueur 3")
 
 
 
@@ -38770,10 +38500,6 @@ with tab_feuille:
                     st.session_state["forcer_rechargement"] = True
 
                     st.rerun()
-
-            else:
-
-                st.button("📷 Scanner photo IA", key="btn_direct_scanner_feuille", on_click=cb_scanner_feuille, use_container_width=True, help="Ouvrir le scanner photo IA")
 
         else:
 
@@ -39506,15 +39232,7 @@ with tab_feuille:
 
     if not est_spectateur and choix_vue != label_direct:
 
-        col_av1, col_av2 = st.columns([3, 1])
-
-        with col_av1:
-
-            st.info("💡 **Feuille archivée affichée ci-dessus.** La grille de saisie du match en cours est temporairement masquée.")
-
-        with col_av2:
-
-            st.button("🔙 Reprendre la saisie", on_click=cb_retour_match_en_cours, type="primary", use_container_width=True, key="btn_reprendre_saisie")
+        st.info("💡 **Feuille archivée affichée ci-dessus.** La grille de saisie du match en cours est temporairement masquée (utilisez le bouton **« 🔙 Revenir au match en cours »** en haut à droite pour reprendre la saisie).")
 
     elif not est_spectateur:
 
@@ -39566,13 +39284,13 @@ with tab_feuille:
 
 
 
-        # --- MODULE 2 : SÉLECTEUR RAPIDE DES 4 MATCHS DE LA SEMAINE & CONFIGURATION MOBILE ---
+        # --- MODULE 2 : SÉLECTEUR RAPIDE DES 4 MATCHS DE LA SEMAINE ---
 
         matchs_semaine_liste = obtenir_matchs_semaine_courante()
 
-        with st.expander("📱 **Choix rapide de la table (4 matchs de la semaine) & Alignement mobile (J1, J2, J3, Présences)**", expanded=False):
+        if matchs_semaine_liste:
 
-            if matchs_semaine_liste:
+            with st.expander("🗓️ **Choix rapide de la table (Matchs programmés de la semaine)**", expanded=False):
 
                 sem_titre_aff = matchs_semaine_liste[0].get("semaine", sem_sais_sb)
 
@@ -39611,64 +39329,6 @@ with tab_feuille:
                             help=f"Charger immédiatement l'alignement officiel de {r_ms} vs {v_ms} ({m_sem_item.get('texte', '')})"
 
                         )
-
-                st.divider()
-
-
-
-            st.markdown("##### 🔄 Permutation rapide de l'ordre des joueurs (J1 ↔ J2 ↔ J3) et Présences")
-
-            st.caption("Permutez l'ordre d'entrée des joueurs (J1, J2, J3) ou indiquez une absence directement sur votre téléphone sans ouvrir le menu latéral.")
-
-            col_pr_r, col_pr_v = st.columns(2)
-
-            with col_pr_r:
-
-                st.markdown(f"**🏠 {equipe_receveur} (Receveur)**")
-
-                b_sw_r1, b_sw_r2, b_sw_r3 = st.columns(3)
-
-                b_sw_r1.button("🔀 J1 ↔ J2", key="btn_sw_r_12", use_container_width=True, disabled=not est_editeur, on_click=cb_inverser_ordre_joueurs_rapide, args=("rec", "j1", "j2"))
-
-                b_sw_r2.button("🔀 J2 ↔ J3", key="btn_sw_r_23", use_container_width=True, disabled=not est_editeur, on_click=cb_inverser_ordre_joueurs_rapide, args=("rec", "j2", "j3"))
-
-                b_sw_r3.button("🔀 J1 ↔ J3", key="btn_sw_r_13", use_container_width=True, disabled=not est_editeur, on_click=cb_inverser_ordre_joueurs_rapide, args=("rec", "j1", "j3"))
-
-                for idx_p, p_id in enumerate(["j1_rec", "j2_rec", "j3_rec"], start=1):
-
-                    nom_j = dict_joueurs[p_id]["nom"]
-
-                    c_n, c_t = st.columns([3, 2])
-
-                    c_n.markdown(f"**J{idx_p} — {nom_j}**")
-
-                    curr_pres = bool(st.session_state.get(f"pres_{p_id}", True))
-
-                    c_t.toggle("Présent", value=curr_pres, key=f"main_pres_tog_{p_id}", on_change=cb_toggle_presence_main, args=(p_id,), disabled=not est_editeur)
-
-            with col_pr_v:
-
-                st.markdown(f"**🚗 {equipe_visiteur} (Visiteur)**")
-
-                b_sw_v1, b_sw_v2, b_sw_v3 = st.columns(3)
-
-                b_sw_v1.button("🔀 J1 ↔ J2", key="btn_sw_v_12", use_container_width=True, disabled=not est_editeur, on_click=cb_inverser_ordre_joueurs_rapide, args=("vis", "j1", "j2"))
-
-                b_sw_v2.button("🔀 J2 ↔ J3", key="btn_sw_v_23", use_container_width=True, disabled=not est_editeur, on_click=cb_inverser_ordre_joueurs_rapide, args=("vis", "j2", "j3"))
-
-                b_sw_v3.button("🔀 J1 ↔ J3", key="btn_sw_v_13", use_container_width=True, disabled=not est_editeur, on_click=cb_inverser_ordre_joueurs_rapide, args=("vis", "j1", "j3"))
-
-                for idx_p, p_id in enumerate(["j1_vis", "j2_vis", "j3_vis"], start=1):
-
-                    nom_j = dict_joueurs[p_id]["nom"]
-
-                    c_n, c_t = st.columns([3, 2])
-
-                    c_n.markdown(f"**J{idx_p} — {nom_j}**")
-
-                    curr_pres = bool(st.session_state.get(f"pres_{p_id}", True))
-
-                    c_t.toggle("Présent", value=curr_pres, key=f"main_pres_tog_{p_id}", on_change=cb_toggle_presence_main, args=(p_id,), disabled=not est_editeur)
 
 
 
