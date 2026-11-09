@@ -19364,6 +19364,128 @@ def sauvegarder_tournoi_dans_historique(mode, notifier_admin=True):
 
 
 
+
+
+def calculer_progression_tournoi(tournoi):
+    """Calcule le nombre de matchs joués / terminés sur le total des matchs prévus."""
+    if not tournoi or not isinstance(tournoi, dict):
+        return "0 match"
+    total = 0
+    joues = 0
+    for t in tournoi.get("tours", []):
+        for m in t.get("matchs", []):
+            total += 1
+            if m.get("termine"):
+                joues += 1
+    for m in tournoi.get("matchs", []):
+        total += 1
+        if m.get("termine"):
+            joues += 1
+    if total == 0:
+        return "Non débuté"
+    return f"{joues}/{total} match(s) joué(s)"
+
+
+def obtenir_tournois_recuperables(mode=None):
+    """
+    Retourne la liste des tournois non terminés (en cours) pouvant être repris / récupérés.
+    Filtre par mode si spécifié ('simple' ou 'double').
+    """
+    import copy
+    historique = charger_historique_tournois(inclure_actifs=True)
+    td = charger_tournois_data()
+    
+    recuperables = []
+    ids_vus = set()
+    
+    # 1. Examiner les tournois dans tournois_data.json
+    modes_a_verifier = ["simple", "double"] if mode is None else [mode]
+    for m_key in modes_a_verifier:
+        t_active = td.get(m_key)
+        if t_active and isinstance(t_active, dict):
+            id_a = t_active.get("id_archive")
+            statut = t_active.get("statut", "en_cours")
+            a_matchs = bool(t_active.get("tours") or t_active.get("matchs"))
+            if statut == "en_cours" and a_matchs and not t_active.get("vainqueur_final"):
+                if id_a:
+                    ids_vus.add(id_a)
+                t_copy = copy.deepcopy(t_active)
+                t_copy["mode"] = m_key
+                t_copy["est_actif"] = True
+                recuperables.append(t_copy)
+
+    # 2. Examiner les tournois dans l'historique
+    for h in historique:
+        if not isinstance(h, dict):
+            continue
+        id_h = h.get("id_archive")
+        if id_h and id_h in ids_vus:
+            continue
+        if mode and h.get("mode") != mode:
+            continue
+        
+        statut = h.get("statut")
+        if statut == "annule":
+            continue
+        if statut == "termine" or h.get("vainqueur_final"):
+            continue
+        
+        total_m = 0
+        for t in h.get("tours", []):
+            total_m += len(t.get("matchs", []))
+        total_m += len(h.get("matchs", []))
+        if total_m == 0:
+            continue
+            
+        if id_h:
+            ids_vus.add(id_h)
+        recuperables.append(copy.deepcopy(h))
+        
+    return recuperables
+
+
+def recuperer_tournoi_en_cours(id_archive, mode_cible=None):
+    """
+    Charge un tournoi sauvegardé en cours dans la grille active.
+    Sauvegarde d'abord le tournoi actuellement actif s'il contient des données.
+    """
+    import copy
+    td = charger_tournois_data()
+    historique = charger_historique_tournois(inclure_actifs=True)
+    
+    tournoi_a_recuperer = None
+    for h in historique:
+        if isinstance(h, dict) and h.get("id_archive") == id_archive:
+            tournoi_a_recuperer = copy.deepcopy(h)
+            break
+            
+    if not tournoi_a_recuperer:
+        for m_k in ["simple", "double"]:
+            t_cand = td.get(m_k)
+            if isinstance(t_cand, dict) and t_cand.get("id_archive") == id_archive:
+                tournoi_a_recuperer = copy.deepcopy(t_cand)
+                break
+                
+    if not tournoi_a_recuperer:
+        return False, "Tournoi introuvable."
+        
+    mode_final = mode_cible or tournoi_a_recuperer.get("mode", "simple")
+    
+    # Si la grille active de ce mode contient déjà un autre tournoi, l'archiver d'abord
+    actif_existant = td.get(mode_final)
+    if actif_existant and isinstance(actif_existant, dict) and actif_existant.get("id_archive") != id_archive:
+        archiver_tournoi(actif_existant, mode=mode_final, notifier_admin=False)
+        
+    tournoi_a_recuperer["mode"] = mode_final
+    tournoi_a_recuperer["est_actif"] = True
+    tournoi_a_recuperer["statut"] = "en_cours"
+    td[mode_final] = tournoi_a_recuperer
+    sauvegarder_tournois_data(td)
+    
+    st.session_state[f"msg_recup_{mode_final}"] = f"✅ Tournoi « {tournoi_a_recuperer.get('titre', 'Tournoi')} » récupéré avec succès !"
+    st.rerun()
+
+
 def annuler_completement_tournoi(mode=None, id_archive=None):
 
     """
@@ -23370,6 +23492,9 @@ def actualiser_score_elimination(tournoi, tour_num, match_id, score_a, score_b):
     if not m_trouve:
 
         return False
+    prete_sc, _, _ = verifier_ronde_precedente_terminee(tournoi, tour_courant, tour_num, match_id)
+    if not prete_sc:
+        return False
 
 
 
@@ -23602,6 +23727,9 @@ def attribuer_passe_droit_elimination(tournoi, tour_num, match_id, beneficiaire)
     if not m_trouve:
 
         return False
+    prete_pd, _, _ = verifier_ronde_precedente_terminee(tournoi, tour_courant, tour_num, match_id)
+    if not prete_pd:
+        return False
 
 
 
@@ -23765,6 +23893,135 @@ def trouver_match_tournoi(tournoi, match_id):
     """Retrouve le dictionnaire du match, son tour et son numéro d'index."""
     if not tournoi:
         return None, None, None
+
+
+def verifier_ronde_precedente_terminee(tournoi, tour_courant=None, tour_num=None, match_id=None):
+    """
+    Vérifie si tous les matchs de la ronde précédente ont été validés
+    avant de permettre la saisie ou la validation de la ronde suivante.
+    Retourne (est_prete: bool, message: str, matchs_restants: list).
+    """
+    if not tournoi:
+        return True, "", []
+    
+    tours = tournoi.get("tours", [])
+    if not tours:
+        return True, "", []
+    
+    if match_id and (not tour_courant or tour_num is None):
+        m_t, t_c, t_n = trouver_match_tournoi(tournoi, match_id)
+        if m_t:
+            tour_courant = t_c
+            tour_num = t_n
+    
+    if tour_num is not None and not tour_courant and 1 <= tour_num <= len(tours):
+        tour_courant = tours[tour_num - 1]
+        
+    if not tour_courant:
+        return True, "", []
+        
+    fmt = tournoi.get("format", "elimination")
+    
+    if fmt == "elimination":
+        idx_tour = None
+        for i, t in enumerate(tours):
+            if t == tour_courant or t.get("numero") == tour_courant.get("numero"):
+                idx_tour = i
+                break
+        if idx_tour is None or idx_tour == 0:
+            return True, "", []
+        tour_prec = tours[idx_tour - 1]
+        non_termines = [m for m in tour_prec.get("matchs", []) if not m.get("termine")]
+        if non_termines:
+            nom_prec = tour_prec.get("nom", f"Tour {idx_tour}")
+            nb = len(non_termines)
+            s = "s" if nb > 1 else ""
+            msg = f"La ronde précédente ({nom_prec}) doit être entièrement validée avant de pouvoir saisir cette ronde ({nb} match{s} en attente)."
+            return False, msg, non_termines
+        return True, "", []
+
+    elif fmt == "double_elimination":
+        bracket = tour_courant.get("bracket")
+        
+        if bracket == "winner":
+            tours_w = [t for t in tours if t.get("bracket") == "winner"]
+            w_idx = None
+            for i, t in enumerate(tours_w):
+                if t == tour_courant or t.get("numero") == tour_courant.get("numero"):
+                    w_idx = i
+                    break
+            if w_idx is None or w_idx == 0:
+                return True, "", []
+            tour_prec = tours_w[w_idx - 1]
+            non_termines = [m for m in tour_prec.get("matchs", []) if not m.get("termine")]
+            if non_termines:
+                nom_prec = tour_prec.get("nom", f"Tour Gagnants {w_idx}")
+                nb = len(non_termines)
+                s = "s" if nb > 1 else ""
+                msg = f"La ronde précédente ({nom_prec}) doit être entièrement validée ({nb} match{s} en attente)."
+                return False, msg, non_termines
+            return True, "", []
+            
+        elif bracket == "loser":
+            tours_l = [t for t in tours if t.get("bracket") == "loser"]
+            l_idx = None
+            for i, t in enumerate(tours_l):
+                if t == tour_courant or t.get("numero") == tour_courant.get("numero"):
+                    l_idx = i
+                    break
+            if l_idx is None or l_idx == 0:
+                tours_w = [t for t in tours if t.get("bracket") == "winner"]
+                if tours_w:
+                    non_termines = [m for m in tours_w[0].get("matchs", []) if not m.get("termine")]
+                    if non_termines:
+                        nom_prec = tours_w[0].get("nom", "Premier tour des Gagnants")
+                        nb = len(non_termines)
+                        s = "s" if nb > 1 else ""
+                        msg = f"Le premier tour des Gagnants ({nom_prec}) doit être terminé pour déterminer les repêchés ({nb} match{s} en attente)."
+                        return False, msg, non_termines
+                return True, "", []
+            else:
+                tour_prec = tours_l[l_idx - 1]
+                non_termines_l = [m for m in tour_prec.get("matchs", []) if not m.get("termine")]
+                if non_termines_l:
+                    nom_prec = tour_prec.get("nom", f"Ronde Seconde Chance {l_idx}")
+                    nb = len(non_termines_l)
+                    s = "s" if nb > 1 else ""
+                    msg = f"La ronde précédente de Seconde Chance ({nom_prec}) doit être entièrement validée ({nb} match{s} en attente)."
+                    return False, msg, non_termines_l
+                
+                src_ids = set()
+                for m in tour_courant.get("matchs", []):
+                    if m.get("source_a"): src_ids.add(m.get("source_a"))
+                    if m.get("source_b"): src_ids.add(m.get("source_b"))
+                
+                for t in [t for t in tours if t.get("bracket") == "winner"]:
+                    t_match_ids = {m["id"] for m in t.get("matchs", [])}
+                    if t_match_ids.intersection(src_ids):
+                        non_term_w = [m for m in t.get("matchs", []) if not m.get("termine")]
+                        if non_term_w:
+                            nom_prec = t.get("nom", "Tour des Gagnants")
+                            nb = len(non_term_w)
+                            s = "s" if nb > 1 else ""
+                            msg = f"Le tour des Gagnants ({nom_prec}) alimentant cette ronde doit être terminé ({nb} match{s} en attente)."
+                            return False, msg, non_term_w
+                return True, "", []
+                
+        elif bracket == "finale":
+            tours_autres = [t for t in tours if t.get("bracket") != "finale"]
+            for t in tours_autres:
+                non_term = [m for m in t.get("matchs", []) if not m.get("termine")]
+                if non_term:
+                    nom_prec = t.get("nom", "Rondes préliminaires")
+                    nb = len(non_term)
+                    s = "s" if nb > 1 else ""
+                    msg = f"Toutes les rondes précédentes ({nom_prec}) doivent être terminées avant de jouer la Grande Finale ({nb} match{s} en attente)."
+                    return False, msg, non_term
+            return True, "", []
+            
+    return True, "", []
+
+
     for idx, t in enumerate(tournoi.get("tours", [])):
         for m in t.get("matchs", []):
             if m.get("id") == match_id:
@@ -29891,6 +30148,25 @@ def afficher_onglet_nouveau_tournoi():
 
 
 
+    recup_nouveau_onglet = obtenir_tournois_recuperables(mode=None)
+    if recup_nouveau_onglet:
+        with st.container(border=True):
+            st.markdown("#### ⚡ Tournoi(s) en cours disponible(s) à la reprise")
+            st.caption("Un ou plusieurs tournois non terminés ont été sauvegardés. Vous pouvez reprendre immédiatement l'un de ces tournois plutôt que d'en recréer un nouveau :")
+            for t_r in recup_nouveau_onglet:
+                t_id = t_r.get("id_archive")
+                titre_r = t_r.get("titre", "Tournoi")
+                m_r = t_r.get("mode", "simple")
+                prog_r = calculer_progression_tournoi(t_r)
+                c_rc1, c_rc2 = st.columns([3, 1.2])
+                with c_rc1:
+                    badge_m = "👤 Simple" if m_r == "simple" else "👥 Double"
+                    st.write(f"**{titre_r}** — `{badge_m}` • *{t_r.get('date_creation', '')}*")
+                    st.caption(f"Avancement : **{prog_r}** • Format : {t_r.get('format', 'elimination')}")
+                with c_rc2:
+                    if st.button("⚡ Reprendre ce tournoi", key=f"btn_recup_newtab_{t_id}", type="primary", use_container_width=True):
+                        recuperer_tournoi_en_cours(t_id, mode_cible=m_r)
+
     choix_type = st.radio(
 
         "Type de tournoi à organiser :",
@@ -30138,6 +30414,11 @@ def afficher_deroulement_matchs_tournoi(tournoi, mode="simple", est_editeur=True
 
                         if est_editeur:
 
+                            ronde_prete, msg_r_lock, _ = verifier_ronde_precedente_terminee(tournoi, tour_courant, tour_num, m_id)
+
+                            if not ronde_prete:
+                                st.info(f"🔒 **Saisie verrouillée :** {msg_r_lock}")
+
                             col_s1, col_s2, col_s_btns = st.columns([1.1, 1.1, 1.3])
 
                             options_sc_m = list(range(int(m_race) + 1))
@@ -30172,7 +30453,9 @@ def afficher_deroulement_matchs_tournoi(tournoi, mode="simple", est_editeur=True
 
                                     format_func=lambda x: f"Score : {x}",
 
-                                    help=f"Score de {ea} (0 à {m_race})"
+                                    help=f"Score de {ea} (0 à {m_race})",
+
+                                    disabled=not ronde_prete
 
                                 ))
 
@@ -30192,7 +30475,9 @@ def afficher_deroulement_matchs_tournoi(tournoi, mode="simple", est_editeur=True
 
                                     format_func=lambda x: f"Score : {x}",
 
-                                    help=f"Score de {eb} (0 à {m_race})"
+                                    help=f"Score de {eb} (0 à {m_race})",
+
+                                    disabled=not ronde_prete
 
                                 ))
 
@@ -30202,7 +30487,7 @@ def afficher_deroulement_matchs_tournoi(tournoi, mode="simple", est_editeur=True
 
                                 st.write("")
 
-                                peut_valider = (ea != "À déterminer" and eb != "À déterminer")
+                                peut_valider = (ea != "À déterminer" and eb != "À déterminer" and ronde_prete)
 
                                 if st.button("✅ Valider", key=f"btn_v_{key_prefix}{mode}_{m_id}", type="primary", use_container_width=True, disabled=not peut_valider):
 
@@ -30236,7 +30521,7 @@ def afficher_deroulement_matchs_tournoi(tournoi, mode="simple", est_editeur=True
 
                                 # chaque joueur ou duo doit obligatoirement jouer son match (aucun passe-droit autorisé).
 
-                                autoriser_pd_match = not (format_type == "double_elimination" and b_type in ("loser", "finale"))
+                                autoriser_pd_match = not (format_type == "double_elimination" and b_type in ("loser", "finale")) and ronde_prete
 
                                 if candidats_pd and autoriser_pd_match:
 
@@ -30405,6 +30690,10 @@ def afficher_deroulement_matchs_tournoi(tournoi, mode="simple", est_editeur=True
 
                     st.markdown(f"###### **{tour_courant['nom']}** — Format `{tour_fmt}` (premier à {tour_race} victoires)")
 
+                    r_ok_w, r_msg_w, _ = verifier_ronde_precedente_terminee(tournoi, tour_courant, tour_num)
+                    if not r_ok_w:
+                        st.warning(f"🔒 **Ronde en attente :** {r_msg_w}")
+
                     for m in tour_courant.get("matchs", []):
 
                         afficher_carte_rencontre(m, tour_courant, tour_num, tour_race, tour_fmt)
@@ -30423,6 +30712,10 @@ def afficher_deroulement_matchs_tournoi(tournoi, mode="simple", est_editeur=True
 
                     st.markdown(f"###### **{tour_courant['nom']}** — Format `{tour_fmt}` (premier à {tour_race} victoires)")
 
+                    r_ok_l, r_msg_l, _ = verifier_ronde_precedente_terminee(tournoi, tour_courant, tour_num)
+                    if not r_ok_l:
+                        st.warning(f"🔒 **Ronde en attente :** {r_msg_l}")
+
                     for m in tour_courant.get("matchs", []):
 
                         afficher_carte_rencontre(m, tour_courant, tour_num, tour_race, tour_fmt)
@@ -30440,6 +30733,10 @@ def afficher_deroulement_matchs_tournoi(tournoi, mode="simple", est_editeur=True
                     tour_fmt = tour_courant.get("format_label", "3 de 5")
 
                     st.markdown(f"###### **{tour_courant['nom']}** — Format `{tour_fmt}` (premier à {tour_race} victoires)")
+
+                    r_ok_f, r_msg_f, _ = verifier_ronde_precedente_terminee(tournoi, tour_courant, tour_num)
+                    if not r_ok_f:
+                        st.warning(f"🔒 **Ronde en attente :** {r_msg_f}")
 
                     for m in tour_courant.get("matchs", []):
 
@@ -30470,6 +30767,10 @@ def afficher_deroulement_matchs_tournoi(tournoi, mode="simple", est_editeur=True
                     with tab_tour:
 
                         st.markdown(f"###### **{tour_courant['nom']}** — Format `{tour_fmt}` (premier à {tour_race} manches gagnantes)")
+
+                        r_ok_s, r_msg_s, _ = verifier_ronde_precedente_terminee(tournoi, tour_courant, tour_num)
+                        if not r_ok_s:
+                            st.warning(f"🔒 **Ronde en attente :** {r_msg_s}")
 
                         for m in tour_courant.get("matchs", []):
 
@@ -30872,6 +31173,10 @@ def afficher_section_tournoi(mode="simple"):
 
     """Affiche l'interface complète de configuration ou de déroulement d'un tournoi (Simple ou Double)."""
 
+    if f"msg_recup_{mode}" in st.session_state:
+
+        st.success(st.session_state.pop(f"msg_recup_{mode}"))
+
     if f"msg_annulation_{mode}" in st.session_state:
 
         st.info(st.session_state.pop(f"msg_annulation_{mode}"))
@@ -30990,6 +31295,28 @@ def afficher_section_tournoi(mode="simple"):
 
 
 
+        recup_liste_sec = obtenir_tournois_recuperables(mode=mode)
+        if not recup_liste_sec:
+            recup_liste_sec = obtenir_tournois_recuperables(mode=None)
+
+        if recup_liste_sec:
+            with st.container(border=True):
+                st.markdown(f"#### ⚡ Reprendre un tournoi en cours")
+                st.caption("Un ou plusieurs tournois non terminés sont disponibles dans l'historique. Vous pouvez en reprendre un directement :")
+                for t_r in recup_liste_sec:
+                    t_id = t_r.get("id_archive")
+                    titre_r = t_r.get("titre", "Tournoi")
+                    m_r = t_r.get("mode", "simple")
+                    prog_r = calculer_progression_tournoi(t_r)
+                    col_rc1, col_rc2 = st.columns([3, 1.2])
+                    with col_rc1:
+                        badge_m = "👤 Simple" if m_r == "simple" else "👥 Double"
+                        st.write(f"**{titre_r}** — `{badge_m}` • *{t_r.get('date_creation', '')}*")
+                        st.caption(f"Avancement : **{prog_r}** • Format : {t_r.get('format', 'elimination')}")
+                    with col_rc2:
+                        if st.button("⚡ Reprendre ce tournoi", key=f"btn_recup_grid_{mode}_{t_id}", type="primary", use_container_width=True):
+                            recuperer_tournoi_en_cours(t_id, mode_cible=m_r)
+
         afficher_formulaire_creation_tournoi(mode=mode, key_suffix=f"_sec_{mode}", est_editeur=est_editeur)
 
         return
@@ -31024,7 +31351,7 @@ def afficher_section_tournoi(mode="simple"):
 
         if est_editeur:
 
-            col_top1, col_top2, col_top_tv, col_top3, col_top_mail, col_top_new, col_top4, col_top5 = st.columns([1.3, 0.85, 0.85, 0.85, 0.95, 0.85, 0.95, 0.95])
+            col_top1, col_top2, col_top_tv, col_top3, col_top_mail, col_top_recup, col_top_new, col_top4, col_top5 = st.columns([1.3, 0.85, 0.8, 0.8, 0.9, 0.85, 0.8, 0.95, 0.95])
 
         else:
 
@@ -31193,6 +31520,33 @@ def afficher_section_tournoi(mode="simple"):
                         st.error(f"❌ {msg_act_m}")
 
 
+
+        if est_editeur:
+
+            with col_top_recup:
+
+                with st.popover("📂 Récupérer", use_container_width=True, help="Récupérer un autre tournoi en cours sauvegardé"):
+
+                    st.markdown("##### 📂 Récupérer un tournoi en cours")
+
+                    recup_t_top = obtenir_tournois_recuperables(mode=mode)
+                    if not recup_t_top:
+                        recup_t_top = obtenir_tournois_recuperables(mode=None)
+
+                    autres_recup = [r for r in recup_t_top if r.get("id_archive") != tournoi.get("id_archive")]
+                    if not autres_recup:
+                        st.info("Aucun autre tournoi en cours disponible dans l'historique.")
+                    else:
+                        st.caption("Sélectionnez un tournoi sauvegardé pour le charger sur la grille :")
+                        for t_r in autres_recup:
+                            t_id = t_r.get("id_archive")
+                            titre_r = t_r.get("titre", "Tournoi")
+                            m_r = t_r.get("mode", "simple")
+                            prog_r = calculer_progression_tournoi(t_r)
+                            st.write(f"**{titre_r}** ({'Simple' if m_r == 'simple' else 'Double'})")
+                            st.caption(f"{t_r.get('date_creation', '')} • {prog_r}")
+                            if st.button("⚡ Charger ce tournoi", key=f"btn_pop_load_{mode}_{t_id}", type="primary", use_container_width=True):
+                                recuperer_tournoi_en_cours(t_id, mode_cible=m_r)
 
         if est_editeur:
 
@@ -32121,14 +32475,7 @@ def afficher_section_historique_tournois():
 
                     if not tournoi_choisi.get("est_actif") and tournoi_choisi.get("statut") == "en_cours":
                         if st.button("⚡ Reprendre en direct", key=f"btn_reactiver_t_{choix_idx}", type="primary", use_container_width=True, help="Définir ce tournoi comme tournoi actif pour la saisie des résultats"):
-                            td_re = charger_tournois_data()
-                            import copy
-                            td_re[mode_choisi] = copy.deepcopy(tournoi_choisi)
-                            td_re[mode_choisi]["est_actif"] = True
-                            sauvegarder_tournois_data(td_re)
-                            st.success(f"✅ Tournoi {tournoi_choisi.get('titre')} activé en direct !")
-                            time.sleep(0.5)
-                            st.rerun()
+                            recuperer_tournoi_en_cours(tournoi_choisi.get("id_archive"), mode_cible=mode_choisi)
 
                     with st.popover("🗑️ Supprimer", use_container_width=True):
 
