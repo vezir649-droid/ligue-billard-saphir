@@ -19746,11 +19746,13 @@ def calculer_minutes_avant_match(h_str, now_dt=None):
     return diff
 
 
-def verifier_et_diffuser_sms_tournoi_prochaine_demi_heure(tournoi, tous_les_matchs=None, nb_tables=2):
+def verifier_et_diffuser_sms_tournoi_prochaine_demi_heure(tournoi, tous_les_matchs=None, nb_tables=2, forcer_prochains_tables=False):
     """
     Vérifie l'ensemble des rencontres du tournoi et expédie automatiquement les SMS de convocation
     pour tous les matchs prévus dans la prochaine demi-heure (30 minutes à l'avance),
     plutôt qu'au moment de la validation du match précédent.
+    Si forcer_prochains_tables=True (lors de l'activation du SMS), expédie immédiatement
+    les convocations pour les joueurs cédulés aux prochaines tables.
     """
     if not tournoi or not isinstance(tournoi, dict) or not tournoi.get("sms_tournoi_actif", False):
         return 0, []
@@ -19776,7 +19778,7 @@ def verifier_et_diffuser_sms_tournoi_prochaine_demi_heure(tournoi, tous_les_matc
         and m.get("equipe_b") not in ["À déterminer", "Exempt (Passe-droit)", "", None]
     ]
 
-    for m in matchs_jouables:
+    for idx_m, m in enumerate(matchs_jouables):
         mid = m.get("id", "")
         ea = m.get("equipe_a", "")
         eb = m.get("equipe_b", "")
@@ -19794,9 +19796,12 @@ def verifier_et_diffuser_sms_tournoi_prochaine_demi_heure(tournoi, tous_les_matc
             # Prévu dans la prochaine demi-heure (30 minutes à l'avance jusqu'à 60 min de retard non joué)
             if -60 <= diff_min <= 30:
                 doit_convoquer = True
+            elif forcer_prochains_tables and idx_m < nb_tables:
+                # Lors de l'activation explicite, convoquer immédiatement les joueurs cédulés aux tables
+                doit_convoquer = True
         else:
             # Fallback si aucun horaire configuré : matchs immédiats aux tables disponibles
-            if m in matchs_jouables[:nb_tables]:
+            if idx_m < nb_tables:
                 doit_convoquer = True
 
         if doit_convoquer:
@@ -20859,7 +20864,11 @@ def generer_arbre_elimination(participants, race_prelim=2, race_finale=3, titre=
 
         "vainqueur_final": None,
 
-        "finaliste": None
+        "finaliste": None,
+
+        "sms_tournoi_actif": False,
+
+        "convocations_sms_envoyees": {}
 
     }
 
@@ -22899,7 +22908,11 @@ def generer_arbre_double_elimination(participants, race_prelim=2, race_finale=3,
 
         "vainqueur_final": None,
 
-        "finaliste": None
+        "finaliste": None,
+
+        "sms_tournoi_actif": False,
+
+        "convocations_sms_envoyees": {}
 
     }
 
@@ -24069,7 +24082,11 @@ def generer_round_robin(participants, race_to=2, titre="Tournoi", heure_debut="0
 
         "vainqueur_final": None,
 
-        "finaliste": None
+        "finaliste": None,
+
+        "sms_tournoi_actif": False,
+
+        "convocations_sms_envoyees": {}
 
     }
 
@@ -29725,11 +29742,17 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
 
                 t_cree["mode"] = mode
 
+                t_cree["sms_tournoi_actif"] = False
+
+                t_cree["convocations_sms_envoyees"] = {}
+
                 td_current[mode] = t_cree
 
                 sauvegarder_tournois_data(td_current)
 
                 st.session_state[f"ouvrir_arborescence_auto_{mode}"] = True
+
+                st.session_state[f"tgl_sms_auto_{mode}"] = False
 
                 promus_msg = t_cree.get("promus_second_tour", [])
 
@@ -30440,20 +30463,32 @@ def afficher_section_tournoi(mode="simple"):
                                 "🔔 Convocations SMS automatiques (Prochaine 1/2 h)",
                                 value=bool(tournoi.get("sms_tournoi_actif", False)),
                                 key=f"tgl_sms_auto_{mode}",
-                                help="Quand activé, les joueurs prévus dans la prochaine demi-heure (30 min à l'avance) reçoivent automatiquement un texto de convocation avec leur table et leur heure de match plutôt qu'au moment de la validation."
+                                help="Désactivé au lancement du tournoi. Lorsque vous activez l'option, les convocations SMS sont immédiatement expédiées aux joueurs cédulés, puis 30 minutes avant chaque partie."
                             )
                             if sms_auto_val != tournoi.get("sms_tournoi_actif", False):
                                 tournoi["sms_tournoi_actif"] = sms_auto_val
                                 if sms_auto_val:
-                                    verifier_et_diffuser_sms_tournoi_prochaine_demi_heure(tournoi, tous_les_matchs_t, nb_tables=nb_tables_aff)
+                                    # À l'activation, envoyer immédiatement les convocations pour les joueurs cédulés
+                                    nb_act, list_act = verifier_et_diffuser_sms_tournoi_prochaine_demi_heure(
+                                        tournoi, tous_les_matchs_t, nb_tables=nb_tables_aff, forcer_prochains_tables=True
+                                    )
+                                    if nb_act > 0:
+                                        st.session_state[f"msg_act_sms_{mode}"] = f"🔔 SMS activés : {nb_act} convocation(s) expédiée(s) pour les joueurs cédulés ({', '.join(list_act)}) !"
+                                    else:
+                                        st.session_state[f"msg_act_sms_{mode}"] = "🔔 SMS activés : convocations programmées 30 minutes avant chaque match."
+                                else:
+                                    st.session_state[f"msg_act_sms_{mode}"] = "🔕 Envoi de SMS désactivé pour ce tournoi."
                                 sauvegarder_tournois_data(tournois_data)
                                 st.rerun()
 
-                    # Automatisation des convocations SMS : envoi pour les joueurs prévus dans la prochaine demi-heure
+                    if f"msg_act_sms_{mode}" in st.session_state:
+                        st.toast(st.session_state.pop(f"msg_act_sms_{mode}"), icon="📲")
+
+                    # Automatisation continue des convocations SMS : envoi pour les joueurs prévus dans la prochaine demi-heure
                     convocations = tournoi.setdefault("convocations_sms_envoyees", {})
                     if tournoi.get("sms_tournoi_actif", False):
                         nb_nouv_sms, liste_convoques = verifier_et_diffuser_sms_tournoi_prochaine_demi_heure(
-                            tournoi, tous_les_matchs_t, nb_tables=nb_tables_aff
+                            tournoi, tous_les_matchs_t, nb_tables=nb_tables_aff, forcer_prochains_tables=False
                         )
                         if nb_nouv_sms > 0:
                             sauvegarder_tournois_data(tournois_data)
