@@ -180,6 +180,10 @@ La barre latérale **« 📋 Paramètres du Match »** regroupe tous les réglag
   * **Envoi immédiat des convocations SMS lors de la modification d'un horaire ou d'une table :** Dès qu'un organisateur ou marqueur modifie l'heure estimée ou la table assignée d'un match (dans le popover de planification en Élimination directe ou Round-Robin), l'application expédie immédiatement les textos de convocation SMS mis à jour aux joueurs concernés avec la nouvelle heure et la nouvelle table. Si l'option *« Décaler aussi les matchs suivants de ce décalage »* est cochée, les rencontres suivantes décalées sont également mises à jour et leurs convocations SMS sont actualisées instantanément avec mise à jour en temps réel des badges `📱 Convoqué (HH:MM)`.
   * **Avis automatique de changement d'horaire / table (`⏰ TOURNOI_HORAIRE`) :** En cas de reprogrammation d'une heure ou de réattribution de table, les convocations SMS sont automatiquement diffusées aux compétiteurs concernés.
   * **Format ultra-concis GSM 7-bit mono-segment (< 150 car.) :** Raccourcissement intelligent des noms d'équipes et joueurs pour garantir une expédition en un seul segment SMS (mono-segment 160 caractères max).
+* **🎯 Saisie des résultats pour les tournois actifs choisis dans la liste :**
+  * **Saisie directe depuis la liste déroulante des tournois :** Lorsqu'un tournoi actif est sélectionné dans la liste déroulante (*« 🏆 Choisir un tournoi dans la liste déroulante »*), l'ensemble des rencontres, les cartes de matchs, la saisie des pointages, les boutons de validation (`✅ Valider`), de promotion (`🎟️ Passe-droit`) et de rectification (`✏️ Reprendre / Corriger`) s'affichent immédiatement sous l'arborescence, permettant d'entrer les scores directement sans devoir obligatoirement basculer d'onglet.
+  * **Réactivation en 1 clic des tournois en cours :** Pour tout tournoi sauvegardé dont le statut est en cours (`statut == "en_cours"`), un bouton `⚡ Reprendre en direct` permet de le recharger immédiatement comme tournoi actif de sa catégorie pour poursuivre la saisie officielle des résultats.
+
 
 ---
 

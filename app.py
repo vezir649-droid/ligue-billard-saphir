@@ -29939,6 +29939,931 @@ def afficher_onglet_nouveau_tournoi():
 
 
 
+def afficher_deroulement_matchs_tournoi(tournoi, mode="simple", est_editeur=True, key_prefix=""):
+    """Affiche l'ensemble des rencontres, la saisie des scores et les classements pour un tournoi (Simple ou Double)."""
+    if not tournoi or not isinstance(tournoi, dict):
+        return
+
+    format_type = tournoi.get("format", "elimination")
+    statut = tournoi.get("statut", "en_cours")
+    race_to = tournoi.get("race_to", 2)
+    tournois_data = charger_tournois_data()
+
+# DÉROULEMENT SELON LE FORMAT
+
+    if format_type in ["elimination", "double_elimination"]:
+
+        st.markdown("""
+
+            <style>
+
+                div[data-testid="stSelectbox"] div[data-baseweb="select"] {
+
+                    font-weight: 800 !important;
+
+                }
+
+                div[data-testid="stSelectbox"] div[data-baseweb="select"] * {
+
+                    font-size: 15px !important;
+
+                    font-weight: 800 !important;
+
+                }
+
+            </style>
+
+        """, unsafe_allow_html=True)
+
+        st.markdown("##### 🎯 Saisie des scores & Déroulement des rencontres")
+
+        if tournoi.get("promus_second_tour"):
+
+            promus_str_view = ", ".join(tournoi["promus_second_tour"])
+
+            st.info(f"🎟️ **Participants promus d'office (Passe-droit) :** {promus_str_view}")
+
+
+
+        def afficher_carte_rencontre(m, tour_courant, tour_num, tour_race, tour_fmt):
+
+            m_id = m["id"]
+
+            ea = m["equipe_a"]
+
+            eb = m["equipe_b"]
+
+            termine = m.get("termine", False)
+
+            vainq = m.get("vainqueur")
+
+            sa = m.get("score_a", 0)
+
+            sb = m.get("score_b", 0)
+
+            m_race = m.get("race_to", tour_race)
+
+            m_fmt = m.get("format_label", tour_fmt)
+
+            b_type = m.get("bracket", tour_courant.get("bracket", "winner"))
+
+
+
+            if b_type == "loser":
+
+                badge_b = "<span style='background:#fff3e0; color:#e65100; border:1px solid #ffb74d; padding:2px 7px; border-radius:8px; font-size:11px; font-weight:700;'>🟧 Seconde Chance</span>"
+
+            elif b_type == "finale":
+
+                badge_b = "<span style='background:#fff8e1; color:#b45309; border:1px solid #f59e0b; padding:2px 7px; border-radius:8px; font-size:11px; font-weight:700;'>🏆 Grande Finale</span>"
+
+            elif format_type == "double_elimination":
+
+                badge_b = "<span style='background:#e0f2fe; color:#0369a1; border:1px solid #7dd3fc; padding:2px 7px; border-radius:8px; font-size:11px; font-weight:700;'>🟦 Gagnants</span>"
+
+            else:
+
+                badge_b = ""
+
+
+
+            m_h = m.get("heure_estimee", "")
+
+            m_tbl = m.get("table", "Table 1")
+
+            badge_horaire = f"<span style='background:#e8f0fe; color:#0b3c5d; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600;'>⏰ {m_h} • {m_tbl}</span>" if (m_h and m_h != "—") else ""
+
+
+
+            with st.container(border=True):
+
+                col_m1, col_m2 = st.columns([1.15, 1.05])
+
+                with col_m1:
+
+                    if termine:
+
+                        st.markdown(f"{badge_b} **{m_id}** : **{ea}** ({sa}) vs ({sb}) **{eb}**", unsafe_allow_html=True)
+
+                        if m.get("passe_droit"):
+
+                            st.success(f"🎟️ **Passe-droit accordé :** {vainq} est promu au tour suivant !")
+
+                        else:
+
+                            st.success(f"🏆 **Qualifié :** {vainq} *(score final {sa}-{sb})*")
+
+                    else:
+
+                        if ea == "À déterminer" or eb == "À déterminer":
+
+                            st.markdown(f"{badge_b} **{m_id}** : `{ea}` vs `{eb}`", unsafe_allow_html=True)
+
+                            st.caption("⏳ En attente des vainqueurs / perdants des tours précédents...")
+
+                        else:
+
+                            st.markdown(f"{badge_b} **{m_id}** : 🎯 **{ea}** vs **{eb}**", unsafe_allow_html=True)
+
+                            st.caption(f"Format officiel : **{m_fmt}** (premier à {m_race} victoires)")
+
+
+
+                    if est_editeur:
+
+                        btn_lbl_h = f"🕒 Horaire ({m_h} • {m_tbl})" if (m_h and m_h != "—") else "🕒 Définir l'horaire"
+
+                        with st.popover(btn_lbl_h, use_container_width=False, help="Changer l'heure programmée pour ce match et mettre à jour le tableau"):
+
+                            st.markdown(f"###### ⏰ Horaire du match **{m_id}**")
+
+                            st.caption(f"Rencontre : **{ea}** vs **{eb}**")
+
+                            t_actuel = parse_heure_str_vers_time(m_h)
+
+                            col_pop_h1, col_pop_h2 = st.columns(2)
+
+                            with col_pop_h1:
+
+                                nouv_t = st.time_input("Nouvelle heure :", value=t_actuel, key=f"t_in_{key_prefix}{mode}_{m_id}", step=300)
+
+                            with col_pop_h2:
+
+                                opts_tables = ["Table 1", "Table 2", "Table 3", "Table 4", "Table finale"]
+
+                                cur_tbl = m.get("table", "Table 1")
+
+                                idx_t = opts_tables.index(cur_tbl) if cur_tbl in opts_tables else 0
+
+                                nouv_tbl = st.selectbox("Table :", options=opts_tables, index=idx_t, key=f"tbl_sel_{key_prefix}{mode}_{m_id}")
+
+
+
+                            decaler_suivants = st.checkbox("Décaler aussi les matchs suivants de ce décalage", value=False, key=f"chk_shift_{key_prefix}{mode}_{m_id}", help="Si coché, ajuste automatiquement l'horaire des matchs ultérieurs non terminés")
+
+
+
+                            if st.button("💾 Mettre à jour le tableau", type="primary", use_container_width=True, key=f"btn_save_hr_{key_prefix}{mode}_{m_id}"):
+                                str_h = nouv_t.strftime("%Hh%M")
+                                old_h_prec = m.get("heure_estimee", "")
+                                old_tbl_prec = m.get("table", "")
+
+                                matchs_decales = []
+                                if decaler_suivants and m_h and m_h != "—":
+                                    old_t = parse_heure_str_vers_time(m_h)
+                                    diff_min = (nouv_t.hour * 60 + nouv_t.minute) - (old_t.hour * 60 + old_t.minute)
+                                    if diff_min != 0:
+                                        matchs_decales = decaler_horaires_matchs_suivants(tournoi, m_id, diff_min)
+
+                                m["heure_estimee"] = str_h
+                                m["table"] = nouv_tbl
+                                m["table_courte"] = "T" + nouv_tbl.split(" ")[-1] if " " in nouv_tbl else nouv_tbl[:2].upper()
+                                recalculer_heure_fin_tournoi(tournoi)
+
+                                msg_sms_extra = ""
+                                if str_h != old_h_prec or nouv_tbl != old_tbl_prec:
+                                    nb_av, list_av = envoyer_convocations_changement_heure_match(
+                                        tournoi, m, str_h, nouv_tbl, matchs_suivants_decales=matchs_decales
+                                    )
+                                    if nb_av > 0:
+                                        msg_sms_extra = f" et {nb_av} convocation(s) SMS envoyée(s) 📲 !"
+                                        st.session_state[f"msg_act_sms_{mode}"] = f"🔔 Convocations SMS envoyées suite au changement d'horaire ({', '.join(list_av)}) !"
+
+                                sauvegarder_tournois_data(tournois_data)
+                                st.success(f"✅ Heure du match {m_id} mise à jour à {str_h} ({nouv_tbl}){msg_sms_extra} et tableau actualisé !")
+                                time.sleep(0.5)
+                                st.rerun()
+
+
+
+                with col_m2:
+
+                    if not termine:
+
+                        if est_editeur:
+
+                            col_s1, col_s2, col_s_btns = st.columns([1.1, 1.1, 1.3])
+
+                            options_sc_m = list(range(int(m_race) + 1))
+
+                            key_sc_a = f"sc_a_{key_prefix}{mode}_{m_id}"
+
+                            key_sc_b = f"sc_b_{key_prefix}{mode}_{m_id}"
+
+                            if key_sc_a not in st.session_state or st.session_state[key_sc_a] not in options_sc_m:
+
+                                st.session_state[key_sc_a] = 0
+
+                            if key_sc_b not in st.session_state or st.session_state[key_sc_b] not in options_sc_m:
+
+                                st.session_state[key_sc_b] = 0
+
+                            idx_sc_a = options_sc_m.index(st.session_state[key_sc_a])
+
+                            idx_sc_b = options_sc_m.index(st.session_state[key_sc_b])
+
+                            with col_s1:
+
+                                sc_a_in = int(st.selectbox(
+
+                                    f"🎱 {formater_nom_abrege_joueur(ea)}",
+
+                                    options=options_sc_m,
+
+                                    index=idx_sc_a,
+
+                                    key=key_sc_a,
+
+                                    format_func=lambda x: f"Score : {x}",
+
+                                    help=f"Score de {ea} (0 à {m_race})"
+
+                                ))
+
+                                st.markdown(f"<div style='text-align:center; font-size:15px; font-weight:900; background:#0284c7; color:#ffffff; border-radius:6px; padding:2px 0; margin-top:2px;'>Score : {sc_a_in}</div>", unsafe_allow_html=True)
+
+                            with col_s2:
+
+                                sc_b_in = int(st.selectbox(
+
+                                    f"🎱 {formater_nom_abrege_joueur(eb)}",
+
+                                    options=options_sc_m,
+
+                                    index=idx_sc_b,
+
+                                    key=key_sc_b,
+
+                                    format_func=lambda x: f"Score : {x}",
+
+                                    help=f"Score de {eb} (0 à {m_race})"
+
+                                ))
+
+                                st.markdown(f"<div style='text-align:center; font-size:15px; font-weight:900; background:#0284c7; color:#ffffff; border-radius:6px; padding:2px 0; margin-top:2px;'>Score : {sc_b_in}</div>", unsafe_allow_html=True)
+
+                            with col_s_btns:
+
+                                st.write("")
+
+                                peut_valider = (ea != "À déterminer" and eb != "À déterminer")
+
+                                if st.button("✅ Valider", key=f"btn_v_{key_prefix}{mode}_{m_id}", type="primary", use_container_width=True, disabled=not peut_valider):
+
+                                    if sc_a_in == sc_b_in:
+
+                                        st.error("Match nul impossible.")
+
+                                    elif sc_a_in < m_race and sc_b_in < m_race:
+
+                                        st.warning(f"Un joueur/duo doit remporter {m_race} manches ({m_fmt}).")
+
+                                    else:
+
+                                        actualiser_score_elimination(tournoi, tour_num, m_id, sc_a_in, sc_b_in)
+
+                                        td_fresh = charger_tournois_data()
+
+                                        td_fresh[mode] = tournoi
+
+                                        sauvegarder_tournois_data(td_fresh)
+
+                                        st.rerun()
+
+
+
+                                candidats_pd = [p for p in [ea, eb] if p and p not in ["À déterminer", "Exempt (Passe-droit)"]]
+
+                                # Dans le tableau des perdants (Loser Bracket) ou la Grande Finale d'un tournoi à double élimination,
+
+                                # chaque joueur ou duo doit obligatoirement jouer son match (aucun passe-droit autorisé).
+
+                                autoriser_pd_match = not (format_type == "double_elimination" and b_type in ("loser", "finale"))
+
+                                if candidats_pd and autoriser_pd_match:
+
+                                    with st.popover("🎟️ Promotion", use_container_width=True, help="Promouvoir directement un participant au tour suivant (Passe-droit)"):
+
+                                        st.markdown(f"##### 🎟️ Accorder une promotion")
+
+                                        st.caption(f"Promouvoir au tour suivant pour la rencontre **{m_id}** :")
+
+                                        choix_promo = st.radio(
+
+                                            "Bénéficiaire de la promotion :",
+
+                                            options=candidats_pd,
+
+                                            format_func=lambda x: f"🚀 {x}",
+
+                                            key=f"rad_pd_{key_prefix}{mode}_{m_id}"
+
+                                        )
+
+                                        if st.button("🚀 Promouvoir au tour suivant", type="primary", use_container_width=True, key=f"btn_apply_pd_{key_prefix}{mode}_{m_id}"):
+
+                                            attribuer_passe_droit_elimination(tournoi, tour_num, m_id, choix_promo)
+
+                                            td_fresh = charger_tournois_data()
+
+                                            td_fresh[mode] = tournoi
+
+                                            sauvegarder_tournois_data(td_fresh)
+
+                                            st.success(f"🎟️ Passe-droit accordé ! {choix_promo} est promu au tour suivant.")
+
+                                            st.rerun()
+
+                        else:
+
+                            st.caption("⏳ *Rencontre en attente de score (saisie réservée au marqueur)*")
+                    else:
+                        if est_editeur:
+                            with st.popover("✏️ Reprendre / Corriger", use_container_width=True, help="Corriger le score ou reprendre la validation de ce match"):
+                                st.markdown(f"###### ✏️ Correction du match **{m_id}**")
+                                st.caption(f"Rencontre : **{ea}** vs **{eb}**")
+                                if m.get("passe_droit"):
+                                    st.info(f"🎟️ Validé par Passe-droit en faveur de **{vainq}**")
+                                else:
+                                    st.caption(f"Score enregistré : **{ea}** {sa} - {sb} **{eb}** (Vainqueur : **{vainq}**)")
+                                
+                                desc_termines = [d[0] for d in obtenir_matchs_descendants_termines(tournoi, m_id)]
+                                chk_force = False
+                                if desc_termines:
+                                    ids_suiv = ", ".join([d.get("id", "") for d in desc_termines])
+                                    st.warning(f"⚠️ **Attention :** Le match suivant **{ids_suiv}** a déjà été validé ou joué. Toute modification du vainqueur ou reprise réinitialisera ce(s) match(s).")
+                                    chk_force = st.checkbox("Confirmer la réinitialisation des matchs suivants impactés", value=False, key=f"chk_f_{key_prefix}{mode}_{m_id}")
+                                else:
+                                    chk_force = True
+                                
+                                st.markdown("**1️⃣ Corriger le score :**")
+                                col_corr_a, col_corr_b = st.columns(2)
+                                options_corr_m = list(range(int(m_race) + 1))
+                                idx_ca = options_corr_m.index(sa) if sa in options_corr_m else 0
+                                idx_cb = options_corr_m.index(sb) if sb in options_corr_m else 0
+                                with col_corr_a:
+                                    sc_a_corr = int(st.selectbox(
+                                        f"🎱 {formater_nom_abrege_joueur(ea)}",
+                                        options=options_corr_m,
+                                        index=idx_ca,
+                                        key=f"corr_sc_a_{key_prefix}{mode}_{m_id}",
+                                        format_func=lambda x: f"Score : {x}"
+                                    ))
+                                with col_corr_b:
+                                    sc_b_corr = int(st.selectbox(
+                                        f"🎱 {formater_nom_abrege_joueur(eb)}",
+                                        options=options_corr_m,
+                                        index=idx_cb,
+                                        key=f"corr_sc_b_{key_prefix}{mode}_{m_id}",
+                                        format_func=lambda x: f"Score : {x}"
+                                    ))
+                                
+                                if st.button("💾 Enregistrer la correction", type="primary", use_container_width=True, key=f"btn_save_corr_{key_prefix}{mode}_{m_id}"):
+                                    if sc_a_corr == sc_b_corr:
+                                        st.error("Match nul impossible.")
+                                    elif sc_a_corr < m_race and sc_b_corr < m_race:
+                                        st.warning(f"Un joueur/duo doit remporter {m_race} manches ({m_fmt}).")
+                                    else:
+                                        nouveau_vainqueur = ea if sc_a_corr > sc_b_corr else eb
+                                        if nouveau_vainqueur != vainq and desc_termines and not chk_force:
+                                            st.error("Veuillez cocher la confirmation d'impact sur les matchs ultérieurs.")
+                                        else:
+                                            ok, msg = corriger_score_elimination(tournoi, m_id, sc_a_corr, sc_b_corr, forcer_cascade=chk_force)
+                                            if ok:
+                                                td_fresh = charger_tournois_data()
+                                                td_fresh[mode] = tournoi
+                                                sauvegarder_tournois_data(td_fresh)
+                                                st.success(f"✅ {msg}")
+                                                time.sleep(0.5)
+                                                st.rerun()
+                                            else:
+                                                st.error(msg)
+                                
+                                st.divider()
+                                st.markdown("**2️⃣ Reprendre la validation :**")
+                                st.caption("Annule la validation et remet la rencontre en attente de score.")
+                                if st.button("🔄 Reprendre la validation (Remettre en jeu)", type="secondary", use_container_width=True, key=f"btn_reprendre_{key_prefix}{mode}_{m_id}"):
+                                    if desc_termines and not chk_force:
+                                        st.error("Veuillez cocher la confirmation d'impact sur les matchs ultérieurs.")
+                                    else:
+                                        ok, msg = reprendre_validation_match_elimination(tournoi, m_id, forcer_cascade=chk_force)
+                                        if ok:
+                                            st.session_state[f"sc_a_{key_prefix}{mode}_{m_id}"] = sa
+                                            st.session_state[f"sc_b_{key_prefix}{mode}_{m_id}"] = sb
+                                            td_fresh = charger_tournois_data()
+                                            td_fresh[mode] = tournoi
+                                            sauvegarder_tournois_data(td_fresh)
+                                            st.success(f"🔄 {msg}")
+                                            time.sleep(0.5)
+                                            st.rerun()
+                                        else:
+                                            st.error(msg)
+                        else:
+                            st.caption("✅ *Rencontre terminée et validée*")
+
+
+
+        tours = tournoi.get("tours", [])
+
+
+
+        if format_type == "double_elimination":
+
+            tours_winner = [t for t in tours if t.get("bracket") == "winner"]
+
+            tours_loser = [t for t in tours if t.get("bracket") == "loser"]
+
+            tours_finale = [t for t in tours if t.get("bracket") == "finale"]
+
+
+
+            tab_w, tab_l, tab_f = st.tabs([
+
+                f"🟦 Tableau des Gagnants ({len(tours_winner)} tours)",
+
+                f"🟧 Seconde Chance — Repêchage ({len(tours_loser)} tours)",
+
+                "🏆 Grande Finale"
+
+            ])
+
+
+
+            with tab_w:
+
+                for tour_courant in tours_winner:
+
+                    tour_num = tour_courant["numero"]
+
+                    tour_race = tour_courant.get("race_to", 2)
+
+                    tour_fmt = tour_courant.get("format_label", "2 de 3")
+
+                    st.markdown(f"###### **{tour_courant['nom']}** — Format `{tour_fmt}` (premier à {tour_race} victoires)")
+
+                    for m in tour_courant.get("matchs", []):
+
+                        afficher_carte_rencontre(m, tour_courant, tour_num, tour_race, tour_fmt)
+
+
+
+            with tab_l:
+
+                for tour_courant in tours_loser:
+
+                    tour_num = tour_courant["numero"]
+
+                    tour_race = tour_courant.get("race_to", 2)
+
+                    tour_fmt = tour_courant.get("format_label", "2 de 3")
+
+                    st.markdown(f"###### **{tour_courant['nom']}** — Format `{tour_fmt}` (premier à {tour_race} victoires)")
+
+                    for m in tour_courant.get("matchs", []):
+
+                        afficher_carte_rencontre(m, tour_courant, tour_num, tour_race, tour_fmt)
+
+
+
+            with tab_f:
+
+                for tour_courant in tours_finale:
+
+                    tour_num = tour_courant["numero"]
+
+                    tour_race = tour_courant.get("race_to", 3)
+
+                    tour_fmt = tour_courant.get("format_label", "3 de 5")
+
+                    st.markdown(f"###### **{tour_courant['nom']}** — Format `{tour_fmt}` (premier à {tour_race} victoires)")
+
+                    for m in tour_courant.get("matchs", []):
+
+                        afficher_carte_rencontre(m, tour_courant, tour_num, tour_race, tour_fmt)
+
+
+
+        else:
+
+            # Elimination directe simple
+
+            tours_onglets = [t["nom"] for t in tours]
+
+            if tours_onglets:
+
+                tabs_t = st.tabs(tours_onglets)
+
+                for t_idx, tab_tour in enumerate(tabs_t):
+
+                    tour_courant = tours[t_idx]
+
+                    tour_num = tour_courant["numero"]
+
+                    tour_race = tour_courant.get("race_to", 3 if tour_num == tournoi.get("total_tours") else 2)
+
+                    tour_fmt = tour_courant.get("format_label", "3 de 5" if tour_race == 3 else "2 de 3")
+
+                    with tab_tour:
+
+                        st.markdown(f"###### **{tour_courant['nom']}** — Format `{tour_fmt}` (premier à {tour_race} manches gagnantes)")
+
+                        for m in tour_courant.get("matchs", []):
+
+                            afficher_carte_rencontre(m, tour_courant, tour_num, tour_race, tour_fmt)
+
+
+
+    else:
+
+        # FORMAT ROUND-ROBIN
+
+        st.markdown("##### 📊 Classement en direct (Round-Robin)")
+
+        classement_rr = calculer_classement_round_robin(tournoi)
+
+
+
+        lignes_rr = []
+
+        medailles_rr = {1: "🥇", 2: "🥈", 3: "🥉"}
+
+        for rang, (part, s_data) in enumerate(classement_rr, start=1):
+
+            badge_r = medailles_rr.get(rang, f"#{rang}")
+
+            diff_str = f"+{s_data['diff']}" if s_data['diff'] > 0 else str(s_data['diff'])
+
+            lignes_rr.append({
+
+                "Rang": badge_r,
+
+                "Participant": part,
+
+                "PJ": s_data["pj"],
+
+                "V": s_data["v"],
+
+                "D": s_data["d"],
+
+                "Manches Pour": s_data["pour"],
+
+                "Manches Contre": s_data["contre"],
+
+                "Différence": diff_str,
+
+                "Points": s_data["pts"]
+
+            })
+
+
+
+        df_rr = pd.DataFrame(lignes_rr)
+
+        afficher_tableau_html_compatible(df_rr)
+
+
+
+        st.divider()
+
+        st.markdown("##### 📋 Calendrier des rencontres")
+
+
+
+        matchs_rr = tournoi.get("matchs", [])
+
+        tous_termines = True
+
+        for m in matchs_rr:
+
+            m_id = m["id"]
+
+            ea, eb = m["equipe_a"], m["equipe_b"]
+
+            termine = m.get("termine", False)
+
+            if not termine:
+
+                tous_termines = False
+
+            sa, sb = m.get("score_a", 0), m.get("score_b", 0)
+
+
+
+            m_h = m.get("heure_estimee", "")
+
+            m_tbl = m.get("table", "Table 1")
+
+            badge_horaire_rr = f"<span style='background:#e8f0fe; color:#0b3c5d; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600;'>⏰ {m_h} • {m_tbl}</span>" if m_h else ""
+
+
+
+            with st.container(border=True):
+
+                col_rm1, col_rm2 = st.columns([1.15, 1.05])
+
+                rr_race = tournoi.get("race_to", 2)
+
+                rr_fmt = tournoi.get("format_label", "2 de 3")
+
+                with col_rm1:
+
+                    if termine:
+
+                        st.markdown(f"**{m_id}** : **{ea}** ({sa}) vs ({sb}) **{eb}**", unsafe_allow_html=True)
+
+                        if m.get("passe_droit"):
+
+                            st.success(f"🎟️ **Passe-droit accordé :** {m['vainqueur']} remporte la rencontre !")
+
+                        else:
+
+                            st.success(f"🏆 Vainqueur : {m['vainqueur']} *(score final {sa}-{sb})*")
+
+                    else:
+
+                        st.markdown(f"**{m_id}** : 🎯 **{ea}** vs **{eb}**", unsafe_allow_html=True)
+
+                        st.caption(f"Format officiel : **{rr_fmt}** (premier à {rr_race} victoires)")
+
+
+
+                    if est_editeur:
+
+                        btn_lbl_hrr = f"🕒 Horaire ({m_h} • {m_tbl})" if (m_h and m_h != "—") else "🕒 Définir horaire"
+
+                        with st.popover(btn_lbl_hrr, use_container_width=False, help="Changer l'heure programmée pour ce match et mettre à jour le calendrier"):
+
+                            st.markdown(f"###### ⏰ Horaire du match **{m_id}**")
+
+                            st.caption(f"Rencontre : **{ea}** vs **{eb}**")
+
+                            t_actuel = parse_heure_str_vers_time(m_h)
+
+                            col_pop_h1, col_pop_h2 = st.columns(2)
+
+                            with col_pop_h1:
+
+                                nouv_t = st.time_input("Nouvelle heure :", value=t_actuel, key=f"rr_t_in_{key_prefix}{mode}_{m_id}", step=300)
+
+                            with col_pop_h2:
+
+                                opts_tables = ["Table 1", "Table 2", "Table 3", "Table 4", "Table finale"]
+
+                                cur_tbl = m.get("table", "Table 1")
+
+                                idx_t = opts_tables.index(cur_tbl) if cur_tbl in opts_tables else 0
+
+                                nouv_tbl = st.selectbox("Table :", options=opts_tables, index=idx_t, key=f"rr_tbl_sel_{key_prefix}{mode}_{m_id}")
+
+
+
+                            decaler_suivants = st.checkbox("Décaler aussi les matchs suivants de ce décalage", value=False, key=f"chk_shift_rr_{key_prefix}{mode}_{m_id}", help="Si coché, ajuste automatiquement l'horaire des matchs ultérieurs non terminés")
+
+
+
+                            if st.button("💾 Mettre à jour le calendrier", type="primary", use_container_width=True, key=f"btn_save_hr_rr_{key_prefix}{mode}_{m_id}"):
+                                str_h = nouv_t.strftime("%Hh%M")
+                                old_h_prec = m.get("heure_estimee", "")
+                                old_tbl_prec = m.get("table", "")
+
+                                matchs_decales = []
+                                if decaler_suivants and m_h and m_h != "—":
+                                    old_t = parse_heure_str_vers_time(m_h)
+                                    diff_min = (nouv_t.hour * 60 + nouv_t.minute) - (old_t.hour * 60 + old_t.minute)
+                                    if diff_min != 0:
+                                        matchs_decales = decaler_horaires_matchs_suivants(tournoi, m_id, diff_min)
+
+                                m["heure_estimee"] = str_h
+                                m["table"] = nouv_tbl
+                                m["table_courte"] = "T" + nouv_tbl.split(" ")[-1] if " " in nouv_tbl else nouv_tbl[:2].upper()
+                                recalculer_heure_fin_tournoi(tournoi)
+
+                                msg_sms_extra = ""
+                                if str_h != old_h_prec or nouv_tbl != old_tbl_prec:
+                                    nb_av, list_av = envoyer_convocations_changement_heure_match(
+                                        tournoi, m, str_h, nouv_tbl, matchs_suivants_decales=matchs_decales
+                                    )
+                                    if nb_av > 0:
+                                        msg_sms_extra = f" et {nb_av} convocation(s) SMS envoyée(s) 📲 !"
+                                        st.session_state[f"msg_act_sms_{mode}"] = f"🔔 Convocations SMS envoyées suite au changement d'horaire ({', '.join(list_av)}) !"
+
+                                sauvegarder_tournois_data(tournois_data)
+                                st.success(f"✅ Rencontre {m_id} reprogrammée à {str_h} ({nouv_tbl}){msg_sms_extra} et calendrier actualisé !")
+                                time.sleep(0.5)
+                                st.rerun()
+
+
+
+                with col_rm2:
+
+                    if not termine:
+
+                        if est_editeur:
+
+                            col_s1, col_s2, col_s_btns = st.columns([1.1, 1.1, 1.3])
+
+                            options_rr_m = list(range(int(rr_race) + 1))
+
+                            key_rr_a = f"rr_a_{mode}_{m_id}"
+
+                            key_rr_b = f"rr_b_{mode}_{m_id}"
+
+                            if key_rr_a not in st.session_state or st.session_state[key_rr_a] not in options_rr_m:
+
+                                st.session_state[key_rr_a] = 0
+
+                            if key_rr_b not in st.session_state or st.session_state[key_rr_b] not in options_rr_m:
+
+                                st.session_state[key_rr_b] = 0
+
+                            idx_rr_a = options_rr_m.index(st.session_state[key_rr_a])
+
+                            idx_rr_b = options_rr_m.index(st.session_state[key_rr_b])
+
+                            with col_s1:
+
+                                sc_a_in = int(st.selectbox(
+
+                                    f"🎱 {formater_nom_abrege_joueur(ea)}",
+
+                                    options=options_rr_m,
+
+                                    index=idx_rr_a,
+
+                                    key=key_rr_a,
+
+                                    format_func=lambda x: f"Score : {x}",
+
+                                    help=f"Score de {ea} (0 à {rr_race})"
+
+                                ))
+
+                                st.markdown(f"<div style='text-align:center; font-size:15px; font-weight:900; background:#0284c7; color:#ffffff; border-radius:6px; padding:2px 0; margin-top:2px;'>Score : {sc_a_in}</div>", unsafe_allow_html=True)
+
+                            with col_s2:
+
+                                sc_b_in = int(st.selectbox(
+
+                                    f"🎱 {formater_nom_abrege_joueur(eb)}",
+
+                                    options=options_rr_m,
+
+                                    index=idx_rr_b,
+
+                                    key=key_rr_b,
+
+                                    format_func=lambda x: f"Score : {x}",
+
+                                    help=f"Score de {eb} (0 à {rr_race})"
+
+                                ))
+
+                                st.markdown(f"<div style='text-align:center; font-size:15px; font-weight:900; background:#0284c7; color:#ffffff; border-radius:6px; padding:2px 0; margin-top:2px;'>Score : {sc_b_in}</div>", unsafe_allow_html=True)
+
+                            with col_s_btns:
+
+                                st.write("")
+
+                                if st.button("✅ Valider", key=f"btn_rr_{key_prefix}{mode}_{m_id}", type="primary", use_container_width=True):
+
+                                    if sc_a_in == sc_b_in:
+
+                                        st.error("Match nul impossible.")
+
+                                    elif sc_a_in < rr_race and sc_b_in < rr_race:
+
+                                        st.warning(f"Un joueur/duo doit remporter {rr_race} manches ({rr_fmt}).")
+
+                                    else:
+
+                                        m["score_a"] = sc_a_in
+
+                                        m["score_b"] = sc_b_in
+
+                                        m["vainqueur"] = ea if sc_a_in > sc_b_in else eb
+
+                                        m["termine"] = True
+
+                                        sauvegarder_tournois_data(tournois_data)
+
+                                        st.rerun()
+
+
+
+                                with st.popover("🎟️ Promotion", use_container_width=True, help="Accorder une victoire par promotion / passe-droit"):
+
+                                    st.markdown("##### 🎟️ Victoire par promotion")
+
+                                    st.caption(f"Rencontre **{m_id}** :")
+
+                                    choix_promo_rr = st.radio(
+
+                                        "Bénéficiaire de la promotion :",
+
+                                        options=[ea, eb],
+
+                                        format_func=lambda x: f"🚀 {x}",
+
+                                        key=f"rad_pd_rr_{key_prefix}{mode}_{m_id}"
+
+                                    )
+
+                                    if st.button("🚀 Promouvoir / Victoire", type="primary", use_container_width=True, key=f"btn_apply_pd_rr_{key_prefix}{mode}_{m_id}"):
+
+                                        attribuer_passe_droit_round_robin(tournoi, m_id, choix_promo_rr)
+
+                                        sauvegarder_tournois_data(tournois_data)
+
+                                        st.success(f"🎟️ Passe-droit accordé à {choix_promo_rr} !")
+
+                                        st.rerun()
+
+                        else:
+
+                            st.caption("⏳ *Rencontre en attente de score (saisie réservée au marqueur)*")
+                    else:
+                        if est_editeur:
+                            with st.popover("✏️ Reprendre / Corriger", use_container_width=True, help="Corriger le score ou reprendre la validation de ce match"):
+                                st.markdown(f"###### ✏️ Correction du match **{m_id}**")
+                                st.caption(f"Rencontre : **{ea}** vs **{eb}**")
+                                if m.get("passe_droit"):
+                                    st.info(f"🎟️ Validé par Passe-droit en faveur de **{m.get('vainqueur')}**")
+                                else:
+                                    st.caption(f"Score enregistré : **{ea}** {sa} - {sb} **{eb}** (Vainqueur : **{m.get('vainqueur')}**)")
+                                
+                                st.markdown("**1️⃣ Corriger le score :**")
+                                col_corr_a, col_corr_b = st.columns(2)
+                                options_corr_rr = list(range(int(rr_race) + 1))
+                                idx_rca = options_corr_rr.index(sa) if sa in options_corr_rr else 0
+                                idx_rcb = options_corr_rr.index(sb) if sb in options_corr_rr else 0
+                                with col_corr_a:
+                                    sc_a_corr = int(st.selectbox(
+                                        f"🎱 {formater_nom_abrege_joueur(ea)}",
+                                        options=options_corr_rr,
+                                        index=idx_rca,
+                                        key=f"corr_rr_a_{key_prefix}{mode}_{m_id}",
+                                        format_func=lambda x: f"Score : {x}"
+                                    ))
+                                with col_corr_b:
+                                    sc_b_corr = int(st.selectbox(
+                                        f"🎱 {formater_nom_abrege_joueur(eb)}",
+                                        options=options_corr_rr,
+                                        index=idx_rcb,
+                                        key=f"corr_rr_b_{key_prefix}{mode}_{m_id}",
+                                        format_func=lambda x: f"Score : {x}"
+                                    ))
+                                
+                                if st.button("💾 Enregistrer la correction", type="primary", use_container_width=True, key=f"btn_save_corr_rr_{key_prefix}{mode}_{m_id}"):
+                                    if sc_a_corr == sc_b_corr:
+                                        st.error("Match nul impossible.")
+                                    elif sc_a_corr < rr_race and sc_b_corr < rr_race:
+                                        st.warning(f"Un joueur/duo doit remporter {rr_race} manches ({rr_fmt}).")
+                                    else:
+                                        ok, msg = corriger_score_round_robin(tournoi, m_id, sc_a_corr, sc_b_corr)
+                                        if ok:
+                                            sauvegarder_tournois_data(tournois_data)
+                                            st.success(f"✅ {msg}")
+                                            time.sleep(0.5)
+                                            st.rerun()
+                                        else:
+                                            st.error(msg)
+                                
+                                st.divider()
+                                st.markdown("**2️⃣ Reprendre la validation :**")
+                                st.caption("Annule la validation et remet la rencontre en attente de score.")
+                                if st.button("🔄 Reprendre la validation (Remettre en jeu)", type="secondary", use_container_width=True, key=f"btn_reprendre_rr_{key_prefix}{mode}_{m_id}"):
+                                    ok, msg = reprendre_validation_round_robin(tournoi, m_id)
+                                    if ok:
+                                        st.session_state[f"rr_a_{mode}_{m_id}"] = sa
+                                        st.session_state[f"rr_b_{mode}_{m_id}"] = sb
+                                        sauvegarder_tournois_data(tournois_data)
+                                        st.success(f"🔄 {msg}")
+                                        time.sleep(0.5)
+                                        st.rerun()
+                                    else:
+                                        st.error(msg)
+                        else:
+                            st.caption("✅ *Rencontre terminée et validée*")
+
+
+
+        if tous_termines and statut != "termine" and classement_rr:
+
+            tournoi["statut"] = "termine"
+
+            tournoi["vainqueur_final"] = classement_rr[0][0]
+
+            if len(classement_rr) > 1:
+
+                tournoi["finaliste"] = classement_rr[1][0]
+
+            archiver_tournoi(tournoi, mode=mode)
+
+            sauvegarder_tournois_data(tournois_data)
+
+            st.rerun()
+
+
 def afficher_section_tournoi(mode="simple"):
 
     """Affiche l'interface complète de configuration ou de déroulement d'un tournoi (Simple ou Double)."""
@@ -30720,921 +31645,8 @@ def afficher_section_tournoi(mode="simple"):
 
 
 
-        # DÉROULEMENT SELON LE FORMAT
-
-        if format_type in ["elimination", "double_elimination"]:
-
-            st.markdown("""
-
-                <style>
-
-                    div[data-testid="stSelectbox"] div[data-baseweb="select"] {
-
-                        font-weight: 800 !important;
-
-                    }
-
-                    div[data-testid="stSelectbox"] div[data-baseweb="select"] * {
-
-                        font-size: 15px !important;
-
-                        font-weight: 800 !important;
-
-                    }
-
-                </style>
-
-            """, unsafe_allow_html=True)
-
-            st.markdown("##### 🎯 Saisie des scores & Déroulement des rencontres")
-
-            if tournoi.get("promus_second_tour"):
-
-                promus_str_view = ", ".join(tournoi["promus_second_tour"])
-
-                st.info(f"🎟️ **Participants promus d'office (Passe-droit) :** {promus_str_view}")
-
-
-
-            def afficher_carte_rencontre(m, tour_courant, tour_num, tour_race, tour_fmt):
-
-                m_id = m["id"]
-
-                ea = m["equipe_a"]
-
-                eb = m["equipe_b"]
-
-                termine = m.get("termine", False)
-
-                vainq = m.get("vainqueur")
-
-                sa = m.get("score_a", 0)
-
-                sb = m.get("score_b", 0)
-
-                m_race = m.get("race_to", tour_race)
-
-                m_fmt = m.get("format_label", tour_fmt)
-
-                b_type = m.get("bracket", tour_courant.get("bracket", "winner"))
-
-
-
-                if b_type == "loser":
-
-                    badge_b = "<span style='background:#fff3e0; color:#e65100; border:1px solid #ffb74d; padding:2px 7px; border-radius:8px; font-size:11px; font-weight:700;'>🟧 Seconde Chance</span>"
-
-                elif b_type == "finale":
-
-                    badge_b = "<span style='background:#fff8e1; color:#b45309; border:1px solid #f59e0b; padding:2px 7px; border-radius:8px; font-size:11px; font-weight:700;'>🏆 Grande Finale</span>"
-
-                elif format_type == "double_elimination":
-
-                    badge_b = "<span style='background:#e0f2fe; color:#0369a1; border:1px solid #7dd3fc; padding:2px 7px; border-radius:8px; font-size:11px; font-weight:700;'>🟦 Gagnants</span>"
-
-                else:
-
-                    badge_b = ""
-
-
-
-                m_h = m.get("heure_estimee", "")
-
-                m_tbl = m.get("table", "Table 1")
-
-                badge_horaire = f"<span style='background:#e8f0fe; color:#0b3c5d; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600;'>⏰ {m_h} • {m_tbl}</span>" if (m_h and m_h != "—") else ""
-
-
-
-                with st.container(border=True):
-
-                    col_m1, col_m2 = st.columns([1.15, 1.05])
-
-                    with col_m1:
-
-                        if termine:
-
-                            st.markdown(f"{badge_b} **{m_id}** : **{ea}** ({sa}) vs ({sb}) **{eb}**", unsafe_allow_html=True)
-
-                            if m.get("passe_droit"):
-
-                                st.success(f"🎟️ **Passe-droit accordé :** {vainq} est promu au tour suivant !")
-
-                            else:
-
-                                st.success(f"🏆 **Qualifié :** {vainq} *(score final {sa}-{sb})*")
-
-                        else:
-
-                            if ea == "À déterminer" or eb == "À déterminer":
-
-                                st.markdown(f"{badge_b} **{m_id}** : `{ea}` vs `{eb}`", unsafe_allow_html=True)
-
-                                st.caption("⏳ En attente des vainqueurs / perdants des tours précédents...")
-
-                            else:
-
-                                st.markdown(f"{badge_b} **{m_id}** : 🎯 **{ea}** vs **{eb}**", unsafe_allow_html=True)
-
-                                st.caption(f"Format officiel : **{m_fmt}** (premier à {m_race} victoires)")
-
-
-
-                        if est_editeur:
-
-                            btn_lbl_h = f"🕒 Horaire ({m_h} • {m_tbl})" if (m_h and m_h != "—") else "🕒 Définir l'horaire"
-
-                            with st.popover(btn_lbl_h, use_container_width=False, help="Changer l'heure programmée pour ce match et mettre à jour le tableau"):
-
-                                st.markdown(f"###### ⏰ Horaire du match **{m_id}**")
-
-                                st.caption(f"Rencontre : **{ea}** vs **{eb}**")
-
-                                t_actuel = parse_heure_str_vers_time(m_h)
-
-                                col_pop_h1, col_pop_h2 = st.columns(2)
-
-                                with col_pop_h1:
-
-                                    nouv_t = st.time_input("Nouvelle heure :", value=t_actuel, key=f"t_in_{mode}_{m_id}", step=300)
-
-                                with col_pop_h2:
-
-                                    opts_tables = ["Table 1", "Table 2", "Table 3", "Table 4", "Table finale"]
-
-                                    cur_tbl = m.get("table", "Table 1")
-
-                                    idx_t = opts_tables.index(cur_tbl) if cur_tbl in opts_tables else 0
-
-                                    nouv_tbl = st.selectbox("Table :", options=opts_tables, index=idx_t, key=f"tbl_sel_{mode}_{m_id}")
-
-
-
-                                decaler_suivants = st.checkbox("Décaler aussi les matchs suivants de ce décalage", value=False, key=f"chk_shift_{mode}_{m_id}", help="Si coché, ajuste automatiquement l'horaire des matchs ultérieurs non terminés")
-
-
-
-                                if st.button("💾 Mettre à jour le tableau", type="primary", use_container_width=True, key=f"btn_save_hr_{mode}_{m_id}"):
-                                    str_h = nouv_t.strftime("%Hh%M")
-                                    old_h_prec = m.get("heure_estimee", "")
-                                    old_tbl_prec = m.get("table", "")
-
-                                    matchs_decales = []
-                                    if decaler_suivants and m_h and m_h != "—":
-                                        old_t = parse_heure_str_vers_time(m_h)
-                                        diff_min = (nouv_t.hour * 60 + nouv_t.minute) - (old_t.hour * 60 + old_t.minute)
-                                        if diff_min != 0:
-                                            matchs_decales = decaler_horaires_matchs_suivants(tournoi, m_id, diff_min)
-
-                                    m["heure_estimee"] = str_h
-                                    m["table"] = nouv_tbl
-                                    m["table_courte"] = "T" + nouv_tbl.split(" ")[-1] if " " in nouv_tbl else nouv_tbl[:2].upper()
-                                    recalculer_heure_fin_tournoi(tournoi)
-
-                                    msg_sms_extra = ""
-                                    if str_h != old_h_prec or nouv_tbl != old_tbl_prec:
-                                        nb_av, list_av = envoyer_convocations_changement_heure_match(
-                                            tournoi, m, str_h, nouv_tbl, matchs_suivants_decales=matchs_decales
-                                        )
-                                        if nb_av > 0:
-                                            msg_sms_extra = f" et {nb_av} convocation(s) SMS envoyée(s) 📲 !"
-                                            st.session_state[f"msg_act_sms_{mode}"] = f"🔔 Convocations SMS envoyées suite au changement d'horaire ({', '.join(list_av)}) !"
-
-                                    sauvegarder_tournois_data(tournois_data)
-                                    st.success(f"✅ Heure du match {m_id} mise à jour à {str_h} ({nouv_tbl}){msg_sms_extra} et tableau actualisé !")
-                                    time.sleep(0.5)
-                                    st.rerun()
-
-
-
-                    with col_m2:
-
-                        if not termine:
-
-                            if est_editeur:
-
-                                col_s1, col_s2, col_s_btns = st.columns([1.1, 1.1, 1.3])
-
-                                options_sc_m = list(range(int(m_race) + 1))
-
-                                key_sc_a = f"sc_a_{mode}_{m_id}"
-
-                                key_sc_b = f"sc_b_{mode}_{m_id}"
-
-                                if key_sc_a not in st.session_state or st.session_state[key_sc_a] not in options_sc_m:
-
-                                    st.session_state[key_sc_a] = 0
-
-                                if key_sc_b not in st.session_state or st.session_state[key_sc_b] not in options_sc_m:
-
-                                    st.session_state[key_sc_b] = 0
-
-                                idx_sc_a = options_sc_m.index(st.session_state[key_sc_a])
-
-                                idx_sc_b = options_sc_m.index(st.session_state[key_sc_b])
-
-                                with col_s1:
-
-                                    sc_a_in = int(st.selectbox(
-
-                                        f"🎱 {formater_nom_abrege_joueur(ea)}",
-
-                                        options=options_sc_m,
-
-                                        index=idx_sc_a,
-
-                                        key=key_sc_a,
-
-                                        format_func=lambda x: f"Score : {x}",
-
-                                        help=f"Score de {ea} (0 à {m_race})"
-
-                                    ))
-
-                                    st.markdown(f"<div style='text-align:center; font-size:15px; font-weight:900; background:#0284c7; color:#ffffff; border-radius:6px; padding:2px 0; margin-top:2px;'>Score : {sc_a_in}</div>", unsafe_allow_html=True)
-
-                                with col_s2:
-
-                                    sc_b_in = int(st.selectbox(
-
-                                        f"🎱 {formater_nom_abrege_joueur(eb)}",
-
-                                        options=options_sc_m,
-
-                                        index=idx_sc_b,
-
-                                        key=key_sc_b,
-
-                                        format_func=lambda x: f"Score : {x}",
-
-                                        help=f"Score de {eb} (0 à {m_race})"
-
-                                    ))
-
-                                    st.markdown(f"<div style='text-align:center; font-size:15px; font-weight:900; background:#0284c7; color:#ffffff; border-radius:6px; padding:2px 0; margin-top:2px;'>Score : {sc_b_in}</div>", unsafe_allow_html=True)
-
-                                with col_s_btns:
-
-                                    st.write("")
-
-                                    peut_valider = (ea != "À déterminer" and eb != "À déterminer")
-
-                                    if st.button("✅ Valider", key=f"btn_v_{mode}_{m_id}", type="primary", use_container_width=True, disabled=not peut_valider):
-
-                                        if sc_a_in == sc_b_in:
-
-                                            st.error("Match nul impossible.")
-
-                                        elif sc_a_in < m_race and sc_b_in < m_race:
-
-                                            st.warning(f"Un joueur/duo doit remporter {m_race} manches ({m_fmt}).")
-
-                                        else:
-
-                                            actualiser_score_elimination(tournoi, tour_num, m_id, sc_a_in, sc_b_in)
-
-                                            td_fresh = charger_tournois_data()
-
-                                            td_fresh[mode] = tournoi
-
-                                            sauvegarder_tournois_data(td_fresh)
-
-                                            st.rerun()
-
-
-
-                                    candidats_pd = [p for p in [ea, eb] if p and p not in ["À déterminer", "Exempt (Passe-droit)"]]
-
-                                    # Dans le tableau des perdants (Loser Bracket) ou la Grande Finale d'un tournoi à double élimination,
-
-                                    # chaque joueur ou duo doit obligatoirement jouer son match (aucun passe-droit autorisé).
-
-                                    autoriser_pd_match = not (format_type == "double_elimination" and b_type in ("loser", "finale"))
-
-                                    if candidats_pd and autoriser_pd_match:
-
-                                        with st.popover("🎟️ Promotion", use_container_width=True, help="Promouvoir directement un participant au tour suivant (Passe-droit)"):
-
-                                            st.markdown(f"##### 🎟️ Accorder une promotion")
-
-                                            st.caption(f"Promouvoir au tour suivant pour la rencontre **{m_id}** :")
-
-                                            choix_promo = st.radio(
-
-                                                "Bénéficiaire de la promotion :",
-
-                                                options=candidats_pd,
-
-                                                format_func=lambda x: f"🚀 {x}",
-
-                                                key=f"rad_pd_{mode}_{m_id}"
-
-                                            )
-
-                                            if st.button("🚀 Promouvoir au tour suivant", type="primary", use_container_width=True, key=f"btn_apply_pd_{mode}_{m_id}"):
-
-                                                attribuer_passe_droit_elimination(tournoi, tour_num, m_id, choix_promo)
-
-                                                td_fresh = charger_tournois_data()
-
-                                                td_fresh[mode] = tournoi
-
-                                                sauvegarder_tournois_data(td_fresh)
-
-                                                st.success(f"🎟️ Passe-droit accordé ! {choix_promo} est promu au tour suivant.")
-
-                                                st.rerun()
-
-                            else:
-
-                                st.caption("⏳ *Rencontre en attente de score (saisie réservée au marqueur)*")
-                        else:
-                            if est_editeur:
-                                with st.popover("✏️ Reprendre / Corriger", use_container_width=True, help="Corriger le score ou reprendre la validation de ce match"):
-                                    st.markdown(f"###### ✏️ Correction du match **{m_id}**")
-                                    st.caption(f"Rencontre : **{ea}** vs **{eb}**")
-                                    if m.get("passe_droit"):
-                                        st.info(f"🎟️ Validé par Passe-droit en faveur de **{vainq}**")
-                                    else:
-                                        st.caption(f"Score enregistré : **{ea}** {sa} - {sb} **{eb}** (Vainqueur : **{vainq}**)")
-                                    
-                                    desc_termines = [d[0] for d in obtenir_matchs_descendants_termines(tournoi, m_id)]
-                                    chk_force = False
-                                    if desc_termines:
-                                        ids_suiv = ", ".join([d.get("id", "") for d in desc_termines])
-                                        st.warning(f"⚠️ **Attention :** Le match suivant **{ids_suiv}** a déjà été validé ou joué. Toute modification du vainqueur ou reprise réinitialisera ce(s) match(s).")
-                                        chk_force = st.checkbox("Confirmer la réinitialisation des matchs suivants impactés", value=False, key=f"chk_f_{mode}_{m_id}")
-                                    else:
-                                        chk_force = True
-                                    
-                                    st.markdown("**1️⃣ Corriger le score :**")
-                                    col_corr_a, col_corr_b = st.columns(2)
-                                    options_corr_m = list(range(int(m_race) + 1))
-                                    idx_ca = options_corr_m.index(sa) if sa in options_corr_m else 0
-                                    idx_cb = options_corr_m.index(sb) if sb in options_corr_m else 0
-                                    with col_corr_a:
-                                        sc_a_corr = int(st.selectbox(
-                                            f"🎱 {formater_nom_abrege_joueur(ea)}",
-                                            options=options_corr_m,
-                                            index=idx_ca,
-                                            key=f"corr_sc_a_{mode}_{m_id}",
-                                            format_func=lambda x: f"Score : {x}"
-                                        ))
-                                    with col_corr_b:
-                                        sc_b_corr = int(st.selectbox(
-                                            f"🎱 {formater_nom_abrege_joueur(eb)}",
-                                            options=options_corr_m,
-                                            index=idx_cb,
-                                            key=f"corr_sc_b_{mode}_{m_id}",
-                                            format_func=lambda x: f"Score : {x}"
-                                        ))
-                                    
-                                    if st.button("💾 Enregistrer la correction", type="primary", use_container_width=True, key=f"btn_save_corr_{mode}_{m_id}"):
-                                        if sc_a_corr == sc_b_corr:
-                                            st.error("Match nul impossible.")
-                                        elif sc_a_corr < m_race and sc_b_corr < m_race:
-                                            st.warning(f"Un joueur/duo doit remporter {m_race} manches ({m_fmt}).")
-                                        else:
-                                            nouveau_vainqueur = ea if sc_a_corr > sc_b_corr else eb
-                                            if nouveau_vainqueur != vainq and desc_termines and not chk_force:
-                                                st.error("Veuillez cocher la confirmation d'impact sur les matchs ultérieurs.")
-                                            else:
-                                                ok, msg = corriger_score_elimination(tournoi, m_id, sc_a_corr, sc_b_corr, forcer_cascade=chk_force)
-                                                if ok:
-                                                    td_fresh = charger_tournois_data()
-                                                    td_fresh[mode] = tournoi
-                                                    sauvegarder_tournois_data(td_fresh)
-                                                    st.success(f"✅ {msg}")
-                                                    time.sleep(0.5)
-                                                    st.rerun()
-                                                else:
-                                                    st.error(msg)
-                                    
-                                    st.divider()
-                                    st.markdown("**2️⃣ Reprendre la validation :**")
-                                    st.caption("Annule la validation et remet la rencontre en attente de score.")
-                                    if st.button("🔄 Reprendre la validation (Remettre en jeu)", type="secondary", use_container_width=True, key=f"btn_reprendre_{mode}_{m_id}"):
-                                        if desc_termines and not chk_force:
-                                            st.error("Veuillez cocher la confirmation d'impact sur les matchs ultérieurs.")
-                                        else:
-                                            ok, msg = reprendre_validation_match_elimination(tournoi, m_id, forcer_cascade=chk_force)
-                                            if ok:
-                                                st.session_state[f"sc_a_{mode}_{m_id}"] = sa
-                                                st.session_state[f"sc_b_{mode}_{m_id}"] = sb
-                                                td_fresh = charger_tournois_data()
-                                                td_fresh[mode] = tournoi
-                                                sauvegarder_tournois_data(td_fresh)
-                                                st.success(f"🔄 {msg}")
-                                                time.sleep(0.5)
-                                                st.rerun()
-                                            else:
-                                                st.error(msg)
-                            else:
-                                st.caption("✅ *Rencontre terminée et validée*")
-
-
-
-            tours = tournoi.get("tours", [])
-
-
-
-            if format_type == "double_elimination":
-
-                tours_winner = [t for t in tours if t.get("bracket") == "winner"]
-
-                tours_loser = [t for t in tours if t.get("bracket") == "loser"]
-
-                tours_finale = [t for t in tours if t.get("bracket") == "finale"]
-
-
-
-                tab_w, tab_l, tab_f = st.tabs([
-
-                    f"🟦 Tableau des Gagnants ({len(tours_winner)} tours)",
-
-                    f"🟧 Seconde Chance — Repêchage ({len(tours_loser)} tours)",
-
-                    "🏆 Grande Finale"
-
-                ])
-
-
-
-                with tab_w:
-
-                    for tour_courant in tours_winner:
-
-                        tour_num = tour_courant["numero"]
-
-                        tour_race = tour_courant.get("race_to", 2)
-
-                        tour_fmt = tour_courant.get("format_label", "2 de 3")
-
-                        st.markdown(f"###### **{tour_courant['nom']}** — Format `{tour_fmt}` (premier à {tour_race} victoires)")
-
-                        for m in tour_courant.get("matchs", []):
-
-                            afficher_carte_rencontre(m, tour_courant, tour_num, tour_race, tour_fmt)
-
-
-
-                with tab_l:
-
-                    for tour_courant in tours_loser:
-
-                        tour_num = tour_courant["numero"]
-
-                        tour_race = tour_courant.get("race_to", 2)
-
-                        tour_fmt = tour_courant.get("format_label", "2 de 3")
-
-                        st.markdown(f"###### **{tour_courant['nom']}** — Format `{tour_fmt}` (premier à {tour_race} victoires)")
-
-                        for m in tour_courant.get("matchs", []):
-
-                            afficher_carte_rencontre(m, tour_courant, tour_num, tour_race, tour_fmt)
-
-
-
-                with tab_f:
-
-                    for tour_courant in tours_finale:
-
-                        tour_num = tour_courant["numero"]
-
-                        tour_race = tour_courant.get("race_to", 3)
-
-                        tour_fmt = tour_courant.get("format_label", "3 de 5")
-
-                        st.markdown(f"###### **{tour_courant['nom']}** — Format `{tour_fmt}` (premier à {tour_race} victoires)")
-
-                        for m in tour_courant.get("matchs", []):
-
-                            afficher_carte_rencontre(m, tour_courant, tour_num, tour_race, tour_fmt)
-
-
-
-            else:
-
-                # Elimination directe simple
-
-                tours_onglets = [t["nom"] for t in tours]
-
-                if tours_onglets:
-
-                    tabs_t = st.tabs(tours_onglets)
-
-                    for t_idx, tab_tour in enumerate(tabs_t):
-
-                        tour_courant = tours[t_idx]
-
-                        tour_num = tour_courant["numero"]
-
-                        tour_race = tour_courant.get("race_to", 3 if tour_num == tournoi.get("total_tours") else 2)
-
-                        tour_fmt = tour_courant.get("format_label", "3 de 5" if tour_race == 3 else "2 de 3")
-
-                        with tab_tour:
-
-                            st.markdown(f"###### **{tour_courant['nom']}** — Format `{tour_fmt}` (premier à {tour_race} manches gagnantes)")
-
-                            for m in tour_courant.get("matchs", []):
-
-                                afficher_carte_rencontre(m, tour_courant, tour_num, tour_race, tour_fmt)
-
-
-
-        else:
-
-            # FORMAT ROUND-ROBIN
-
-            st.markdown("##### 📊 Classement en direct (Round-Robin)")
-
-            classement_rr = calculer_classement_round_robin(tournoi)
-
-
-
-            lignes_rr = []
-
-            medailles_rr = {1: "🥇", 2: "🥈", 3: "🥉"}
-
-            for rang, (part, s_data) in enumerate(classement_rr, start=1):
-
-                badge_r = medailles_rr.get(rang, f"#{rang}")
-
-                diff_str = f"+{s_data['diff']}" if s_data['diff'] > 0 else str(s_data['diff'])
-
-                lignes_rr.append({
-
-                    "Rang": badge_r,
-
-                    "Participant": part,
-
-                    "PJ": s_data["pj"],
-
-                    "V": s_data["v"],
-
-                    "D": s_data["d"],
-
-                    "Manches Pour": s_data["pour"],
-
-                    "Manches Contre": s_data["contre"],
-
-                    "Différence": diff_str,
-
-                    "Points": s_data["pts"]
-
-                })
-
-
-
-            df_rr = pd.DataFrame(lignes_rr)
-
-            afficher_tableau_html_compatible(df_rr)
-
-
-
-            st.divider()
-
-            st.markdown("##### 📋 Calendrier des rencontres")
-
-
-
-            matchs_rr = tournoi.get("matchs", [])
-
-            tous_termines = True
-
-            for m in matchs_rr:
-
-                m_id = m["id"]
-
-                ea, eb = m["equipe_a"], m["equipe_b"]
-
-                termine = m.get("termine", False)
-
-                if not termine:
-
-                    tous_termines = False
-
-                sa, sb = m.get("score_a", 0), m.get("score_b", 0)
-
-
-
-                m_h = m.get("heure_estimee", "")
-
-                m_tbl = m.get("table", "Table 1")
-
-                badge_horaire_rr = f"<span style='background:#e8f0fe; color:#0b3c5d; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600;'>⏰ {m_h} • {m_tbl}</span>" if m_h else ""
-
-
-
-                with st.container(border=True):
-
-                    col_rm1, col_rm2 = st.columns([1.15, 1.05])
-
-                    rr_race = tournoi.get("race_to", 2)
-
-                    rr_fmt = tournoi.get("format_label", "2 de 3")
-
-                    with col_rm1:
-
-                        if termine:
-
-                            st.markdown(f"**{m_id}** : **{ea}** ({sa}) vs ({sb}) **{eb}**", unsafe_allow_html=True)
-
-                            if m.get("passe_droit"):
-
-                                st.success(f"🎟️ **Passe-droit accordé :** {m['vainqueur']} remporte la rencontre !")
-
-                            else:
-
-                                st.success(f"🏆 Vainqueur : {m['vainqueur']} *(score final {sa}-{sb})*")
-
-                        else:
-
-                            st.markdown(f"**{m_id}** : 🎯 **{ea}** vs **{eb}**", unsafe_allow_html=True)
-
-                            st.caption(f"Format officiel : **{rr_fmt}** (premier à {rr_race} victoires)")
-
-
-
-                        if est_editeur:
-
-                            btn_lbl_hrr = f"🕒 Horaire ({m_h} • {m_tbl})" if (m_h and m_h != "—") else "🕒 Définir horaire"
-
-                            with st.popover(btn_lbl_hrr, use_container_width=False, help="Changer l'heure programmée pour ce match et mettre à jour le calendrier"):
-
-                                st.markdown(f"###### ⏰ Horaire du match **{m_id}**")
-
-                                st.caption(f"Rencontre : **{ea}** vs **{eb}**")
-
-                                t_actuel = parse_heure_str_vers_time(m_h)
-
-                                col_pop_h1, col_pop_h2 = st.columns(2)
-
-                                with col_pop_h1:
-
-                                    nouv_t = st.time_input("Nouvelle heure :", value=t_actuel, key=f"rr_t_in_{mode}_{m_id}", step=300)
-
-                                with col_pop_h2:
-
-                                    opts_tables = ["Table 1", "Table 2", "Table 3", "Table 4", "Table finale"]
-
-                                    cur_tbl = m.get("table", "Table 1")
-
-                                    idx_t = opts_tables.index(cur_tbl) if cur_tbl in opts_tables else 0
-
-                                    nouv_tbl = st.selectbox("Table :", options=opts_tables, index=idx_t, key=f"rr_tbl_sel_{mode}_{m_id}")
-
-
-
-                                decaler_suivants = st.checkbox("Décaler aussi les matchs suivants de ce décalage", value=False, key=f"chk_shift_rr_{mode}_{m_id}", help="Si coché, ajuste automatiquement l'horaire des matchs ultérieurs non terminés")
-
-
-
-                                if st.button("💾 Mettre à jour le calendrier", type="primary", use_container_width=True, key=f"btn_save_hr_rr_{mode}_{m_id}"):
-                                    str_h = nouv_t.strftime("%Hh%M")
-                                    old_h_prec = m.get("heure_estimee", "")
-                                    old_tbl_prec = m.get("table", "")
-
-                                    matchs_decales = []
-                                    if decaler_suivants and m_h and m_h != "—":
-                                        old_t = parse_heure_str_vers_time(m_h)
-                                        diff_min = (nouv_t.hour * 60 + nouv_t.minute) - (old_t.hour * 60 + old_t.minute)
-                                        if diff_min != 0:
-                                            matchs_decales = decaler_horaires_matchs_suivants(tournoi, m_id, diff_min)
-
-                                    m["heure_estimee"] = str_h
-                                    m["table"] = nouv_tbl
-                                    m["table_courte"] = "T" + nouv_tbl.split(" ")[-1] if " " in nouv_tbl else nouv_tbl[:2].upper()
-                                    recalculer_heure_fin_tournoi(tournoi)
-
-                                    msg_sms_extra = ""
-                                    if str_h != old_h_prec or nouv_tbl != old_tbl_prec:
-                                        nb_av, list_av = envoyer_convocations_changement_heure_match(
-                                            tournoi, m, str_h, nouv_tbl, matchs_suivants_decales=matchs_decales
-                                        )
-                                        if nb_av > 0:
-                                            msg_sms_extra = f" et {nb_av} convocation(s) SMS envoyée(s) 📲 !"
-                                            st.session_state[f"msg_act_sms_{mode}"] = f"🔔 Convocations SMS envoyées suite au changement d'horaire ({', '.join(list_av)}) !"
-
-                                    sauvegarder_tournois_data(tournois_data)
-                                    st.success(f"✅ Rencontre {m_id} reprogrammée à {str_h} ({nouv_tbl}){msg_sms_extra} et calendrier actualisé !")
-                                    time.sleep(0.5)
-                                    st.rerun()
-
-
-
-                    with col_rm2:
-
-                        if not termine:
-
-                            if est_editeur:
-
-                                col_s1, col_s2, col_s_btns = st.columns([1.1, 1.1, 1.3])
-
-                                options_rr_m = list(range(int(rr_race) + 1))
-
-                                key_rr_a = f"rr_a_{mode}_{m_id}"
-
-                                key_rr_b = f"rr_b_{mode}_{m_id}"
-
-                                if key_rr_a not in st.session_state or st.session_state[key_rr_a] not in options_rr_m:
-
-                                    st.session_state[key_rr_a] = 0
-
-                                if key_rr_b not in st.session_state or st.session_state[key_rr_b] not in options_rr_m:
-
-                                    st.session_state[key_rr_b] = 0
-
-                                idx_rr_a = options_rr_m.index(st.session_state[key_rr_a])
-
-                                idx_rr_b = options_rr_m.index(st.session_state[key_rr_b])
-
-                                with col_s1:
-
-                                    sc_a_in = int(st.selectbox(
-
-                                        f"🎱 {formater_nom_abrege_joueur(ea)}",
-
-                                        options=options_rr_m,
-
-                                        index=idx_rr_a,
-
-                                        key=key_rr_a,
-
-                                        format_func=lambda x: f"Score : {x}",
-
-                                        help=f"Score de {ea} (0 à {rr_race})"
-
-                                    ))
-
-                                    st.markdown(f"<div style='text-align:center; font-size:15px; font-weight:900; background:#0284c7; color:#ffffff; border-radius:6px; padding:2px 0; margin-top:2px;'>Score : {sc_a_in}</div>", unsafe_allow_html=True)
-
-                                with col_s2:
-
-                                    sc_b_in = int(st.selectbox(
-
-                                        f"🎱 {formater_nom_abrege_joueur(eb)}",
-
-                                        options=options_rr_m,
-
-                                        index=idx_rr_b,
-
-                                        key=key_rr_b,
-
-                                        format_func=lambda x: f"Score : {x}",
-
-                                        help=f"Score de {eb} (0 à {rr_race})"
-
-                                    ))
-
-                                    st.markdown(f"<div style='text-align:center; font-size:15px; font-weight:900; background:#0284c7; color:#ffffff; border-radius:6px; padding:2px 0; margin-top:2px;'>Score : {sc_b_in}</div>", unsafe_allow_html=True)
-
-                                with col_s_btns:
-
-                                    st.write("")
-
-                                    if st.button("✅ Valider", key=f"btn_rr_{mode}_{m_id}", type="primary", use_container_width=True):
-
-                                        if sc_a_in == sc_b_in:
-
-                                            st.error("Match nul impossible.")
-
-                                        elif sc_a_in < rr_race and sc_b_in < rr_race:
-
-                                            st.warning(f"Un joueur/duo doit remporter {rr_race} manches ({rr_fmt}).")
-
-                                        else:
-
-                                            m["score_a"] = sc_a_in
-
-                                            m["score_b"] = sc_b_in
-
-                                            m["vainqueur"] = ea if sc_a_in > sc_b_in else eb
-
-                                            m["termine"] = True
-
-                                            sauvegarder_tournois_data(tournois_data)
-
-                                            st.rerun()
-
-
-
-                                    with st.popover("🎟️ Promotion", use_container_width=True, help="Accorder une victoire par promotion / passe-droit"):
-
-                                        st.markdown("##### 🎟️ Victoire par promotion")
-
-                                        st.caption(f"Rencontre **{m_id}** :")
-
-                                        choix_promo_rr = st.radio(
-
-                                            "Bénéficiaire de la promotion :",
-
-                                            options=[ea, eb],
-
-                                            format_func=lambda x: f"🚀 {x}",
-
-                                            key=f"rad_pd_rr_{mode}_{m_id}"
-
-                                        )
-
-                                        if st.button("🚀 Promouvoir / Victoire", type="primary", use_container_width=True, key=f"btn_apply_pd_rr_{mode}_{m_id}"):
-
-                                            attribuer_passe_droit_round_robin(tournoi, m_id, choix_promo_rr)
-
-                                            sauvegarder_tournois_data(tournois_data)
-
-                                            st.success(f"🎟️ Passe-droit accordé à {choix_promo_rr} !")
-
-                                            st.rerun()
-
-                            else:
-
-                                st.caption("⏳ *Rencontre en attente de score (saisie réservée au marqueur)*")
-                        else:
-                            if est_editeur:
-                                with st.popover("✏️ Reprendre / Corriger", use_container_width=True, help="Corriger le score ou reprendre la validation de ce match"):
-                                    st.markdown(f"###### ✏️ Correction du match **{m_id}**")
-                                    st.caption(f"Rencontre : **{ea}** vs **{eb}**")
-                                    if m.get("passe_droit"):
-                                        st.info(f"🎟️ Validé par Passe-droit en faveur de **{m.get('vainqueur')}**")
-                                    else:
-                                        st.caption(f"Score enregistré : **{ea}** {sa} - {sb} **{eb}** (Vainqueur : **{m.get('vainqueur')}**)")
-                                    
-                                    st.markdown("**1️⃣ Corriger le score :**")
-                                    col_corr_a, col_corr_b = st.columns(2)
-                                    options_corr_rr = list(range(int(rr_race) + 1))
-                                    idx_rca = options_corr_rr.index(sa) if sa in options_corr_rr else 0
-                                    idx_rcb = options_corr_rr.index(sb) if sb in options_corr_rr else 0
-                                    with col_corr_a:
-                                        sc_a_corr = int(st.selectbox(
-                                            f"🎱 {formater_nom_abrege_joueur(ea)}",
-                                            options=options_corr_rr,
-                                            index=idx_rca,
-                                            key=f"corr_rr_a_{mode}_{m_id}",
-                                            format_func=lambda x: f"Score : {x}"
-                                        ))
-                                    with col_corr_b:
-                                        sc_b_corr = int(st.selectbox(
-                                            f"🎱 {formater_nom_abrege_joueur(eb)}",
-                                            options=options_corr_rr,
-                                            index=idx_rcb,
-                                            key=f"corr_rr_b_{mode}_{m_id}",
-                                            format_func=lambda x: f"Score : {x}"
-                                        ))
-                                    
-                                    if st.button("💾 Enregistrer la correction", type="primary", use_container_width=True, key=f"btn_save_corr_rr_{mode}_{m_id}"):
-                                        if sc_a_corr == sc_b_corr:
-                                            st.error("Match nul impossible.")
-                                        elif sc_a_corr < rr_race and sc_b_corr < rr_race:
-                                            st.warning(f"Un joueur/duo doit remporter {rr_race} manches ({rr_fmt}).")
-                                        else:
-                                            ok, msg = corriger_score_round_robin(tournoi, m_id, sc_a_corr, sc_b_corr)
-                                            if ok:
-                                                sauvegarder_tournois_data(tournois_data)
-                                                st.success(f"✅ {msg}")
-                                                time.sleep(0.5)
-                                                st.rerun()
-                                            else:
-                                                st.error(msg)
-                                    
-                                    st.divider()
-                                    st.markdown("**2️⃣ Reprendre la validation :**")
-                                    st.caption("Annule la validation et remet la rencontre en attente de score.")
-                                    if st.button("🔄 Reprendre la validation (Remettre en jeu)", type="secondary", use_container_width=True, key=f"btn_reprendre_rr_{mode}_{m_id}"):
-                                        ok, msg = reprendre_validation_round_robin(tournoi, m_id)
-                                        if ok:
-                                            st.session_state[f"rr_a_{mode}_{m_id}"] = sa
-                                            st.session_state[f"rr_b_{mode}_{m_id}"] = sb
-                                            sauvegarder_tournois_data(tournois_data)
-                                            st.success(f"🔄 {msg}")
-                                            time.sleep(0.5)
-                                            st.rerun()
-                                        else:
-                                            st.error(msg)
-                            else:
-                                st.caption("✅ *Rencontre terminée et validée*")
-
-
-
-            if tous_termines and statut != "termine" and classement_rr:
-
-                tournoi["statut"] = "termine"
-
-                tournoi["vainqueur_final"] = classement_rr[0][0]
-
-                if len(classement_rr) > 1:
-
-                    tournoi["finaliste"] = classement_rr[1][0]
-
-                archiver_tournoi(tournoi, mode=mode)
-
-                sauvegarder_tournois_data(tournois_data)
-
-                st.rerun()
-
-
+        # DÉROULEMENT ET SAISIE DES SCORES SELON LE FORMAT
+        afficher_deroulement_matchs_tournoi(tournoi, mode=mode, est_editeur=est_editeur, key_prefix="")
 
 def afficher_section_historique_tournois():
 
@@ -32042,6 +32054,17 @@ def afficher_section_historique_tournois():
 
                 else:
 
+                    if not tournoi_choisi.get("est_actif") and tournoi_choisi.get("statut") == "en_cours":
+                        if st.button("⚡ Reprendre en direct", key=f"btn_reactiver_t_{choix_idx}", type="primary", use_container_width=True, help="Définir ce tournoi comme tournoi actif pour la saisie des résultats"):
+                            td_re = charger_tournois_data()
+                            import copy
+                            td_re[mode_choisi] = copy.deepcopy(tournoi_choisi)
+                            td_re[mode_choisi]["est_actif"] = True
+                            sauvegarder_tournois_data(td_re)
+                            st.success(f"✅ Tournoi {tournoi_choisi.get('titre')} activé en direct !")
+                            time.sleep(0.5)
+                            st.rerun()
+
                     with st.popover("🗑️ Supprimer", use_container_width=True):
 
                         st.markdown("### ⚠️ Suppression définitive")
@@ -32101,6 +32124,15 @@ def afficher_section_historique_tournois():
         st.markdown("###### 🌳 Arborescence officielle du tournoi")
 
         st.components.v1.html(html_arch, height=540, scrolling=True)
+
+        # Saisie des scores & Déroulement des rencontres du tournoi sélectionné
+        st.markdown("---")
+        afficher_deroulement_matchs_tournoi(
+            tournoi_choisi,
+            mode=mode_choisi,
+            est_editeur=est_editeur,
+            key_prefix=f"hist_{choix_idx}_"
+        )
 
 
 
