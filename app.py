@@ -19877,59 +19877,122 @@ def recalculer_heure_fin_tournoi(tournoi):
 
 
 def decaler_horaires_matchs_suivants(tournoi, m_id_pivot, diff_min):
-
     """Décale de diff_min minutes l'horaire des matchs ultérieurs non terminés dans le tournoi."""
-
     if not isinstance(tournoi, dict) or diff_min == 0:
-
-        return
-
+        return []
     tous_matchs = []
-
     if "tours" in tournoi and isinstance(tournoi["tours"], list):
-
         for t in tournoi["tours"]:
-
             if isinstance(t, dict):
-
                 tous_matchs.extend(t.get("matchs", []))
-
     elif "matchs" in tournoi and isinstance(tournoi["matchs"], list):
-
         tous_matchs.extend(tournoi["matchs"])
 
-
-
+    matchs_modifies = []
     trouve_pivot = False
-
     for m in tous_matchs:
-
         if m.get("id") == m_id_pivot:
-
             trouve_pivot = True
-
             continue
-
         if trouve_pivot and not m.get("termine", False):
-
             h_str = m.get("heure_estimee", "")
-
             if h_str and h_str != "—":
-
                 t_obj = parse_heure_str_vers_time(h_str)
-
                 total_min = t_obj.hour * 60 + t_obj.minute + diff_min
-
                 if 12 * 60 <= total_min < 13 * 60:
-
                     total_min = 13 * 60 + (total_min - 12 * 60)
-
                 new_h = (total_min // 60) % 24
-
                 new_m = total_min % 60
-
                 m["heure_estimee"] = f"{new_h:02d}h{new_m:02d}"
+                matchs_modifies.append(m)
+    return matchs_modifies
 
+
+def envoyer_convocations_changement_heure_match(tournoi, match_obj, nouvelle_heure, nouvelle_table=None, matchs_suivants_decales=None):
+    """
+    Expédie immédiatement les SMS de convocation suite au changement d'heure ou de table d'un match de tournoi.
+    Met à jour tournoi['convocations_sms_envoyees'] pour actualiser les badges de statut en temps réel.
+    Traite également les matchs ultérieurs décalés s'ils sont prêts ou déjà convoqués.
+    """
+    if not tournoi or not isinstance(tournoi, dict) or not match_obj or not isinstance(match_obj, dict):
+        return 0, []
+
+    convocations = tournoi.setdefault("convocations_sms_envoyees", {})
+    t_now = datetime.now()
+    t_now_str = t_now.strftime("%H:%M")
+    nb_total_sms = 0
+    liste_avis = []
+
+    # 1. Match principal modifié
+    mid = match_obj.get("id", "")
+    ea = match_obj.get("equipe_a", "")
+    eb = match_obj.get("equipe_b", "")
+    tbl = nouvelle_table or match_obj.get("table", "Table 1")
+    hr = nouvelle_heure or match_obj.get("heure_estimee", "")
+
+    if nouvelle_heure:
+        match_obj["heure_estimee"] = nouvelle_heure
+    if nouvelle_table:
+        match_obj["table"] = nouvelle_table
+        match_obj["table_courte"] = "T" + nouvelle_table.split(" ")[-1] if " " in nouvelle_table else nouvelle_table[:2].upper()
+
+    if ea not in ["À déterminer", "Exempt (Passe-droit)", "", None] and eb not in ["À déterminer", "Exempt (Passe-droit)", "", None]:
+        # Purger les anciennes clés de convocation pour ce match spécifique afin de rafraîchir l'horaire/table
+        for k in list(convocations.keys()):
+            if k.startswith(f"{mid}_"):
+                convocations.pop(k, None)
+
+        nb_e, _ = diffuser_convocation_match_tournoi(match_obj, tournoi)
+        cle_m = f"{mid}_{ea}_{eb}_{tbl}"
+        convocations[cle_m] = {
+            "date": t_now_str,
+            "nb": nb_e,
+            "table": tbl,
+            "heure": hr,
+            "motif": "changement_heure"
+        }
+        if nb_e > 0:
+            nb_total_sms += nb_e
+            liste_avis.append(f"{tbl} ({ea} vs {eb}) à {hr}")
+
+    # 2. Matchs ultérieurs décalés (si l'option 'Décaler aussi les matchs suivants' était active)
+    if matchs_suivants_decales and isinstance(matchs_suivants_decales, list):
+        for m_sec in matchs_suivants_decales:
+            if not isinstance(m_sec, dict) or m_sec.get("termine", False):
+                continue
+            m_sec_id = m_sec.get("id", "")
+            ea_sec = m_sec.get("equipe_a", "")
+            eb_sec = m_sec.get("equipe_b", "")
+            tbl_sec = m_sec.get("table", "Table 1")
+            hr_sec = m_sec.get("heure_estimee", "")
+
+            if ea_sec in ["À déterminer", "Exempt (Passe-droit)", "", None] or eb_sec in ["À déterminer", "Exempt (Passe-droit)", "", None]:
+                continue
+
+            cle_sec = f"{m_sec_id}_{ea_sec}_{eb_sec}_{tbl_sec}"
+            deja_convoque = any(k.startswith(f"{m_sec_id}_") for k in convocations.keys())
+            diff_min = calculer_minutes_avant_match(hr_sec, t_now)
+            dans_demi_heure = (diff_min is not None and -60 <= diff_min <= 30)
+
+            # Envoyer si déjà convoqué (pour corriger l'heure), si dans la demi-heure, ou si le mode automatique est actif
+            if deja_convoque or dans_demi_heure or tournoi.get("sms_tournoi_actif", False):
+                for k in list(convocations.keys()):
+                    if k.startswith(f"{m_sec_id}_"):
+                        convocations.pop(k, None)
+
+                nb_s, _ = diffuser_convocation_match_tournoi(m_sec, tournoi)
+                convocations[cle_sec] = {
+                    "date": t_now_str,
+                    "nb": nb_s,
+                    "table": tbl_sec,
+                    "heure": hr_sec,
+                    "motif": "decalage_heure"
+                }
+                if nb_s > 0:
+                    nb_total_sms += nb_s
+                    liste_avis.append(f"{tbl_sec} ({ea_sec} vs {eb_sec}) à {hr_sec}")
+
+    return nb_total_sms, liste_avis
 
 
 def planifier_horaires_elimination(tours, heure_debut="09:00", duree_min=30, nb_tables=2):
@@ -30812,42 +30875,34 @@ def afficher_section_tournoi(mode="simple"):
 
 
                                 if st.button("💾 Mettre à jour le tableau", type="primary", use_container_width=True, key=f"btn_save_hr_{mode}_{m_id}"):
-
                                     str_h = nouv_t.strftime("%Hh%M")
                                     old_h_prec = m.get("heure_estimee", "")
                                     old_tbl_prec = m.get("table", "")
 
+                                    matchs_decales = []
                                     if decaler_suivants and m_h and m_h != "—":
-
                                         old_t = parse_heure_str_vers_time(m_h)
-
                                         diff_min = (nouv_t.hour * 60 + nouv_t.minute) - (old_t.hour * 60 + old_t.minute)
-
                                         if diff_min != 0:
-
-                                            decaler_horaires_matchs_suivants(tournoi, m_id, diff_min)
+                                            matchs_decales = decaler_horaires_matchs_suivants(tournoi, m_id, diff_min)
 
                                     m["heure_estimee"] = str_h
-
                                     m["table"] = nouv_tbl
-
                                     m["table_courte"] = "T" + nouv_tbl.split(" ")[-1] if " " in nouv_tbl else nouv_tbl[:2].upper()
-
                                     recalculer_heure_fin_tournoi(tournoi)
 
                                     msg_sms_extra = ""
-                                    if (str_h != old_h_prec or nouv_tbl != old_tbl_prec) and tournoi.get("sms_tournoi_actif", False):
-                                        if ea not in ["À déterminer", "Exempt (Passe-droit)", ""] and eb not in ["À déterminer", "Exempt (Passe-droit)", ""]:
-                                            nb_av, _ = diffuser_changement_horaire_match_tournoi(m, nouv_tbl, str_h, tournoi)
-                                            if nb_av > 0:
-                                                msg_sms_extra = f" et {nb_av} joueur(s) avisé(s) par SMS 📲 !"
+                                    if str_h != old_h_prec or nouv_tbl != old_tbl_prec:
+                                        nb_av, list_av = envoyer_convocations_changement_heure_match(
+                                            tournoi, m, str_h, nouv_tbl, matchs_suivants_decales=matchs_decales
+                                        )
+                                        if nb_av > 0:
+                                            msg_sms_extra = f" et {nb_av} convocation(s) SMS envoyée(s) 📲 !"
+                                            st.session_state[f"msg_act_sms_{mode}"] = f"🔔 Convocations SMS envoyées suite au changement d'horaire ({', '.join(list_av)}) !"
 
                                     sauvegarder_tournois_data(tournois_data)
-
                                     st.success(f"✅ Heure du match {m_id} mise à jour à {str_h} ({nouv_tbl}){msg_sms_extra} et tableau actualisé !")
-
                                     time.sleep(0.5)
-
                                     st.rerun()
 
 
@@ -31338,44 +31393,34 @@ def afficher_section_tournoi(mode="simple"):
 
 
                                 if st.button("💾 Mettre à jour le calendrier", type="primary", use_container_width=True, key=f"btn_save_hr_rr_{mode}_{m_id}"):
-
                                     str_h = nouv_t.strftime("%Hh%M")
                                     old_h_prec = m.get("heure_estimee", "")
                                     old_tbl_prec = m.get("table", "")
 
+                                    matchs_decales = []
                                     if decaler_suivants and m_h and m_h != "—":
-
                                         old_t = parse_heure_str_vers_time(m_h)
-
                                         diff_min = (nouv_t.hour * 60 + nouv_t.minute) - (old_t.hour * 60 + old_t.minute)
-
                                         if diff_min != 0:
-
-                                            decaler_horaires_matchs_suivants(tournoi, m_id, diff_min)
+                                            matchs_decales = decaler_horaires_matchs_suivants(tournoi, m_id, diff_min)
 
                                     m["heure_estimee"] = str_h
-
                                     m["table"] = nouv_tbl
-
                                     m["table_courte"] = "T" + nouv_tbl.split(" ")[-1] if " " in nouv_tbl else nouv_tbl[:2].upper()
-
                                     recalculer_heure_fin_tournoi(tournoi)
 
                                     msg_sms_extra = ""
-                                    if (str_h != old_h_prec or nouv_tbl != old_tbl_prec) and tournoi.get("sms_tournoi_actif", False):
-                                        ea_rr = m.get("equipe_a", "")
-                                        eb_rr = m.get("equipe_b", "")
-                                        if ea_rr not in ["À déterminer", "Exempt (Passe-droit)", ""] and eb_rr not in ["À déterminer", "Exempt (Passe-droit)", ""]:
-                                            nb_av, _ = diffuser_changement_horaire_match_tournoi(m, nouv_tbl, str_h, tournoi)
-                                            if nb_av > 0:
-                                                msg_sms_extra = f" et {nb_av} joueur(s) avisé(s) par SMS 📲 !"
+                                    if str_h != old_h_prec or nouv_tbl != old_tbl_prec:
+                                        nb_av, list_av = envoyer_convocations_changement_heure_match(
+                                            tournoi, m, str_h, nouv_tbl, matchs_suivants_decales=matchs_decales
+                                        )
+                                        if nb_av > 0:
+                                            msg_sms_extra = f" et {nb_av} convocation(s) SMS envoyée(s) 📲 !"
+                                            st.session_state[f"msg_act_sms_{mode}"] = f"🔔 Convocations SMS envoyées suite au changement d'horaire ({', '.join(list_av)}) !"
 
                                     sauvegarder_tournois_data(tournois_data)
-
                                     st.success(f"✅ Rencontre {m_id} reprogrammée à {str_h} ({nouv_tbl}){msg_sms_extra} et calendrier actualisé !")
-
                                     time.sleep(0.5)
-
                                     st.rerun()
 
 
