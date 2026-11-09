@@ -19358,6 +19358,12 @@ def sauvegarder_tournoi_dans_historique(mode, notifier_admin=True):
 
     archiver_tournoi(t, mode=mode, notifier_admin=notifier_admin)
 
+    # Lorsqu'un tournoi est sauvegardé et terminé, il n'est plus actif : libérer immédiatement la grille active
+    if t.get("statut") == "termine":
+        td_fresh = charger_tournois_data()
+        td_fresh[mode] = None
+        sauvegarder_tournois_data(td_fresh, action="cloture_tournoi_termine")
+
     return True, "Tournoi sauvegardé dans l'historique avec succès !"
 
 
@@ -27890,7 +27896,11 @@ def afficher_mode_televiseur_tournoi():
 
         t_d = td_chk.get("double")
 
-        if (not t_s or not (t_s.get("tours") or t_s.get("matchs"))) and (t_d and (t_d.get("tours") or t_d.get("matchs"))):
+        s_actif = bool(t_s and isinstance(t_s, dict) and t_s.get("statut") == "en_cours" and (t_s.get("tours") or t_s.get("matchs")))
+
+        d_actif = bool(t_d and isinstance(t_d, dict) and t_d.get("statut") == "en_cours" and (t_d.get("tours") or t_d.get("matchs")))
+
+        if not s_actif and d_actif:
 
             mode_param = "double"
 
@@ -28376,9 +28386,9 @@ def afficher_bandeau_verrou_tournoi():
 
 
 
-    modes_actifs = [m for m in ["simple", "double"] if td.get(m) and isinstance(td.get(m), dict)]
+    modes_actifs = [m for m in ["simple", "double"] if td.get(m) and isinstance(td.get(m), dict) and td.get(m).get("statut") == "en_cours"]
 
-    tournoi_actif = any(td.get(m) and isinstance(td.get(m), dict) and td.get(m).get("statut") == "en_cours" for m in ["simple", "double"])
+    tournoi_actif = bool(modes_actifs)
 
 
 
@@ -30122,9 +30132,15 @@ def afficher_section_tournoi(mode="simple"):
 
                             sauvegarder_tournoi_dans_historique(mode, notifier_admin=True)
 
-                        st.success("✅ Tournoi sauvegardé avec succès dans l'historique !")
+                        if statut == "termine":
 
-                        time.sleep(1.0)
+                            st.session_state[f"msg_annulation_{mode}"] = f"🏆 Le {libelle_mode.lower()} a été terminé, sauvegardé et archivé avec succès. La grille est libérée pour le prochain tournoi."
+
+                        else:
+
+                            st.success("✅ Tournoi sauvegardé avec succès dans l'historique !")
+
+                            time.sleep(1.0)
 
                         st.rerun()
 
@@ -31495,7 +31511,7 @@ def afficher_section_historique_tournois():
 
         td_active = charger_tournois_data()
 
-        tournois_actifs_h = [m for m in ["simple", "double"] if td_active.get(m) and isinstance(td_active.get(m), dict)]
+        tournois_actifs_h = [m for m in ["simple", "double"] if td_active.get(m) and isinstance(td_active.get(m), dict) and td_active.get(m).get("statut") == "en_cours"]
 
         if tournois_actifs_h:
 
@@ -31983,9 +31999,9 @@ def afficher_onglet_tournois():
 
     t_double = td.get("double")
 
-    simple_actif = bool(t_simple and isinstance(t_simple, dict) and (t_simple.get("tours") or t_simple.get("matchs")))
+    simple_actif = bool(t_simple and isinstance(t_simple, dict) and t_simple.get("statut") == "en_cours" and (t_simple.get("tours") or t_simple.get("matchs")))
 
-    double_actif = bool(t_double and isinstance(t_double, dict) and (t_double.get("tours") or t_double.get("matchs")))
+    double_actif = bool(t_double and isinstance(t_double, dict) and t_double.get("statut") == "en_cours" and (t_double.get("tours") or t_double.get("matchs")))
 
 
 
