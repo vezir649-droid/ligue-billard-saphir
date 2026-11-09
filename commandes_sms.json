@@ -220,7 +220,24 @@
         "type": "nouveau_match",
         "telephone": "4188720836",
         "message": "[LIGUE SAPHIR] Echo (66) vs Alpha (58)\nEcho: G.Dumais:21, G.Vezina:21, A.St-Pierre:24\nAlpha: L.Morin:18, G.Lavoie:20, C.Harvey:20",
+        "statut": "envoye",
+        "date": "2026-11-09 15:29:57",
+        "date_envoi": "2026-11-09 10:29:59"
+    },
+    {
+        "id": "cmd_t_1794239997_0_1014",
+        "type": "tournoi_sms",
+        "telephone": "4188720836",
+        "message": "[TOURNOI SAPHIR] Appel Table 1 (T1_M1)\nR. Vezina vs V. Turcotte\nMatch prevu a 13h00. Presentez-vous a votre table !",
         "statut": "en_attente",
-        "date": "2026-11-09 15:29:57"
+        "date": "2026-11-09 15:59:57"
+    },
+    {
+        "id": "cmd_t_1794239997_1_218",
+        "type": "tournoi_sms",
+        "telephone": "4185763878",
+        "message": "[TOURNOI SAPHIR] Appel Table 1 (T1_M1)\nR. Vezina vs V. Turcotte\nMatch prevu a 13h00. Presentez-vous a votre table !",
+        "statut": "en_attente",
+        "date": "2026-11-09 15:59:57"
     }
 ]
