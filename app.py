@@ -475,283 +475,131 @@ def injecter_script_remonter_haut_de_page():
 
 
 def injecter_theme_css_saphir():
-
     """Injecte le thème visuel global 'Ligue Saphir' compatible à 100% avec les modes Clair (Light) et Sombre (Dark)."""
-
     st.markdown(
-
-        """
-
-        <style>
-
-        /* Onglets principaux et secondaires adaptatifs (Light & Dark mode) */
-
-        div[data-baseweb="tab-list"] {
-
-            gap: 8px;
-
-            background-color: var(--secondary-background-color, rgba(128, 128, 128, 0.12));
-
-            padding: 6px 8px;
-
-            border-radius: 10px;
-
-            border: 1px solid rgba(128, 128, 128, 0.25);
-
-        }
-
-        button[data-baseweb="tab"] {
-
-            border-radius: 8px !important;
-
-            padding: 8px 16px !important;
-
-            font-weight: 600 !important;
-
-            color: var(--text-color, inherit) !important;
-
-            background-color: transparent !important;
-
-            transition: all 0.2s ease-in-out !important;
-
-        }
-
-        button[data-baseweb="tab"] p,
-
-        button[data-baseweb="tab"] span,
-
-        button[data-baseweb="tab"] div {
-
-            color: inherit !important;
-
-        }
-
-        button[data-baseweb="tab"][aria-selected="true"] {
-
-            background: linear-gradient(135deg, #0b3c5d 0%, #16527a 100%) !important;
-
-            color: #ffffff !important;
-
-            box-shadow: 0 2px 6px rgba(11, 60, 93, 0.35) !important;
-
-            border-bottom: 3px solid #f59e0b !important;
-
-        }
-
-        button[data-baseweb="tab"][aria-selected="true"] p,
-
-        button[data-baseweb="tab"][aria-selected="true"] span,
-
-        button[data-baseweb="tab"][aria-selected="true"] div {
-
-            color: #ffffff !important;
-
-        }
-
-        button[data-baseweb="tab"]:hover:not([aria-selected="true"]) {
-
-            background-color: rgba(22, 82, 122, 0.15) !important;
-
-        }
-
-
-
-        /* Cartes de métriques (KPI) adaptatives au thème Clair / Sombre */
-
-        div[data-testid="stMetric"] {
-
-            background-color: var(--secondary-background-color, rgba(128, 128, 128, 0.10));
-
-            color: var(--text-color, inherit);
-
-            border: 1px solid rgba(128, 128, 128, 0.25);
-
-            border-left: 4px solid #1e88e5;
-
-            border-radius: 10px;
-
-            padding: 10px 14px;
-
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.08);
-
-        }
-
-        div[data-testid="stMetricLabel"],
-
-        div[data-testid="stMetricLabel"] p,
-
-        div[data-testid="stMetricLabel"] span,
-
-        div[data-testid="stMetricValue"],
-
-        div[data-testid="stMetricValue"] div {
-
-            color: var(--text-color, inherit) !important;
-
-        }
-
-
-
-        /* Expanders des manches plus nets en mode Clair comme en mode Sombre */
-
-        div[data-testid="stExpander"] {
-
-            border-radius: 10px !important;
-
-            border: 1px solid rgba(128, 128, 128, 0.28) !important;
-
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-
-            margin-bottom: 8px;
-
-        }
-
-
-
-        /* Boutons ergonomiques pour écrans tactiles */
-
-        div.stButton > button {
-
-            min-height: 40px;
-
-            border-radius: 8px;
-
-            font-weight: 600;
-
-            transition: transform 0.1s ease, box-shadow 0.15s ease;
-
-        }
-
-        div.stButton > button:active {
-
-            transform: scale(0.99);
-
-        }
-
-
-
-        /* Cartes à fond clair (Podiums, Prochains matchs, Palmarès) : forcer un texte sombre lisible même en Dark Mode */
-
-        .saphir-light-card,
-
-        .saphir-light-card div,
-
-        .saphir-light-card span,
-
-        .saphir-light-card strong,
-
-        .saphir-light-card p,
-
-        .saphir-light-card b,
-
-        .saphir-light-card sup {
-
-            color: #0f172a !important;
-
-        }
-
-        .saphir-light-card .saphir-primary {
-
-            color: #0b3c5d !important;
-
-        }
-
-        .saphir-light-card .saphir-muted {
-
-            color: #475569 !important;
-
-        }
-
-        .saphir-light-card .saphir-gold-title {
-
-            color: #d97706 !important;
-
-        }
-
-
-
-        /* Bandeau Podium Top 3 */
-
-        .saphir-podium-grid {
-
-            display: grid;
-
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-
-            gap: 12px;
-
-            margin: 10px 0 18px 0;
-
-        }
-
-        .saphir-podium-card {
-
-            border-radius: 10px;
-
-            padding: 12px 14px;
-
-            text-align: center;
-
-            box-shadow: 0 2px 6px rgba(0,0,0,0.12);
-
-            color: #0f172a !important;
-
-        }
-
-        .saphir-podium-card div,
-
-        .saphir-podium-card strong,
-
-        .saphir-podium-card span,
-
-        .saphir-podium-card sup {
-
-            color: #0f172a !important;
-
-        }
-
-        .saphir-podium-card .podium-title {
-
-            color: #0b3c5d !important;
-
-        }
-
-        .saphir-podium-card .podium-sub {
-
-            color: #334155 !important;
-
-        }
-
-        .saphir-podium-1 {
-
-            background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%) !important;
-
-            border: 2px solid #f59e0b !important;
-
-        }
-
-        .saphir-podium-2 {
-
-            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%) !important;
-
-            border: 2px solid #94a3b8 !important;
-
-        }
-
-        .saphir-podium-3 {
-
-            background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%) !important;
-
-            border: 2px solid #d97706 !important;
-
-        }
-
-        </style>
-
-        """,
-
+        """<style>
+div[data-baseweb="tab-list"] {
+    gap: 8px;
+    background-color: var(--secondary-background-color, rgba(128, 128, 128, 0.12));
+    padding: 6px 8px;
+    border-radius: 10px;
+    border: 1px solid rgba(128, 128, 128, 0.25);
+}
+button[data-baseweb="tab"] {
+    border-radius: 8px !important;
+    padding: 8px 16px !important;
+    font-weight: 600 !important;
+    color: var(--text-color, inherit) !important;
+    background-color: transparent !important;
+    transition: all 0.2s ease-in-out !important;
+}
+button[data-baseweb="tab"] p,
+button[data-baseweb="tab"] span,
+button[data-baseweb="tab"] div {
+    color: inherit !important;
+}
+button[data-baseweb="tab"][aria-selected="true"] {
+    background: linear-gradient(135deg, #0b3c5d 0%, #16527a 100%) !important;
+    color: #ffffff !important;
+    box-shadow: 0 2px 6px rgba(11, 60, 93, 0.35) !important;
+    border-bottom: 3px solid #f59e0b !important;
+}
+button[data-baseweb="tab"][aria-selected="true"] p,
+button[data-baseweb="tab"][aria-selected="true"] span,
+button[data-baseweb="tab"][aria-selected="true"] div {
+    color: #ffffff !important;
+}
+button[data-baseweb="tab"]:hover:not([aria-selected="true"]) {
+    background-color: rgba(22, 82, 122, 0.15) !important;
+}
+div[data-testid="stMetric"] {
+    background-color: var(--secondary-background-color, rgba(128, 128, 128, 0.10));
+    color: var(--text-color, inherit);
+    border: 1px solid rgba(128, 128, 128, 0.25);
+    border-left: 4px solid #1e88e5;
+    border-radius: 10px;
+    padding: 10px 14px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.08);
+}
+div[data-testid="stMetricLabel"],
+div[data-testid="stMetricLabel"] p,
+div[data-testid="stMetricLabel"] span,
+div[data-testid="stMetricValue"],
+div[data-testid="stMetricValue"] div {
+    color: var(--text-color, inherit) !important;
+}
+div[data-testid="stExpander"] {
+    border-radius: 10px !important;
+    border: 1px solid rgba(128, 128, 128, 0.28) !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    margin-bottom: 8px;
+}
+div.stButton > button {
+    min-height: 40px;
+    border-radius: 8px;
+    font-weight: 600;
+    transition: transform 0.1s ease, box-shadow 0.15s ease;
+}
+div.stButton > button:active {
+    transform: scale(0.99);
+}
+.saphir-light-card,
+.saphir-light-card div,
+.saphir-light-card span,
+.saphir-light-card strong,
+.saphir-light-card p,
+.saphir-light-card b,
+.saphir-light-card sup {
+    color: #0f172a !important;
+}
+.saphir-light-card .saphir-primary {
+    color: #0b3c5d !important;
+}
+.saphir-light-card .saphir-muted {
+    color: #475569 !important;
+}
+.saphir-light-card .saphir-gold-title {
+    color: #b45309 !important;
+}
+.saphir-podium-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+    margin: 10px 0 18px 0;
+}
+.saphir-podium-card {
+    border-radius: 10px;
+    padding: 12px 14px;
+    text-align: center;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+    color: #0f172a !important;
+}
+.saphir-podium-card div,
+.saphir-podium-card strong,
+.saphir-podium-card span,
+.saphir-podium-card sup {
+    color: #0f172a !important;
+}
+.saphir-podium-card .podium-title {
+    color: #0b3c5d !important;
+}
+.saphir-podium-card .podium-sub {
+    color: #334155 !important;
+}
+.saphir-podium-1 {
+    background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%) !important;
+    border: 2px solid #f59e0b !important;
+}
+.saphir-podium-2 {
+    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%) !important;
+    border: 2px solid #94a3b8 !important;
+}
+.saphir-podium-3 {
+    background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%) !important;
+    border: 2px solid #d97706 !important;
+}
+</style>""",
         unsafe_allow_html=True
-
     )
 
 
@@ -16170,20 +16018,13 @@ def afficher_onglet_sentinelle_sms():
                 st.caption("✨ *Version 1.1.7 avec verrou atomique anti-doublon et écoute en direct WebSocket Pub/Sub.*")
 
                 with st.expander("ℹ️ Instructions d'installation de l'APK sur Android", expanded=False):
-
-                    st.markdown("""
-
-                    1. Telechargez le fichier **`SaphirSMS.apk`** sur votre telephone Android.
-
-                    2. Appuyez sur le fichier telecharge. Si Android demande l'autorisation d'installer des applications depuis cette source, appuyez sur **Autoriser**.
-
-                    3. Ouvrez l'application **Saphir SMS**.
-
-                    4. Accordez l'autorisation d'envoyer des SMS (`SEND_SMS`) lorsque l'application vous le demande.
-
-                    5. Appuyez sur **DÉMARRER LA SURVEILLANCE** : le téléphone s'abonne au canal direct Pub/Sub et traite les SMS instantanément !
-
-                    """)
+                    st.markdown(
+                        "1. Telechargez le fichier **`SaphirSMS.apk`** sur votre telephone Android.\n"
+                        "2. Appuyez sur le fichier telecharge. Si Android demande l'autorisation d'installer des applications depuis cette source, appuyez sur **Autoriser**.\n"
+                        "3. Ouvrez l'application **Saphir SMS**.\n"
+                        "4. Accordez l'autorisation d'envoyer des SMS (`SEND_SMS`) lorsque l'application vous le demande.\n"
+                        "5. Appuyez sur **DÉMARRER LA SURVEILLANCE** : le téléphone s'abonne au canal direct Pub/Sub et traite les SMS instantanément !"
+                    )
 
 
 
@@ -28470,42 +28311,22 @@ def generer_html_tournoi(tournoi, mode="simple", mode_tv=False):
 
 
 def afficher_mode_televiseur_tournoi():
-
     """Affichage plein écran ultra-lisible optimisé pour la diffusion sur téléviseur avec rafraîchissement automatique."""
-
-    st.markdown("""
-
-        <style>
-
-            header[data-testid="stHeader"] { display: none !important; }
-
-            footer { display: none !important; }
-
-            #MainMenu { display: none !important; }
-
-            .stDeployButton { display: none !important; }
-
-            div[data-testid="stToolbar"] { display: none !important; }
-
-            div[data-testid="stSidebar"] { display: none !important; }
-
-            .block-container {
-
-                padding-top: 0.3rem !important;
-
-                padding-bottom: 0.3rem !important;
-
-                padding-left: 0.5rem !important;
-
-                padding-right: 0.5rem !important;
-
-                max-width: 100% !important;
-
-            }
-
-        </style>
-
-    """, unsafe_allow_html=True)
+    st.markdown("""<style>
+header[data-testid="stHeader"] { display: none !important; }
+footer { display: none !important; }
+#MainMenu { display: none !important; }
+.stDeployButton { display: none !important; }
+div[data-testid="stToolbar"] { display: none !important; }
+div[data-testid="stSidebar"] { display: none !important; }
+.block-container {
+    padding-top: 0.3rem !important;
+    padding-bottom: 0.3rem !important;
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
+    max-width: 100% !important;
+}
+</style>""", unsafe_allow_html=True)
 
 
 
@@ -29818,27 +29639,16 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
 
 
             if nb_promus > 0:
-
                 st.markdown(
-
-                    f"<div class='saphir-light-card' style='background: #eef7ff; border: 1px solid #90caf9; border-radius: 8px; padding: 12px 16px; margin: 8px 0;'>"
-
-                    f"<strong class='saphir-primary'>🎟️ Équilibrage officiel de l'arbre ({nb_p} participants)</strong><br>"
-
-                    f"<span style='font-size: 13px;'>"
-
-                    f"Pour garantir un <strong>nombre pair de matchs au second tour ({nb_m_t2} matchs)</strong>, "
-
-                    f"<strong>{nb_promus} participant{'s' if nb_promus > 1 else ''}</strong> {'bénéficient' if nb_promus > 1 else 'bénéficie'} "
-
+                    f"<div class='saphir-light-card' style='background: #eef7ff; border: 1px solid #90caf9; border-radius: 8px; padding: 12px 16px; margin: 8px 0; color: #0f172a !important;'>"
+                    f"<strong class='saphir-primary' style='color: #0b3c5d !important;'>🎟️ Équilibrage officiel de l'arbre ({nb_p} participants)</strong><br>"
+                    f"<span style='font-size: 13px; color: #0f172a !important;'>"
+                    f"Pour garantir un <strong style='color: #0f172a !important;'>nombre pair de matchs au second tour ({nb_m_t2} matchs)</strong>, "
+                    f"<strong style='color: #0f172a !important;'>{nb_promus} participant{'s' if nb_promus > 1 else ''}</strong> {'bénéficient' if nb_promus > 1 else 'bénéficie'} "
                     f"d'un passe-droit et {'sont directement promus' if nb_promus > 1 else 'est directement promu'} au 2ᵉ tour. "
-
                     f"Les {nb_p - nb_promus} autres participants disputeront le 1ᵉʳ tour ({nb_m_t1} match{'s' if nb_m_t1 > 1 else ''})."
-
                     f"</span></div>",
-
                     unsafe_allow_html=True
-
                 )
 
 
@@ -30349,28 +30159,15 @@ def afficher_deroulement_matchs_tournoi(tournoi, mode="simple", est_editeur=True
 # DÉROULEMENT SELON LE FORMAT
 
     if format_type in ["elimination", "double_elimination"]:
-
-        st.markdown("""
-
-            <style>
-
-                div[data-testid="stSelectbox"] div[data-baseweb="select"] {
-
-                    font-weight: 800 !important;
-
-                }
-
-                div[data-testid="stSelectbox"] div[data-baseweb="select"] * {
-
-                    font-size: 15px !important;
-
-                    font-weight: 800 !important;
-
-                }
-
-            </style>
-
-        """, unsafe_allow_html=True)
+        st.markdown("""<style>
+div[data-testid="stSelectbox"] div[data-baseweb="select"] {
+    font-weight: 800 !important;
+}
+div[data-testid="stSelectbox"] div[data-baseweb="select"] * {
+    font-size: 15px !important;
+    font-weight: 800 !important;
+}
+</style>""", unsafe_allow_html=True)
 
         st.markdown("##### 🎯 Saisie des scores & Déroulement des rencontres")
 
@@ -31823,14 +31620,12 @@ def afficher_section_tournoi(mode="simple"):
 
             with st.container(border=True):
                 st.markdown(
-                    f"""
-                    <div class="saphir-light-card" style="background: linear-gradient(135deg, #fff9c4, #fffde7); border: 2px solid #fbc02d; border-radius: 8px; padding: 16px; text-align: center;">
-                        <div class="saphir-gold-title" style="font-size: 19px; font-weight: bold; margin-bottom: 6px;">🎉 FÉLICITATIONS AU CHAMPION 🎉</div>
-                        <div class="saphir-primary" style="font-size: 22px; font-weight: 900; margin-bottom: 4px;">🥇 {tournoi['vainqueur_final']}</div>
-                        <div class="saphir-muted" style="font-size: 16px;">🥈 Finaliste : <strong>{tournoi.get('finaliste', 'N/D')}</strong></div>
-                        {score_fin_badge}
-                    </div>
-                    """,
+                    f'<div class="saphir-light-card" style="background: linear-gradient(135deg, #fff9c4, #fffde7); border: 2px solid #fbc02d; border-radius: 8px; padding: 16px; text-align: center; color: #0f172a !important;">'
+                    f'<div class="saphir-gold-title" style="font-size: 19px; font-weight: bold; margin-bottom: 6px; color: #b45309 !important;">🎉 FÉLICITATIONS AU CHAMPION 🎉</div>'
+                    f'<div class="saphir-primary" style="font-size: 22px; font-weight: 900; margin-bottom: 4px; color: #0b3c5d !important;">🥇 {tournoi["vainqueur_final"]}</div>'
+                    f'<div class="saphir-muted" style="font-size: 16px; color: #334155 !important;">🥈 Finaliste : <strong style="color: #0f172a !important;">{tournoi.get("finaliste", "N/D")}</strong></div>'
+                    f'{score_fin_badge}'
+                    f'</div>',
                     unsafe_allow_html=True
                 )
                 if est_editeur:
@@ -31995,15 +31790,10 @@ def afficher_section_tournoi(mode="simple"):
                                 sms_badge = ""
 
                         cartes_html.append(
-
-                            f"<div class='saphir-light-card' style='background:#f0f7ff; border:1px solid #90caf9; border-left:4px solid #0b3c5d; border-radius:6px; padding:6px 10px; font-size:12.5px;'>"
-
-                            f"<strong class='saphir-primary'>🎱 {tbl_p}{hr_badge} ({mid_p}) :</strong> "
-
-                            f"<strong>{ea_p}</strong> <span class='saphir-muted'>vs</span> <strong>{eb_p}</strong>{sms_badge}"
-
+                            f"<div class='saphir-light-card' style='background:#f0f7ff; border:1px solid #90caf9; border-left:4px solid #0b3c5d; border-radius:6px; padding:6px 10px; font-size:12.5px; color:#0f172a !important;'>"
+                            f"<strong class='saphir-primary' style='color:#0b3c5d !important;'>🎱 {tbl_p}{hr_badge} ({mid_p}) :</strong> "
+                            f"<strong style='color:#0f172a !important;'>{ea_p}</strong> <span class='saphir-muted' style='color:#475569 !important;'>vs</span> <strong style='color:#0f172a !important;'>{eb_p}</strong>{sms_badge}"
                             f"</div>"
-
                         )
 
                     st.markdown(
@@ -32495,33 +32285,31 @@ def afficher_section_historique_tournois():
 
 
         # Palmarès / Podium si le vainqueur est déterminé
-
         if tournoi_choisi.get("vainqueur_final"):
+            m_fin_arch = None
+            if tournoi_choisi.get("format") in ["elimination", "double_elimination"]:
+                for t_it_a in reversed(tournoi_choisi.get("tours", [])):
+                    for m_it_a in t_it_a.get("matchs", []):
+                        if m_it_a.get("id") == "GF_M1" or t_it_a.get("numero") == tournoi_choisi.get("total_tours"):
+                            m_fin_arch = m_it_a
+                            break
+                    if m_fin_arch:
+                        break
+            score_arch_txt = ""
+            if m_fin_arch and m_fin_arch.get("termine"):
+                score_arch_txt = f' &nbsp;&nbsp;|&nbsp;&nbsp; <span style="color:#0b3c5d !important; font-weight:800;">🎱 Finale : {m_fin_arch.get("equipe_a")} ({m_fin_arch.get("score_a")}) - ({m_fin_arch.get("score_b")}) {m_fin_arch.get("equipe_b")}</span>'
 
             st.markdown(
-
-                f"""
-
-                <div class="saphir-light-card" style="background: linear-gradient(135deg, #fff9c4, #fffde7); border: 2px solid #fbc02d; border-radius: 8px; padding: 10px 14px; margin: 10px 0; text-align: center;">
-
-                    <div class="saphir-gold-title" style="font-size: 14px; font-weight: bold; margin-bottom: 2px;">🏆 PALMARÈS DU TOURNOI</div>
-
-                    <div style="font-size: 13px;">
-
-                        🥇 <strong>Champion :</strong> <span class="saphir-primary" style="font-size: 15px; font-weight: bold;">{tournoi_choisi.get('vainqueur_final')}</span>
-
-                        &nbsp;&nbsp;|&nbsp;&nbsp;
-
-                        🥈 <strong>Finaliste :</strong> <span class="saphir-muted" style="font-size: 13px;">{tournoi_choisi.get('finaliste', 'N/D')}</span>
-
-                    </div>
-
-                </div>
-
-                """,
-
+                f'<div class="saphir-light-card" style="background: linear-gradient(135deg, #fff9c4, #fffde7); border: 2px solid #fbc02d; border-radius: 8px; padding: 10px 14px; margin: 10px 0; text-align: center; color: #0f172a !important;">'
+                f'<div class="saphir-gold-title" style="font-size: 14px; font-weight: bold; margin-bottom: 4px; color: #b45309 !important;">🏆 PALMARÈS DU TOURNOI</div>'
+                f'<div style="font-size: 13.5px; color: #0f172a !important;">'
+                f'🥇 <strong style="color: #0f172a !important;">Champion :</strong> <span class="saphir-primary" style="font-size: 15px; font-weight: 800; color: #0b3c5d !important;">{tournoi_choisi.get("vainqueur_final")}</span>'
+                f' &nbsp;&nbsp;|&nbsp;&nbsp; '
+                f'🥈 <strong style="color: #0f172a !important;">Finaliste :</strong> <span class="saphir-muted" style="font-size: 14px; font-weight: 700; color: #334155 !important;">{tournoi_choisi.get("finaliste", "N/D")}</span>'
+                f'{score_arch_txt}'
+                f'</div>'
+                f'</div>',
                 unsafe_allow_html=True
-
             )
 
         elif tournoi_choisi.get("statut") == "annule":
@@ -34027,21 +33815,13 @@ def afficher_tableau_de_bord_progression(historique):
                         sign_d = f"+{et['delta_obj']}" if et["delta_obj"] > 0 else f"{et['delta_obj']}"
 
                         st.markdown(
-
-                            f"<div class='saphir-podium-card {cls_et[i_et]}' style='padding:10px;'>"
-
-                            f"<div class='podium-sub' style='font-size:12px; font-weight:700;'>{ic_et[i_et]}</div>"
-
-                            f"<div class='podium-title' style='font-size:15.5px; font-weight:800; margin:3px 0;'>{et['nom']} ({et['equipe']})</div>"
-
-                            f"<div class='podium-sub' style='font-size:12px;'><strong>{et['pts']} / 24 pts</strong> ({et['nb_8']}× 8pts)<br>"
-
-                            f"<span style='font-size:11px;'>Obj. {et['objectif']} pts ({sign_d} vs moy.)</span></div>"
-
+                            f"<div class='saphir-podium-card {cls_et[i_et]}' style='padding:10px; color:#0f172a !important;'>"
+                            f"<div class='podium-sub' style='font-size:12px; font-weight:700; color:#334155 !important;'>{ic_et[i_et]}</div>"
+                            f"<div class='podium-title' style='font-size:15.5px; font-weight:800; margin:3px 0; color:#0b3c5d !important;'>{et['nom']} ({et['equipe']})</div>"
+                            f"<div class='podium-sub' style='font-size:12px; color:#334155 !important;'><strong style='color:#0f172a !important;'>{et['pts']} / 24 pts</strong> ({et['nb_8']}× 8pts)<br>"
+                            f"<span style='font-size:11px; color:#334155 !important;'>Obj. {et['objectif']} pts ({sign_d} vs moy.)</span></div>"
                             f"</div>",
-
                             unsafe_allow_html=True
-
                         )
 
                     else:
@@ -34053,21 +33833,13 @@ def afficher_tableau_de_bord_progression(historique):
                 if eq_sem:
 
                     st.markdown(
-
-                        f"<div class='saphir-podium-card saphir-podium-1' style='padding:10px; border-color:#0284c7 !important; background:linear-gradient(135deg,#e0f2fe 0%,#bae6fd 100%) !important;'>"
-
-                        f"<div class='podium-sub' style='font-size:12px; font-weight:700;'>🚀 Équipe de la Semaine</div>"
-
-                        f"<div class='podium-title' style='font-size:16px; font-weight:800; margin:3px 0;'>{eq_sem['equipe']}</div>"
-
-                        f"<div class='podium-sub' style='font-size:12px;'><strong>{eq_sem['pts']} / 72 pts</strong><br>"
-
-                        f"<span style='font-size:11px;'>contre {eq_sem['adversaire']}</span></div>"
-
+                        f"<div class='saphir-podium-card saphir-podium-1' style='padding:10px; border-color:#0284c7 !important; background:linear-gradient(135deg,#e0f2fe 0%,#bae6fd 100%) !important; color:#0f172a !important;'>"
+                        f"<div class='podium-sub' style='font-size:12px; font-weight:700; color:#334155 !important;'>🚀 Équipe de la Semaine</div>"
+                        f"<div class='podium-title' style='font-size:16px; font-weight:800; margin:3px 0; color:#0b3c5d !important;'>{eq_sem['equipe']}</div>"
+                        f"<div class='podium-sub' style='font-size:12px; color:#334155 !important;'><strong style='color:#0f172a !important;'>{eq_sem['pts']} / 72 pts</strong><br>"
+                        f"<span style='font-size:11px; color:#334155 !important;'>contre {eq_sem['adversaire']}</span></div>"
                         f"</div>",
-
                         unsafe_allow_html=True
-
                     )
 
 
@@ -34179,17 +33951,11 @@ def afficher_tableau_de_bord_progression(historique):
                     diff_p = f"+{eq_p['diff']}" if eq_p["diff"] > 0 else str(eq_p["diff"])
 
                     cartes_podium_eq.append(
-
-                        f"<div class='saphir-podium-card {classes_pod[idx_p]}'>"
-
-                        f"<div class='podium-sub' style='font-size:13px; font-weight:700; margin-bottom:4px;'>{ic_pod[idx_p]}</div>"
-
-                        f"<div class='podium-title' style='font-size:17px; font-weight:800; margin-bottom:4px;'>{eq_p['nom']}</div>"
-
-                        f"<div class='podium-sub' style='font-size:12.5px;'><strong>{eq_p['pour']} pts</strong> ({eq_p['v']}V - {eq_p['d']}D) &nbsp;•&nbsp; Diff {diff_p} &nbsp;•&nbsp; {eq_p['serie_str']}</div>"
-
+                        f"<div class='saphir-podium-card {classes_pod[idx_p]}' style='color:#0f172a !important;'>"
+                        f"<div class='podium-sub' style='font-size:13px; font-weight:700; margin-bottom:4px; color:#334155 !important;'>{ic_pod[idx_p]}</div>"
+                        f"<div class='podium-title' style='font-size:17px; font-weight:800; margin-bottom:4px; color:#0b3c5d !important;'>{eq_p['nom']}</div>"
+                        f"<div class='podium-sub' style='font-size:12.5px; color:#334155 !important;'><strong style='color:#0f172a !important;'>{eq_p['pour']} pts</strong> ({eq_p['v']}V - {eq_p['d']}D) &nbsp;•&nbsp; Diff {diff_p} &nbsp;•&nbsp; {eq_p['serie_str']}</div>"
                         f"</div>"
-
                     )
 
                 st.markdown(f"<div class='saphir-podium-grid'>{''.join(cartes_podium_eq)}</div>", unsafe_allow_html=True)
@@ -34625,17 +34391,11 @@ def afficher_tableau_de_bord_progression(historique):
                 for idx_p, jo_p in enumerate(classement_joueurs[:3]):
 
                     cartes_podium_jo.append(
-
-                        f"<div class='saphir-podium-card {classes_pod[idx_p]}'>"
-
-                        f"<div class='podium-sub' style='font-size:13px; font-weight:700; margin-bottom:4px;'>{ic_pod[idx_p]}</div>"
-
-                        f"<div class='podium-title' style='font-size:17px; font-weight:800; margin-bottom:4px;'>{jo_p['nom']} ({jo_p['equipe']})</div>"
-
-                        f"<div class='podium-sub' style='font-size:12.5px;'><strong>Moy. {jo_p['moyenne']:.2f}/8</strong> ({jo_p['moyenne_soiree']:.1f}/24) &nbsp;•&nbsp; {jo_p['total_pts']} pts &nbsp;•&nbsp; Δ Obj: {jo_p['surperformance_pts']:+.1f} pts</div>"
-
+                        f"<div class='saphir-podium-card {classes_pod[idx_p]}' style='color:#0f172a !important;'>"
+                        f"<div class='podium-sub' style='font-size:13px; font-weight:700; margin-bottom:4px; color:#334155 !important;'>{ic_pod[idx_p]}</div>"
+                        f"<div class='podium-title' style='font-size:17px; font-weight:800; margin-bottom:4px; color:#0b3c5d !important;'>{jo_p['nom']} ({jo_p['equipe']})</div>"
+                        f"<div class='podium-sub' style='font-size:12.5px; color:#334155 !important;'><strong style='color:#0f172a !important;'>Moy. {jo_p['moyenne']:.2f}/8</strong> ({jo_p['moyenne_soiree']:.1f}/24) &nbsp;•&nbsp; {jo_p['total_pts']} pts &nbsp;•&nbsp; Δ Obj: {jo_p['surperformance_pts']:+.1f} pts</div>"
                         f"</div>"
-
                     )
 
                 st.markdown(f"<div class='saphir-podium-grid'>{''.join(cartes_podium_jo)}</div>", unsafe_allow_html=True)
