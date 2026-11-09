@@ -18886,6 +18886,18 @@ def envoyer_courriel_sauvegarde_tournoi(tournoi_obj=None, mode="simple", destina
 
         pj.append(HISTORIQUE_TOURNOIS_FILE)
 
+    if tournoi_obj and isinstance(tournoi_obj, dict):
+        try:
+            import tempfile
+            html_t = generer_html_tournoi(tournoi_obj, mode=mode)
+            id_t = tournoi_obj.get("id_archive", f"tournoi_{int(time.time())}")
+            temp_html_path = os.path.join(tempfile.gettempdir(), f"arborescence_{id_t}.html")
+            with open(temp_html_path, "w", encoding="utf-8") as f_tmp:
+                f_tmp.write(html_t)
+            pj.append(temp_html_path)
+        except Exception:
+            pass
+
 
 
     mode_label = "Simple (1 contre 1)" if mode == "simple" else "Double / Équipes (2 contre 2)"
@@ -23690,7 +23702,7 @@ def actualiser_score_elimination(tournoi, tour_num, match_id, score_a, score_b):
 
         tournoi["statut"] = "termine"
 
-        archiver_tournoi(tournoi, mode=tournoi.get("mode", "simple"), notifier_admin=False)
+        archiver_tournoi(tournoi, mode=tournoi.get("mode", "simple"), notifier_admin=True)
 
     return True
 
@@ -24163,7 +24175,7 @@ def corriger_score_elimination(tournoi, match_id, score_a, score_b, forcer_casca
             tournoi["vainqueur_final"] = nouv_vainqueur
             tournoi["finaliste"] = nouv_perdant
             tournoi["statut"] = "termine"
-            archiver_tournoi(tournoi, mode=tournoi.get("mode", "simple"), notifier_admin=False)
+            archiver_tournoi(tournoi, mode=tournoi.get("mode", "simple"), notifier_admin=True)
         return True, f"Score du match {match_id} corrigé ({score_a}-{score_b})."
     
     desc_termines = obtenir_matchs_descendants_termines(tournoi, match_id)
@@ -24263,7 +24275,7 @@ def corriger_score_elimination(tournoi, match_id, score_a, score_b, forcer_casca
         tournoi["vainqueur_final"] = nouv_vainqueur
         tournoi["finaliste"] = nouv_perdant
         tournoi["statut"] = "termine"
-        archiver_tournoi(tournoi, mode=tournoi.get("mode", "simple"), notifier_admin=False)
+        archiver_tournoi(tournoi, mode=tournoi.get("mode", "simple"), notifier_admin=True)
     else:
         if tournoi.get("statut") == "termine":
             tournoi["statut"] = "en_cours"
@@ -24314,7 +24326,7 @@ def corriger_score_round_robin(tournoi, match_id, score_a, score_b):
                 if classement:
                     tournoi["vainqueur_final"] = classement[0][0]
                     tournoi["finaliste"] = classement[1][0] if len(classement) > 1 else None
-                archiver_tournoi(tournoi, mode=tournoi.get("mode", "simple"), notifier_admin=False)
+                archiver_tournoi(tournoi, mode=tournoi.get("mode", "simple"), notifier_admin=True)
             else:
                 if tournoi.get("statut") == "termine":
                     tournoi["statut"] = "en_cours"
@@ -30501,6 +30513,8 @@ def afficher_deroulement_matchs_tournoi(tournoi, mode="simple", est_editeur=True
 
                                     else:
 
+                                        est_match_finale = (tour_num == tournoi.get("total_tours")) or (m_id == "GF_M1")
+
                                         actualiser_score_elimination(tournoi, tour_num, m_id, sc_a_in, sc_b_in)
 
                                         td_fresh = charger_tournois_data()
@@ -30509,7 +30523,13 @@ def afficher_deroulement_matchs_tournoi(tournoi, mode="simple", est_editeur=True
                                             td_fresh[mode] = tournoi
                                             sauvegarder_tournois_data(td_fresh)
                                         else:
-                                            archiver_tournoi(tournoi, mode=mode, notifier_admin=False)
+                                            archiver_tournoi(tournoi, mode=mode, notifier_admin=est_match_finale)
+
+                                        if est_match_finale or tournoi.get("statut") == "termine":
+                                            if td_fresh.get(mode):
+                                                td_fresh[mode] = tournoi
+                                                sauvegarder_tournois_data(td_fresh)
+                                            st.session_state[f"msg_finale_{mode}"] = f"🏆 Finale validée ! Félicitations à {tournoi.get('vainqueur_final', 'Vainqueur')} pour sa victoire. Le tournoi a été automatiquement sauvegardé et la notification officielle a été transmise par courriel aux administrateurs."
 
                                         st.rerun()
 
@@ -31162,7 +31182,7 @@ def afficher_deroulement_matchs_tournoi(tournoi, mode="simple", est_editeur=True
 
                 tournoi["finaliste"] = classement_rr[1][0]
 
-            archiver_tournoi(tournoi, mode=mode, notifier_admin=False)
+            archiver_tournoi(tournoi, mode=mode, notifier_admin=True)
 
             sauvegarder_tournois_data(tournois_data)
 
@@ -31172,6 +31192,10 @@ def afficher_deroulement_matchs_tournoi(tournoi, mode="simple", est_editeur=True
 def afficher_section_tournoi(mode="simple"):
 
     """Affiche l'interface complète de configuration ou de déroulement d'un tournoi (Simple ou Double)."""
+
+    if f"msg_finale_{mode}" in st.session_state:
+
+        st.success(st.session_state.pop(f"msg_finale_{mode}"))
 
     if f"msg_recup_{mode}" in st.session_state:
 
