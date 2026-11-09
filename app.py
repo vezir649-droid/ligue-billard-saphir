@@ -188,27 +188,89 @@ LOCK_TIMEOUT = 900  # 15 minutes d'inactivité avant libération automatique
 
 
 
-def _cle_match_unique(m):
-
-    """Génère une clé unique pour un match afin d'éviter les doublons et les pertes lors des synchronisations."""
-
+def obtenir_totaux_match_fiables(m):
+    """Calcule et renvoie toujours les totaux fiables (tot_rec, tot_vis) d'un match à partir de la somme réelle des 9 manches si disponible."""
     if not isinstance(m, dict):
+        return 0, 0
+    matchs_d = m.get("matchs")
+    if isinstance(matchs_d, dict) and matchs_d:
+        somme_a = 0
+        somme_b = 0
+        manches_trouvees = False
+        for i in range(1, 10):
+            m_info = matchs_d.get(str(i))
+            if isinstance(m_info, dict) and ("score_a" in m_info or "score_b" in m_info):
+                manches_trouvees = True
+                try:
+                    somme_a += int(m_info.get("score_a", 0) or 0)
+                except (ValueError, TypeError):
+                    pass
+                try:
+                    somme_b += int(m_info.get("score_b", 0) or 0)
+                except (ValueError, TypeError):
+                    pass
+        if manches_trouvees and (somme_a > 0 or somme_b > 0 or (m.get("total_receveur") is None and m.get("total_visiteur") is None)):
+            m["total_receveur"] = somme_a
+            m["total_visiteur"] = somme_b
+            return somme_a, somme_b
+    try:
+        tr = int(m.get("total_receveur") or 0)
+    except (ValueError, TypeError):
+        tr = 0
+    try:
+        tv = int(m.get("total_visiteur") or 0)
+    except (ValueError, TypeError):
+        tv = 0
+    return tr, tv
 
+
+def _cle_match_unique(m):
+    """Génère une clé unique pour un match (receveur, visiteur, date normalisée) afin d'éviter les doublons lors des rectifications et synchronisations."""
+    if not isinstance(m, dict):
         return ""
-
-    r = str(m.get("receveur") or "").strip().lower()
-
-    v = str(m.get("visiteur") or "").strip().lower()
-
+    r = str(m.get("receveur") or m.get("equipe_receveur") or "").strip().lower()
+    v = str(m.get("visiteur") or m.get("equipe_visiteur") or "").strip().lower()
     d = str(m.get("date") or m.get("date_enregistrement") or "").strip()
+    m_dmy = re.match(r"^(\d{2})/(\d{2})/(\d{4})", d)
+    m_ymd = re.match(r"^(\d{4})-(\d{2})-(\d{2})", d)
+    if m_dmy:
+        d_clean = f"{m_dmy.group(3)}{m_dmy.group(2)}{m_dmy.group(1)}"
+    elif m_ymd:
+        d_clean = f"{m_ymd.group(1)}{m_ymd.group(2)}{m_ymd.group(3)}"
+    else:
+        d_clean = "".join(c for c in d[:10] if c.isdigit())
+    return f"{r}|{v}|{d_clean}"
 
-    d_clean = "".join(c for c in d[:10] if c.isdigit())
 
-    tot_r = str(m.get("total_receveur") if m.get("total_receveur") is not None else "")
-
-    tot_v = str(m.get("total_visiteur") if m.get("total_visiteur") is not None else "")
-
-    return f"{r}|{v}|{d_clean}|{tot_r}|{tot_v}"
+def _fusionner_listes_matchs(liste_base, liste_complement):
+    """Fusionne deux listes de matchs sans doublon en privilégiant la version rectifiée ou la plus récente et en synchronisant les totaux avec les 9 manches."""
+    resultat = []
+    index_par_cle = {}
+    for src in (liste_base or [], liste_complement or []):
+        if not isinstance(src, list):
+            continue
+        for m in src:
+            if not isinstance(m, dict):
+                continue
+            obtenir_totaux_match_fiables(m)
+            cle = _cle_match_unique(m)
+            if not cle:
+                resultat.append(m)
+                continue
+            if cle not in index_par_cle:
+                index_par_cle[cle] = len(resultat)
+                resultat.append(m)
+            else:
+                idx_ex = index_par_cle[cle]
+                ex = resultat[idx_ex]
+                # Privilégier la version rectifiée ou modifiée le plus récemment
+                m_rect = bool(m.get("date_rectification"))
+                ex_rect = bool(ex.get("date_rectification"))
+                m_ts = float(m.get("ts_modif") or 0)
+                ex_ts = float(ex.get("ts_modif") or 0)
+                if (m_rect and not ex_rect) or (m_ts > ex_ts):
+                    resultat[idx_ex] = m
+    return resultat
 
 
 
@@ -4160,9 +4222,7 @@ def restaurer_tout_depuis_supabase(forcer=False):
 
                 cles_sb = {_cle_match_unique(m) for m in sb_matchs if _cle_match_unique(m)}
 
-                locaux_a_garder = [m for m in loc_matchs if isinstance(m, dict) and _cle_match_unique(m) not in cles_sb]
-
-                matchs_fusionnes = sb_matchs + locaux_a_garder
+                matchs_fusionnes = _fusionner_listes_matchs(sb_matchs, loc_matchs)
 
 
 
@@ -16378,7 +16438,9 @@ def charger_historique_matchs():
     ok_c, val_c = _lire_cache_fichier("historique_matchs", HISTORIQUE_FILE)
 
     if ok_c and isinstance(val_c, list) and len(val_c) > 0:
-
+        for m_c in val_c:
+            if isinstance(m_c, dict):
+                obtenir_totaux_match_fiables(m_c)
         return val_c
 
     for chemin in [HISTORIQUE_FILE, f"{HISTORIQUE_FILE}.bak"]:
@@ -16392,6 +16454,9 @@ def charger_historique_matchs():
                     data = json.load(f)
 
                     if isinstance(data, list) and len(data) > 0:
+                        for m_d in data:
+                            if isinstance(m_d, dict):
+                                obtenir_totaux_match_fiables(m_d)
 
                         if chemin == HISTORIQUE_FILE:
 
@@ -16414,6 +16479,9 @@ def charger_historique_matchs():
             sb_data = json.loads(raw_sb)
 
             if isinstance(sb_data, list) and len(sb_data) > 0:
+                for m_s in sb_data:
+                    if isinstance(m_s, dict):
+                        obtenir_totaux_match_fiables(m_s)
 
                 with open(HISTORIQUE_FILE, "w", encoding="utf-8") as f_w:
 
@@ -16432,6 +16500,9 @@ def charger_historique_matchs():
         gh_data = telecharger_json_depuis_github("historique_matchs.json")
 
         if isinstance(gh_data, list) and len(gh_data) > 0:
+            for m_g in gh_data:
+                if isinstance(m_g, dict):
+                    obtenir_totaux_match_fiables(m_g)
 
             with open(HISTORIQUE_FILE, "w", encoding="utf-8") as f_w:
 
@@ -16457,7 +16528,7 @@ def sauvegarder_historique_matchs(historique_list):
 
     try:
 
-        # Nettoyage systématique : aucun HTML dans le JSON d'historique (données pures uniquement)
+        # Nettoyage systématique : aucun HTML dans le JSON d'historique (données pures uniquement) et totaux toujours synchronisés avec les 9 manches
 
         for idx_m, m in enumerate(historique_list):
 
@@ -16467,15 +16538,7 @@ def sauvegarder_historique_matchs(historique_list):
 
                 m.pop("html", None)
 
-                if "matchs" in m and isinstance(m["matchs"], dict):
-
-                    if m.get("total_receveur") is None:
-
-                        m["total_receveur"] = sum(m["matchs"].get(str(i), {}).get("score_a", 0) for i in range(1, 10))
-
-                    if m.get("total_visiteur") is None:
-
-                        m["total_visiteur"] = sum(m["matchs"].get(str(i), {}).get("score_b", 0) for i in range(1, 10))
+                obtenir_totaux_match_fiables(m)
 
                 if not m.get("date_enregistrement") and m.get("date"):
 
@@ -16795,9 +16858,7 @@ def obtenir_html_match(m):
 
     date_str = m.get("date_enregistrement", m.get("date", "Date inconnue"))
 
-    tot_rec = m.get("total_receveur", 0)
-
-    tot_vis = m.get("total_visiteur", 0)
+    tot_rec, tot_vis = obtenir_totaux_match_fiables(m)
 
     matchs = m.get("matchs", {})
 
@@ -33025,19 +33086,7 @@ def calculer_statistiques_et_progression(historique):
 
         matchs_dict = m.get("matchs", {}) or {}
 
-        tr = m.get("total_receveur")
-
-        tv = m.get("total_visiteur")
-
-        if tr is None or tv is None:
-
-            tr = sum(int(matchs_dict.get(str(i), {}).get("score_a", 0) or 0) for i in range(1, 10))
-
-            tv = sum(int(matchs_dict.get(str(i), {}).get("score_b", 0) or 0) for i in range(1, 10))
-
-        tr = int(tr or 0)
-
-        tv = int(tv or 0)
+        tr, tv = obtenir_totaux_match_fiables(m)
 
 
 
@@ -38648,21 +38697,7 @@ with tab_feuille:
 
         vis_m = m.get("visiteur", m.get("equipe_visiteur", "Visiteur"))
 
-        tot_r = m.get("total_receveur")
-
-        tot_v = m.get("total_visiteur")
-
-        if tot_r is None and "matchs" in m:
-
-            tot_r = sum(m["matchs"].get(str(i), {}).get("score_a", 0) for i in range(1, 10))
-
-        if tot_v is None and "matchs" in m:
-
-            tot_v = sum(m["matchs"].get(str(i), {}).get("score_b", 0) for i in range(1, 10))
-
-        tot_r = tot_r if tot_r is not None else 0
-
-        tot_v = tot_v if tot_v is not None else 0
+        tot_r, tot_v = obtenir_totaux_match_fiables(m)
 
         base_label = f"📜 {date_m} — {rec_m} ({tot_r}) vs {vis_m} ({tot_v})"
 
@@ -38843,6 +38878,14 @@ with tab_feuille:
         st.session_state["venant_de_archive"] = True
 
         m_arch = mapping_matchs[choix_vue]
+
+        rec_m = m_arch.get("receveur", m_arch.get("equipe_receveur", "Receveur"))
+
+        vis_m = m_arch.get("visiteur", m_arch.get("equipe_visiteur", "Visiteur"))
+
+        tot_r, tot_v = obtenir_totaux_match_fiables(m_arch)
+
+        date_m = m_arch.get("date_enregistrement", m_arch.get("date", "Date inconnue"))
 
         html_arch = obtenir_html_match(m_arch)
 
@@ -42239,21 +42282,7 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
 
                         v_h = m_h.get("visiteur", m_h.get("equipe_visiteur", "Visiteur"))
 
-                        tr_h = m_h.get("total_receveur")
-
-                        tv_h = m_h.get("total_visiteur")
-
-                        if tr_h is None and "matchs" in m_h:
-
-                            tr_h = sum(m_h["matchs"].get(str(k), {}).get("score_a", 0) for k in range(1, 10))
-
-                        if tv_h is None and "matchs" in m_h:
-
-                            tv_h = sum(m_h["matchs"].get(str(k), {}).get("score_b", 0) for k in range(1, 10))
-
-                        tr_h = tr_h if tr_h is not None else 0
-
-                        tv_h = tv_h if tv_h is not None else 0
+                        tr_h, tv_h = obtenir_totaux_match_fiables(m_h)
 
                         rectif_tag = " [Rectifié]" if m_h.get("date_rectification") else ""
 
@@ -42935,9 +42964,7 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
 
                                                 cles_sb = {_cle_match_unique(m) for m in sb_list if _cle_match_unique(m)}
 
-                                                locaux_a_garder = [m for m in loc_matchs if isinstance(m, dict) and _cle_match_unique(m) not in cles_sb]
-
-                                                fusion = sb_list + locaux_a_garder
+                                                fusion = _fusionner_listes_matchs(sb_list, loc_matchs)
 
                                                 with open(HISTORIQUE_FILE, "w", encoding="utf-8") as f_w:
 
@@ -43025,9 +43052,7 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
 
                                                 cles_gh = {_cle_match_unique(m) for m in gh_list if _cle_match_unique(m)}
 
-                                                locaux_a_garder = [m for m in loc_matchs if isinstance(m, dict) and _cle_match_unique(m) not in cles_gh]
-
-                                                fusion = gh_list + locaux_a_garder
+                                                fusion = _fusionner_listes_matchs(gh_list, loc_matchs)
 
                                                 with open(HISTORIQUE_FILE, "w", encoding="utf-8") as f_w:
 
