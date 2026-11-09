@@ -1,14 +1,5 @@
 [
     {
-        "id": "cmd_1794163546_355",
-        "type": "nouveau_match",
-        "telephone": "4188720836",
-        "message": "[LIGUE SAPHIR] Echo (66) vs Alpha (58)\nDate : 2026-10-26\n\nPointages :\n- G. Dumais : 21\n- L. Morin : 18\n- G. Vézina : 21\n- G. Lavoie : 20\n- A. St-Pierre : 24\n- C. Harvey : 20",
-        "statut": "envoye",
-        "date": "2026-11-08 18:45:46",
-        "date_envoi": "2026-11-08 13:45:49"
-    },
-    {
         "id": "cmd_1794164196_946",
         "type": "nouveau_match",
         "telephone": "4184077542",
@@ -220,7 +211,16 @@
         "type": "test_sms",
         "telephone": "5818499683",
         "message": "[TOURNOI SAPHIR] Horaire modifie (M4)\nG. Dumais & G. Vezina vs M. Larouche & D. Viens\nMatch Table 2 reporte a 22h27. Soyez presents !",
+        "statut": "envoye",
+        "date": "2026-11-08 21:51:29",
+        "date_envoi": "2026-11-09 10:29:45"
+    },
+    {
+        "id": "cmd_1794238197_509",
+        "type": "nouveau_match",
+        "telephone": "4188720836",
+        "message": "[LIGUE SAPHIR] Echo (66) vs Alpha (58)\nEcho: G.Dumais:21, G.Vezina:21, A.St-Pierre:24\nAlpha: L.Morin:18, G.Lavoie:20, C.Harvey:20",
         "statut": "en_attente",
-        "date": "2026-11-08 21:51:29"
+        "date": "2026-11-09 15:29:57"
     }
 ]
