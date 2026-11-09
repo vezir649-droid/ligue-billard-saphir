@@ -23905,6 +23905,15 @@ def trouver_match_tournoi(tournoi, match_id):
     """Retrouve le dictionnaire du match, son tour et son numéro d'index."""
     if not tournoi:
         return None, None, None
+    for idx, t in enumerate(tournoi.get("tours", [])):
+        for m in t.get("matchs", []):
+            if m.get("id") == match_id:
+                return m, t, idx + 1
+    for m in tournoi.get("matchs", []):
+        if m.get("id") == match_id:
+            return m, None, 1
+    return None, None, None
+
 
 
 def verifier_ronde_precedente_terminee(tournoi, tour_courant=None, tour_num=None, match_id=None):
@@ -24034,14 +24043,6 @@ def verifier_ronde_precedente_terminee(tournoi, tour_courant=None, tour_num=None
     return True, "", []
 
 
-    for idx, t in enumerate(tournoi.get("tours", [])):
-        for m in t.get("matchs", []):
-            if m.get("id") == match_id:
-                return m, t, idx + 1
-    for m in tournoi.get("matchs", []):
-        if m.get("id") == match_id:
-            return m, None, 1
-    return None, None, None
 
 
 def trouver_matchs_dependants(tournoi, match_id):
