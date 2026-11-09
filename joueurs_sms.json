@@ -12,7 +12,7 @@
         "equipe": "Echo",
         "telephone": "4184077542",
         "courriel": "guyvez@hotmail.com",
-        "consentement": false,
+        "consentement": true,
         "actif": true
     },
     {
@@ -100,7 +100,7 @@
         "equipe": "Bravo",
         "telephone": "4188720836",
         "courriel": "vezir649@gmail.com",
-        "consentement": false,
+        "consentement": true,
         "actif": true
     },
     {
@@ -124,7 +124,7 @@
         "equipe": "Alpha",
         "telephone": "5818499683",
         "courriel": "clauharvey70@gmail.com",
-        "consentement": false,
+        "consentement": true,
         "actif": true
     },
     {
@@ -156,7 +156,7 @@
         "equipe": "Foxtrot",
         "telephone": "4185763878",
         "courriel": "natoo_girl@hotmail.com",
-        "consentement": false,
+        "consentement": true,
         "actif": true
     },
     {
