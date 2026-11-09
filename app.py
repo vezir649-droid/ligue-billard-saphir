@@ -23487,6 +23487,314 @@ def attribuer_passe_droit_round_robin(tournoi, match_id, beneficiaire):
 
 
 
+
+
+def trouver_match_tournoi(tournoi, match_id):
+    """Retrouve le dictionnaire du match, son tour et son numéro d'index."""
+    if not tournoi:
+        return None, None, None
+    for idx, t in enumerate(tournoi.get("tours", [])):
+        for m in t.get("matchs", []):
+            if m.get("id") == match_id:
+                return m, t, idx + 1
+    for m in tournoi.get("matchs", []):
+        if m.get("id") == match_id:
+            return m, None, 1
+    return None, None, None
+
+
+def trouver_matchs_dependants(tournoi, match_id):
+    """Retourne la liste des matchs futurs qui dépendent directement de ce match."""
+    dependants = []
+    if not tournoi:
+        return dependants
+    tours = tournoi.get("tours", [])
+    for t_idx, t in enumerate(tours):
+        for m in t.get("matchs", []):
+            if m.get("source_a") == match_id or m.get("source_b") == match_id:
+                dependants.append((m, t, t_idx + 1))
+    if not dependants and tournoi.get("format") != "double_elimination":
+        m_trouve, tour_courant, tour_num = trouver_match_tournoi(tournoi, match_id)
+        if m_trouve and tour_courant and tour_num < tournoi.get("total_tours", 1):
+            try:
+                m_idx = tour_courant["matchs"].index(m_trouve)
+                prochain_tour = tours[tour_num]
+                prochain_match_idx = m_idx // 2
+                if prochain_match_idx < len(prochain_tour["matchs"]):
+                    dependants.append((prochain_tour["matchs"][prochain_match_idx], prochain_tour, tour_num + 1))
+            except Exception:
+                pass
+    return dependants
+
+
+def trouver_tous_matchs_descendants(tournoi, match_id, visites=None):
+    """Retourne tous les matchs descendants (directs et indirects)."""
+    if visites is None:
+        visites = set()
+    descendants = []
+    directs = trouver_matchs_dependants(tournoi, match_id)
+    for m_dep, t_dep, t_num in directs:
+        dep_id = m_dep.get("id")
+        if dep_id and dep_id not in visites:
+            visites.add(dep_id)
+            descendants.append((m_dep, t_dep, t_num))
+            descendants.extend(trouver_tous_matchs_descendants(tournoi, dep_id, visites))
+    return descendants
+
+
+def obtenir_matchs_descendants_termines(tournoi, match_id):
+    """Retourne les matchs descendants qui sont déjà terminés / validés."""
+    desc = trouver_tous_matchs_descendants(tournoi, match_id)
+    termines = []
+    for m, t, n in desc:
+        if m.get("termine"):
+            termines.append((m, t, n))
+    return termines
+
+
+def reprendre_validation_match_elimination(tournoi, match_id, forcer_cascade=False):
+    """
+    Annule la validation d'un match à élimination directe ou double élimination.
+    Remet le match en état non terminé et réinitialise les cases dépendantes.
+    """
+    m_trouve, tour_courant, tour_num = trouver_match_tournoi(tournoi, match_id)
+    if not m_trouve:
+        return False, "Match introuvable."
+    
+    desc_termines = obtenir_matchs_descendants_termines(tournoi, match_id)
+    if desc_termines and not forcer_cascade:
+        ids_suiv = ", ".join([d[0]["id"] for d in desc_termines])
+        return False, f"Impossible de reprendre : le(s) match(s) suivant(s) ({ids_suiv}) sont déjà terminés."
+    
+    m_trouve["termine"] = False
+    m_trouve["vainqueur"] = None
+    m_trouve["perdant"] = None
+    m_trouve["passe_droit"] = False
+    
+    tous_desc = trouver_tous_matchs_descendants(tournoi, match_id)
+    desc_ids = {d[0]["id"] for d in tous_desc}
+    desc_ids.add(match_id)
+    
+    for m_desc, _, _ in tous_desc:
+        if m_desc.get("source_a") in desc_ids:
+            m_desc["equipe_a"] = "À déterminer"
+        if m_desc.get("source_b") in desc_ids:
+            m_desc["equipe_b"] = "À déterminer"
+        
+        if m_desc.get("termine"):
+            m_desc["termine"] = False
+            m_desc["score_a"] = 0
+            m_desc["score_b"] = 0
+            m_desc["vainqueur"] = None
+            m_desc["perdant"] = None
+            m_desc["passe_droit"] = False
+    
+    if tournoi.get("statut") == "termine":
+        tournoi["statut"] = "en_cours"
+        tournoi.pop("vainqueur_final", None)
+        tournoi.pop("finaliste", None)
+    
+    eviter_rematch_loser_bracket(tournoi)
+    recalculer_heure_fin_tournoi(tournoi)
+    return True, f"Validation du match {match_id} reprise avec succès. Le match est de nouveau en attente de score."
+
+
+def corriger_score_elimination(tournoi, match_id, score_a, score_b, forcer_cascade=False):
+    """
+    Corrige le score d'un match déjà validé.
+    Si le vainqueur reste le même, met simplement à jour les scores.
+    Si le vainqueur change, propage le nouveau vainqueur/perdant et met à jour l'arbre.
+    """
+    m_trouve, tour_courant, tour_num = trouver_match_tournoi(tournoi, match_id)
+    if not m_trouve:
+        return False, "Match introuvable."
+    
+    race_to = m_trouve.get("race_to", tour_courant.get("race_to", 3 if tour_num == tournoi.get("total_tours") else 2))
+    
+    if score_a == score_b:
+        return False, "Match nul impossible."
+    if score_a < race_to and score_b < race_to:
+        return False, f"Un joueur/duo doit remporter {race_to} manches."
+    
+    ea = m_trouve.get("equipe_a")
+    eb = m_trouve.get("equipe_b")
+    
+    nouv_vainqueur = ea if score_a > score_b else eb
+    nouv_perdant = eb if score_a > score_b else ea
+    
+    ancien_vainqueur = m_trouve.get("vainqueur")
+    
+    if ancien_vainqueur == nouv_vainqueur:
+        m_trouve["score_a"] = score_a
+        m_trouve["score_b"] = score_b
+        m_trouve["termine"] = True
+        m_trouve["passe_droit"] = False
+        est_finale = (tour_num == tournoi.get("total_tours")) or (match_id == "GF_M1")
+        if est_finale:
+            tournoi["vainqueur_final"] = nouv_vainqueur
+            tournoi["finaliste"] = nouv_perdant
+            tournoi["statut"] = "termine"
+            archiver_tournoi(tournoi, mode=tournoi.get("mode", "simple"))
+        return True, f"Score du match {match_id} corrigé ({score_a}-{score_b})."
+    
+    desc_termines = obtenir_matchs_descendants_termines(tournoi, match_id)
+    if desc_termines and not forcer_cascade:
+        ids_suiv = ", ".join([d[0]["id"] for d in desc_termines])
+        return False, f"Le vainqueur a changé et le(s) match(s) suivant(s) ({ids_suiv}) sont déjà terminés. Cochez la confirmation pour réinitialiser."
+    
+    if desc_termines and forcer_cascade:
+        tous_desc = trouver_tous_matchs_descendants(tournoi, match_id)
+        desc_ids = {d[0]["id"] for d in tous_desc}
+        desc_ids.add(match_id)
+        for m_desc, _, _ in tous_desc:
+            if m_desc.get("source_a") in desc_ids:
+                m_desc["equipe_a"] = "À déterminer"
+            if m_desc.get("source_b") in desc_ids:
+                m_desc["equipe_b"] = "À déterminer"
+            if m_desc.get("termine"):
+                m_desc["termine"] = False
+                m_desc["score_a"] = 0
+                m_desc["score_b"] = 0
+                m_desc["vainqueur"] = None
+                m_desc["perdant"] = None
+                m_desc["passe_droit"] = False
+    
+    m_trouve["score_a"] = score_a
+    m_trouve["score_b"] = score_b
+    m_trouve["vainqueur"] = nouv_vainqueur
+    m_trouve["perdant"] = nouv_perdant
+    m_trouve["termine"] = True
+    m_trouve["passe_droit"] = False
+    
+    propage = False
+    cascade_termines = []
+    for t in tournoi.get("tours", []):
+        for m_futur in t.get("matchs", []):
+            if m_futur.get("source_a") == match_id:
+                type_a = m_futur.get("type_source_a", "vainqueur")
+                m_futur["equipe_a"] = nouv_vainqueur if type_a == "vainqueur" else nouv_perdant
+                propage = True
+            if m_futur.get("source_b") == match_id:
+                type_b = m_futur.get("type_source_b", "vainqueur")
+                m_futur["equipe_b"] = nouv_vainqueur if type_b == "vainqueur" else nouv_perdant
+                propage = True
+            
+            if not m_futur.get("termine"):
+                ea_f = m_futur.get("equipe_a")
+                eb_f = m_futur.get("equipe_b")
+                race_f = m_futur.get("race_to", 2)
+                if ea_f and ea_f not in ["À déterminer", "Exempt (Passe-droit)"] and eb_f == "Exempt (Passe-droit)":
+                    m_futur["score_a"] = race_f
+                    m_futur["score_b"] = 0
+                    m_futur["vainqueur"] = ea_f
+                    m_futur["perdant"] = "Exempt (Passe-droit)"
+                    m_futur["termine"] = True
+                    m_futur["passe_droit"] = True
+                    cascade_termines.append(m_futur["id"])
+                elif eb_f and eb_f not in ["À déterminer", "Exempt (Passe-droit)"] and ea_f == "Exempt (Passe-droit)":
+                    m_futur["score_a"] = 0
+                    m_futur["score_b"] = race_f
+                    m_futur["vainqueur"] = eb_f
+                    m_futur["perdant"] = "Exempt (Passe-droit)"
+                    m_futur["termine"] = True
+                    m_futur["passe_droit"] = True
+                    cascade_termines.append(m_futur["id"])
+    
+    for casc_id in cascade_termines:
+        for t in tournoi.get("tours", []):
+            for m_futur in t.get("matchs", []):
+                for t_src in tournoi.get("tours", []):
+                    for mc in t_src.get("matchs", []):
+                        if mc["id"] == casc_id:
+                            cv = mc["vainqueur"]
+                            cp = mc["perdant"]
+                            if m_futur.get("source_a") == casc_id:
+                                m_futur["equipe_a"] = cv if m_futur.get("type_source_a", "vainqueur") == "vainqueur" else cp
+                            if m_futur.get("source_b") == casc_id:
+                                m_futur["equipe_b"] = cv if m_futur.get("type_source_b", "vainqueur") == "vainqueur" else cp
+    
+    if not propage and tournoi.get("format") != "double_elimination" and tour_num < tournoi.get("total_tours", 1):
+        try:
+            m_idx_in_tour = tour_courant["matchs"].index(m_trouve)
+            prochain_tour = tournoi["tours"][tour_num]
+            prochain_match_idx = m_idx_in_tour // 2
+            if prochain_match_idx < len(prochain_tour["matchs"]):
+                prochain_match = prochain_tour["matchs"][prochain_match_idx]
+                if m_idx_in_tour % 2 == 0:
+                    prochain_match["equipe_a"] = nouv_vainqueur
+                else:
+                    prochain_match["equipe_b"] = nouv_vainqueur
+        except Exception:
+            pass
+    
+    eviter_rematch_loser_bracket(tournoi)
+    
+    est_finale = (tour_num == tournoi.get("total_tours")) or (match_id == "GF_M1")
+    if est_finale:
+        tournoi["vainqueur_final"] = nouv_vainqueur
+        tournoi["finaliste"] = nouv_perdant
+        tournoi["statut"] = "termine"
+        archiver_tournoi(tournoi, mode=tournoi.get("mode", "simple"))
+    else:
+        if tournoi.get("statut") == "termine":
+            tournoi["statut"] = "en_cours"
+            tournoi.pop("vainqueur_final", None)
+            tournoi.pop("finaliste", None)
+    
+    recalculer_heure_fin_tournoi(tournoi)
+    return True, f"Score corrigé et arbre mis à jour ({score_a}-{score_b}, Vainqueur : {nouv_vainqueur})."
+
+
+def reprendre_validation_round_robin(tournoi, match_id):
+    """Annule la validation d'un match de Round-Robin et remet le tournoi en cours."""
+    for m in tournoi.get("matchs", []):
+        if m.get("id") == match_id:
+            m["termine"] = False
+            m["vainqueur"] = None
+            m["passe_droit"] = False
+            if tournoi.get("statut") == "termine":
+                tournoi["statut"] = "en_cours"
+                tournoi.pop("vainqueur_final", None)
+                tournoi.pop("finaliste", None)
+            return True, f"Validation du match {match_id} reprise avec succès."
+    return False, "Match introuvable."
+
+
+def corriger_score_round_robin(tournoi, match_id, score_a, score_b):
+    """Corrige le score d'un match de Round-Robin et actualise le classement et l'état du tournoi."""
+    rr_race = tournoi.get("race_to", 2)
+    if score_a == score_b:
+        return False, "Match nul impossible."
+    if score_a < rr_race and score_b < rr_race:
+        return False, f"Un participant doit remporter {rr_race} victoires."
+    
+    for m in tournoi.get("matchs", []):
+        if m.get("id") == match_id:
+            ea = m.get("equipe_a")
+            eb = m.get("equipe_b")
+            m["score_a"] = score_a
+            m["score_b"] = score_b
+            m["vainqueur"] = ea if score_a > score_b else eb
+            m["termine"] = True
+            m["passe_droit"] = False
+            
+            tous_term = all(m_i.get("termine") for m_i in tournoi.get("matchs", []))
+            if tous_term:
+                classement = calculer_classement_round_robin(tournoi)
+                tournoi["statut"] = "termine"
+                if classement:
+                    tournoi["vainqueur_final"] = classement[0][0]
+                    tournoi["finaliste"] = classement[1][0] if len(classement) > 1 else None
+                archiver_tournoi(tournoi, mode=tournoi.get("mode", "simple"))
+            else:
+                if tournoi.get("statut") == "termine":
+                    tournoi["statut"] = "en_cours"
+                    tournoi.pop("vainqueur_final", None)
+                    tournoi.pop("finaliste", None)
+            return True, f"Score du match {match_id} corrigé avec succès ({score_a}-{score_b})."
+    return False, "Match introuvable."
+
+
 def generer_round_robin(participants, race_to=2, titre="Tournoi", heure_debut="09:00", duree_min=30, nb_tables=2):
 
     """Génère un championnat toutes rondes (Round-Robin). Format officiel : 2 de 3."""
@@ -30408,6 +30716,85 @@ def afficher_section_tournoi(mode="simple"):
                             else:
 
                                 st.caption("⏳ *Rencontre en attente de score (saisie réservée au marqueur)*")
+                        else:
+                            if est_editeur:
+                                with st.popover("✏️ Reprendre / Corriger", use_container_width=True, help="Corriger le score ou reprendre la validation de ce match"):
+                                    st.markdown(f"###### ✏️ Correction du match **{m_id}**")
+                                    st.caption(f"Rencontre : **{ea}** vs **{eb}**")
+                                    if m.get("passe_droit"):
+                                        st.info(f"🎟️ Validé par Passe-droit en faveur de **{vainq}**")
+                                    else:
+                                        st.caption(f"Score enregistré : **{ea}** {sa} - {sb} **{eb}** (Vainqueur : **{vainq}**)")
+                                    
+                                    desc_termines = [d[0] for d in obtenir_matchs_descendants_termines(tournoi, m_id)]
+                                    chk_force = False
+                                    if desc_termines:
+                                        ids_suiv = ", ".join([d.get("id", "") for d in desc_termines])
+                                        st.warning(f"⚠️ **Attention :** Le match suivant **{ids_suiv}** a déjà été validé ou joué. Toute modification du vainqueur ou reprise réinitialisera ce(s) match(s).")
+                                        chk_force = st.checkbox("Confirmer la réinitialisation des matchs suivants impactés", value=False, key=f"chk_f_{mode}_{m_id}")
+                                    else:
+                                        chk_force = True
+                                    
+                                    st.markdown("**1️⃣ Corriger le score :**")
+                                    col_corr_a, col_corr_b = st.columns(2)
+                                    options_corr_m = list(range(int(m_race) + 1))
+                                    idx_ca = options_corr_m.index(sa) if sa in options_corr_m else 0
+                                    idx_cb = options_corr_m.index(sb) if sb in options_corr_m else 0
+                                    with col_corr_a:
+                                        sc_a_corr = int(st.selectbox(
+                                            f"🎱 {formater_nom_abrege_joueur(ea)}",
+                                            options=options_corr_m,
+                                            index=idx_ca,
+                                            key=f"corr_sc_a_{mode}_{m_id}",
+                                            format_func=lambda x: f"Score : {x}"
+                                        ))
+                                    with col_corr_b:
+                                        sc_b_corr = int(st.selectbox(
+                                            f"🎱 {formater_nom_abrege_joueur(eb)}",
+                                            options=options_corr_m,
+                                            index=idx_cb,
+                                            key=f"corr_sc_b_{mode}_{m_id}",
+                                            format_func=lambda x: f"Score : {x}"
+                                        ))
+                                    
+                                    if st.button("💾 Enregistrer la correction", type="primary", use_container_width=True, key=f"btn_save_corr_{mode}_{m_id}"):
+                                        if sc_a_corr == sc_b_corr:
+                                            st.error("Match nul impossible.")
+                                        elif sc_a_corr < m_race and sc_b_corr < m_race:
+                                            st.warning(f"Un joueur/duo doit remporter {m_race} manches ({m_fmt}).")
+                                        else:
+                                            nouveau_vainqueur = ea if sc_a_corr > sc_b_corr else eb
+                                            if nouveau_vainqueur != vainq and desc_termines and not chk_force:
+                                                st.error("Veuillez cocher la confirmation d'impact sur les matchs ultérieurs.")
+                                            else:
+                                                ok, msg = corriger_score_elimination(tournoi, m_id, sc_a_corr, sc_b_corr, forcer_cascade=chk_force)
+                                                if ok:
+                                                    sauvegarder_tournois_data(tournois_data)
+                                                    st.success(f"✅ {msg}")
+                                                    time.sleep(0.5)
+                                                    st.rerun()
+                                                else:
+                                                    st.error(msg)
+                                    
+                                    st.divider()
+                                    st.markdown("**2️⃣ Reprendre la validation :**")
+                                    st.caption("Annule la validation et remet la rencontre en attente de score.")
+                                    if st.button("🔄 Reprendre la validation (Remettre en jeu)", type="secondary", use_container_width=True, key=f"btn_reprendre_{mode}_{m_id}"):
+                                        if desc_termines and not chk_force:
+                                            st.error("Veuillez cocher la confirmation d'impact sur les matchs ultérieurs.")
+                                        else:
+                                            ok, msg = reprendre_validation_match_elimination(tournoi, m_id, forcer_cascade=chk_force)
+                                            if ok:
+                                                st.session_state[f"sc_a_{mode}_{m_id}"] = sa
+                                                st.session_state[f"sc_b_{mode}_{m_id}"] = sb
+                                                sauvegarder_tournois_data(tournois_data)
+                                                st.success(f"🔄 {msg}")
+                                                time.sleep(0.5)
+                                                st.rerun()
+                                            else:
+                                                st.error(msg)
+                            else:
+                                st.caption("✅ *Rencontre terminée et validée*")
 
 
 
@@ -30839,6 +31226,69 @@ def afficher_section_tournoi(mode="simple"):
                             else:
 
                                 st.caption("⏳ *Rencontre en attente de score (saisie réservée au marqueur)*")
+                        else:
+                            if est_editeur:
+                                with st.popover("✏️ Reprendre / Corriger", use_container_width=True, help="Corriger le score ou reprendre la validation de ce match"):
+                                    st.markdown(f"###### ✏️ Correction du match **{m_id}**")
+                                    st.caption(f"Rencontre : **{ea}** vs **{eb}**")
+                                    if m.get("passe_droit"):
+                                        st.info(f"🎟️ Validé par Passe-droit en faveur de **{m.get('vainqueur')}**")
+                                    else:
+                                        st.caption(f"Score enregistré : **{ea}** {sa} - {sb} **{eb}** (Vainqueur : **{m.get('vainqueur')}**)")
+                                    
+                                    st.markdown("**1️⃣ Corriger le score :**")
+                                    col_corr_a, col_corr_b = st.columns(2)
+                                    options_corr_rr = list(range(int(rr_race) + 1))
+                                    idx_rca = options_corr_rr.index(sa) if sa in options_corr_rr else 0
+                                    idx_rcb = options_corr_rr.index(sb) if sb in options_corr_rr else 0
+                                    with col_corr_a:
+                                        sc_a_corr = int(st.selectbox(
+                                            f"🎱 {formater_nom_abrege_joueur(ea)}",
+                                            options=options_corr_rr,
+                                            index=idx_rca,
+                                            key=f"corr_rr_a_{mode}_{m_id}",
+                                            format_func=lambda x: f"Score : {x}"
+                                        ))
+                                    with col_corr_b:
+                                        sc_b_corr = int(st.selectbox(
+                                            f"🎱 {formater_nom_abrege_joueur(eb)}",
+                                            options=options_corr_rr,
+                                            index=idx_rcb,
+                                            key=f"corr_rr_b_{mode}_{m_id}",
+                                            format_func=lambda x: f"Score : {x}"
+                                        ))
+                                    
+                                    if st.button("💾 Enregistrer la correction", type="primary", use_container_width=True, key=f"btn_save_corr_rr_{mode}_{m_id}"):
+                                        if sc_a_corr == sc_b_corr:
+                                            st.error("Match nul impossible.")
+                                        elif sc_a_corr < rr_race and sc_b_corr < rr_race:
+                                            st.warning(f"Un joueur/duo doit remporter {rr_race} manches ({rr_fmt}).")
+                                        else:
+                                            ok, msg = corriger_score_round_robin(tournoi, m_id, sc_a_corr, sc_b_corr)
+                                            if ok:
+                                                sauvegarder_tournois_data(tournois_data)
+                                                st.success(f"✅ {msg}")
+                                                time.sleep(0.5)
+                                                st.rerun()
+                                            else:
+                                                st.error(msg)
+                                    
+                                    st.divider()
+                                    st.markdown("**2️⃣ Reprendre la validation :**")
+                                    st.caption("Annule la validation et remet la rencontre en attente de score.")
+                                    if st.button("🔄 Reprendre la validation (Remettre en jeu)", type="secondary", use_container_width=True, key=f"btn_reprendre_rr_{mode}_{m_id}"):
+                                        ok, msg = reprendre_validation_round_robin(tournoi, m_id)
+                                        if ok:
+                                            st.session_state[f"rr_a_{mode}_{m_id}"] = sa
+                                            st.session_state[f"rr_b_{mode}_{m_id}"] = sb
+                                            sauvegarder_tournois_data(tournois_data)
+                                            st.success(f"🔄 {msg}")
+                                            time.sleep(0.5)
+                                            st.rerun()
+                                        else:
+                                            st.error(msg)
+                            else:
+                                st.caption("✅ *Rencontre terminée et validée*")
 
 
 

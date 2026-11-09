@@ -158,6 +158,12 @@ La barre latérale **« 📋 Paramètres du Match »** regroupe tous les réglag
     * Option accessible en un clic dans la boîte de dialogue d'arborescence, dans la barre de commandes du tournoi actif et dans l'historique des tournois archivés.
     * Génère et attache la **page HTML complète de l'arborescence** ainsi que le fichier `historique_tournois.json` en pièces jointes.
   * Gestion des **passes-droits en cours de tournoi** (`🎟️ Passe-droit`) pour promouvoir un joueur ou un duo au tour suivant.
+* **✏️ Reprise de validation & Correction des matchs validés (`✏️ Reprendre / Corriger`) :**
+  * **Accès immédiat sur les rencontres terminées :** Dès qu'un match est validé, un popover ergonomique `✏️ Reprendre / Corriger` apparaît sur la carte de la rencontre pour les éditeurs / marqueurs (les spectateurs visualisent un badge sécurisé `✅ Rencontre terminée et validée`).
+  * **1️⃣ Correction directe du score :** Ajustement des manches sans défaire l'arbre du tournoi si le vainqueur reste identique. Si le vainqueur est inversé, la qualification et l'élimination sont automatiquement répercutées dans les tours suivants et dans la Grande Finale.
+  * **2️⃣ Reprendre la validation (Dévalider / Remettre en jeu) :** Annule l'état terminé du match, remet la rencontre en attente de score en préremplissant les scores précédents pour accélérer la saisie, et repositionne les cases dépendantes à « À déterminer ». Si le tournoi était clôturé, il repasse automatiquement en statut `en_cours`.
+  * **🛡️ Protection anti-corruption de l'arbre :** Détection automatique des matchs descendants déjà disputés avec message d'avertissement et confirmation explicite obligatoire par case à cocher avant toute réinitialisation en cascade.
+  * **Prise en charge tous formats :** Fonctionne en Élimination directe, en Double élimination (Winner et Loser Bracket) et en Championnat Round-Robin.
 * **📲 Convocations SMS automatiques aux tables & Notifications d'horaire :**
   * **Appel des matchs en 1 clic (`📲 Convoquer par SMS`) :** Directement depuis le panneau des matchs prêts à jouer ou l'arborescence, l'organisateur peut envoyer une convocation SMS instantanée aux joueurs ou duos assignés à une table (avec mention de la table et de l'heure du match).
   * **Badge visuel dynamique `📱 Convoqué` :** Marquage en temps réel sur les cartes de rencontres actives et dans la liste des tables pour identifier immédiatement les joueurs déjà alertés.
