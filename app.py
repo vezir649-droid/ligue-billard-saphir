@@ -1976,7 +1976,11 @@ def lister_fichiers_locaux_donnees():
 
 
 
-def synchroniser_fichier_github(filepath, commit_message=None):
+_LAST_SYNCED_SHA_GITHUB = {}
+_LAST_SYNCED_SHA_SUPABASE = {}
+
+
+def synchroniser_fichier_github(filepath, commit_message=None, forcer=False):
 
     """Pousse automatiquement un fichier de données local (.json ou .csv) vers le dépôt GitHub pour persistance anti-veille."""
 
@@ -2051,6 +2055,9 @@ def synchroniser_fichier_github(filepath, commit_message=None):
             # Calcul du SHA1 Git blob local pour éviter des commits redondants inutiles
 
             git_blob_sha = hashlib.sha1(f"blob {len(raw_bytes)}\0".encode("utf-8") + raw_bytes).hexdigest()
+
+            if not forcer and _LAST_SYNCED_SHA_GITHUB.get(filename) == git_blob_sha:
+                return True, f"Fichier {filename} déjà strictement à jour sur GitHub (cache SHA1)."
 
             b64_content = base64.b64encode(raw_bytes).decode("ascii")
 
@@ -2141,7 +2148,7 @@ def synchroniser_fichier_github(filepath, commit_message=None):
 
 
             if sha_actuel and sha_actuel == git_blob_sha:
-
+                _LAST_SYNCED_SHA_GITHUB[filename] = git_blob_sha
                 return True, f"Fichier {filename} déjà strictement à jour sur GitHub."
 
 
@@ -2170,6 +2177,8 @@ def synchroniser_fichier_github(filepath, commit_message=None):
 
                 if resp_put.status in (200, 201):
 
+                    _LAST_SYNCED_SHA_GITHUB[filename] = git_blob_sha
+
                     try:
 
                         st.session_state["dernier_sync_github"] = f"✅ {filename} synchronisé sur GitHub ({datetime.now().strftime('%H:%M:%S')})"
@@ -2187,6 +2196,15 @@ def synchroniser_fichier_github(filepath, commit_message=None):
 
 
     # Méthode 2 : Repli via Git local (dépôt local ou dépôt adjacent LigueBillardSaphir)
+    try:
+        import hashlib
+        with open(filepath, "rb") as _f_loc:
+            _rb_loc = _f_loc.read()
+        _loc_sha = hashlib.sha1(f"blob {len(_rb_loc)}\0".encode("utf-8") + _rb_loc).hexdigest()
+        if not forcer and _LAST_SYNCED_SHA_GITHUB.get(filename) == _loc_sha:
+            return True, f"Fichier {filename} déjà strictement à jour sur GitHub (cache SHA1 local)."
+    except Exception:
+        _loc_sha = None
 
     candidats_git = [
 
@@ -2245,6 +2263,8 @@ def synchroniser_fichier_github(filepath, commit_message=None):
             res_p = subprocess.run(["git", "-C", c_dir, "push", "origin", branch], timeout=15, check=False, capture_output=True)
 
             if res_p.returncode == 0:
+                if _loc_sha:
+                    _LAST_SYNCED_SHA_GITHUB[filename] = _loc_sha
 
                 try:
 
@@ -3752,7 +3772,7 @@ def diffuser_evenement_pubsub_sms(action="CHECK_NOW", details=None):
 
 
 
-def synchroniser_fichier_supabase(filepath, commit_message=None):
+def synchroniser_fichier_supabase(filepath, commit_message=None, forcer=False):
 
     """Pousse un fichier local (.json ou .csv) vers la table public.saphir_files de Supabase (upsert)."""
 
@@ -3807,6 +3827,10 @@ def synchroniser_fichier_supabase(filepath, commit_message=None):
                 pass
 
 
+
+        sha1_initial = hashlib.sha1(content.encode("utf-8")).hexdigest()
+        if not forcer and _LAST_SYNCED_SHA_SUPABASE.get(filename) == sha1_initial:
+            return True, f"Fichier {filename} déjà strictement à jour sur Supabase (cache SHA1)."
 
         # Protection anti-perte de matchs pour historique_matchs.json
 
@@ -3891,6 +3915,8 @@ def synchroniser_fichier_supabase(filepath, commit_message=None):
         with urllib.request.urlopen(req, timeout=8) as resp:
 
             if resp.status in (200, 201, 204):
+
+                _LAST_SYNCED_SHA_SUPABASE[filename] = sha1_val
 
                 try:
 
@@ -4006,6 +4032,32 @@ def synchroniser_tous_les_fichiers_supabase(commit_prefix=None):
 
     return len(succes), succes, erreurs
 
+
+
+def synchroniser_fichiers_cibles_cloud(filepaths, commit_prefix=None):
+    """Synchronise uniquement une liste ciblée de fichiers modifiés vers le Cloud actif."""
+    if not filepaths:
+        return 0, [], []
+    succes_list = []
+    erreurs_list = []
+    prefix = (commit_prefix or "Sauvegarde automatique").strip()
+    date_str = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    vus = set()
+    for fp in filepaths:
+        if not fp or not os.path.exists(fp):
+            continue
+        fp_abs = os.path.abspath(fp)
+        if fp_abs in vus:
+            continue
+        vus.add(fp_abs)
+        fn = os.path.basename(fp)
+        msg = f"{prefix} {fn} ({date_str})"
+        ok, info = synchroniser_fichier_cloud(fp, msg)
+        if ok:
+            succes_list.append(fn)
+        else:
+            erreurs_list.append(f"{fn} ({info})")
+    return len(succes_list), succes_list, erreurs_list
 
 
 def synchroniser_fichier_cloud(filepath, commit_message=None):
@@ -4374,6 +4426,8 @@ _SYNC_GITHUB_LOCK = threading.Lock()
 
 _SYNC_GITHUB_TIMER = None
 
+_PENDING_SYNC_FILES = {}  # {filepath_ou_ALL: (commit_prefix, nb_tentatives)}
+
 
 
 def _lire_cache_fichier(cle_cache, filepath):
@@ -4422,53 +4476,77 @@ def _ecrire_cache_fichier(cle_cache, filepath, data):
 
 
 
-def declencher_sync_github_arriere_plan(delai=1.5, commit_prefix=None, filepath=None):
+def declencher_sync_github_arriere_plan(delai=1.5, commit_prefix=None, filepath=None, filepaths=None):
 
-    """Déclenche la synchronisation Cloud en arrière-plan avec anti-rebond (debounce).
+    """Déclenche la synchronisation Cloud en arrière-plan avec file d'attente persistante (Dirty Queue) et reprise automatique.
 
-    Si filepath est renseigné, ne synchronise que ce fichier précis pour éviter d'écraser les autres données.
-
-    Si filepath est None, synchronise tous les fichiers.
+    Accumule tous les fichiers modifiés sans jamais annuler un fichier en attente lorsqu'une nouvelle sauvegarde survient.
 
     """
 
     global _SYNC_GITHUB_TIMER
 
-    delai_effectif = max(float(delai or 1.5), 2.5)
+    delai_effectif = max(float(delai or 1.5), 1.5)
+
+    def _planifier_timer(secondes):
+        global _SYNC_GITHUB_TIMER
+        if _SYNC_GITHUB_TIMER is not None:
+            try:
+                _SYNC_GITHUB_TIMER.cancel()
+            except Exception:
+                pass
+        _SYNC_GITHUB_TIMER = threading.Timer(secondes, _worker)
+        _SYNC_GITHUB_TIMER.daemon = True
+        _SYNC_GITHUB_TIMER.start()
 
     def _worker():
+        with _SYNC_GITHUB_LOCK:
+            if not _PENDING_SYNC_FILES:
+                return
+            lot_courant = dict(_PENDING_SYNC_FILES)
+            _PENDING_SYNC_FILES.clear()
 
+        echecs = {}
         try:
-
-            if filepath:
-
-                synchroniser_fichier_cloud(filepath, commit_prefix)
-
+            if "__ALL__" in lot_courant:
+                pref_all, tentatives = lot_courant["__ALL__"]
+                nb_ok, _, errs = synchroniser_tous_les_fichiers_github(commit_prefix=pref_all)
+                if errs and tentatives < 3:
+                    echecs["__ALL__"] = (pref_all, tentatives + 1)
             else:
-
-                synchroniser_tous_les_fichiers_github(commit_prefix=commit_prefix)
-
+                for fp_item, (pref_item, tentatives) in lot_courant.items():
+                    try:
+                        ok_f, _ = synchroniser_fichier_cloud(fp_item, pref_item)
+                        if not ok_f and tentatives < 3:
+                            echecs[fp_item] = (pref_item, tentatives + 1)
+                    except Exception:
+                        if tentatives < 3:
+                            echecs[fp_item] = (pref_item, tentatives + 1)
         except Exception:
-
             pass
 
+        if echecs:
+            with _SYNC_GITHUB_LOCK:
+                for k_e, v_e in echecs.items():
+                    if k_e not in _PENDING_SYNC_FILES:
+                        _PENDING_SYNC_FILES[k_e] = v_e
+                _planifier_timer(6.0)
+
     with _SYNC_GITHUB_LOCK:
+        cibles = []
+        if filepaths:
+            cibles.extend([f for f in filepaths if f])
+        if filepath:
+            cibles.append(filepath)
 
-        if _SYNC_GITHUB_TIMER is not None:
+        if cibles:
+            for c_fp in cibles:
+                fp_norm = os.path.abspath(c_fp)
+                _PENDING_SYNC_FILES[fp_norm] = (commit_prefix, 0)
+        else:
+            _PENDING_SYNC_FILES["__ALL__"] = (commit_prefix, 0)
 
-            try:
-
-                _SYNC_GITHUB_TIMER.cancel()
-
-            except Exception:
-
-                pass
-
-        _SYNC_GITHUB_TIMER = threading.Timer(delai_effectif, _worker)
-
-        _SYNC_GITHUB_TIMER.daemon = True
-
-        _SYNC_GITHUB_TIMER.start()
+        _planifier_timer(delai_effectif)
 
 
 
@@ -13884,13 +13962,25 @@ def charger_joueurs_sms(forcer_cloud=False):
 
     charge_cloud = False
 
+    # 0. Lecture rapide depuis le cache mémoire si forcer_cloud est False
+    if not forcer_cloud:
+        ok_c_sms, val_c_sms = _lire_cache_fichier("joueurs_sms", JOUEURS_SMS_FILE)
+        if ok_c_sms and isinstance(val_c_sms, list) and len(val_c_sms) > 0:
+            joueurs_sms = val_c_sms
+        elif os.path.exists(JOUEURS_SMS_FILE):
+            try:
+                with open(JOUEURS_SMS_FILE, "r", encoding="utf-8") as f_loc_fast:
+                    data_loc_fast = json.load(f_loc_fast)
+                    if isinstance(data_loc_fast, list) and len(data_loc_fast) > 0:
+                        joueurs_sms = data_loc_fast
+                        _ecrire_cache_fichier("joueurs_sms", JOUEURS_SMS_FILE, data_loc_fast)
+            except Exception:
+                joueurs_sms = []
 
-
-    # 1. Priorite : Interroger Supabase PostgreSQL (source cloud officielle)
-
+    # 1. Interroger Supabase PostgreSQL uniquement si forcer_cloud ou aucun fichier local disponible
     try:
 
-        raw_sb = telecharger_fichier_supabase("joueurs_sms.json")
+        raw_sb = telecharger_fichier_supabase("joueurs_sms.json") if (forcer_cloud or not joueurs_sms) else None
 
         if raw_sb:
 
@@ -14212,6 +14302,11 @@ def charger_config_sms():
 
     }
 
+    ok_c_cfg, val_c_cfg = _lire_cache_fichier("config_sms", CONFIG_SMS_FILE)
+    if ok_c_cfg and isinstance(val_c_cfg, dict):
+        cfg_defaut.update(val_c_cfg)
+        return cfg_defaut
+
     if os.path.exists(CONFIG_SMS_FILE):
 
         try:
@@ -14223,6 +14318,7 @@ def charger_config_sms():
                 if isinstance(data, dict):
 
                     cfg_defaut.update(data)
+                    _ecrire_cache_fichier("config_sms", CONFIG_SMS_FILE, cfg_defaut)
 
                     return cfg_defaut
 
@@ -18033,7 +18129,10 @@ def envoyer_courriel(destinataires_str, sujet, texte_brut, html_contenu, config,
 
 def charger_tournois_data():
 
-    """Charge les données des tournois depuis le fichier JSON (avec repli sur .bak si nécessaire)."""
+    """Charge les données des tournois depuis le fichier JSON (avec cache mémoire et repli sur .bak si nécessaire)."""
+    ok_c, val_c = _lire_cache_fichier("tournois_data", TOURNOIS_FILE)
+    if ok_c and isinstance(val_c, dict):
+        return val_c
 
     for chemin in [TOURNOIS_FILE, f"{TOURNOIS_FILE}.bak"]:
 
@@ -18046,7 +18145,8 @@ def charger_tournois_data():
                     d = json.load(f)
 
                     if isinstance(d, dict):
-
+                        if chemin == TOURNOIS_FILE:
+                            _ecrire_cache_fichier("tournois_data", TOURNOIS_FILE, d)
                         return d
 
             except Exception:
@@ -18059,7 +18159,7 @@ def charger_tournois_data():
 
 def _ecrire_json_atomique(filepath, payload):
 
-    """Écrit un objet JSON sur le disque de manière atomique avec copie de secours .bak."""
+    """Écrit un objet JSON sur le disque de manière atomique avec copie de secours .bak et mise à jour du cache mémoire."""
 
     if os.path.exists(filepath) and os.path.getsize(filepath) > 2:
 
@@ -18102,6 +18202,15 @@ def _ecrire_json_atomique(filepath, payload):
             except Exception:
 
                 pass
+
+    try:
+        fp_abs = os.path.abspath(filepath)
+        if fp_abs == os.path.abspath(TOURNOIS_FILE):
+            _ecrire_cache_fichier("tournois_data", TOURNOIS_FILE, payload)
+        elif fp_abs == os.path.abspath(HISTORIQUE_TOURNOIS_FILE):
+            _ecrire_cache_fichier("historique_tournois", HISTORIQUE_TOURNOIS_FILE, payload)
+    except Exception:
+        pass
 
 
 
@@ -18231,7 +18340,20 @@ def sauvegarder_tournois_data(data, marqueur_session=None, action="sauvegarde", 
 
         _ecrire_json_atomique(TOURNOIS_FILE, data)
 
-        synchroniser_tous_les_fichiers_github(commit_prefix=f"Sauvegarde tournois ({action})")
+        fichiers_cibles = [TOURNOIS_FILE, HISTORIQUE_TOURNOIS_FILE] if synchroniser_historique else [TOURNOIS_FILE]
+        actions_critiques = {"cession_de_main", "cloture_tournoi_termine", "annulation_complete", "finale_terminee"}
+        a_tournoi_termine = any(
+            isinstance(data.get(m_k), dict) and data[m_k].get("statut") == "termine"
+            for m_k in ("simple", "double")
+        )
+        if action in actions_critiques or a_tournoi_termine:
+            synchroniser_fichiers_cibles_cloud(fichiers_cibles, commit_prefix=f"Sauvegarde tournois ({action})")
+        else:
+            declencher_sync_github_arriere_plan(
+                delai=1.5,
+                commit_prefix=f"Sauvegarde tournois ({action})",
+                filepaths=fichiers_cibles
+            )
 
         return True
 
@@ -18401,25 +18523,31 @@ def charger_historique_tournois(inclure_actifs=False):
 
     historique = []
 
-    for ch_h in [HISTORIQUE_TOURNOIS_FILE, f"{HISTORIQUE_TOURNOIS_FILE}.bak"]:
+    ok_c_ht, val_c_ht = _lire_cache_fichier("historique_tournois", HISTORIQUE_TOURNOIS_FILE)
+    if ok_c_ht and isinstance(val_c_ht, list) and len(val_c_ht) > 0:
+        historique = val_c_ht
+    else:
+        for ch_h in [HISTORIQUE_TOURNOIS_FILE, f"{HISTORIQUE_TOURNOIS_FILE}.bak"]:
 
-        if os.path.exists(ch_h):
+            if os.path.exists(ch_h):
 
-            try:
+                try:
 
-                with open(ch_h, "r", encoding="utf-8") as f:
+                    with open(ch_h, "r", encoding="utf-8") as f:
 
-                    data = json.load(f)
+                        data = json.load(f)
 
-                    if isinstance(data, list) and len(data) > 0:
+                        if isinstance(data, list) and len(data) > 0:
 
-                        historique = data
+                            historique = data
+                            if ch_h == HISTORIQUE_TOURNOIS_FILE:
+                                _ecrire_cache_fichier("historique_tournois", HISTORIQUE_TOURNOIS_FILE, data)
 
-                        break
+                            break
 
-            except Exception:
+                except Exception:
 
-                continue
+                    continue
 
 
 
@@ -18586,7 +18714,10 @@ def sauvegarder_historique_tournois(historique_list):
 
             pass
 
-        synchroniser_tous_les_fichiers_github(commit_prefix=f"Sauvegarde historique tournois ({len(liste_a_sauver)} tournois)")
+        synchroniser_fichiers_cibles_cloud(
+            [HISTORIQUE_TOURNOIS_FILE, TOURNOIS_FILE],
+            commit_prefix=f"Sauvegarde historique tournois ({len(liste_a_sauver)} tournois)"
+        )
 
         return True
 
@@ -30522,14 +30653,12 @@ def afficher_deroulement_matchs_tournoi(tournoi, mode="simple", est_editeur=True
 
                                         if not key_prefix or (td_fresh.get(mode) and td_fresh[mode].get("id_archive") == tournoi.get("id_archive")):
                                             td_fresh[mode] = tournoi
-                                            sauvegarder_tournois_data(td_fresh)
+                                            act_sv = "finale_terminee" if (est_match_finale or tournoi.get("statut") == "termine") else "sauvegarde"
+                                            sauvegarder_tournois_data(td_fresh, action=act_sv)
                                         else:
                                             archiver_tournoi(tournoi, mode=mode, notifier_admin=est_match_finale)
 
                                         if est_match_finale or tournoi.get("statut") == "termine":
-                                            if td_fresh.get(mode):
-                                                td_fresh[mode] = tournoi
-                                                sauvegarder_tournois_data(td_fresh)
                                             st.session_state[f"msg_finale_{mode}"] = f"🏆 Finale validée ! Félicitations à {tournoi.get('vainqueur_final', 'Vainqueur')} pour sa victoire. Le tournoi a été automatiquement sauvegardé et la notification officielle a été transmise par courriel aux administrateurs."
 
                                         st.rerun()
