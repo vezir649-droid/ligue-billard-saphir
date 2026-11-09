@@ -273,5 +273,21 @@
         "message": "[TOURNOI SAPHIR] Appel Table 1 (T1_M2)\nV. Turcotte vs G. Vezina\nMatch prevu a 13h30. Presentez-vous a votre table !",
         "statut": "en_attente",
         "date": "2026-11-09 16:05:31"
+    },
+    {
+        "id": "cmd_t_1794241189_0_7696",
+        "type": "tournoi_sms",
+        "telephone": "4188720836",
+        "message": "[TOURNOI SAPHIR] Appel Table 1 (T2_M1)\nR. Vezina vs V. Turcotte\nMatch prevu a 14h00. Presentez-vous a votre table !",
+        "statut": "en_attente",
+        "date": "2026-11-09 16:19:49"
+    },
+    {
+        "id": "cmd_t_1794241189_1_257",
+        "type": "tournoi_sms",
+        "telephone": "4185763878",
+        "message": "[TOURNOI SAPHIR] Appel Table 1 (T2_M1)\nR. Vezina vs V. Turcotte\nMatch prevu a 14h00. Presentez-vous a votre table !",
+        "statut": "en_attente",
+        "date": "2026-11-09 16:19:49"
     }
 ]
