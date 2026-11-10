@@ -6285,60 +6285,141 @@ def parser_ligne_horaire_match(cell_text):
 
 
 
-def charger_horaire_json():
+def obtenir_chemin_horaire_saison(num_saison=None):
+    """Retourne le chemin du fichier horaire pour une saison donnée (ex: horaire_saison_1.json ou horaire_saphir.json)."""
+    if num_saison is None:
+        return HORAIRE_SAPHIR_FILE
+    try:
+        ns = int(num_saison)
+        return get_data_path(f"horaire_saison_{ns}.json")
+    except Exception:
+        return HORAIRE_SAPHIR_FILE
 
-    """Charge le calendrier des rencontres depuis le fichier local horaire_saphir.json (avec cache mémoire sur mtime)."""
 
-    ok_c, val_c = _lire_cache_fichier("horaire_json", HORAIRE_SAPHIR_FILE)
+def lister_horaires_saisons_disponibles():
+    """Détecte et liste tous les fichiers d'horaires disponibles (horaire_saphir.json et horaire_saison_X.json).
+    Retourne une liste de dicts triés par numéro de saison : [{'num': int, 'label': str, 'chemin': str, 'nb_semaines': int}].
+    """
+    res = []
+    base_dirs = [DATA_DIR, BASE_DIR, os.getcwd()]
+    vus = set()
 
+    for b_dir in base_dirs:
+        if not b_dir or not os.path.exists(b_dir):
+            continue
+        try:
+            for nom_f in os.listdir(b_dir):
+                if not nom_f.lower().startswith("horaire") or not nom_f.lower().endswith(".json"):
+                    continue
+                full_p = os.path.abspath(os.path.join(b_dir, nom_f))
+                if full_p in vus:
+                    continue
+                vus.add(full_p)
+
+                num_s = None
+                m_s = re.search(r"saison[_-]?(\d+)", nom_f, re.IGNORECASE)
+                if m_s:
+                    num_s = int(m_s.group(1))
+
+                # Charger un échantillon pour compter les semaines
+                nb_sem = 0
+                try:
+                    with open(full_p, "r", encoding="utf-8") as f:
+                        d = json.load(f)
+                        if isinstance(d, list):
+                            nb_sem = len(d)
+                except Exception:
+                    nb_sem = 0
+
+                if num_s is not None:
+                    lbl = f"Saison {num_s} ({nom_f}) — {nb_sem} semaine(s)"
+                else:
+                    num_s = 1
+                    lbl = f"Horaire officiel ({nom_f}) — {nb_sem} semaine(s)"
+
+                res.append({
+                    "num": num_s,
+                    "nom_fichier": nom_f,
+                    "label": lbl,
+                    "chemin": full_p,
+                    "nb_semaines": nb_sem
+                })
+        except Exception:
+            pass
+
+    # Trier par numéro de saison
+    res.sort(key=lambda x: (x["num"], x["nom_fichier"]))
+    return res
+
+
+def charger_horaire_json(num_saison=None):
+    """Charge le calendrier des rencontres depuis le fichier local horaire_saphir.json ou horaire_saison_X.json
+    (avec cache mémoire sur mtime). Au démarrage, charge la saison en cours si num_saison n'est pas spécifié.
+    """
+    fichier_cible = HORAIRE_SAPHIR_FILE
+    if num_saison is not None:
+        fichier_cible = obtenir_chemin_horaire_saison(num_saison)
+    elif "saison_active_selectionnee" in st.session_state and st.session_state["saison_active_selectionnee"]:
+        fichier_cible = obtenir_chemin_horaire_saison(st.session_state["saison_active_selectionnee"])
+
+    # Si le fichier de saison spécifique n'existe pas encore mais que horaire_saphir.json existe, utiliser horaire_saphir.json
+    if not os.path.exists(fichier_cible) and os.path.exists(HORAIRE_SAPHIR_FILE):
+        fichier_cible = HORAIRE_SAPHIR_FILE
+
+    cle_cache = f"horaire_json_{os.path.basename(fichier_cible)}"
+    ok_c, val_c = _lire_cache_fichier(cle_cache, fichier_cible)
     if ok_c and val_c:
-
         return val_c
 
-    if os.path.exists(HORAIRE_SAPHIR_FILE):
-
+    if os.path.exists(fichier_cible):
         try:
-
-            with open(HORAIRE_SAPHIR_FILE, "r", encoding="utf-8") as f:
-
+            with open(fichier_cible, "r", encoding="utf-8") as f:
                 data = json.load(f)
-
                 if isinstance(data, list) and data:
-
-                    _ecrire_cache_fichier("horaire_json", HORAIRE_SAPHIR_FILE, data)
-
+                    _ecrire_cache_fichier(cle_cache, fichier_cible, data)
                     return data
-
         except Exception:
-
             pass
 
     return []
 
 
-
-def sauvegarder_horaire_json(lignes_horaire):
-
-    """Enregistre le calendrier des rencontres dans horaire_saphir.json et synchronise sur GitHub."""
-
+def sauvegarder_horaire_json(lignes_horaire, num_saison=None):
+    """Enregistre le calendrier des rencontres dans horaire_saphir.json et horaire_saison_X.json, et synchronise sur GitHub."""
     if not lignes_horaire:
-
         return False
 
+    if num_saison is None:
+        try:
+            cfg_s = charger_config_saison()
+            d_deb_str = str(cfg_s.get("date_debut_saison", "") or "").strip()
+            if d_deb_str:
+                d_obj = datetime.strptime(d_deb_str, "%Y-%m-%d").date()
+                num_saison, _ = calculer_numero_saison(d_obj)
+            else:
+                num_saison, _ = calculer_numero_saison(datetime.today().date())
+        except Exception:
+            num_saison = 1
+
+    fichier_saison = obtenir_chemin_horaire_saison(num_saison)
+    fichiers_a_ecrire = [HORAIRE_SAPHIR_FILE]
+    if fichier_saison != HORAIRE_SAPHIR_FILE:
+        fichiers_a_ecrire.append(fichier_saison)
+
+    succes = True
     try:
-
-        with open(HORAIRE_SAPHIR_FILE, "w", encoding="utf-8") as f:
-
-            json.dump(lignes_horaire, f, indent=2, ensure_ascii=False)
-
-        _ecrire_cache_fichier("horaire_json", HORAIRE_SAPHIR_FILE, lignes_horaire)
-
-        declencher_sync_github_arriere_plan(delai=1.0, commit_prefix=f"Sauvegarde horaire_saphir.json ({len(lignes_horaire)} rencontres)", filepath=HORAIRE_SAPHIR_FILE)
-
+        for f_p in fichiers_a_ecrire:
+            with open(f_p, "w", encoding="utf-8") as f:
+                json.dump(lignes_horaire, f, indent=2, ensure_ascii=False)
+            cle_cache = f"horaire_json_{os.path.basename(f_p)}"
+            _ecrire_cache_fichier(cle_cache, f_p, lignes_horaire)
+            declencher_sync_github_arriere_plan(
+                delai=1.0,
+                commit_prefix=f"Sauvegarde {os.path.basename(f_p)} ({len(lignes_horaire)} rencontres - Saison {num_saison})",
+                filepath=f_p
+            )
         return True
-
     except Exception:
-
         return False
 
 
@@ -35730,6 +35811,20 @@ if demande_rechargement or ("app_initialisee" not in st.session_state) or (not e
 
     st.session_state.app_initialisee = True
 
+    # Initialisation automatique de la saison courante au démarrage de l'application
+    if "saison_active_selectionnee" not in st.session_state:
+        try:
+            cfg_init_s = charger_config_saison()
+            d_init_str = str(cfg_init_s.get("date_debut_saison", "") or "").strip()
+            if d_init_str:
+                d_init_obj = datetime.strptime(d_init_str, "%Y-%m-%d").date()
+                s_courante, _ = calculer_numero_saison(d_init_obj)
+            else:
+                s_courante, _ = calculer_numero_saison(datetime.today().date())
+            st.session_state["saison_active_selectionnee"] = s_courante
+        except Exception:
+            st.session_state["saison_active_selectionnee"] = 1
+
     if scores_sauvegarde:
 
         try:
@@ -36396,9 +36491,76 @@ def afficher_section_horaire_saison(est_spectateur=False, key_prefix="horaire_ma
     st.markdown(html_table_horaire, unsafe_allow_html=True)
 
 
+def afficher_selecteur_horaires_disponibles(key_prefix="admin_sel_horaires"):
+    """Permet aux administrateurs de consulter, prévisualiser et charger n'importe quel horaire par saison."""
+    liste_horaires = lister_horaires_saisons_disponibles()
+    if not liste_horaires:
+        st.info("Aucun fichier d'horaire spécifique détecté.")
+        return
+
+    st.markdown("##### 📚 Horaires disponibles par saison")
+    st.caption("Consultez les horaires archivés ou basculez sur l'horaire d'une saison spécifique pour la visualisation ou l'édition.")
+
+    options_lbl = [h["label"] for h in liste_horaires]
+    cur_sel_idx = 0
+    if "saison_active_selectionnee" in st.session_state:
+        for i_h, h_it in enumerate(liste_horaires):
+            if h_it["num"] == st.session_state["saison_active_selectionnee"]:
+                cur_sel_idx = i_h
+                break
+
+    c_sh1, c_sh2 = st.columns([3, 1.2])
+    with c_sh1:
+        choix_h_lbl = st.selectbox(
+            "Sélectionner un horaire de saison :",
+            options_lbl,
+            index=cur_sel_idx,
+            key=f"{key_prefix}_select_horaire"
+        )
+    h_choisi = next((h for h in liste_horaires if h["label"] == choix_h_lbl), liste_horaires[0])
+
+    with c_sh2:
+        st.write("")
+        if st.button("🔄 Charger cet horaire", use_container_width=True, key=f"{key_prefix}_btn_load_h"):
+            st.session_state["saison_active_selectionnee"] = h_choisi["num"]
+            # Réinitialiser cache pour affichage immédiat
+            st.success(f"✅ {h_choisi['label']} chargé pour la session !")
+            time.sleep(0.6)
+            st.rerun()
+
+    with st.expander(f"👁️ Prévisualiser l'horaire sélectionné ({h_choisi['label']})", expanded=False):
+        lignes_preview = []
+        try:
+            with open(h_choisi["chemin"], "r", encoding="utf-8") as f_prev:
+                lignes_preview = json.load(f_prev)
+        except Exception:
+            lignes_preview = []
+
+        if lignes_preview and isinstance(lignes_preview, list):
+            df_prev_list = []
+            for r_p in lignes_preview:
+                if isinstance(r_p, list) and r_p:
+                    df_prev_list.append({
+                        "Semaine": str(r_p[0]),
+                        "Match 1": str(r_p[1]) if len(r_p) > 1 else "—",
+                        "Match 2": str(r_p[2]) if len(r_p) > 2 else "—",
+                        "Match 3": str(r_p[3]) if len(r_p) > 3 else "—",
+                        "Match 4": str(r_p[4]) if len(r_p) > 4 else "—",
+                    })
+            if df_prev_list:
+                st.dataframe(pd.DataFrame(df_prev_list), use_container_width=True, hide_index=True)
+        else:
+            st.caption("Fichier d'horaire vide ou invalide.")
+
+
 def afficher_editeur_horaire_saison(key_prefix="admin_horaire", editeur_ouvert=True):
     """Affiche les outils de création et d'édition manuelle de l'horaire de la saison (réservé au volet Administration -> Saison)."""
-    lignes_horaire = charger_horaire_json()
+    # Affichage du sélecteur de tous les horaires de saison disponibles
+    afficher_selecteur_horaires_disponibles(key_prefix=f"{key_prefix}_bibliotheque")
+    st.divider()
+
+    num_saison_en_cours = st.session_state.get("saison_active_selectionnee", 1)
+    lignes_horaire = charger_horaire_json(num_saison_en_cours)
     if not isinstance(lignes_horaire, list):
         lignes_horaire = []
 
@@ -36407,9 +36569,9 @@ def afficher_editeur_horaire_saison(key_prefix="admin_horaire", editeur_ouvert=T
         7: "juillet", 8: "août", 9: "septembre", 10: "octobre", 11: "novembre", 12: "décembre"
     }
 
-    with st.expander("✏️ Éditer manuellement l'horaire de la saison (Modifier, ajouter ou supprimer des semaines/matchs)", expanded=editeur_ouvert):
+    with st.expander(f"✏️ Éditer manuellement l'horaire (Saison {num_saison_en_cours})", expanded=editeur_ouvert):
         st.caption(
-            "Modifiez directement les cellules du tableau ci-dessous (format recommandé : `JJ mois Receveur Visiteur`, ex. `26 octobre Echo Alpha`), "
+            f"Modifiez directement les cellules de la **Saison {num_saison_en_cours}** ci-dessous (format recommandé : `JJ mois Receveur Visiteur`), "
             "ajoutez une semaine avec le bouton `+` en bas du tableau ou utilisez l'assistant rapide, puis cliquez sur **💾 Enregistrer l'horaire de la saison**."
         )
 
