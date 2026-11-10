@@ -174,6 +174,8 @@ JOUEURS_CSV_FILE = get_data_path("joueurs_stats.csv")
 
 HORAIRE_SAPHIR_FILE = get_data_path("horaire_saphir.json")
 
+CONFIG_SAISON_FILE = get_data_path("config_saison.json")
+
 JOUEURS_SMS_FILE = get_data_path("joueurs_sms.json")
 
 CONFIG_SMS_FILE = get_data_path("config_sms.json")
@@ -6341,6 +6343,289 @@ def sauvegarder_horaire_json(lignes_horaire):
 
 
 
+def deduire_date_debut_saison_depuis_horaire(lignes_horaire=None):
+    """Déduit la date de début de la saison (Lundi de la Semaine 1) à partir de horaire_saphir.json."""
+    if not lignes_horaire:
+        lignes_horaire = charger_horaire_json()
+    annee_courante = datetime.today().year
+    for idx_r, row in enumerate(lignes_horaire or []):
+        if not isinstance(row, list) or len(row) < 2:
+            continue
+        sem_txt = str(row[0]).strip()
+        m_sem = re.search(r"(\d+)", sem_txt)
+        num_sem = int(m_sem.group(1)) if m_sem else (idx_r + 1)
+        for slot_idx, cell in enumerate(row[1:5]):
+            res = parser_ligne_horaire_match(str(cell))
+            if res and res.get("mois") and res.get("jour"):
+                try:
+                    d_match = date(annee_courante, int(res["mois"]), int(res["jour"]))
+                    d_sem1 = d_match - timedelta(days=(num_sem - 1) * 7 + slot_idx)
+                    return d_sem1
+                except Exception:
+                    pass
+    if datetime.today().month >= 7:
+        return date(annee_courante, 9, 7)
+    return date(annee_courante, 1, 5)
+
+
+def charger_config_saison():
+    """Charge la configuration de début de saison (date de début, joueurs inscrits, équipes et contraintes)."""
+    ok_c, val_c = _lire_cache_fichier("config_saison", CONFIG_SAISON_FILE)
+    if ok_c and isinstance(val_c, dict) and val_c:
+        return val_c
+
+    cfg = {}
+    if os.path.exists(CONFIG_SAISON_FILE):
+        try:
+            with open(CONFIG_SAISON_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    cfg = data
+        except Exception:
+            cfg = {}
+
+    equipes_csv = charger_equipes_csv()
+    d_def = deduire_date_debut_saison_depuis_horaire()
+    if not cfg.get("date_debut_saison"):
+        cfg["date_debut_saison"] = d_def.strftime("%Y-%m-%d")
+    if not cfg.get("nb_semaines"):
+        cfg["nb_semaines"] = 14
+
+    # Synchroniser les joueurs inscrits avec equipes-saphir.csv tout en préservant les contraintes existantes
+    joueurs_existants = {}
+    for item_j in cfg.get("joueurs_inscrits", []):
+        if isinstance(item_j, dict) and str(item_j.get("joueur", "")).strip():
+            cle_j = str(item_j["joueur"]).strip().lower()
+            joueurs_existants[cle_j] = item_j
+
+    liste_joueurs_finale = []
+    vus_j = set()
+    for eq_nom, j_liste in (equipes_csv or {}).items():
+        for j_nom in j_liste:
+            j_clean = str(j_nom).strip()
+            if not j_clean:
+                continue
+            cle_j = j_clean.lower()
+            vus_j.add(cle_j)
+            ex = joueurs_existants.get(cle_j, {})
+            liste_joueurs_finale.append({
+                "joueur": j_clean,
+                "equipe": str(ex.get("equipe") or eq_nom).strip(),
+                "lundi": bool(ex.get("lundi", True)),
+                "mardi": bool(ex.get("mardi", True)),
+                "mercredi": bool(ex.get("mercredi", True)),
+                "jeudi": bool(ex.get("jeudi", True)),
+                "contraintes": str(ex.get("contraintes", "") or "").strip(),
+            })
+
+    # Conserver aussi les joueurs inscrits supplémentaires non encore dans equipes_csv
+    for cle_j, ex in joueurs_existants.items():
+        if cle_j not in vus_j:
+            liste_joueurs_finale.append({
+                "joueur": str(ex.get("joueur", "")).strip(),
+                "equipe": str(ex.get("equipe", "")).strip(),
+                "lundi": bool(ex.get("lundi", True)),
+                "mardi": bool(ex.get("mardi", True)),
+                "mercredi": bool(ex.get("mercredi", True)),
+                "jeudi": bool(ex.get("jeudi", True)),
+                "contraintes": str(ex.get("contraintes", "") or "").strip(),
+            })
+
+    cfg["joueurs_inscrits"] = liste_joueurs_finale
+    cfg["equipes"] = equipes_csv
+    if os.path.exists(CONFIG_SAISON_FILE):
+        _ecrire_cache_fichier("config_saison", CONFIG_SAISON_FILE, cfg)
+    return cfg
+
+
+def sauvegarder_config_saison(cfg):
+    """Sauvegarde la configuration de saison dans config_saison.json et synchronise sur GitHub."""
+    if not isinstance(cfg, dict):
+        return False
+    try:
+        with open(CONFIG_SAISON_FILE, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=2, ensure_ascii=False)
+        _ecrire_cache_fichier("config_saison", CONFIG_SAISON_FILE, cfg)
+        declencher_sync_github_arriere_plan(delai=1.0, commit_prefix="Sauvegarde config_saison.json", filepath=CONFIG_SAISON_FILE)
+        return True
+    except Exception:
+        return False
+
+
+def obtenir_jours_disponibles_equipes(equipes_dict, joueurs_inscrits):
+    """Calcule pour chaque équipe les jours disponibles (0=Lundi, 1=Mardi, 2=Mercredi, 3=Jeudi) selon les contraintes de ses joueurs."""
+    dispo_eq = {eq: {0, 1, 2, 3} for eq in (equipes_dict or {}).keys()}
+    for j_info in (joueurs_inscrits or []):
+        if not isinstance(j_info, dict):
+            continue
+        eq = str(j_info.get("equipe", "")).strip()
+        if not eq:
+            continue
+        if eq not in dispo_eq:
+            dispo_eq[eq] = {0, 1, 2, 3}
+        note_c = str(j_info.get("contraintes", "") or "").lower()
+        if not bool(j_info.get("lundi", True)) or "pas lundi" in note_c or "indispo lundi" in note_c or "sauf lundi" in note_c:
+            dispo_eq[eq].discard(0)
+        if not bool(j_info.get("mardi", True)) or "pas mardi" in note_c or "indispo mardi" in note_c or "sauf mardi" in note_c:
+            dispo_eq[eq].discard(1)
+        if not bool(j_info.get("mercredi", True)) or "pas mercredi" in note_c or "indispo mercredi" in note_c or "sauf mercredi" in note_c:
+            dispo_eq[eq].discard(2)
+        if not bool(j_info.get("jeudi", True)) or "pas jeudi" in note_c or "indispo jeudi" in note_c or "sauf jeudi" in note_c:
+            dispo_eq[eq].discard(3)
+    return dispo_eq
+
+
+def recalculer_dates_horaire_depuis_debut(date_debut_saison, lignes_horaire=None, nb_semaines=14):
+    """Recalcule toutes les dates de l'horaire à partir de la date de début de la saison (Semaine 1 = Lundi..Jeudi)."""
+    if isinstance(date_debut_saison, str):
+        try:
+            date_debut_saison = datetime.strptime(date_debut_saison.strip(), "%Y-%m-%d").date()
+        except Exception:
+            date_debut_saison = deduire_date_debut_saison_depuis_horaire(lignes_horaire)
+    elif isinstance(date_debut_saison, datetime):
+        date_debut_saison = date_debut_saison.date()
+
+    mois_fr_map = {
+        1: "janvier", 2: "février", 3: "mars", 4: "avril", 5: "mai", 6: "juin",
+        7: "juillet", 8: "août", 9: "septembre", 10: "octobre", 11: "novembre", 12: "décembre"
+    }
+
+    if not lignes_horaire:
+        lignes_horaire = charger_horaire_json()
+
+    # Indexer les lignes existantes par numéro de semaine
+    par_semaine = {}
+    for idx_r, row in enumerate(lignes_horaire or []):
+        if not isinstance(row, list) or not row:
+            continue
+        m_sem = re.search(r"(\d+)", str(row[0]))
+        num_s = int(m_sem.group(1)) if m_sem else (idx_r + 1)
+        par_semaine[num_s] = list(row)
+
+    total_sem = max(nb_semaines, max(par_semaine.keys()) if par_semaine else nb_semaines)
+    nouvelles_lignes = []
+    for num_s in range(1, total_sem + 1):
+        row_orig = par_semaine.get(num_s, [f"Semaine {num_s}", "—", "—", "—", "—", "—", "—"])
+        while len(row_orig) < 7:
+            row_orig.append("—")
+        nouv_row = [f"Semaine {num_s}"]
+        for slot_idx in range(4):
+            cell_orig = str(row_orig[slot_idx + 1] or "—").strip()
+            d_slot = date_debut_saison + timedelta(days=(num_s - 1) * 7 + slot_idx)
+            date_str_fr = f"{d_slot.day} {mois_fr_map.get(d_slot.month, 'janvier')}"
+            parsed = parser_ligne_horaire_match(cell_orig)
+            if parsed and parsed.get("receveur") and parsed.get("visiteur"):
+                nouv_row.append(f"{date_str_fr} {parsed['receveur']} {parsed['visiteur']}")
+            else:
+                nouv_row.append(cell_orig if cell_orig else "—")
+        nouv_row.append(str(row_orig[5] or "—"))
+        nouv_row.append(str(row_orig[6] or "—"))
+        nouvelles_lignes.append(nouv_row)
+    return nouvelles_lignes
+
+
+def generer_horaire_saison_selon_prerequis(date_debut_saison, equipes_dict, joueurs_inscrits, nb_semaines=14):
+    """Génère un horaire complet de 14 semaines en respectant la date de début, les équipes et les contraintes des joueurs."""
+    if isinstance(date_debut_saison, str):
+        try:
+            date_debut_saison = datetime.strptime(date_debut_saison.strip(), "%Y-%m-%d").date()
+        except Exception:
+            date_debut_saison = datetime.today().date()
+    elif isinstance(date_debut_saison, datetime):
+        date_debut_saison = date_debut_saison.date()
+
+    mois_fr_map = {
+        1: "janvier", 2: "février", 3: "mars", 4: "avril", 5: "mai", 6: "juin",
+        7: "juillet", 8: "août", 9: "septembre", 10: "octobre", 11: "novembre", 12: "décembre"
+    }
+
+    noms_equipes = [str(e).strip() for e in (equipes_dict or {}).keys() if str(e).strip()]
+    if len(noms_equipes) < 2:
+        noms_equipes = ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel"]
+
+    dispo_eq = obtenir_jours_disponibles_equipes(equipes_dict, joueurs_inscrits)
+
+    # Algorithme Round-Robin (méthode du cercle)
+    eq_rr = list(noms_equipes)
+    if len(eq_rr) % 2 == 1:
+        eq_rr.append("BYE")
+    n_eq = len(eq_rr)
+    nb_rondes_cycle = max(1, n_eq - 1)
+
+    rondes_base = []
+    rotation = list(eq_rr)
+    for r_idx in range(nb_rondes_cycle):
+        matchs_ronde = []
+        for i in range(n_eq // 2):
+            e1 = rotation[i]
+            e2 = rotation[n_eq - 1 - i]
+            if e1 != "BYE" and e2 != "BYE":
+                if (r_idx + i) % 2 == 0:
+                    matchs_ronde.append((e1, e2))
+                else:
+                    matchs_ronde.append((e2, e1))
+        rondes_base.append(matchs_ronde)
+        rotation = [rotation[0]] + [rotation[-1]] + rotation[1:-1]
+
+    nouvelles_lignes = []
+    conflits = []
+
+    for sem_idx in range(nb_semaines):
+        num_sem = sem_idx + 1
+        cycle_num = sem_idx // nb_rondes_cycle
+        ronde_base_idx = sem_idx % nb_rondes_cycle
+        matchs_sem = []
+        for rec, vis in rondes_base[ronde_base_idx]:
+            if cycle_num % 2 == 1:
+                matchs_sem.append((vis, rec))
+            else:
+                matchs_sem.append((rec, vis))
+
+        # Assigner les matchs aux créneaux 0..3 (Lundi..Jeudi) en maximisant le respect des contraintes
+        nb_m = min(4, len(matchs_sem))
+        meilleur_ordre = None
+        meilleur_score = -1
+
+        import itertools
+        for perm_slots in itertools.permutations(range(4), nb_m):
+            score_perm = 0
+            for m_i in range(nb_m):
+                rec_m, vis_m = matchs_sem[m_i]
+                jour_slot = perm_slots[m_i]
+                if jour_slot in dispo_eq.get(rec_m, {0, 1, 2, 3}) and jour_slot in dispo_eq.get(vis_m, {0, 1, 2, 3}):
+                    score_perm += 10
+                elif jour_slot in dispo_eq.get(rec_m, {0, 1, 2, 3}) or jour_slot in dispo_eq.get(vis_m, {0, 1, 2, 3}):
+                    score_perm += 3
+            if score_perm > meilleur_score:
+                meilleur_score = score_perm
+                meilleur_ordre = perm_slots
+                if score_perm == nb_m * 10:
+                    break
+
+        slots_assignes = ["—", "—", "—", "—"]
+        jours_noms = ["Lundi", "Mardi", "Mercredi", "Jeudi"]
+        for m_i in range(nb_m):
+            rec_m, vis_m = matchs_sem[m_i]
+            jour_slot = meilleur_ordre[m_i] if meilleur_ordre else m_i
+            d_match = date_debut_saison + timedelta(days=sem_idx * 7 + jour_slot)
+            slots_assignes[jour_slot] = f"{d_match.day} {mois_fr_map.get(d_match.month, 'janvier')} {rec_m} {vis_m}"
+            if jour_slot not in dispo_eq.get(rec_m, {0, 1, 2, 3}) or jour_slot not in dispo_eq.get(vis_m, {0, 1, 2, 3}):
+                conflits.append(f"Semaine {num_sem} ({jours_noms[jour_slot]}) : {rec_m} vs {vis_m}")
+
+        nouvelles_lignes.append([
+            f"Semaine {num_sem}",
+            slots_assignes[0],
+            slots_assignes[1],
+            slots_assignes[2],
+            slots_assignes[3],
+            "—",
+            "—",
+        ])
+
+    return nouvelles_lignes, conflits
+
+
+
 def obtenir_date_debut_ligue():
 
     """Récupère la date de début de la ligue (Saison 1) depuis st.secrets ou l'environnement."""
@@ -6650,17 +6935,20 @@ def calculer_semaine_saison(date_match, date_debut_saison_1=None):
 
         date_match = datetime.today().date()
 
-        
+    debut_saison = None
+    try:
+        cfg_s = charger_config_saison()
+        d_str = str(cfg_s.get("date_debut_saison", "") or "").strip()
+        if d_str:
+            debut_saison = datetime.strptime(d_str, "%Y-%m-%d").date()
+    except Exception:
+        debut_saison = None
 
-    if date_match.month >= 7:
-
-        debut_saison = date(date_match.year, 9, 7)
-
-    else:
-
-        debut_saison = date(date_match.year, 1, 6)
-
-        
+    if not debut_saison:
+        if date_match.month >= 7:
+            debut_saison = date(date_match.year, 9, 7)
+        else:
+            debut_saison = date(date_match.year, 1, 6)
 
     diff = (date_match - debut_saison).days
 
@@ -35638,18 +35926,338 @@ def cb_changer_equipe_vis():
 
 
 
+def afficher_configuration_debut_saison(key_prefix="cfg_saison", afficher_reset_historique=False):
+    """Affiche et édite les prérequis pour démarrer une saison :
+    1. Date de début de la saison (pour l'horaire)
+    2. Liste des joueurs inscrits et contraintes des joueurs pour jouer
+    3. Liste des équipes
+    Permet de générer automatiquement l'horaire de la saison en respectant ces prérequis.
+    """
+    cfg_s = charger_config_saison()
+    equipes_actuelles = charger_equipes_csv()
+    joueurs_inscrits = cfg_s.get("joueurs_inscrits", [])
+
+    try:
+        date_deb_init = datetime.strptime(str(cfg_s.get("date_debut_saison", "2026-09-07")).strip(), "%Y-%m-%d").date()
+    except Exception:
+        date_deb_init = deduire_date_debut_saison_depuis_horaire()
+
+    nb_sem_init = int(cfg_s.get("nb_semaines", 14) or 14)
+
+    # Validation des prérequis
+    ok_date = isinstance(date_deb_init, date)
+    nb_joueurs_valides = len([j for j in joueurs_inscrits if isinstance(j, dict) and str(j.get("joueur", "")).strip()])
+    ok_joueurs = nb_joueurs_valides >= 6
+    nb_equipes_valides = len([eq for eq, jl in (equipes_actuelles or {}).items() if str(eq).strip() and len(jl) >= 1])
+    ok_equipes = nb_equipes_valides >= 2
+    nb_contraintes = len([
+        j for j in joueurs_inscrits
+        if isinstance(j, dict) and (
+            not bool(j.get("lundi", True))
+            or not bool(j.get("mardi", True))
+            or not bool(j.get("mercredi", True))
+            or not bool(j.get("jeudi", True))
+            or bool(str(j.get("contraintes", "") or "").strip())
+        )
+    ])
+
+    mois_fr_map = {
+        1: "janvier", 2: "février", 3: "mars", 4: "avril", 5: "mai", 6: "juin",
+        7: "juillet", 8: "août", 9: "septembre", 10: "octobre", 11: "novembre", 12: "décembre"
+    }
+    date_fin_calc = date_deb_init + timedelta(days=(nb_sem_init - 1) * 7 + 3)
+    txt_deb_fr = f"{date_deb_init.day} {mois_fr_map.get(date_deb_init.month, '')} {date_deb_init.year}"
+    txt_fin_fr = f"{date_fin_calc.day} {mois_fr_map.get(date_fin_calc.month, '')} {date_fin_calc.year}"
+
+    st.markdown("#### 🚀 Prérequis pour démarrer une saison & Configuration de l'horaire")
+    c_pr1, c_pr2, c_pr3, c_pr4 = st.columns(4)
+    c_pr1.metric("1️⃣ Début de saison", txt_deb_fr, f"Fin : {txt_fin_fr} ({nb_sem_init} sem.)")
+    c_pr2.metric("2️⃣ Joueurs inscrits", f"{nb_joueurs_valides} joueur(s)", "✅ Prêt" if ok_joueurs else "⚠️ Min. 6 requis")
+    c_pr3.metric("3️⃣ Liste des équipes", f"{nb_equipes_valides} équipe(s)", "✅ Prêt" if ok_equipes else "⚠️ Min. 2 requises")
+    c_pr4.metric("4️⃣ Contraintes joueurs", f"{nb_contraintes} joueur(s)", "Prises en compte dans l'horaire")
+
+    sub_tab_date, sub_tab_joueurs, sub_tab_equipes = st.tabs([
+        "1️⃣ Date de début de la saison",
+        "2️⃣ Joueurs inscrits & Contraintes pour jouer",
+        "3️⃣ Liste des équipes & Disponibilités"
+    ])
+
+    with sub_tab_date:
+        st.markdown("##### 📅 Définir la date de début de la saison pour l'horaire")
+        st.caption("Choisissez la date du premier jour (Lundi de la Semaine 1). Les dates des 14 semaines de l'horaire (`Lundi` à `Jeudi`) sont calculées à partir de cette date.")
+        col_d1, col_d2, col_d3 = st.columns([1.4, 1.0, 1.6])
+        with col_d1:
+            nouv_date_deb = st.date_input(
+                "Date de début de la saison (Semaine 1) :",
+                value=date_deb_init,
+                key=f"{key_prefix}_date_debut_input"
+            )
+        with col_d2:
+            nouv_nb_sem = st.number_input(
+                "Nombre de semaines :",
+                min_value=1,
+                max_value=30,
+                value=nb_sem_init,
+                step=1,
+                key=f"{key_prefix}_nb_sem_input"
+            )
+        with col_d3:
+            st.write("")
+            if st.button("💾 Enregistrer le début de saison & recalculer les dates", type="primary", use_container_width=True, key=f"{key_prefix}_btn_save_date_deb"):
+                cfg_s["date_debut_saison"] = nouv_date_deb.strftime("%Y-%m-%d")
+                cfg_s["nb_semaines"] = int(nouv_nb_sem)
+                sauvegarder_config_saison(cfg_s)
+                lignes_recalc = recalculer_dates_horaire_depuis_debut(nouv_date_deb, charger_horaire_json(), int(nouv_nb_sem))
+                sauvegarder_horaire_json(lignes_recalc)
+                st.success(f"✅ Date de début enregistrée ({nouv_date_deb.strftime('%d/%m/%Y')}) et dates de l'horaire mises à jour sur {int(nouv_nb_sem)} semaines !")
+                time.sleep(0.7)
+                st.rerun()
+
+    with sub_tab_joueurs:
+        st.markdown("##### 👥 Liste des joueurs inscrits et contraintes des joueurs pour jouer")
+        st.caption(
+            "Inscrivez les joueurs de la saison, leur équipe et cochez/décochez leurs jours de disponibilité (`Lundi`, `Mardi`, `Mercredi`, `Jeudi`) "
+            "ou ajoutez une note de contrainte. Lors de la génération de l'horaire, une équipe ne sera pas programmée un soir où l'un de ses joueurs est indisponible."
+        )
+        lignes_j_df = []
+        for j_it in joueurs_inscrits:
+            if not isinstance(j_it, dict):
+                continue
+            lignes_j_df.append({
+                "Joueur": str(j_it.get("joueur", "")).strip(),
+                "Équipe": str(j_it.get("equipe", "")).strip(),
+                "Dispo Lundi": bool(j_it.get("lundi", True)),
+                "Dispo Mardi": bool(j_it.get("mardi", True)),
+                "Dispo Mercredi": bool(j_it.get("mercredi", True)),
+                "Dispo Jeudi": bool(j_it.get("jeudi", True)),
+                "Contraintes / Notes": str(j_it.get("contraintes", "") or "").strip(),
+            })
+        if not lignes_j_df:
+            lignes_j_df.append({
+                "Joueur": "Joueur 1",
+                "Équipe": "Alpha",
+                "Dispo Lundi": True,
+                "Dispo Mardi": True,
+                "Dispo Mercredi": True,
+                "Dispo Jeudi": True,
+                "Contraintes / Notes": "",
+            })
+
+        df_j_edit = st.data_editor(
+            pd.DataFrame(lignes_j_df),
+            num_rows="dynamic",
+            use_container_width=True,
+            hide_index=True,
+            key=f"{key_prefix}_editor_joueurs_contraintes",
+            column_config={
+                "Joueur": st.column_config.TextColumn("Joueur inscrit", required=True, width="medium"),
+                "Équipe": st.column_config.TextColumn("Équipe", required=True, width="small"),
+                "Dispo Lundi": st.column_config.CheckboxColumn("Dispo Lundi", default=True),
+                "Dispo Mardi": st.column_config.CheckboxColumn("Dispo Mardi", default=True),
+                "Dispo Mercredi": st.column_config.CheckboxColumn("Dispo Mercredi", default=True),
+                "Dispo Jeudi": st.column_config.CheckboxColumn("Dispo Jeudi", default=True),
+                "Contraintes / Notes": st.column_config.TextColumn("Contraintes pour jouer (ex: Pas lundi)", width="medium"),
+            }
+        )
+
+        if st.button("💾 Enregistrer la liste des joueurs inscrits et leurs contraintes", type="primary", use_container_width=True, key=f"{key_prefix}_btn_save_joueurs"):
+            nouv_joueurs = []
+            eq_grouped = {}
+            for _, r_j in df_j_edit.iterrows():
+                nom_j = str(r_j.get("Joueur", "") or "").strip()
+                if not nom_j or nom_j.lower() == "nan":
+                    continue
+                eq_j = str(r_j.get("Équipe", "") or "").strip()
+                if eq_j.lower() == "nan":
+                    eq_j = ""
+                nouv_joueurs.append({
+                    "joueur": nom_j,
+                    "equipe": eq_j,
+                    "lundi": bool(r_j.get("Dispo Lundi", True)),
+                    "mardi": bool(r_j.get("Dispo Mardi", True)),
+                    "mercredi": bool(r_j.get("Dispo Mercredi", True)),
+                    "jeudi": bool(r_j.get("Dispo Jeudi", True)),
+                    "contraintes": "" if str(r_j.get("Contraintes / Notes", "") or "").strip().lower() == "nan" else str(r_j.get("Contraintes / Notes", "") or "").strip(),
+                })
+                if eq_j:
+                    eq_grouped.setdefault(eq_j, []).append(nom_j)
+
+            cfg_s["joueurs_inscrits"] = nouv_joueurs
+            # Mettre aussi à jour equipes-saphir.csv si des équipes ont été modifiées
+            if eq_grouped:
+                eq_maj = dict(equipes_actuelles)
+                for eq_k, jl_k in eq_grouped.items():
+                    while len(jl_k) < 3:
+                        jl_k.append(f"Joueur {len(jl_k) + 1}")
+                    eq_maj[eq_k] = jl_k[:3]
+                sauvegarder_equipes_csv(eq_maj)
+                cfg_s["equipes"] = eq_maj
+            sauvegarder_config_saison(cfg_s)
+            st.success(f"✅ {len(nouv_joueurs)} joueur(s) inscrit(s) et leurs contraintes ont été enregistrés !")
+            time.sleep(0.7)
+            st.rerun()
+
+    with sub_tab_equipes:
+        st.markdown("##### 🛡️ Liste des équipes et synthèse des disponibilités")
+        st.caption("Vérifiez ou modifiez la composition des équipes (`equipes-saphir.csv`). Les jours disponibles de chaque équipe sont automatiquement déduits des contraintes de ses joueurs.")
+        dispo_par_eq = obtenir_jours_disponibles_equipes(equipes_actuelles, joueurs_inscrits)
+        noms_jours_map = {0: "Lun", 1: "Mar", 2: "Mer", 3: "Jeu"}
+        lignes_eq_df = []
+        for eq_nom, j_liste in (equipes_actuelles or {}).items():
+            jours_ok = sorted(list(dispo_par_eq.get(eq_nom, {0, 1, 2, 3})))
+            resume_dispo = ", ".join(noms_jours_map[d] for d in jours_ok) if jours_ok else "⚠️ Aucun jour"
+            lignes_eq_df.append({
+                "Équipe": eq_nom,
+                "Joueur 1": j_liste[0] if len(j_liste) > 0 else "",
+                "Joueur 2": j_liste[1] if len(j_liste) > 1 else "",
+                "Joueur 3": j_liste[2] if len(j_liste) > 2 else "",
+                "Jours possibles (selon contraintes)": resume_dispo,
+            })
+
+        df_eq_edit = st.data_editor(
+            pd.DataFrame(lignes_eq_df),
+            num_rows="dynamic",
+            use_container_width=True,
+            hide_index=True,
+            key=f"{key_prefix}_editor_equipes_saison",
+             disabled=["Jours possibles (selon contraintes)"],
+            column_config={
+                "Équipe": st.column_config.TextColumn("Équipe", required=True, width="small"),
+                "Joueur 1": st.column_config.TextColumn("Joueur 1", required=True, width="medium"),
+                "Joueur 2": st.column_config.TextColumn("Joueur 2", required=True, width="medium"),
+                "Joueur 3": st.column_config.TextColumn("Joueur 3", required=True, width="medium"),
+                "Jours possibles (selon contraintes)": st.column_config.TextColumn("Jours disponibles (auto)", width="medium"),
+            }
+        )
+
+        if st.button("💾 Enregistrer la liste des équipes", type="primary", use_container_width=True, key=f"{key_prefix}_btn_save_equipes"):
+            nouv_eq_dict = {}
+            for _, r_eq in df_eq_edit.iterrows():
+                enom = str(r_eq.get("Équipe", "") or "").strip()
+                if not enom or enom.lower() == "nan":
+                    continue
+                j1 = str(r_eq.get("Joueur 1", "") or "Joueur 1").strip()
+                j2 = str(r_eq.get("Joueur 2", "") or "Joueur 2").strip()
+                j3 = str(r_eq.get("Joueur 3", "") or "Joueur 3").strip()
+                nouv_eq_dict[enom] = [j1, j2, j3]
+            if nouv_eq_dict:
+                sauvegarder_equipes_csv(nouv_eq_dict)
+                cfg_s["equipes"] = nouv_eq_dict
+                sauvegarder_config_saison(cfg_s)
+                st.success(f"✅ {len(nouv_eq_dict)} équipe(s) enregistrée(s) et synchronisée(s) !")
+                time.sleep(0.7)
+                st.rerun()
+
+    st.divider()
+    col_gen1, col_gen2 = st.columns([1.6, 1.4] if afficher_reset_historique else [1, 0.01])
+    with col_gen1:
+        if st.button(
+            f"⚡ Générer l'horaire de la saison ({nb_sem_init} semaines) selon la date de début et les contraintes",
+            type="primary",
+            use_container_width=True,
+            key=f"{key_prefix}_btn_gen_horaire_complet",
+            disabled=not (ok_date and ok_joueurs and ok_equipes)
+        ):
+            d_cible = st.session_state.get(f"{key_prefix}_date_debut_input", date_deb_init)
+            n_sem_cible = int(st.session_state.get(f"{key_prefix}_nb_sem_input", nb_sem_init))
+            cfg_s["date_debut_saison"] = d_cible.strftime("%Y-%m-%d")
+            cfg_s["nb_semaines"] = n_sem_cible
+            sauvegarder_config_saison(cfg_s)
+            nouvelles_lignes_gen, conflits_gen = generer_horaire_saison_selon_prerequis(
+                d_cible, equipes_actuelles, joueurs_inscrits, n_sem_cible
+            )
+            if sauvegarder_horaire_json(nouvelles_lignes_gen):
+                if conflits_gen:
+                    st.warning(
+                        f"⚠️ Horaire de {n_sem_cible} semaines généré, mais {len(conflits_gen)} rencontre(s) n'ont pu éviter toutes les contraintes : "
+                        + ", ".join(conflits_gen[:5])
+                    )
+                else:
+                    st.success(f"✅ Horaire complet de {n_sem_cible} semaines généré avec succès (100% des contraintes des joueurs respectées) !")
+                time.sleep(0.9)
+                st.rerun()
+
+    if afficher_reset_historique:
+        with col_gen2:
+            with st.popover("🚨 Démarrer une nouvelle saison (Générer l'horaire + Réinitialiser les scores)", use_container_width=True):
+                st.markdown("### ⚠️ Démarrer une nouvelle saison officielle")
+                if not (ok_date and ok_joueurs and ok_equipes):
+                    st.error("❌ Veuillez d'abord compléter les 3 prérequis (Date de début, Liste des joueurs inscrits, Liste des équipes).")
+                else:
+                    st.write(
+                        f"Cette action va :\n"
+                        f"1. Enregistrer la date de début de saison (**{txt_deb_fr}**)\n"
+                        f"2. Générer le nouvel horaire de **{nb_sem_init} semaines** selon les équipes et les contraintes des joueurs\n"
+                        f"3. Réinitialiser l'historique des matchs (`historique_matchs.json`) à zéro."
+                    )
+                    if st.button("🔴 Confirmer et démarrer la nouvelle saison", type="primary", use_container_width=True, key=f"{key_prefix}_btn_confirm_new_season"):
+                        d_cible = st.session_state.get(f"{key_prefix}_date_debut_input", date_deb_init)
+                        n_sem_cible = int(st.session_state.get(f"{key_prefix}_nb_sem_input", nb_sem_init))
+                        cfg_s["date_debut_saison"] = d_cible.strftime("%Y-%m-%d")
+                        cfg_s["nb_semaines"] = n_sem_cible
+                        sauvegarder_config_saison(cfg_s)
+                        nouvelles_lignes_gen, _ = generer_horaire_saison_selon_prerequis(
+                            d_cible, equipes_actuelles, joueurs_inscrits, n_sem_cible
+                        )
+                        sauvegarder_horaire_json(nouvelles_lignes_gen)
+                        sauvegarder_historique_matchs([])
+                        st.success("✅ Nouvelle saison démarrée, horaire généré et historique réinitialisé !")
+                        time.sleep(0.9)
+                        st.rerun()
+
+
 def afficher_section_horaire_saison(est_spectateur=False, key_prefix="horaire_main", editeur_ouvert=False):
     """Affiche l'horaire complet de la saison et permet de l'éditer (sauvegarde dans horaire_saphir.json + GitHub)."""
     lignes_horaire = charger_horaire_json()
     if not isinstance(lignes_horaire, list):
         lignes_horaire = []
 
+    cfg_saison_h = charger_config_saison()
+    try:
+        d_deb_horaire = datetime.strptime(str(cfg_saison_h.get("date_debut_saison", "2026-09-07")).strip(), "%Y-%m-%d").date()
+    except Exception:
+        d_deb_horaire = deduire_date_debut_saison_depuis_horaire(lignes_horaire)
+    nb_sem_horaire = int(cfg_saison_h.get("nb_semaines", 14) or 14)
+
     mois_fr_map = {
         1: "janvier", 2: "février", 3: "mars", 4: "avril", 5: "mai", 6: "juin",
         7: "juillet", 8: "août", 9: "septembre", 10: "octobre", 11: "novembre", 12: "décembre"
     }
+    d_fin_horaire = d_deb_horaire + timedelta(days=(nb_sem_horaire - 1) * 7 + 3)
 
     st.markdown("### 📅 Horaire officiel de la saison")
+
+    # Bandeau Début de saison pour l'horaire
+    with st.container(border=True):
+        c_hd1, c_hd2, c_hd3 = st.columns([1.8, 1.1, 1.3])
+        with c_hd1:
+            st.markdown(
+                f"**🗓️ Début de la saison (Semaine 1) :** `{d_deb_horaire.day} {mois_fr_map.get(d_deb_horaire.month, '')} {d_deb_horaire.year}`  \n"
+                f"<span style='font-size:12.5px; color:#94a3b8;'>Fin prévue (Semaine {nb_sem_horaire}) : "
+                f"{d_fin_horaire.day} {mois_fr_map.get(d_fin_horaire.month, '')} {d_fin_horaire.year} • {len(lignes_horaire)} semaine(s) au calendrier</span>",
+                unsafe_allow_html=True
+            )
+        with c_hd2:
+            nouv_d_deb_bar = st.date_input(
+                "Modifier le début de saison :",
+                value=d_deb_horaire,
+                key=f"{key_prefix}_bar_date_debut",
+                label_visibility="collapsed"
+            )
+        with c_hd3:
+            if st.button("📅 Appliquer ce début de saison à l'horaire", use_container_width=True, key=f"{key_prefix}_btn_bar_date_debut"):
+                cfg_saison_h["date_debut_saison"] = nouv_d_deb_bar.strftime("%Y-%m-%d")
+                sauvegarder_config_saison(cfg_saison_h)
+                lignes_maj_d = recalculer_dates_horaire_depuis_debut(nouv_d_deb_bar, lignes_horaire, nb_sem_horaire)
+                sauvegarder_horaire_json(lignes_maj_d)
+                st.success(f"✅ Début de saison fixé au {nouv_d_deb_bar.strftime('%d/%m/%Y')} et dates de l'horaire recalculées !")
+                time.sleep(0.6)
+                st.rerun()
+
+    # Panneau des prérequis pour démarrer une saison (Date de début, Joueurs inscrits, Équipes et Contraintes des joueurs)
+    with st.expander("🚀 Démarrer une saison — Prérequis (Date de début, Joueurs inscrits, Équipes & Contraintes des joueurs)", expanded=False):
+        afficher_configuration_debut_saison(key_prefix=f"{key_prefix}_prerequis", afficher_reset_historique=True)
+
     rencontre_jour = determiner_match_du_jour(lignes_horaire)
     if rencontre_jour:
         statut_j = "🟢 **Match programmé aujourd'hui**" if rencontre_jour.get("est_aujourdhui") else "🔜 **Prochain match au calendrier**"
@@ -40418,6 +41026,10 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
             with tab_saison:
 
                 st.markdown("#### 🗓️ Démarrer une nouvelle saison")
+
+                afficher_configuration_debut_saison(key_prefix="admin_tab_saison", afficher_reset_historique=True)
+
+                st.divider()
 
             
 
