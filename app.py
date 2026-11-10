@@ -43782,7 +43782,7 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
 
 with tab_horaire:
 
-    afficher_section_horaire_saison(est_spectateur=est_spectateur, key_prefix="tab_horaire_saison", editeur_ouvert=True)
+    afficher_section_horaire_saison(est_spectateur=est_spectateur, key_prefix="tab_horaire_saison", editeur_ouvert=False)
 
 
 
