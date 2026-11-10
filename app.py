@@ -6475,6 +6475,31 @@ def obtenir_jours_disponibles_equipes(equipes_dict, joueurs_inscrits):
     return dispo_eq
 
 
+def calculer_absences_joueurs_pour_match(rec, vis, jour_semaine, joueurs_inscrits, equipes_dict):
+    """Calcule le nombre de joueurs absents/indisponibles pour une rencontre donnée un jour précis (0=Lundi, 1=Mardi, 2=Mercredi, 3=Jeudi).
+    Retourne (nb_absents_total, liste_noms_absents).
+    """
+    cles_jours = ["lundi", "mardi", "mercredi", "jeudi"]
+    cle_j = cles_jours[jour_semaine] if 0 <= jour_semaine < 4 else "lundi"
+    eq_match = {str(rec).strip(), str(vis).strip()}
+    absents = []
+
+    for j_info in (joueurs_inscrits or []):
+        if not isinstance(j_info, dict):
+            continue
+        eq_j = str(j_info.get("equipe", "")).strip()
+        if eq_j in eq_match:
+            nom_j = str(j_info.get("joueur", "")).strip()
+            note_c = str(j_info.get("contraintes", "") or "").lower()
+            dispo = bool(j_info.get(cle_j, True))
+            if f"pas {cle_j}" in note_c or f"indispo {cle_j}" in note_c or f"sauf {cle_j}" in note_c:
+                dispo = False
+            if not dispo:
+                absents.append(f"{nom_j} ({eq_j})")
+
+    return len(absents), absents
+
+
 def recalculer_dates_horaire_depuis_debut(date_debut_saison, lignes_horaire=None, nb_semaines=14):
     """Recalcule toutes les dates de l'horaire à partir de la date de début de la saison (Semaine 1 = Lundi..Jeudi)."""
     if isinstance(date_debut_saison, str):
@@ -6525,7 +6550,10 @@ def recalculer_dates_horaire_depuis_debut(date_debut_saison, lignes_horaire=None
 
 
 def generer_horaire_saison_selon_prerequis(date_debut_saison, equipes_dict, joueurs_inscrits, nb_semaines=14):
-    """Génère un horaire complet de 14 semaines en respectant la date de début, les équipes et les contraintes des joueurs."""
+    """Génère un horaire complet de 14 semaines en respectant la date de début et les équipes.
+    En cas de conflits de calendrier, optimise l'affectation des soirs (Lundi à Jeudi)
+    pour minimiser strictement le nombre total d'absences de joueurs.
+    """
     if isinstance(date_debut_saison, str):
         try:
             date_debut_saison = datetime.strptime(date_debut_saison.strip(), "%Y-%m-%d").date()
@@ -6542,8 +6570,6 @@ def generer_horaire_saison_selon_prerequis(date_debut_saison, equipes_dict, joue
     noms_equipes = [str(e).strip() for e in (equipes_dict or {}).keys() if str(e).strip()]
     if len(noms_equipes) < 2:
         noms_equipes = ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel"]
-
-    dispo_eq = obtenir_jours_disponibles_equipes(equipes_dict, joueurs_inscrits)
 
     # Algorithme Round-Robin (méthode du cercle)
     eq_rr = list(noms_equipes)
@@ -6569,6 +6595,8 @@ def generer_horaire_saison_selon_prerequis(date_debut_saison, equipes_dict, joue
 
     nouvelles_lignes = []
     conflits = []
+    jours_noms = ["Lundi", "Mardi", "Mercredi", "Jeudi"]
+    import itertools
 
     for sem_idx in range(nb_semaines):
         num_sem = sem_idx + 1
@@ -6581,36 +6609,48 @@ def generer_horaire_saison_selon_prerequis(date_debut_saison, equipes_dict, joue
             else:
                 matchs_sem.append((rec, vis))
 
-        # Assigner les matchs aux créneaux 0..3 (Lundi..Jeudi) en maximisant le respect des contraintes
         nb_m = min(4, len(matchs_sem))
-        meilleur_ordre = None
-        meilleur_score = -1
 
-        import itertools
+        # Évaluer toutes les permutations de créneaux (0..3) pour minimiser les absences
+        # Critères :
+        # 1. Minimiser nb_absences_total (0 étant l'idéal sans conflit)
+        # 2. Minimiser les conflits d'équipes ayant au moins un absent
+        # 3. Préserver l'équilibre
+        meilleure_perm = None
+        min_absences = 999999
+        detail_meilleure_perm = []
+
         for perm_slots in itertools.permutations(range(4), nb_m):
-            score_perm = 0
+            total_abs_perm = 0
+            detail_abs_perm = []
             for m_i in range(nb_m):
                 rec_m, vis_m = matchs_sem[m_i]
                 jour_slot = perm_slots[m_i]
-                if jour_slot in dispo_eq.get(rec_m, {0, 1, 2, 3}) and jour_slot in dispo_eq.get(vis_m, {0, 1, 2, 3}):
-                    score_perm += 10
-                elif jour_slot in dispo_eq.get(rec_m, {0, 1, 2, 3}) or jour_slot in dispo_eq.get(vis_m, {0, 1, 2, 3}):
-                    score_perm += 3
-            if score_perm > meilleur_score:
-                meilleur_score = score_perm
-                meilleur_ordre = perm_slots
-                if score_perm == nb_m * 10:
+                nb_abs, liste_abs = calculer_absences_joueurs_pour_match(
+                    rec_m, vis_m, jour_slot, joueurs_inscrits, equipes_dict
+                )
+                total_abs_perm += nb_abs
+                if nb_abs > 0:
+                    detail_abs_perm.append(
+                        f"Semaine {num_sem} ({jours_noms[jour_slot]}) : {rec_m} vs {vis_m} ({', '.join(liste_abs)})"
+                    )
+
+            if total_abs_perm < min_absences:
+                min_absences = total_abs_perm
+                meilleure_perm = perm_slots
+                detail_meilleure_perm = detail_abs_perm
+                if total_abs_perm == 0:
                     break
 
         slots_assignes = ["—", "—", "—", "—"]
-        jours_noms = ["Lundi", "Mardi", "Mercredi", "Jeudi"]
         for m_i in range(nb_m):
             rec_m, vis_m = matchs_sem[m_i]
-            jour_slot = meilleur_ordre[m_i] if meilleur_ordre else m_i
+            jour_slot = meilleure_perm[m_i] if meilleure_perm else m_i
             d_match = date_debut_saison + timedelta(days=sem_idx * 7 + jour_slot)
             slots_assignes[jour_slot] = f"{d_match.day} {mois_fr_map.get(d_match.month, 'janvier')} {rec_m} {vis_m}"
-            if jour_slot not in dispo_eq.get(rec_m, {0, 1, 2, 3}) or jour_slot not in dispo_eq.get(vis_m, {0, 1, 2, 3}):
-                conflits.append(f"Semaine {num_sem} ({jours_noms[jour_slot]}) : {rec_m} vs {vis_m}")
+
+        if detail_meilleure_perm:
+            conflits.extend(detail_meilleure_perm)
 
         nouvelles_lignes.append([
             f"Semaine {num_sem}",
@@ -36152,7 +36192,7 @@ def afficher_configuration_debut_saison(key_prefix="cfg_saison", afficher_reset_
     col_gen1, col_gen2 = st.columns([1.6, 1.4] if afficher_reset_historique else [1, 0.01])
     with col_gen1:
         if st.button(
-            f"⚡ Générer l'horaire de la saison ({nb_sem_init} semaines) selon la date de début et les contraintes",
+            f"⚡ Générer l'horaire de la saison ({nb_sem_init} semaines) en minimisant les absences",
             type="primary",
             use_container_width=True,
             key=f"{key_prefix}_btn_gen_horaire_complet",
@@ -36169,11 +36209,11 @@ def afficher_configuration_debut_saison(key_prefix="cfg_saison", afficher_reset_
             if sauvegarder_horaire_json(nouvelles_lignes_gen):
                 if conflits_gen:
                     st.warning(
-                        f"⚠️ Horaire de {n_sem_cible} semaines généré, mais {len(conflits_gen)} rencontre(s) n'ont pu éviter toutes les contraintes : "
-                        + ", ".join(conflits_gen[:5])
+                        f"⚠️ Horaire optimisé généré ({n_sem_cible} semaines). Les absences ont été réduites au minimum ({len(conflits_gen)} match(s) avec absence inévitable) :\n- "
+                        + "\n- ".join(conflits_gen[:6])
                     )
                 else:
-                    st.success(f"✅ Horaire complet de {n_sem_cible} semaines généré avec succès (100% des contraintes des joueurs respectées) !")
+                    st.success(f"✅ Horaire complet de {n_sem_cible} semaines généré avec succès (0 absence, 100% des contraintes respectées) !")
                 time.sleep(0.9)
                 st.rerun()
 
