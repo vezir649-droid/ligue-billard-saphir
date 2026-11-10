@@ -513,20 +513,27 @@ button[data-baseweb="tab"]:hover:not([aria-selected="true"]) {
     background-color: rgba(22, 82, 122, 0.15) !important;
 }
 div[data-testid="stMetric"] {
-    background-color: var(--secondary-background-color, rgba(128, 128, 128, 0.10));
-    color: var(--text-color, inherit);
-    border: 1px solid rgba(128, 128, 128, 0.25);
-    border-left: 4px solid #1e88e5;
-    border-radius: 10px;
-    padding: 10px 14px;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.08);
+    background-color: #f8fafc !important;
+    color: #0f172a !important;
+    border: 1.5px solid #cbd5e1 !important;
+    border-left: 5px solid #0b3c5d !important;
+    border-radius: 10px !important;
+    padding: 10px 14px !important;
+    box-shadow: 0 2px 5px rgba(15, 23, 42, 0.08) !important;
+    color-scheme: light !important;
 }
 div[data-testid="stMetricLabel"],
 div[data-testid="stMetricLabel"] p,
 div[data-testid="stMetricLabel"] span,
+div[data-testid="stMetricLabel"] div {
+    color: #1e293b !important;
+    font-weight: 700 !important;
+    font-size: 13.5px !important;
+}
 div[data-testid="stMetricValue"],
 div[data-testid="stMetricValue"] div {
-    color: var(--text-color, inherit) !important;
+    color: #0b3c5d !important;
+    font-weight: 800 !important;
 }
 div[data-testid="stExpander"] {
     border-radius: 10px !important;
@@ -545,8 +552,8 @@ div.stButton > button:active {
 }
 .saphir-light-card,
 .saphir-light-card div,
-.saphir-light-card span,
-.saphir-light-card strong,
+.saphir-light-card span:not(.saphir-th-txt),
+.saphir-light-card strong:not(.saphir-th-txt),
 .saphir-light-card p,
 .saphir-light-card b,
 .saphir-light-card sup {
@@ -560,6 +567,66 @@ div.stButton > button:active {
 }
 .saphir-light-card .saphir-gold-title {
     color: #b45309 !important;
+}
+.saphir-table-wrap {
+    width: 100% !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    border: 1.5px solid #94a3b8 !important;
+    border-radius: 10px !important;
+    margin: 8px 0 16px 0 !important;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08) !important;
+    background-color: #ffffff !important;
+    color-scheme: light !important;
+}
+.saphir-table-wrap table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    background-color: #ffffff !important;
+    margin: 0 !important;
+}
+.saphir-table-wrap thead,
+.saphir-table-wrap thead tr,
+.saphir-table-wrap thead th,
+.saphir-table-wrap th {
+    background-color: #0b3c5d !important;
+    background: #0b3c5d !important;
+    color: #ffffff !important;
+    padding: 10px 12px !important;
+    font-weight: 800 !important;
+    font-size: 13.5px !important;
+    border-bottom: 2.5px solid #f59e0b !important;
+    border-right: 1px solid rgba(255, 255, 255, 0.22) !important;
+    white-space: nowrap !important;
+    vertical-align: middle !important;
+}
+.saphir-table-wrap th .saphir-th-txt,
+.saphir-table-wrap thead th *,
+.saphir-table-wrap th span {
+    color: #ffffff !important;
+    font-weight: 800 !important;
+    font-size: 13.5px !important;
+    background: transparent !important;
+}
+.saphir-table-wrap tbody td,
+.saphir-table-wrap td {
+    padding: 9px 12px !important;
+    border-bottom: 1px solid #cbd5e1 !important;
+    border-right: 1px solid #e2e8f0 !important;
+    color: #0f172a !important;
+    font-size: 13.5px !important;
+    font-weight: 600 !important;
+    vertical-align: middle !important;
+    white-space: nowrap !important;
+}
+.saphir-table-wrap td .saphir-td-txt {
+    color: #0f172a !important;
+    font-size: 13.5px !important;
+}
+.saphir-table-wrap td .saphir-td-primary {
+    color: #0b3c5d !important;
+    font-weight: 800 !important;
+    font-size: 14px !important;
 }
 .saphir-podium-grid {
     display: grid;
@@ -822,56 +889,46 @@ def afficher_tableau_html_compatible(data):
 
 
 
-    ths = "".join(
+    cols_gauche = {"Équipe", "Joueur", "Adversaire", "Nom", "Capitaine", "Statut", "Perf.", "Performance", "Forme", "Semaine"}
 
-        f"<th style='background:#0b3c5d; color:#ffffff !important; padding:8px 10px; text-align:left; font-weight:700; font-size:13px; border-bottom:2px solid #072a42; white-space:nowrap;'>{html_lib.escape(str(col))}</th>"
-
-        for col in colonnes
-
-    )
+    ths = []
+    for col in colonnes:
+        align_th = "left" if col in cols_gauche else "center"
+        ths.append(
+            f"<th style='background-color:#0b3c5d !important; color:#ffffff !important; padding:11px 14px !important; text-align:{align_th} !important; font-weight:800 !important; font-size:13.5px !important; border-bottom:2px solid #072a42 !important; border-right:1px solid #1e4e6f !important; white-space:nowrap !important; letter-spacing:0.2px !important;'>"
+            f"<span class='saphir-th-txt' style='color:#ffffff !important; font-weight:800 !important; font-size:13.5px !important;'>{html_lib.escape(str(col))}</span>"
+            f"</th>"
+        )
+    ths_str = "".join(ths)
 
     trs = []
-
     for idx, row in enumerate(lignes):
-
-        bg = "#ffffff" if idx % 2 == 0 else "#f8fafc"
-
+        bg = "#ffffff" if idx % 2 == 0 else "#f1f5f9"
         tds = []
-
-        for col in colonnes:
-
+        for c_idx, col in enumerate(colonnes):
             val = row.get(col, "")
-
             if val is None or (isinstance(val, float) and pd.isna(val)):
-
                 val_str = ""
-
             else:
-
                 val_str = str(val)
-
+            is_primary = (col in {"Équipe", "Joueur", "Nom"} or c_idx <= 1)
+            align_td = "left" if (col in cols_gauche or c_idx <= 1) else "center"
+            fw_td = "700" if is_primary else "600"
+            col_td = "#0b3c5d" if is_primary else "#0f172a"
+            cls_span = "saphir-td-primary" if is_primary else "saphir-td-txt"
             tds.append(
-
-                f"<td style='padding:7px 10px; border-bottom:1px solid #e2e8f0; color:#0f172a !important; font-size:13px; vertical-align:middle;'>{html_lib.escape(val_str)}</td>"
-
+                f"<td style='background-color:{bg} !important; padding:9px 14px !important; border-bottom:1px solid #cbd5e1 !important; border-right:1px solid #e2e8f0 !important; color:{col_td} !important; font-size:13.5px !important; font-weight:{fw_td} !important; text-align:{align_td} !important; vertical-align:middle !important; white-space:nowrap !important;'>"
+                f"<span class='{cls_span}' style='color:{col_td} !important; font-weight:{fw_td} !important; font-size:13.5px !important;'>{html_lib.escape(val_str)}</span>"
+                f"</td>"
             )
-
-        trs.append(f"<tr style='background:{bg};'>{''.join(tds)}</tr>")
-
-
+        trs.append(f"<tr style='background-color:{bg} !important;'>{''.join(tds)}</tr>")
 
     table_html = (
-
-        "<div class='saphir-light-card' style='width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; border:1px solid #cbd5e1; border-radius:8px; margin:6px 0 12px 0; box-shadow:0 1px 3px rgba(0,0,0,0.06); background:#ffffff;'>"
-
-        "<table style='width:100%; border-collapse:collapse; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;'>"
-
-        f"<thead><tr>{ths}</tr></thead>"
-
-        f"<tbody>{''.join(trs)}</tbody>"
-
+        "<div class='saphir-table-wrap' style='width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; border:2px solid #94a3b8; border-radius:10px; margin:8px 0 16px 0; box-shadow:0 2px 6px rgba(15,23,42,0.08); background-color:#ffffff !important;'>"
+        "<table style='width:100%; border-collapse:collapse; background-color:#ffffff !important; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;'>"
+        f"<thead style='background-color:#0b3c5d !important;'><tr style='background-color:#0b3c5d !important;'>{ths_str}</tr></thead>"
+        f"<tbody style='background-color:#ffffff !important;'>{''.join(trs)}</tbody>"
         "</table></div>"
-
     )
 
     st.markdown(table_html, unsafe_allow_html=True)
@@ -34051,48 +34108,48 @@ def calculer_statistiques_et_progression(historique):
 
 
 def _styliser_graphique_altair_fixe(chart, height=320):
-
-    """Applique une configuration visuelle fixe (sans zoom/pan accidentel) et lisible aux graphiques Altair."""
-
+    """Applique une configuration visuelle fixe (sans zoom/pan accidentel), sur fond blanc garanti et à haut contraste."""
     return (
-
         chart.properties(height=height)
-
-        .configure_view(strokeWidth=0)
-
+        .configure(
+            background="#ffffff",
+            padding={"left": 14, "top": 14, "right": 28, "bottom": 14}
+        )
+        .configure_view(strokeWidth=1, stroke="#cbd5e1", fill="#ffffff")
         .configure_axis(
-
-            labelFontSize=12,
-
-            titleFontSize=13,
-
+            labelFontSize=13,
+            labelFontWeight="bold",
+            titleFontSize=14,
             titleFontWeight="bold",
-
             labelColor="#0f172a",
-
             titleColor="#0b3c5d",
-
-            labelLimit=240,
-
-            gridColor="#e2e8f0"
-
+            labelLimit=260,
+            titlePadding=10,
+            labelPadding=6,
+            gridColor="#e2e8f0",
+            domainColor="#94a3b8",
+            tickColor="#94a3b8"
         )
-
         .configure_legend(
-
-            labelFontSize=12,
-
-            titleFontSize=12,
-
+            labelFontSize=13,
+            labelFontWeight="bold",
+            titleFontSize=13,
             titleFontWeight="bold",
-
             labelColor="#0f172a",
-
-            titleColor="#0b3c5d"
-
+            titleColor="#0b3c5d",
+            labelLimit=280,
+            symbolSize=140,
+            padding=8,
+            fillColor="#f8fafc",
+            strokeColor="#cbd5e1",
+            cornerRadius=6
         )
-
     )
+
+
+def _afficher_altair_fixe(chart, height=320):
+    """Affiche un graphique Altair avec theme=None pour empêcher le mode sombre de masquer les libellés."""
+    st.altair_chart(_styliser_graphique_altair_fixe(chart, height=height), use_container_width=True, theme=None)
 
 
 
@@ -34441,35 +34498,20 @@ def afficher_tableau_de_bord_progression(historique):
                     sem_txt = f"{eq_data['semaines_jouees']} (Saphir: {eq_data['semaines_officielles']})"
 
                 lignes_tab_eq.append({
-
                     "Rang": badge_rang,
-
                     "Équipe": eq_data["nom"],
-
-                    "Semaines jouées": sem_txt,
-
-                    "Matchs joués": eq_data["pj"],
-
-                    "Victoires (V)": eq_data["v"],
-
-                    "Défaites (D)": eq_data["d"],
-
-                    "% Victoires": f"{eq_data['taux_v']:.0f}%",
-
-                    "Manches (V - D)": f"{eq_data['manches_gagnees']}V - {eq_data['manches_perdues']}D ({eq_data['pct_manches_gagnees']:.0f}%)",
-
+                    "Semaines": sem_txt,
+                    "Matchs": eq_data["pj"],
+                    "Victoires": eq_data["v"],
+                    "Défaites": eq_data["d"],
+                    "% V": f"{eq_data['taux_v']:.0f}%",
+                    "Manches (V-D)": f"{eq_data['manches_gagnees']}V - {eq_data['manches_perdues']}D ({eq_data['pct_manches_gagnees']:.0f}%)",
                     "Absences": eq_data["absences_soirees"],
-
-                    "Points Pour": eq_data["pour"],
-
-                    "Points Contre": eq_data["contre"],
-
+                    "Pts Pour": eq_data["pour"],
+                    "Pts Contre": eq_data["contre"],
                     "Diff.": diff_str,
-
-                    "Moyenne /72": f"{eq_data['moy_pour']:.1f} / 72",
-
+                    "Moy. /72": f"{eq_data['moy_pour']:.1f} / 72",
                     "Série": eq_data["serie_str"]
-
                 })
 
             afficher_tableau_html_compatible(pd.DataFrame(lignes_tab_eq))
@@ -34494,7 +34536,7 @@ def afficher_tableau_de_bord_progression(historique):
 
             ordre_noms_eq = [e["nom"] for e in classement_equipes]
 
-            h_chart_eq = max(290, len(ordre_noms_eq) * 40)
+            h_chart_eq = max(320, len(ordre_noms_eq) * 46)
 
 
 
@@ -34571,14 +34613,10 @@ def afficher_tableau_de_bord_progression(historique):
                         )
 
                         bars_vd_eq = base_vd_eq.mark_bar(cornerRadiusEnd=4, size=14)
-
-                        txt_vd_eq = base_vd_eq.mark_text(align="left", baseline="middle", dx=5, fontSize=11, fontWeight="bold", color="#0f172a").encode(
-
+                        txt_vd_eq = base_vd_eq.mark_text(align="left", baseline="middle", dx=6, fontSize=12, fontWeight="bold", color="#0f172a").encode(
                             text=alt.Text("Nombre:Q", format="d")
-
                         )
-
-                        st.altair_chart(_styliser_graphique_altair_fixe(bars_vd_eq + txt_vd_eq, height=h_chart_eq), use_container_width=True)
+                        _afficher_altair_fixe(bars_vd_eq + txt_vd_eq, height=h_chart_eq)
 
                     else:
 
@@ -34681,26 +34719,16 @@ def afficher_tableau_de_bord_progression(historique):
                         )
 
                         txt_pe = alt.Chart(df_perf_eq).mark_text(
-
-                            align="left", baseline="middle", dx=5, fontSize=11, fontWeight="bold", color="#0f172a"
-
+                            align="left", baseline="middle", dx=6, fontSize=12, fontWeight="bold", color="#0f172a"
                         ).encode(
-
                             y=alt.Y("Équipe:N", sort=ordre_noms_eq),
-
                             x=alt.X("Moyenne72:Q"),
-
                             text="Label:N"
-
                         )
-
                         rule_ligue = alt.Chart(df_perf_eq).mark_rule(color="#d97706", strokeDash=[5, 4], size=2).encode(
-
                             x="MoyLigue:Q"
-
                         )
-
-                        st.altair_chart(_styliser_graphique_altair_fixe(bars_pe + txt_pe + rule_ligue, height=h_chart_eq), use_container_width=True)
+                        _afficher_altair_fixe(bars_pe + txt_pe + rule_ligue, height=h_chart_eq)
 
                         st.caption(f"🟧 **Ligne pointillée orange :** Moyenne de la ligue (`{moy_ligue_eq:.1f} / 72 pts`). Échelle fixée sur 72 pts maximum.")
 
@@ -34777,14 +34805,10 @@ def afficher_tableau_de_bord_progression(historique):
                         )
 
                         bars_pts = base_pts_eq.mark_bar(cornerRadiusEnd=4, size=14)
-
-                        txt_pts = base_pts_eq.mark_text(align="left", baseline="middle", dx=5, fontSize=11, fontWeight="bold", color="#0f172a").encode(
-
+                        txt_pts = base_pts_eq.mark_text(align="left", baseline="middle", dx=6, fontSize=12, fontWeight="bold", color="#0f172a").encode(
                             text=alt.Text("Points:Q", format="d")
-
                         )
-
-                        st.altair_chart(_styliser_graphique_altair_fixe(bars_pts + txt_pts, height=h_chart_eq), use_container_width=True)
+                        _afficher_altair_fixe(bars_pts + txt_pts, height=h_chart_eq)
 
 
 
@@ -34855,14 +34879,10 @@ def afficher_tableau_de_bord_progression(historique):
                         )
 
                         bars_sem = base_sem_eq.mark_bar(cornerRadiusEnd=4, size=14)
-
-                        txt_sem = base_sem_eq.mark_text(align="left", baseline="middle", dx=5, fontSize=11, fontWeight="bold", color="#0f172a").encode(
-
+                        txt_sem = base_sem_eq.mark_text(align="left", baseline="middle", dx=6, fontSize=12, fontWeight="bold", color="#0f172a").encode(
                             text=alt.Text("Valeur:Q", format="d")
-
                         )
-
-                        st.altair_chart(_styliser_graphique_altair_fixe(bars_sem + txt_sem, height=h_chart_eq), use_container_width=True)
+                        _afficher_altair_fixe(bars_sem + txt_sem, height=h_chart_eq)
 
 
 
@@ -34923,31 +34943,18 @@ def afficher_tableau_de_bord_progression(historique):
                     for j_e in joueurs_de_eq:
 
                         rows_j_eq.append({
-
                             "Joueur": j_e["nom"],
-
-                            "Semaines jouées": j_e["semaines_jouees"],
-
-                            "Matchs joués": j_e["nb_matchs"],
-
-                            "Manches jouées": j_e["manches"],
-
-                            "Victoires (V)": j_e["v"],
-
-                            "Défaites (D)": j_e["d"],
-
-                            "% Victoires": f"{j_e['taux_v']:.0f}%",
-
+                            "Semaines": j_e["semaines_jouees"],
+                            "Matchs": j_e["nb_matchs"],
+                            "Manches": j_e["manches"],
+                            "Victoires": j_e["v"],
+                            "Défaites": j_e["d"],
+                            "% V": f"{j_e['taux_v']:.0f}%",
                             "Absences": j_e["soirees_absent"],
-
-                            "Points marqués": j_e["total_pts"],
-
-                            "Moyenne /8": f"{j_e['moyenne']:.2f} / 8",
-
-                            "Moyenne /24": f"{j_e['moyenne_soiree']:.1f} / 24",
-
-                            "Objectif /24": f"{j_e['objectif_soiree']:.1f} / 24"
-
+                            "Points": j_e["total_pts"],
+                            "Moy. /8": f"{j_e['moyenne']:.2f} / 8",
+                            "Moy. /24": f"{j_e['moyenne_soiree']:.1f} / 24",
+                            "Obj. /24": f"{j_e['objectif_soiree']:.1f} / 24"
                         })
 
                     afficher_tableau_html_compatible(pd.DataFrame(rows_j_eq))
@@ -35017,14 +35024,10 @@ def afficher_tableau_de_bord_progression(historique):
                         )
 
                         bars_me = base_me.mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4, size=28)
-
-                        txt_me = base_me.mark_text(align="center", baseline="bottom", dy=-4, fontSize=11, fontWeight="bold", color="#0f172a").encode(
-
+                        txt_me = base_me.mark_text(align="center", baseline="bottom", dy=-5, fontSize=12, fontWeight="bold", color="#0f172a").encode(
                             text=alt.Text("Points:Q", format="d")
-
                         )
-
-                        st.altair_chart(_styliser_graphique_altair_fixe(bars_me + txt_me, height=300), use_container_width=True)
+                        _afficher_altair_fixe(bars_me + txt_me, height=320)
 
 
 
@@ -35239,39 +35242,22 @@ def afficher_tableau_de_bord_progression(historique):
                     sem_j_txt = f"{j_data['semaines_jouees']} (Saphir: {j_data['semaines_officielles']})"
 
                 lignes_lead.append({
-
                     "Rang": badge_rang,
-
                     "Joueur": j_data["nom"],
-
                     "Équipe": j_data["equipe"],
-
-                    "Semaines jouées": sem_j_txt,
-
-                    "Matchs joués": j_data["nb_matchs"],
-
-                    "Manches jouées": j_data["manches"],
-
-                    "Victoires (V)": j_data["v"],
-
-                    "Défaites (D)": j_data["d"],
-
-                    "% Victoires": f"{j_data['taux_v']:.0f}%",
-
+                    "Semaines": sem_j_txt,
+                    "Matchs": j_data["nb_matchs"],
+                    "Manches": j_data["manches"],
+                    "Victoires": j_data["v"],
+                    "Défaites": j_data["d"],
+                    "% V": f"{j_data['taux_v']:.0f}%",
                     "Absences": j_data["soirees_absent"],
-
-                    "Total Points": j_data["total_pts"],
-
+                    "Points": j_data["total_pts"],
                     "Moy. /8": f"{j_data['moyenne']:.2f}",
-
                     "Moy. /24": f"{j_data['moyenne_soiree']:.1f} / 24",
-
                     "Obj. /24": f"{j_data['objectif_soiree']:.1f} / 24",
-
-                    "Perf. vs Obj.": f"{j_data['surperformance_pts']:+.1f} pts",
-
-                    "👑 24/24": j_data["soirees_parfaites"]
-
+                    "Écart Obj.": f"{j_data['surperformance_pts']:+.1f} pts",
+                    "24/24": j_data["soirees_parfaites"]
                 })
 
             afficher_tableau_html_compatible(pd.DataFrame(lignes_lead))
@@ -35296,7 +35282,7 @@ def afficher_tableau_de_bord_progression(historique):
 
             ordre_noms_j = [f"{j['nom']} ({j['equipe']})" for j in classement_joueurs]
 
-            h_chart_j = max(340, len(ordre_noms_j) * 32)
+            h_chart_j = max(420, len(ordre_noms_j) * 42)
 
 
 
@@ -35374,15 +35360,11 @@ def afficher_tableau_de_bord_progression(historique):
 
                         )
 
-                        bars_vdj = base_vd_j.mark_bar(cornerRadiusEnd=3, size=11)
-
-                        txt_vdj = base_vd_j.mark_text(align="left", baseline="middle", dx=4, fontSize=10.5, fontWeight="bold", color="#0f172a").encode(
-
+                        bars_vdj = base_vd_j.mark_bar(cornerRadiusEnd=3, size=13)
+                        txt_vdj = base_vd_j.mark_text(align="left", baseline="middle", dx=5, fontSize=11.5, fontWeight="bold", color="#0f172a").encode(
                             text=alt.Text("Nombre:Q", format="d")
-
                         )
-
-                        st.altair_chart(_styliser_graphique_altair_fixe(bars_vdj + txt_vdj, height=h_chart_j), use_container_width=True)
+                        _afficher_altair_fixe(bars_vdj + txt_vdj, height=h_chart_j)
 
 
 
@@ -35484,17 +35466,12 @@ def afficher_tableau_de_bord_progression(historique):
 
                         )
 
-                        txt_pj = alt.Chart(df_perf_j).mark_text(align="left", baseline="middle", dx=5, fontSize=10.5, fontWeight="bold", color="#0f172a").encode(
-
+                        txt_pj = alt.Chart(df_perf_j).mark_text(align="left", baseline="middle", dx=6, fontSize=11.5, fontWeight="bold", color="#0f172a").encode(
                             y=alt.Y("Joueur:N", sort=ordre_noms_j),
-
                             x=alt.X("Moyenne24:Q"),
-
                             text="Label:N"
-
                         )
-
-                        st.altair_chart(_styliser_graphique_altair_fixe(bars_pj + tick_obj_j + txt_pj, height=h_chart_j), use_container_width=True)
+                        _afficher_altair_fixe(bars_pj + tick_obj_j + txt_pj, height=h_chart_j)
 
                         st.caption("🟧 **Repère orange sur chaque barre :** Objectif personnel `/24` du joueur. **Barres vertes :** joueurs qui atteignent ou dépassent leur objectif.")
 
@@ -35596,15 +35573,11 @@ def afficher_tableau_de_bord_progression(historique):
 
                     )
 
-                    bars_as_j = base_as_j.mark_bar(cornerRadiusEnd=3, size=11)
-
-                    txt_as_j = base_as_j.mark_text(align="left", baseline="middle", dx=4, fontSize=10.5, fontWeight="bold", color="#0f172a").encode(
-
+                    bars_as_j = base_as_j.mark_bar(cornerRadiusEnd=3, size=13)
+                    txt_as_j = base_as_j.mark_text(align="left", baseline="middle", dx=5, fontSize=11.5, fontWeight="bold", color="#0f172a").encode(
                         text=alt.Text("Semaines:Q", format="d")
-
                     )
-
-                    st.altair_chart(_styliser_graphique_altair_fixe(bars_as_j + txt_as_j, height=h_chart_j), use_container_width=True)
+                    _afficher_altair_fixe(bars_as_j + txt_as_j, height=h_chart_j)
 
 
 
@@ -35823,12 +35796,9 @@ def afficher_tableau_de_bord_progression(historique):
                         )
 
                         rule_obj = alt.Chart(df_chart_j).mark_rule(color="#d97706", strokeDash=[6, 4], size=2.5).encode(
-
                             y="Objectif:Q"
-
                         )
-
-                        st.altair_chart(_styliser_graphique_altair_fixe(bars + text_labels + rule_obj, height=320), use_container_width=True)
+                        _afficher_altair_fixe(bars + text_labels + rule_obj, height=340)
 
 
 
@@ -36048,20 +36018,10 @@ def afficher_tableau_de_bord_progression(historique):
 
                             )
 
-                            st.altair_chart(
-
-                                _styliser_graphique_altair_fixe(
-
-                                    base_cec.mark_bar(cornerRadiusEnd=4, size=14)
-
-                                    + base_cec.mark_text(align="left", baseline="middle", dx=5, fontSize=11, fontWeight="bold", color="#0f172a").encode(text=alt.Text("Valeur:Q", format="d")),
-
-                                    height=280
-
-                                ),
-
-                                use_container_width=True
-
+                            _afficher_altair_fixe(
+                                base_cec.mark_bar(cornerRadiusEnd=4, size=15)
+                                + base_cec.mark_text(align="left", baseline="middle", dx=6, fontSize=12, fontWeight="bold", color="#0f172a").encode(text=alt.Text("Valeur:Q", format="d")),
+                                height=310
                             )
 
 
@@ -36108,20 +36068,10 @@ def afficher_tableau_de_bord_progression(historique):
 
                             )
 
-                            st.altair_chart(
-
-                                _styliser_graphique_altair_fixe(
-
-                                    base_cep.mark_bar(cornerRadiusEnd=5, size=28)
-
-                                    + base_cep.mark_text(align="left", baseline="middle", dx=6, fontSize=12, fontWeight="bold", color="#0f172a").encode(text="Texte:N"),
-
-                                    height=200
-
-                                ),
-
-                                use_container_width=True
-
+                            _afficher_altair_fixe(
+                                base_cep.mark_bar(cornerRadiusEnd=5, size=28)
+                                + base_cep.mark_text(align="left", baseline="middle", dx=6, fontSize=12.5, fontWeight="bold", color="#0f172a").encode(text="Texte:N"),
+                                height=220
                             )
 
 
@@ -36280,20 +36230,10 @@ def afficher_tableau_de_bord_progression(historique):
 
                             )
 
-                            st.altair_chart(
-
-                                _styliser_graphique_altair_fixe(
-
-                                    base_cjc.mark_bar(cornerRadiusEnd=4, size=14)
-
-                                    + base_cjc.mark_text(align="left", baseline="middle", dx=5, fontSize=11, fontWeight="bold", color="#0f172a").encode(text=alt.Text("Valeur:Q", format="d")),
-
-                                    height=280
-
-                                ),
-
-                                use_container_width=True
-
+                            _afficher_altair_fixe(
+                                base_cjc.mark_bar(cornerRadiusEnd=4, size=15)
+                                + base_cjc.mark_text(align="left", baseline="middle", dx=6, fontSize=12, fontWeight="bold", color="#0f172a").encode(text=alt.Text("Valeur:Q", format="d")),
+                                height=310
                             )
 
 
@@ -36350,20 +36290,10 @@ def afficher_tableau_de_bord_progression(historique):
 
                             )
 
-                            st.altair_chart(
-
-                                _styliser_graphique_altair_fixe(
-
-                                    base_cjp.mark_bar(cornerRadiusEnd=4, size=18)
-
-                                    + base_cjp.mark_text(align="left", baseline="middle", dx=5, fontSize=11, fontWeight="bold", color="#0f172a").encode(text="Label:N"),
-
-                                    height=240
-
-                                ),
-
-                                use_container_width=True
-
+                            _afficher_altair_fixe(
+                                base_cjp.mark_bar(cornerRadiusEnd=4, size=18)
+                                + base_cjp.mark_text(align="left", baseline="middle", dx=6, fontSize=12, fontWeight="bold", color="#0f172a").encode(text="Label:N"),
+                                height=250
                             )
 
 
