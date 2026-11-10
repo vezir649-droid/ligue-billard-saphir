@@ -34229,31 +34229,63 @@ def afficher_tableau_de_bord_progression(historique):
         with st.container(border=True):
             st.markdown("##### 📈 Graphique linéaire des Équipes sur 14 semaines (Maximum 72 pts / semaine)")
             noms_eq_ordre = [e["nom"] for e in classement_equipes]
+            nb_eq = max(1, len(noms_eq_ordre))
 
+            def _cle_date_tri(d_str, idx_fallback=0):
+                s = str(d_str or "").strip()
+                m_iso = re.search(r"(\d{4})-(\d{1,2})-(\d{1,2})", s)
+                if m_iso:
+                    return (int(m_iso.group(1)), int(m_iso.group(2)), int(m_iso.group(3)), idx_fallback)
+                m_fr = re.search(r"(\d{1,2})/(\d{1,2})/(\d{4})", s)
+                if m_fr:
+                    return (int(m_fr.group(3)), int(m_fr.group(2)), int(m_fr.group(1)), idx_fallback)
+                return (9999, 12, 31, idx_fallback)
+
+            ticks_y_eq = []
+            expr_parts_eq = []
             rows_grid_eq = []
             rows_eq_14 = []
-            for eq_d in classement_equipes:
+
+            for idx_e, eq_d in enumerate(classement_equipes):
                 eq_nom = eq_d["nom"]
+                base_y = float((nb_eq - 1 - idx_e) * 100)
+                ticks_y_eq.append(base_y)
+                eq_esc = eq_nom.replace("\\", "\\\\").replace("'", "\\'")
+                expr_parts_eq.append(f"datum.value == {int(base_y)} ? '{eq_esc}'")
+
                 for s_lbl in semaines_14:
-                    rows_grid_eq.append({"Équipe": eq_nom, "Semaine": s_lbl, "OffsetZero": 0.0})
-                for idx_sem, m_info in enumerate(eq_d.get("matchs", [])[:14], start=1):
+                    rows_grid_eq.append({"Équipe": eq_nom, "Semaine": s_lbl, "YPos": base_y})
+
+                matchs_tries = sorted(
+                    eq_d.get("matchs", []),
+                    key=lambda m_it: _cle_date_tri(m_it.get("date", ""), m_it.get("idx", 0))
+                )[:14]
+                scores_eq = [min(72, max(0, int(m_it.get("pour", 0)))) for m_it in matchs_tries]
+                moy_eq_loc = (sum(scores_eq) / len(scores_eq)) if scores_eq else 54.0
+
+                for idx_sem, m_info in enumerate(matchs_tries, start=1):
                     pts_sem = min(72, max(0, int(m_info.get("pour", 0))))
-                    offset_y = round(((36.0 - float(pts_sem)) / 36.0) * 14.0, 2)
+                    # Sur un axe Y quantitatif standard : score plus élevé => YPos plus grand => la ligne MONTE
+                    delta_y = max(-34.0, min(34.0, (float(pts_sem) - moy_eq_loc) * 4.5))
+                    y_pos = round(base_y + delta_y, 2)
                     rows_eq_14.append({
                         "Semaine": f"Sem {idx_sem}",
                         "NumSemaine": idx_sem,
                         "Équipe": eq_nom,
                         "Pointage": pts_sem,
                         "ScoreTxt": f"{pts_sem}/72",
-                        "OffsetY": offset_y,
+                        "YPos": y_pos,
                         "Adversaire": m_info.get("adversaire", "—"),
                         "Résultat": m_info.get("resultat", "—"),
                         "Date": m_info.get("date", "—")
                     })
 
+            label_expr_eq = " : ".join(expr_parts_eq) + " : ''" if expr_parts_eq else "''"
+            y_domain_eq = [-55.0, float((nb_eq - 1) * 100 + 55)]
+
             if has_altair:
                 df_grid_eq = pd.DataFrame(rows_grid_eq)
-                h_eq_line = max(360, len(noms_eq_ordre) * 52)
+                h_eq_line = max(380, nb_eq * 54)
                 guide_eq = alt.Chart(df_grid_eq).mark_line(color="#e2e8f0", strokeDash=[4, 4], strokeWidth=1.5).encode(
                     x=alt.X(
                         "Semaine:N",
@@ -34262,10 +34294,14 @@ def afficher_tableau_de_bord_progression(historique):
                         axis=alt.Axis(labelAngle=0, title="Calendrier de 14 semaines (Maximum 72 pts / semaine)")
                     ),
                     y=alt.Y(
-                        "Équipe:N",
-                        sort=noms_eq_ordre,
-                        scale=alt.Scale(domain=noms_eq_ordre),
-                        axis=alt.Axis(title="Nom des équipes")
+                        "YPos:Q",
+                        scale=alt.Scale(domain=y_domain_eq, nice=False, zero=False),
+                        axis=alt.Axis(
+                            values=ticks_y_eq,
+                            labelExpr=label_expr_eq,
+                            title="Nom des équipes",
+                            grid=True
+                        )
                     ),
                     detail="Équipe:N"
                 )
@@ -34274,9 +34310,9 @@ def afficher_tableau_de_bord_progression(historique):
                     df_eq_14 = pd.DataFrame(rows_eq_14)
                     base_eq_line = alt.Chart(df_eq_14).encode(
                         x=alt.X("Semaine:N", sort=semaines_14, scale=alt.Scale(domain=semaines_14)),
-                        y=alt.Y("Équipe:N", sort=noms_eq_ordre, scale=alt.Scale(domain=noms_eq_ordre)),
-                        yOffset=alt.YOffset("OffsetY:Q", scale=alt.Scale(domain=[-22, 22])),
+                        y=alt.Y("YPos:Q", scale=alt.Scale(domain=y_domain_eq, nice=False, zero=False)),
                         color=alt.Color("Équipe:N", sort=noms_eq_ordre, legend=None),
+                        detail="Équipe:N",
                         tooltip=[
                             alt.Tooltip("Équipe:N", title="Équipe"),
                             alt.Tooltip("Semaine:N", title="Semaine"),
@@ -34370,18 +34406,47 @@ def afficher_tableau_de_bord_progression(historique):
         with st.container(border=True):
             st.markdown("##### 📈 Graphique linéaire des Joueurs sur 14 semaines (Maximum 24 pts / match)")
             ordre_j_labels = [f"{j['nom']} ({j['equipe']})" for j in classement_joueurs]
+            nb_j = max(1, len(ordre_j_labels))
 
+            def _cle_date_tri_j(d_str, idx_fallback=0):
+                s = str(d_str or "").strip()
+                m_iso = re.search(r"(\d{4})-(\d{1,2})-(\d{1,2})", s)
+                if m_iso:
+                    return (int(m_iso.group(1)), int(m_iso.group(2)), int(m_iso.group(3)), idx_fallback)
+                m_fr = re.search(r"(\d{1,2})/(\d{1,2})/(\d{4})", s)
+                if m_fr:
+                    return (int(m_fr.group(3)), int(m_fr.group(2)), int(m_fr.group(1)), idx_fallback)
+                return (9999, 12, 31, idx_fallback)
+
+            ticks_y_j = []
+            expr_parts_j = []
             rows_grid_j = []
             rows_j_14 = []
-            for j_info in classement_joueurs:
+
+            for idx_j, j_info in enumerate(classement_joueurs):
                 j_lbl = f"{j_info['nom']} ({j_info['equipe']})"
+                base_y = float((nb_j - 1 - idx_j) * 100)
+                ticks_y_j.append(base_y)
+                j_esc = j_lbl.replace("\\", "\\\\").replace("'", "\\'")
+                expr_parts_j.append(f"datum.value == {int(base_y)} ? '{j_esc}'")
+
                 for s_lbl in semaines_14:
-                    rows_grid_j.append({"Joueur": j_lbl, "Semaine": s_lbl, "OffsetZero": 0.0})
+                    rows_grid_j.append({"Joueur": j_lbl, "Semaine": s_lbl, "YPos": base_y})
+
                 synthese_dict = j_info.get("matchs_synthese", {})
-                for idx_sem, m_key in enumerate(sorted(synthese_dict.keys())[:14], start=1):
+                cles_triees = sorted(
+                    synthese_dict.keys(),
+                    key=lambda k_it: _cle_date_tri_j(synthese_dict[k_it].get("date", ""), k_it)
+                )[:14]
+                scores_j = [min(24, max(0, int(synthese_dict[k_it].get("pts", 0)))) for k_it in cles_triees]
+                moy_j_loc = (sum(scores_j) / len(scores_j)) if scores_j else 18.0
+
+                for idx_sem, m_key in enumerate(cles_triees, start=1):
                     sm = synthese_dict[m_key]
                     pts_m = min(24, max(0, int(sm.get("pts", 0))))
-                    offset_y = round(((12.0 - float(pts_m)) / 12.0) * 11.0, 2)
+                    # Sur un axe Y quantitatif standard : score plus élevé => YPos plus grand => la ligne MONTE
+                    delta_y = max(-34.0, min(34.0, (float(pts_m) - moy_j_loc) * 7.5))
+                    y_pos = round(base_y + delta_y, 2)
                     rows_j_14.append({
                         "Semaine": f"Sem {idx_sem}",
                         "NumSemaine": idx_sem,
@@ -34389,14 +34454,17 @@ def afficher_tableau_de_bord_progression(historique):
                         "Équipe": j_info.get("equipe", ""),
                         "Pointage": pts_m,
                         "ScoreTxt": f"{pts_m}/24",
-                        "OffsetY": offset_y,
+                        "YPos": y_pos,
                         "Bilan": f"{sm.get('v', 0)}V - {sm.get('d', 0)}D",
                         "Date": sm.get("date", "—")
                     })
 
+            label_expr_j = " : ".join(expr_parts_j) + " : ''" if expr_parts_j else "''"
+            y_domain_j = [-55.0, float((nb_j - 1) * 100 + 55)]
+
             if has_altair:
                 df_grid_j = pd.DataFrame(rows_grid_j)
-                h_j_line = max(420, len(ordre_j_labels) * 44)
+                h_j_line = max(440, nb_j * 46)
                 guide_j = alt.Chart(df_grid_j).mark_line(color="#e2e8f0", strokeDash=[4, 4], strokeWidth=1.5).encode(
                     x=alt.X(
                         "Semaine:N",
@@ -34405,10 +34473,14 @@ def afficher_tableau_de_bord_progression(historique):
                         axis=alt.Axis(labelAngle=0, title="Calendrier de 14 semaines (Maximum 24 pts / match)")
                     ),
                     y=alt.Y(
-                        "Joueur:N",
-                        sort=ordre_j_labels,
-                        scale=alt.Scale(domain=ordre_j_labels),
-                        axis=alt.Axis(title="Nom des joueurs")
+                        "YPos:Q",
+                        scale=alt.Scale(domain=y_domain_j, nice=False, zero=False),
+                        axis=alt.Axis(
+                            values=ticks_y_j,
+                            labelExpr=label_expr_j,
+                            title="Nom des joueurs",
+                            grid=True
+                        )
                     ),
                     detail="Joueur:N"
                 )
@@ -34417,8 +34489,7 @@ def afficher_tableau_de_bord_progression(historique):
                     df_j_14 = pd.DataFrame(rows_j_14)
                     base_j_line = alt.Chart(df_j_14).encode(
                         x=alt.X("Semaine:N", sort=semaines_14, scale=alt.Scale(domain=semaines_14)),
-                        y=alt.Y("Joueur:N", sort=ordre_j_labels, scale=alt.Scale(domain=ordre_j_labels)),
-                        yOffset=alt.YOffset("OffsetY:Q", scale=alt.Scale(domain=[-18, 18])),
+                        y=alt.Y("YPos:Q", scale=alt.Scale(domain=y_domain_j, nice=False, zero=False)),
                         color=alt.Color("Équipe:N", legend=alt.Legend(orient="top", title="Équipe")),
                         detail="Joueur:N",
                         tooltip=[
