@@ -230,7 +230,7 @@ def _cle_match_unique(m):
         return ""
     r = str(m.get("receveur") or m.get("equipe_receveur") or "").strip().lower()
     v = str(m.get("visiteur") or m.get("equipe_visiteur") or "").strip().lower()
-    d = str(m.get("date") or m.get("date_enregistrement") or "").strip()
+    d = str(m.get("date_match") or m.get("date") or m.get("date_enregistrement") or "").strip()
     m_dmy = re.match(r"^(\d{2})/(\d{2})/(\d{4})", d)
     m_ymd = re.match(r"^(\d{4})-(\d{2})-(\d{2})", d)
     if m_dmy:
@@ -5538,15 +5538,19 @@ html, body {
 
 
 
-def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_joueurs, dict_joueurs, date_str, absents_info=None, rectif_bandeau="", approbateur_rec="", approbateur_vis=""):
+def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_joueurs, dict_joueurs, date_str, absents_info=None, rectif_bandeau="", approbateur_rec="", approbateur_vis="", date_enregistrement=""):
 
     """Génère le résumé en texte brut et en HTML avec les totaux par équipe et par joueur (formaté pour impression A4)."""
+
+    date_enreg_aff = str(date_enregistrement or datetime.now().strftime("%d/%m/%Y à %H:%M")).strip()
 
     lignes_texte = [
 
         f"Ligue de billard Boule en main - Résultats officiels",
 
-        f"Date : {date_str}",
+        f"Date du match : {date_str}",
+
+        f"Date de l'enregistrement : {date_enreg_aff}",
 
         f"Rencontre : {receveur} vs {visiteur}",
 
@@ -5842,7 +5846,7 @@ def generer_resume_match(receveur, visiteur, matchs, total_rec, total_vis, pts_j
 
         </table>
 
-        <p class="date-para" style="margin: 4px 0 8px 0; font-size: 13px;"><strong>Date :</strong> {date_str}</p>
+        <p class="date-para" style="margin: 4px 0 8px 0; font-size: 13px;"><strong>Date du match :</strong> {date_str} &nbsp;|&nbsp; <strong>Date de l'enregistrement :</strong> {date_enreg_aff}</p>
 
         {rectif_bandeau}
 
@@ -6483,6 +6487,79 @@ def trouver_match_par_date(date_cible, lignes_horaire=None):
                 return res
 
     return None
+
+
+
+def trouver_date_match_dans_horaire(receveur, visiteur, date_ref=None, lignes_horaire=None):
+    """Recherche dans horaire_saphir.json la date programmée (format dd/mm/YYYY) pour la rencontre receveur vs visiteur."""
+    r_cible = str(receveur or "").strip().lower()
+    v_cible = str(visiteur or "").strip().lower()
+    if not r_cible or not v_cible:
+        return None
+    if not lignes_horaire:
+        lignes_horaire = charger_horaire_json()
+    if not lignes_horaire:
+        return None
+    if date_ref is None:
+        date_ref = datetime.today().date()
+    elif isinstance(date_ref, datetime):
+        date_ref = date_ref.date()
+
+    candidats = []
+    for row in lignes_horaire:
+        if not row or not isinstance(row, list):
+            continue
+        for cell in row[1:]:
+            res = parser_ligne_horaire_match(str(cell))
+            if res and res.get("mois") and res.get("jour"):
+                r_h = str(res.get("receveur", "")).strip().lower()
+                v_h = str(res.get("visiteur", "")).strip().lower()
+                if r_h == r_cible and v_h == v_cible:
+                    annee_m = date_ref.year
+                    if date_ref.month >= 11 and res["mois"] <= 2:
+                        annee_m = date_ref.year + 1
+                    elif date_ref.month <= 2 and res["mois"] >= 11:
+                        annee_m = date_ref.year - 1
+                    try:
+                        d_obj = date(annee_m, int(res["mois"]), int(res["jour"]))
+                        candidats.append(d_obj)
+                    except Exception:
+                        pass
+    if not candidats:
+        return None
+    candidats.sort(key=lambda d: abs((d - date_ref).days))
+    return candidats[0].strftime("%d/%m/%Y")
+
+
+def extraire_dates_match_historique(m):
+    """Extrait (date_du_match, date_enregistrement) d'un dictionnaire de match de l'historique."""
+    if not isinstance(m, dict):
+        return ("Date inconnue", "Date inconnue")
+    rec = m.get("receveur", m.get("equipe_receveur", ""))
+    vis = m.get("visiteur", m.get("equipe_visiteur", ""))
+    d_match = str(m.get("date_match") or m.get("date") or "").strip()
+    d_enreg = str(m.get("date_enregistrement") or "").strip()
+    d_horaire = trouver_date_match_dans_horaire(rec, vis)
+    if not d_match:
+        d_match = d_horaire or d_enreg or "Date inconnue"
+    elif d_enreg and d_match == d_enreg and d_horaire:
+        # Si les deux champs avaient la même valeur d'enregistrement mais qu'une date officielle d'horaire existe
+        d_match = d_horaire
+    if not d_enreg:
+        d_enreg = d_match
+    return (d_match, d_enreg)
+
+
+def formater_libelle_dates_match(m, court=False):
+    """Formate l'affichage combiné de la date du match et de la date d'enregistrement."""
+    d_match, d_enreg = extraire_dates_match_historique(m)
+    if court:
+        if d_enreg and d_enreg != d_match:
+            return f"Match du {d_match} (Enr. {d_enreg})"
+        return f"Match du {d_match}"
+    if d_enreg:
+        return f"Match du {d_match} (Enregistré le {d_enreg})"
+    return f"Match du {d_match}"
 
 
 
@@ -8481,16 +8558,22 @@ def envoyer_feuille_et_photo_administrateurs(data_s, photo_bytes=None, destinata
     # 1. Constituer les données du match pour obtenir le HTML officiel
 
     matchs_dict = data_s.get("matchs", {})
+    rec_sc_m = str(data_s.get("receveur", "Receveur"))
+    vis_sc_m = str(data_s.get("visiteur", "Visiteur"))
+    d_match_sc_m = str(data_s.get("date") or trouver_date_match_dans_horaire(rec_sc_m, vis_sc_m) or datetime.today().strftime("%d/%m/%Y")).strip()
+    d_enreg_sc_m = datetime.now().strftime("%d/%m/%Y à %H:%M")
 
     m_scan = {
 
-        "date": str(data_s.get("date", datetime.today().strftime("%Y-%m-%d"))),
+        "date": d_match_sc_m,
 
-        "date_enregistrement": str(data_s.get("date", datetime.today().strftime("%Y-%m-%d"))),
+        "date_match": d_match_sc_m,
 
-        "receveur": str(data_s.get("receveur", "Receveur")),
+        "date_enregistrement": d_enreg_sc_m,
 
-        "visiteur": str(data_s.get("visiteur", "Visiteur")),
+        "receveur": rec_sc_m,
+
+        "visiteur": vis_sc_m,
 
         "total_receveur": _safe_int_val(data_s.get("total_rec", 0)),
 
@@ -8971,16 +9054,22 @@ def cb_archiver_match_scanner(data_s):
         return
 
     matchs_dict = data_s.get("matchs", {})
+    rec_arch_sc = str(data_s.get("receveur", "Receveur"))
+    vis_arch_sc = str(data_s.get("visiteur", "Visiteur"))
+    d_match_arch_sc = str(data_s.get("date") or trouver_date_match_dans_horaire(rec_arch_sc, vis_arch_sc) or datetime.today().strftime("%d/%m/%Y")).strip()
+    d_enreg_arch_sc = datetime.now().strftime("%d/%m/%Y à %H:%M")
 
     nouveau_match = {
 
-        "date": str(data_s.get("date", datetime.today().strftime("%Y-%m-%d"))),
+        "date": d_match_arch_sc,
 
-        "date_enregistrement": str(data_s.get("date", datetime.today().strftime("%Y-%m-%d"))),
+        "date_match": d_match_arch_sc,
 
-        "receveur": str(data_s.get("receveur", "Receveur")),
+        "date_enregistrement": d_enreg_arch_sc,
 
-        "visiteur": str(data_s.get("visiteur", "Visiteur")),
+        "receveur": rec_arch_sc,
+
+        "visiteur": vis_arch_sc,
 
         "total_receveur": _safe_int_val(data_s.get("total_rec", 0)),
 
@@ -9262,11 +9351,16 @@ def cb_archiver_match_anterieur_scanner(data_s):
 
 
 
+    d_match_ant_sc = str(data_s.get("date") or trouver_date_match_dans_horaire(rec_n, vis_n) or datetime.today().strftime("%d/%m/%Y")).strip()
+    d_enreg_ant_sc = datetime.now().strftime("%d/%m/%Y à %H:%M")
+
     nouveau_match = {
 
-        "date": str(data_s.get("date", datetime.today().strftime("%Y-%m-%d"))),
+        "date": d_match_ant_sc,
 
-        "date_enregistrement": str(data_s.get("date", datetime.today().strftime("%Y-%m-%d"))),
+        "date_match": d_match_ant_sc,
+
+        "date_enregistrement": d_enreg_ant_sc,
 
         "receveur": rec_n,
 
@@ -11035,16 +11129,22 @@ def afficher_vue_scanner_feuille_match(label_direct):
                             try:
 
                                 match_dict_init = res_sc.get("matchs", {})
+                                rec_sc_i = str(res_sc.get("receveur", "Receveur"))
+                                vis_sc_i = str(res_sc.get("visiteur", "Visiteur"))
+                                d_match_sc_i = str(res_sc.get("date") or trouver_date_match_dans_horaire(rec_sc_i, vis_sc_i) or datetime.today().strftime("%d/%m/%Y")).strip()
+                                d_enreg_sc_i = datetime.now().strftime("%d/%m/%Y à %H:%M")
 
                                 m_scan_init = {
 
-                                    "date": str(res_sc.get("date", datetime.today().strftime("%Y-%m-%d"))),
+                                    "date": d_match_sc_i,
 
-                                    "date_enregistrement": str(res_sc.get("date", datetime.today().strftime("%Y-%m-%d"))),
+                                    "date_match": d_match_sc_i,
 
-                                    "receveur": str(res_sc.get("receveur", "Receveur")),
+                                    "date_enregistrement": d_enreg_sc_i,
 
-                                    "visiteur": str(res_sc.get("visiteur", "Visiteur")),
+                                    "receveur": rec_sc_i,
+
+                                    "visiteur": vis_sc_i,
 
                                     "total_receveur": _safe_int_val(res_sc.get("total_rec", 0)),
 
@@ -16370,6 +16470,7 @@ def sauvegarder_historique_matchs(historique_list):
     try:
 
         # Nettoyage systématique : aucun HTML dans le JSON d'historique (données pures uniquement) et totaux toujours synchronisés avec les 9 manches
+        maintenant_enreg_str = datetime.now().strftime("%d/%m/%Y à %H:%M")
 
         for idx_m, m in enumerate(historique_list):
 
@@ -16381,13 +16482,18 @@ def sauvegarder_historique_matchs(historique_list):
 
                 obtenir_totaux_match_fiables(m)
 
-                if not m.get("date_enregistrement") and m.get("date"):
-
-                    m["date_enregistrement"] = m["date"]
+                rec_m_sv = m.get("receveur", m.get("equipe_receveur", ""))
+                vis_m_sv = m.get("visiteur", m.get("equipe_visiteur", ""))
+                d_match_sv = str(m.get("date_match") or m.get("date") or "").strip()
+                d_hor_sv = trouver_date_match_dans_horaire(rec_m_sv, vis_m_sv)
+                if not d_match_sv:
+                    d_match_sv = d_hor_sv or str(m.get("date_enregistrement") or maintenant_enreg_str).strip()
+                m["date_match"] = d_match_sv
+                m["date"] = d_match_sv
 
                 if not m.get("date_enregistrement"):
 
-                    m["date_enregistrement"] = f"Match archivé #{idx_m+1}"
+                    m["date_enregistrement"] = maintenant_enreg_str
 
 
 
@@ -16697,7 +16803,7 @@ def obtenir_html_match(m):
 
     vis = m.get("visiteur", "Visiteur")
 
-    date_str = m.get("date_enregistrement", m.get("date", "Date inconnue"))
+    date_str, date_enreg_aff = extraire_dates_match_historique(m)
 
     tot_rec, tot_vis = obtenir_totaux_match_fiables(m)
 
@@ -16851,7 +16957,7 @@ def obtenir_html_match(m):
 
         </table>
 
-        <p class="date-para" style="margin: 4px 0 8px 0; font-size: 13px;"><strong>Date :</strong> {date_str}</p>
+        <p class="date-para" style="margin: 4px 0 8px 0; font-size: 13px;"><strong>Date du match :</strong> {date_str} &nbsp;|&nbsp; <strong>Date de l'enregistrement :</strong> {date_enreg_aff}</p>
 
         {rectif_bandeau}
 
@@ -16967,7 +17073,7 @@ def generer_rapport_historique_convivial(historique):
 
         vis = m.get("visiteur", m.get("equipe_visiteur", "Visiteur"))
 
-        d_m = m.get("date_enregistrement", m.get("date", "Date inconnue"))
+        d_m = formater_libelle_dates_match(m, court=True)
 
         m_dict = m.get("matchs", {})
 
@@ -38181,7 +38287,7 @@ with tab_feuille:
 
     for idx_m, m in enumerate(reversed(historique_matchs or [])):
 
-        date_m = m.get("date_enregistrement", m.get("date", f"Match archivé #{nb_total_m - idx_m}"))
+        date_m = formater_libelle_dates_match(m, court=True)
 
         rec_m = m.get("receveur", m.get("equipe_receveur", "Receveur"))
 
@@ -38371,7 +38477,7 @@ with tab_feuille:
 
         tot_r, tot_v = obtenir_totaux_match_fiables(m_arch)
 
-        date_m = m_arch.get("date_enregistrement", m_arch.get("date", "Date inconnue"))
+        date_m = formater_libelle_dates_match(m_arch, court=False)
 
         html_arch = obtenir_html_match(m_arch)
 
@@ -38379,7 +38485,7 @@ with tab_feuille:
 
         with st.container(border=True):
 
-            st.markdown(f"#### 📜 Feuille officielle archivée — {m_arch.get('date_enregistrement', m_arch.get('date', ''))}")
+            st.markdown(f"#### 📜 Feuille officielle archivée — {date_m}")
 
             if m_arch.get("approbateur_receveur") or m_arch.get("approbateur_visiteur"):
 
@@ -39734,7 +39840,10 @@ with tab_feuille:
 
         # --- VALIDATION FINALE DU MATCH ET ENVOI AUTOMATIQUE (Génération HTML à la demande) ---
 
-        date_du_match = datetime.now().strftime("%d/%m/%Y à %H:%M")
+        date_horaire_match = trouver_date_match_dans_horaire(equipe_receveur, equipe_visiteur)
+        date_du_match = date_horaire_match if date_horaire_match else datetime.now().strftime("%d/%m/%Y à %H:%M")
+        donnees_a_sauvegarder["date_match"] = date_du_match
+        donnees_a_sauvegarder["date"] = date_du_match
 
 
 
@@ -39800,7 +39909,7 @@ with tab_feuille:
 
             st.markdown("### 🎱 Sommaire officiel de la rencontre")
 
-            st.caption(f"📅 **Date :** {d_match}")
+            st.caption(f"📅 **Date du match :** {d_match} &nbsp;|&nbsp; 🕒 **Enregistrement :** {datetime.now().strftime('%d/%m/%Y à %H:%M')}")
 
 
 
@@ -40069,6 +40178,7 @@ with tab_feuille:
                 if st.button("✅ Approuver et enregistrer", type="primary", use_container_width=True, key="dlg_btn_approuver"):
 
                     historique = charger_historique_matchs()
+                    date_enreg_officielle = datetime.now().strftime("%d/%m/%Y à %H:%M")
 
 
 
@@ -40096,7 +40206,9 @@ with tab_feuille:
 
                         approbateur_rec=sel_app_rec,
 
-                        approbateur_vis=sel_app_vis
+                        approbateur_vis=sel_app_vis,
+
+                        date_enregistrement=date_enreg_officielle
 
                     )
 
@@ -40132,7 +40244,11 @@ with tab_feuille:
 
                     }
 
-                    donnees_finales["date_enregistrement"] = d_match
+                    donnees_finales["date"] = d_match
+
+                    donnees_finales["date_match"] = d_match
+
+                    donnees_finales["date_enregistrement"] = date_enreg_officielle
 
                     donnees_finales.pop("html_officiel", None)
 
@@ -41568,6 +41684,8 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
 
 
 
+                        date_enreg_ant = datetime.now().strftime("%d/%m/%Y à %H:%M")
+
                         txt_ant, html_ant = generer_resume_match(
 
                             eq_rec_ant,
@@ -41590,7 +41708,9 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
 
                             approbateur_rec=app_rec_ant,
 
-                            approbateur_vis=app_vis_ant
+                            approbateur_vis=app_vis_ant,
+
+                            date_enregistrement=date_enreg_ant
 
                         )
 
@@ -41600,7 +41720,9 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
 
                             "date": date_ant_str,
 
-                            "date_enregistrement": date_ant_str,
+                            "date_match": date_ant_str,
+
+                            "date_enregistrement": date_enreg_ant,
 
                             "receveur": eq_rec_ant,
 
@@ -41696,7 +41818,7 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
 
                     for i, m_h in enumerate(historique_complet):
 
-                        d_h = m_h.get("date_enregistrement", m_h.get("date", f"Match #{i+1}"))
+                        d_h = formater_libelle_dates_match(m_h, court=True)
 
                         r_h = m_h.get("receveur", m_h.get("equipe_receveur", "Receveur"))
 
@@ -41740,7 +41862,7 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
 
                     vis_sel = m_sel.get("visiteur", "Visiteur")
 
-                    date_sel = m_sel.get("date_enregistrement", m_sel.get("date", "Date inconnue"))
+                    date_sel = formater_libelle_dates_match(m_sel, court=False)
 
 
 
