@@ -895,8 +895,8 @@ def afficher_tableau_html_compatible(data):
     for col in colonnes:
         align_th = "left" if col in cols_gauche else "center"
         ths.append(
-            f"<th style='background-color:#0b3c5d !important; color:#ffffff !important; padding:11px 14px !important; text-align:{align_th} !important; font-weight:800 !important; font-size:13.5px !important; border-bottom:2px solid #072a42 !important; border-right:1px solid #1e4e6f !important; white-space:nowrap !important; letter-spacing:0.2px !important;'>"
-            f"<span class='saphir-th-txt' style='color:#ffffff !important; font-weight:800 !important; font-size:13.5px !important;'>{html_lib.escape(str(col))}</span>"
+            f"<th style='background-color:#0b3c5d !important; color:#ffffff !important; padding:9px 10px !important; text-align:{align_th} !important; font-weight:800 !important; font-size:13px !important; border-bottom:2px solid #072a42 !important; border-right:1px solid #1e4e6f !important; white-space:nowrap !important; letter-spacing:0.15px !important;'>"
+            f"<span class='saphir-th-txt' style='color:#ffffff !important; font-weight:800 !important; font-size:13px !important;'>{html_lib.escape(str(col))}</span>"
             f"</th>"
         )
     ths_str = "".join(ths)
@@ -916,10 +916,23 @@ def afficher_tableau_html_compatible(data):
             fw_td = "700" if is_primary else "600"
             col_td = "#0b3c5d" if is_primary else "#0f172a"
             cls_span = "saphir-td-primary" if is_primary else "saphir-td-txt"
-            ws_td = "normal" if col in {"Joueurs", "Nom des joueurs"} else "nowrap"
+            if "\n" in val_str:
+                parts_lines = val_str.split("\n", 1)
+                main_line = html_lib.escape(parts_lines[0].strip())
+                sub_line = html_lib.escape(parts_lines[1].strip())
+                cell_inner = (
+                    f"<div style='line-height:1.25 !important;'>"
+                    f"<span class='{cls_span}' style='color:{col_td} !important; font-weight:800 !important; font-size:14px !important;'>{main_line}</span>"
+                    f"<div style='color:#475569 !important; font-weight:500 !important; font-size:11.5px !important; margin-top:2px !important; white-space:normal !important;'>{sub_line}</div>"
+                    f"</div>"
+                )
+                ws_td = "normal"
+            else:
+                cell_inner = f"<span class='{cls_span}' style='color:{col_td} !important; font-weight:{fw_td} !important; font-size:13px !important;'>{html_lib.escape(val_str)}</span>"
+                ws_td = "normal" if col in {"Joueurs", "Nom des joueurs", "Équipe"} else "nowrap"
             tds.append(
-                f"<td style='background-color:{bg} !important; padding:10px 14px !important; border-bottom:1px solid #cbd5e1 !important; border-right:1px solid #e2e8f0 !important; color:{col_td} !important; font-size:13.5px !important; font-weight:{fw_td} !important; text-align:{align_td} !important; vertical-align:middle !important; white-space:{ws_td} !important;'>"
-                f"<span class='{cls_span}' style='color:{col_td} !important; font-weight:{fw_td} !important; font-size:13.5px !important;'>{html_lib.escape(val_str)}</span>"
+                f"<td style='background-color:{bg} !important; padding:8px 10px !important; border-bottom:1px solid #cbd5e1 !important; border-right:1px solid #e2e8f0 !important; color:{col_td} !important; font-size:13px !important; font-weight:{fw_td} !important; text-align:{align_td} !important; vertical-align:middle !important; white-space:{ws_td} !important;'>"
+                f"{cell_inner}"
                 f"</td>"
             )
         trs.append(f"<tr style='background-color:{bg} !important;'>{''.join(tds)}</tr>")
@@ -34149,14 +34162,15 @@ def afficher_tableau_de_bord_progression(historique):
 
         lignes_tab_eq = []
         for rang, eq_data in enumerate(classement_equipes, start=1):
+            joueurs_sub = " • ".join(eq_data.get("joueurs_liste", [])) or eq_data.get("joueurs_noms_str", "")
+            eq_cell = f"{eq_data['nom']}\n{joueurs_sub}" if joueurs_sub else eq_data["nom"]
             lignes_tab_eq.append({
                 "Rang": medailles.get(rang, f"#{rang}"),
-                "Équipe": eq_data["nom"],
-                "Nom des joueurs": eq_data.get("joueurs_noms_str", "—"),
-                "Nb de semaines": eq_data["semaines_jouees"],
-                "Nb de victoires": eq_data["v"],
-                "Nb de défaites": eq_data["d"],
-                "Nb de points": eq_data["pour"]
+                "Équipe": eq_cell,
+                "Semaines": eq_data["semaines_jouees"],
+                "Victoires": eq_data["v"],
+                "Défaites": eq_data["d"],
+                "Points": eq_data["pour"]
             })
 
         afficher_tableau_html_compatible(pd.DataFrame(lignes_tab_eq))
@@ -34218,19 +34232,16 @@ def afficher_tableau_de_bord_progression(historique):
 
         lignes_tab_j = []
         for rang, j_data in enumerate(classement_joueurs, start=1):
-            if j_data["manches"] > 0:
-                moy_str = f"{j_data['moyenne_globale']:.3f} ({j_data['moyenne']:.2f}/8 • {j_data['moyenne_soiree']:.1f}/24)"
-            else:
-                moy_str = f"{j_data['moyenne_globale']:.3f}"
+            moy_str = f"{j_data['moyenne_globale']:.3f}"
             lignes_tab_j.append({
                 "Rang": medailles.get(rang, f"#{rang}"),
-                "Nom du joueur": j_data["nom"],
+                "Joueur": j_data["nom"],
                 "Équipe": j_data["equipe"],
-                "Nb de semaines": j_data["semaines_jouees"],
-                "Nb de victoires": j_data["v"],
-                "Nb de défaites": j_data["d"],
-                "Total de points": j_data["total_pts"],
-                "Moyenne globale": moy_str
+                "Semaines": j_data["semaines_jouees"],
+                "Victoires": j_data["v"],
+                "Défaites": j_data["d"],
+                "Total points": j_data["total_pts"],
+                "Moyenne": moy_str
             })
 
         afficher_tableau_html_compatible(pd.DataFrame(lignes_tab_j))
