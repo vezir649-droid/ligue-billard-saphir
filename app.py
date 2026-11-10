@@ -36293,28 +36293,55 @@ def afficher_section_horaire_saison(est_spectateur=False, key_prefix="horaire_ma
         tds_row = []
         for c_i, val_c in enumerate(valeurs_cells):
             val_esc = _html.escape(val_c)
-            if est_sem_courante:
-                if c_i == 0:
+            if c_i == 0:
+                if est_sem_courante:
                     contenu_td = (
-                        f'<span style="text-decoration:underline; text-decoration-thickness:2px; text-underline-offset:3px; font-weight:800; color:#7dd3fc;">'
-                        f'👉 {val_esc}</span> '
-                        f'<span style="display:inline-block; background:#0284c7; color:#ffffff; font-size:11px; font-weight:700; padding:1px 6px; border-radius:99px; margin-left:4px;">En cours</span>'
+                        f'<div style="text-decoration:underline; text-decoration-thickness:2px; text-underline-offset:3px; font-weight:800; color:#7dd3fc;">'
+                        f'👉 {val_esc}</div>'
+                        f'<div style="margin-top:4px;"><span style="display:inline-block; background:#0284c7; color:#ffffff; font-size:11px; font-weight:700; padding:1px 6px; border-radius:99px;">En cours</span></div>'
                     )
                 else:
-                    est_match_jour = bool(match_courant_txt and val_c.strip().lower() == match_courant_txt.lower())
-                    couleur_m = "#fde047" if est_match_jour else "#f8fafc"
-                    contenu_td = (
-                        f'<span style="text-decoration:underline; text-decoration-thickness:2px; text-underline-offset:3px; font-weight:800; color:{couleur_m};">'
-                        f'{val_esc}</span>'
-                    )
+                    contenu_td = f'<div style="font-weight:700; color:#e2e8f0; font-size:13.5px;">{val_esc}</div>'
+            else:
+                # Séparer la date et les équipes si la cellule correspond à un match
+                parsed_cell = parser_ligne_horaire_match(val_c)
+                if parsed_cell and parsed_cell.get("receveur") and parsed_cell.get("visiteur"):
+                    # Extraire la date textuelle (ex: '26 octobre' ou '1 décembre')
+                    m_date_txt = re.search(r'^(\d{1,2}\s+[a-zA-ZÀ-ſ]+)', val_c.strip())
+                    date_part = m_date_txt.group(1).strip() if m_date_txt else f"{parsed_cell.get('jour')} {mois_fr_map.get(parsed_cell.get('mois'), '')}"
+                    rec_nom = parsed_cell["receveur"]
+                    vis_nom = parsed_cell["visiteur"]
+
+                    if est_sem_courante:
+                        est_match_jour = bool(match_courant_txt and val_c.strip().lower() == match_courant_txt.lower())
+                        couleur_eq = "#fde047" if est_match_jour else "#38bdf8"
+                        couleur_dt = "#fef08a" if est_match_jour else "#e2e8f0"
+                        badge_direct = ' <span style="background:#eab308; color:#0f172a; font-size:10.5px; font-weight:800; padding:1px 5px; border-radius:4px; margin-left:3px;">Aujourd\'hui</span>' if est_match_jour else ''
+                        contenu_td = (
+                            f'<div style="font-size:12.5px; font-weight:700; color:{couleur_dt}; margin-bottom:3px; text-decoration:underline; text-decoration-thickness:1.5px; text-underline-offset:2px;">'
+                            f'📅 { _html.escape(date_part) }{badge_direct}</div>'
+                            f'<div style="font-size:13.5px; font-weight:800; color:{couleur_eq}; text-decoration:underline; text-decoration-thickness:2px; text-underline-offset:3px;">'
+                            f'{_html.escape(rec_nom)} <span style="font-size:11px; font-weight:600; color:#94a3b8; text-decoration:none;">vs</span> {_html.escape(vis_nom)}</div>'
+                        )
+                    else:
+                        contenu_td = (
+                            f'<div style="font-size:12px; font-weight:600; color:#94a3b8; margin-bottom:2px;">'
+                            f'📅 {_html.escape(date_part)}</div>'
+                            f'<div style="font-size:13.5px; font-weight:700; color:#f8fafc;">'
+                            f'{_html.escape(rec_nom)} <span style="font-size:11px; font-weight:500; color:#64748b;">vs</span> {_html.escape(vis_nom)}</div>'
+                        )
+                elif val_c in ("—", "-", ""):
+                    contenu_td = '<div style="color:#64748b; font-size:13px; text-align:center;">—</div>'
+                else:
+                    contenu_td = f'<div style="font-size:13px; color:#cbd5e1;">{val_esc}</div>'
+
+            if est_sem_courante:
                 tds_row.append(
-                    f'<td style="padding:9px 10px; border-top:{border_row}; border-bottom:{border_row}; border-left:1px solid #38bdf8; border-right:1px solid #38bdf8; font-size:13.5px;">{contenu_td}</td>'
+                    f'<td style="padding:9px 10px; border-top:{border_row}; border-bottom:{border_row}; border-left:1px solid #38bdf8; border-right:1px solid #38bdf8; vertical-align:middle;">{contenu_td}</td>'
                 )
             else:
-                fw = "700" if c_i == 0 else "500"
-                col_txt = "#e2e8f0" if c_i == 0 else "#f1f5f9"
                 tds_row.append(
-                    f'<td style="padding:8px 10px; border:1px solid #334155; color:{col_txt}; font-weight:{fw}; font-size:13px;">{val_esc}</td>'
+                    f'<td style="padding:8px 10px; border:1px solid #334155; vertical-align:middle;">{contenu_td}</td>'
                 )
 
         trs_html.append(f'<tr style="background:{bg_row};">{"".join(tds_row)}</tr>')
