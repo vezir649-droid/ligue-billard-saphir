@@ -6321,7 +6321,7 @@ def sauvegarder_horaire_json(lignes_horaire):
 
     if not lignes_horaire:
 
-        return
+        return False
 
     try:
 
@@ -6329,11 +6329,15 @@ def sauvegarder_horaire_json(lignes_horaire):
 
             json.dump(lignes_horaire, f, indent=2, ensure_ascii=False)
 
+        _ecrire_cache_fichier("horaire_json", HORAIRE_SAPHIR_FILE, lignes_horaire)
+
         declencher_sync_github_arriere_plan(delai=1.0, commit_prefix=f"Sauvegarde horaire_saphir.json ({len(lignes_horaire)} rencontres)", filepath=HORAIRE_SAPHIR_FILE)
+
+        return True
 
     except Exception:
 
-        pass
+        return False
 
 
 
@@ -35634,9 +35638,218 @@ def cb_changer_equipe_vis():
 
 
 
+def afficher_section_horaire_saison(est_spectateur=False, key_prefix="horaire_main", editeur_ouvert=False):
+    """Affiche l'horaire complet de la saison et permet de l'éditer (sauvegarde dans horaire_saphir.json + GitHub)."""
+    lignes_horaire = charger_horaire_json()
+    if not isinstance(lignes_horaire, list):
+        lignes_horaire = []
+
+    mois_fr_map = {
+        1: "janvier", 2: "février", 3: "mars", 4: "avril", 5: "mai", 6: "juin",
+        7: "juillet", 8: "août", 9: "septembre", 10: "octobre", 11: "novembre", 12: "décembre"
+    }
+
+    st.markdown("### 📅 Horaire officiel de la saison")
+    rencontre_jour = determiner_match_du_jour(lignes_horaire)
+    if rencontre_jour:
+        statut_j = "🟢 **Match programmé aujourd'hui**" if rencontre_jour.get("est_aujourdhui") else "🔜 **Prochain match au calendrier**"
+        st.info(
+            f"{statut_j} ({rencontre_jour.get('semaine', '')} — {rencontre_jour.get('date_texte', '')}) : "
+            f"**{rencontre_jour.get('receveur', '')}** (Receveur) vs **{rencontre_jour.get('visiteur', '')}** (Visiteur)"
+        )
+
+    # Construction du tableau d'affichage
+    lignes_table = []
+    a_match_5 = False
+    a_match_6 = False
+    for idx_r, row in enumerate(lignes_horaire):
+        if not isinstance(row, list) or not row:
+            continue
+        sem_lbl = str(row[0]).strip() if len(row) > 0 else f"Semaine {idx_r + 1}"
+        m1 = str(row[1]).strip() if len(row) > 1 and str(row[1]).strip() else "—"
+        m2 = str(row[2]).strip() if len(row) > 2 and str(row[2]).strip() else "—"
+        m3 = str(row[3]).strip() if len(row) > 3 and str(row[3]).strip() else "—"
+        m4 = str(row[4]).strip() if len(row) > 4 and str(row[4]).strip() else "—"
+        m5 = str(row[5]).strip() if len(row) > 5 and str(row[5]).strip() else "—"
+        m6 = str(row[6]).strip() if len(row) > 6 and str(row[6]).strip() else "—"
+        if m5 not in ("—", "-", ""):
+            a_match_5 = True
+        if m6 not in ("—", "-", ""):
+            a_match_6 = True
+        item_t = {
+            "Semaine": sem_lbl,
+            "Match 1 (Lundi)": m1,
+            "Match 2 (Mardi)": m2,
+            "Match 3 (Mercredi)": m3,
+            "Match 4 (Jeudi)": m4,
+        }
+        if a_match_5:
+            item_t["Match 5"] = m5
+        if a_match_6:
+            item_t["Match 6"] = m6
+        lignes_table.append(item_t)
+
+    if lignes_table:
+        df_aff_horaire = pd.DataFrame(lignes_table)
+        afficher_tableau_html_compatible(df_aff_horaire)
+    else:
+        st.warning("Aucune semaine n'est actuellement définie dans l'horaire de la saison.")
+
+    # Section d'édition de l'horaire
+    with st.expander("✏️ Éditer l'horaire de la saison (Modifier, ajouter ou supprimer des semaines/matchs)", expanded=editeur_ouvert):
+        st.caption(
+            "Modifiez directement les cellules du tableau ci-dessous (format recommandé : `JJ mois Receveur Visiteur`, ex. `26 octobre Echo Alpha`), "
+            "ajoutez une semaine avec le bouton `+` en bas du tableau ou utilisez l'assistant rapide, puis cliquez sur **💾 Enregistrer l'horaire de la saison**."
+        )
+
+        # Assistant rapide pour composer ou modifier un match précis
+        equipes_dispo_h = charger_equipes_csv()
+        liste_eq_h = list(equipes_dispo_h.keys()) if equipes_dispo_h else ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel"]
+        semaines_existantes = [str(r[0]).strip() for r in lignes_horaire if isinstance(r, list) and len(r) > 0]
+        if not semaines_existantes:
+            semaines_existantes = [f"Semaine {i}" for i in range(1, 15)]
+        options_sem_assist = semaines_existantes + ["➕ Nouvelle semaine..."]
+
+        with st.container(border=True):
+            st.markdown("##### 🛠️ Assistant rapide : insérer ou modifier un match dans une semaine")
+            c_as1, c_as2, c_as3, c_as4, c_as5 = st.columns([1.2, 1.1, 1.2, 1.1, 1.1])
+            with c_as1:
+                sem_choisie = st.selectbox("Semaine :", options_sem_assist, key=f"{key_prefix}_as_sem")
+                if sem_choisie == "➕ Nouvelle semaine...":
+                    sem_cible_finale = st.text_input("Nom de la semaine :", value=f"Semaine {len(semaines_existantes) + 1}", key=f"{key_prefix}_as_new_sem").strip()
+                else:
+                    sem_cible_finale = sem_choisie
+            with c_as2:
+                slot_choisi = st.selectbox(
+                    "Emplacement :",
+                    ["Match 1 (Lundi)", "Match 2 (Mardi)", "Match 3 (Mercredi)", "Match 4 (Jeudi)"],
+                    key=f"{key_prefix}_as_slot"
+                )
+            with c_as3:
+                date_choisie = st.date_input("Date du match :", value=datetime.today(), key=f"{key_prefix}_as_date")
+            with c_as4:
+                rec_choisi = st.selectbox("🏠 Receveur :", liste_eq_h, index=0, key=f"{key_prefix}_as_rec")
+            with c_as5:
+                idx_vis_def = 1 if len(liste_eq_h) > 1 else 0
+                vis_choisi = st.selectbox("🚗 Visiteur :", liste_eq_h, index=idx_vis_def, key=f"{key_prefix}_as_vis")
+
+            texte_match_compose = f"{date_choisie.day} {mois_fr_map.get(date_choisie.month, 'janvier')} {rec_choisi} {vis_choisi}"
+            col_ap1, col_ap2 = st.columns([2.5, 1.5])
+            with col_ap1:
+                st.caption(f"Aperçu de la cellule : **`{texte_match_compose}`** ({sem_cible_finale} • {slot_choisi})")
+            with col_ap2:
+                if st.button("➕ Appliquer ce match à l'horaire", use_container_width=True, key=f"{key_prefix}_btn_apply_assist"):
+                    slot_idx = ["Match 1 (Lundi)", "Match 2 (Mardi)", "Match 3 (Mercredi)", "Match 4 (Jeudi)"].index(slot_choisi) + 1
+                    nouvelles_lignes_as = [list(r) for r in lignes_horaire if isinstance(r, list) and r]
+                    trouve_sem = False
+                    for r_item in nouvelles_lignes_as:
+                        while len(r_item) < 7:
+                            r_item.append("—")
+                        if str(r_item[0]).strip().lower() == sem_cible_finale.lower():
+                            r_item[slot_idx] = texte_match_compose
+                            trouve_sem = True
+                            break
+                    if not trouve_sem:
+                        nouv_row = [sem_cible_finale, "—", "—", "—", "—", "—", "—"]
+                        nouv_row[slot_idx] = texte_match_compose
+                        nouvelles_lignes_as.append(nouv_row)
+                    if sauvegarder_horaire_json(nouvelles_lignes_as):
+                        st.success(f"✅ Match `{texte_match_compose}` enregistré dans {sem_cible_finale} ({slot_choisi}) !")
+                        time.sleep(0.6)
+                        st.rerun()
+                    else:
+                        st.error("❌ Erreur lors de la sauvegarde de l'horaire.")
+
+        # Tableau interactif complet st.data_editor
+        lignes_edit_init = []
+        for idx_r, row in enumerate(lignes_horaire):
+            if not isinstance(row, list) or not row:
+                continue
+            lignes_edit_init.append({
+                "Semaine": str(row[0]).strip() if len(row) > 0 else f"Semaine {idx_r + 1}",
+                "Match 1": str(row[1]).strip() if len(row) > 1 and str(row[1]).strip() else "—",
+                "Match 2": str(row[2]).strip() if len(row) > 2 and str(row[2]).strip() else "—",
+                "Match 3": str(row[3]).strip() if len(row) > 3 and str(row[3]).strip() else "—",
+                "Match 4": str(row[4]).strip() if len(row) > 4 and str(row[4]).strip() else "—",
+            })
+        if not lignes_edit_init:
+            for i_s in range(1, 15):
+                lignes_edit_init.append({
+                    "Semaine": f"Semaine {i_s}",
+                    "Match 1": "—",
+                    "Match 2": "—",
+                    "Match 3": "—",
+                    "Match 4": "—",
+                })
+
+        df_edit_init = pd.DataFrame(lignes_edit_init)
+        df_horaire_modifie = st.data_editor(
+            df_edit_init,
+            num_rows="dynamic",
+            use_container_width=True,
+            hide_index=True,
+            key=f"{key_prefix}_data_editor",
+            column_config={
+                "Semaine": st.column_config.TextColumn("Semaine", required=True, width="small"),
+                "Match 1": st.column_config.TextColumn("Match 1 (Lundi)", width="medium"),
+                "Match 2": st.column_config.TextColumn("Match 2 (Mardi)", width="medium"),
+                "Match 3": st.column_config.TextColumn("Match 3 (Mercredi)", width="medium"),
+                "Match 4": st.column_config.TextColumn("Match 4 (Jeudi)", width="medium"),
+            }
+        )
+
+        col_sv1, col_sv2 = st.columns([2, 1])
+        with col_sv1:
+            if st.button("💾 Enregistrer l'horaire de la saison", type="primary", use_container_width=True, key=f"{key_prefix}_btn_save_table"):
+                nouvelles_lignes_horaire = []
+                for idx_row, r_ed in df_horaire_modifie.iterrows():
+                    sem_val = str(r_ed.get("Semaine", "") or "").strip()
+                    if not sem_val or sem_val.lower() == "nan":
+                        sem_val = f"Semaine {len(nouvelles_lignes_horaire) + 1}"
+                    m1_val = str(r_ed.get("Match 1", "—") or "—").strip()
+                    m2_val = str(r_ed.get("Match 2", "—") or "—").strip()
+                    m3_val = str(r_ed.get("Match 3", "—") or "—").strip()
+                    m4_val = str(r_ed.get("Match 4", "—") or "—").strip()
+                    for v_m in (m1_val, m2_val, m3_val, m4_val):
+                        pass
+                    m1_val = "—" if not m1_val or m1_val.lower() == "nan" else m1_val
+                    m2_val = "—" if not m2_val or m2_val.lower() == "nan" else m2_val
+                    m3_val = "—" if not m3_val or m3_val.lower() == "nan" else m3_val
+                    m4_val = "—" if not m4_val or m4_val.lower() == "nan" else m4_val
+                    # Conserver d'éventuelles colonnes 5 et 6 si présentes à l'origine
+                    m5_val = "—"
+                    m6_val = "—"
+                    if idx_row < len(lignes_horaire) and isinstance(lignes_horaire[idx_row], list):
+                        if len(lignes_horaire[idx_row]) > 5:
+                            m5_val = str(lignes_horaire[idx_row][5] or "—")
+                        if len(lignes_horaire[idx_row]) > 6:
+                            m6_val = str(lignes_horaire[idx_row][6] or "—")
+                    nouvelles_lignes_horaire.append([sem_val, m1_val, m2_val, m3_val, m4_val, m5_val, m6_val])
+
+                if not nouvelles_lignes_horaire:
+                    st.error("❌ L'horaire doit contenir au moins une semaine.")
+                else:
+                    if sauvegarder_horaire_json(nouvelles_lignes_horaire):
+                        st.success(f"✅ Horaire de la saison enregistré avec succès ({len(nouvelles_lignes_horaire)} semaines) et synchronisé sur GitHub !")
+                        time.sleep(0.8)
+                        st.rerun()
+                    else:
+                        st.error("❌ Erreur lors de l'enregistrement de `horaire_saphir.json`.")
+        with col_sv2:
+            if st.button("➕ Ajouter une semaine (fin)", use_container_width=True, key=f"{key_prefix}_btn_add_week"):
+                nouvelles_lignes_add = [list(r) for r in lignes_horaire if isinstance(r, list) and r]
+                prochain_num = len(nouvelles_lignes_add) + 1
+                nouvelles_lignes_add.append([f"Semaine {prochain_num}", "—", "—", "—", "—", "—", "—"])
+                if sauvegarder_horaire_json(nouvelles_lignes_add):
+                    st.success(f"✅ Semaine {prochain_num} ajoutée à l'horaire !")
+                    time.sleep(0.6)
+                    st.rerun()
+
+
+
 # ==============================================================================
 
-# NAVIGATION PRINCIPALE PAR ONGLETS (FEUILLE DE MATCH vs STATISTIQUES vs TOURNOIS vs ADMINISTRATION)
+# NAVIGATION PRINCIPALE PAR ONGLETS (FEUILLE DE MATCH vs HORAIRE vs STATISTIQUES vs TOURNOIS vs ADMINISTRATION)
 
 # ==============================================================================
 
@@ -35648,9 +35861,11 @@ est_admin = st.session_state.get("est_admin", False)
 
 if est_admin and not est_spectateur:
 
-    tab_feuille, tab_stats, tab_tournoi, tab_admin = st.tabs([
+    tab_feuille, tab_horaire, tab_stats, tab_tournoi, tab_admin = st.tabs([
 
         "🎱 Feuille de match & Consultation",
+
+        "📅 Horaire de la Saison",
 
         "📈 Statistiques & Progression",
 
@@ -35662,9 +35877,11 @@ if est_admin and not est_spectateur:
 
 else:
 
-    tab_feuille, tab_stats, tab_tournoi = st.tabs([
+    tab_feuille, tab_horaire, tab_stats, tab_tournoi = st.tabs([
 
         "🎱 Feuille de match & Consultation",
+
+        "📅 Horaire de la Saison",
 
         "📈 Statistiques & Progression",
 
@@ -37646,6 +37863,12 @@ with tab_feuille:
         else:
 
             st.button("🔙 Revenir au match en cours", on_click=cb_retour_match_en_cours, use_container_width=True, help="Retourner à la saisie du match actuel")
+
+
+
+    with st.expander("📅 Horaire de la Saison — Consulter & Éditer le calendrier", expanded=False):
+
+        afficher_section_horaire_saison(est_spectateur=est_spectateur, key_prefix="main_page_horaire", editeur_ouvert=False)
 
 
 
@@ -42903,6 +43126,12 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                             st.info(f"ℹ️ {msg_pull}")
 
 
+
+
+
+with tab_horaire:
+
+    afficher_section_horaire_saison(est_spectateur=est_spectateur, key_prefix="tab_horaire_saison", editeur_ouvert=True)
 
 
 

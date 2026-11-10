@@ -1,131 +1,132 @@
 {
-    "date": "2026-11-09 15:55",
-    "receveur": "Echo",
-    "visiteur": "Charlie",
-    "choix_rec": "Echo",
-    "choix_vis": "Charlie",
+    "date": "10/11/2026",
+    "receveur": "Foxtrot",
+    "visiteur": "Golf",
+    "choix_rec": "Foxtrot",
+    "choix_vis": "Golf",
     "input_custom_rec": "",
     "input_custom_vis": "",
-    "sel_j1_rec": "Gilles Dumais",
-    "sel_j2_rec": "Guy Vézina",
-    "sel_j3_rec": "André St-Pierre",
-    "sel_j1_vis": "Denis Viens",
-    "sel_j2_vis": "Marcel Larouche",
-    "sel_j3_vis": "Denis Chamberland",
+    "sel_j1_rec": "Sylvain Derasp",
+    "sel_j2_rec": "Valérie Turcotte",
+    "sel_j3_rec": "Gabriel Labrecque",
+    "sel_j1_vis": "André Lauzon",
+    "sel_j2_vis": "Suzanne Blaquière",
+    "sel_j3_vis": "Yves Pilon",
     "joueurs": {
         "j1_rec": {
-            "nom": "Gilles Dumais",
+            "nom": "Sylvain Derasp",
             "present": true,
-            "moyenne": 0.852,
+            "moyenne": 0.977,
             "pts_absent": 7
         },
         "j2_rec": {
-            "nom": "Guy Vézina",
+            "nom": "Valérie Turcotte",
             "present": true,
-            "moyenne": 0.87,
-            "pts_absent": 7
+            "moyenne": 0.759,
+            "pts_absent": 6
         },
         "j3_rec": {
-            "nom": "André St-Pierre",
+            "nom": "Gabriel Labrecque",
             "present": true,
-            "moyenne": 0.926,
-            "pts_absent": 7
+            "moyenne": 0.662,
+            "pts_absent": 5
         },
         "j1_vis": {
-            "nom": "Denis Viens",
+            "nom": "André Lauzon",
             "present": true,
-            "moyenne": 0.843,
+            "moyenne": 0.898,
             "pts_absent": 7
         },
         "j2_vis": {
-            "nom": "Marcel Larouche",
+            "nom": "Suzanne Blaquière",
             "present": true,
-            "moyenne": 0.727,
-            "pts_absent": 6
+            "moyenne": 0.829,
+            "pts_absent": 7
         },
         "j3_vis": {
-            "nom": "Denis Chamberland",
+            "nom": "Yves Pilon",
             "present": true,
-            "moyenne": 0.935,
-            "pts_absent": 7
+            "moyenne": 0.778,
+            "pts_absent": 6
         }
     },
     "matchs": {
         "1": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "Gilles Dumais",
-            "joueur_b": "Denis Viens",
+            "joueur_a": "Sylvain Derasp",
+            "joueur_b": "André Lauzon",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "2": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "Guy Vézina",
-            "joueur_b": "Marcel Larouche",
+            "joueur_a": "Valérie Turcotte",
+            "joueur_b": "Suzanne Blaquière",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "3": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "André St-Pierre",
-            "joueur_b": "Denis Chamberland",
+            "joueur_a": "Gabriel Labrecque",
+            "joueur_b": "Yves Pilon",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "4": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "Gilles Dumais",
-            "joueur_b": "Marcel Larouche",
+            "joueur_a": "Sylvain Derasp",
+            "joueur_b": "Suzanne Blaquière",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "5": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "Guy Vézina",
-            "joueur_b": "Denis Chamberland",
+            "joueur_a": "Valérie Turcotte",
+            "joueur_b": "Yves Pilon",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "6": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "André St-Pierre",
-            "joueur_b": "Denis Viens",
+            "joueur_a": "Gabriel Labrecque",
+            "joueur_b": "André Lauzon",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "7": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "Gilles Dumais",
-            "joueur_b": "Denis Chamberland",
+            "joueur_a": "Sylvain Derasp",
+            "joueur_b": "Yves Pilon",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "8": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "Guy Vézina",
-            "joueur_b": "Denis Viens",
+            "joueur_a": "Valérie Turcotte",
+            "joueur_b": "André Lauzon",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "9": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "André St-Pierre",
-            "joueur_b": "Marcel Larouche",
+            "joueur_a": "Gabriel Labrecque",
+            "joueur_b": "Suzanne Blaquière",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         }
     },
     "total_receveur": 0,
     "total_visiteur": 0,
-    "derniere_mise_a_jour": "15:55:54",
-    "ts_modif": 1794257754.1839988
+    "date_match": "10/11/2026",
+    "derniere_mise_a_jour": "14:48:32",
+    "ts_modif": 1794340112.2361841
 }
