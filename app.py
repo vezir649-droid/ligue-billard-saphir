@@ -34225,81 +34225,75 @@ def afficher_tableau_de_bord_progression(historique):
 
         afficher_tableau_html_compatible(pd.DataFrame(lignes_tab_eq))
 
-        # Graphique de 14 semaines pour les équipes (Maximum 72 points par semaine)
+        # Graphique linéaire de 14 semaines pour les équipes (Axe Y = Nom des équipes, Max 72 pts / semaine)
         with st.container(border=True):
-            st.markdown("##### 📊 Pointage de chaque équipe par semaine sur 14 semaines (Maximum 72 pts / semaine)")
+            st.markdown("##### 📈 Graphique linéaire des Équipes sur 14 semaines (Maximum 72 pts / semaine)")
             noms_eq_ordre = [e["nom"] for e in classement_equipes]
-            sel_equipes_graph = st.multiselect(
-                "Équipes affichées sur le graphique (14 semaines) :",
-                options=noms_eq_ordre,
-                default=noms_eq_ordre,
-                key="multiselect_eq_14_semaines"
-            ) or noms_eq_ordre
 
+            rows_grid_eq = []
             rows_eq_14 = []
             for eq_d in classement_equipes:
-                if eq_d["nom"] not in sel_equipes_graph:
-                    continue
+                eq_nom = eq_d["nom"]
+                for s_lbl in semaines_14:
+                    rows_grid_eq.append({"Équipe": eq_nom, "Semaine": s_lbl, "OffsetZero": 0.0})
                 for idx_sem, m_info in enumerate(eq_d.get("matchs", [])[:14], start=1):
+                    pts_sem = min(72, max(0, int(m_info.get("pour", 0))))
+                    offset_y = round(((36.0 - float(pts_sem)) / 36.0) * 14.0, 2)
                     rows_eq_14.append({
                         "Semaine": f"Sem {idx_sem}",
                         "NumSemaine": idx_sem,
-                        "Équipe": eq_d["nom"],
-                        "Pointage": int(m_info.get("pour", 0)),
+                        "Équipe": eq_nom,
+                        "Pointage": pts_sem,
+                        "ScoreTxt": f"{pts_sem}/72",
+                        "OffsetY": offset_y,
                         "Adversaire": m_info.get("adversaire", "—"),
                         "Résultat": m_info.get("resultat", "—"),
                         "Date": m_info.get("date", "—")
                     })
 
             if has_altair:
-                base_grid_eq = alt.Chart(df_grille_14).mark_point(opacity=0).encode(
+                df_grid_eq = pd.DataFrame(rows_grid_eq)
+                h_eq_line = max(360, len(noms_eq_ordre) * 52)
+                guide_eq = alt.Chart(df_grid_eq).mark_line(color="#e2e8f0", strokeDash=[4, 4], strokeWidth=1.5).encode(
                     x=alt.X(
                         "Semaine:N",
                         sort=semaines_14,
                         scale=alt.Scale(domain=semaines_14),
-                        axis=alt.Axis(labelAngle=0, title="Calendrier de 14 semaines (Sem 1 à Sem 14)")
+                        axis=alt.Axis(labelAngle=0, title="Calendrier de 14 semaines (Maximum 72 pts / semaine)")
                     ),
                     y=alt.Y(
-                        "Zero:Q",
-                        scale=alt.Scale(domain=[0, 72], nice=False, zero=True),
-                        axis=alt.Axis(values=[0, 12, 24, 36, 48, 60, 72], title="Pointage par semaine (Max 72 pts)")
-                    )
+                        "Équipe:N",
+                        sort=noms_eq_ordre,
+                        scale=alt.Scale(domain=noms_eq_ordre),
+                        axis=alt.Axis(title="Nom des équipes")
+                    ),
+                    detail="Équipe:N"
                 )
-                plafond_rule_eq = alt.Chart(pd.DataFrame({"Max72": [72]})).mark_rule(
-                    color="#dc2626", strokeDash=[6, 4], size=1.5
-                ).encode(y="Max72:Q")
 
                 if rows_eq_14:
                     df_eq_14 = pd.DataFrame(rows_eq_14)
-                    bars_eq_14 = alt.Chart(df_eq_14).mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3).encode(
+                    base_eq_line = alt.Chart(df_eq_14).encode(
                         x=alt.X("Semaine:N", sort=semaines_14, scale=alt.Scale(domain=semaines_14)),
-                        xOffset=alt.XOffset("Équipe:N", sort=sel_equipes_graph),
-                        y=alt.Y("Pointage:Q", scale=alt.Scale(domain=[0, 72], nice=False, zero=True)),
-                        color=alt.Color(
-                            "Équipe:N",
-                            sort=sel_equipes_graph,
-                            legend=alt.Legend(orient="top", title="Équipe")
-                        ),
+                        y=alt.Y("Équipe:N", sort=noms_eq_ordre, scale=alt.Scale(domain=noms_eq_ordre)),
+                        yOffset=alt.YOffset("OffsetY:Q", scale=alt.Scale(domain=[-22, 22])),
+                        color=alt.Color("Équipe:N", sort=noms_eq_ordre, legend=None),
                         tooltip=[
-                            alt.Tooltip("Semaine:N", title="Semaine"),
                             alt.Tooltip("Équipe:N", title="Équipe"),
+                            alt.Tooltip("Semaine:N", title="Semaine"),
                             alt.Tooltip("Pointage:Q", title="Pointage (/72 pts)"),
                             alt.Tooltip("Adversaire:N", title="Adversaire"),
                             alt.Tooltip("Résultat:N", title="Résultat"),
                             alt.Tooltip("Date:N", title="Date")
                         ]
                     )
-                    txt_eq_14 = alt.Chart(df_eq_14).mark_text(
-                        align="center", baseline="bottom", dy=-3, fontSize=11, fontWeight="bold", color="#0f172a"
-                    ).encode(
-                        x=alt.X("Semaine:N", sort=semaines_14, scale=alt.Scale(domain=semaines_14)),
-                        xOffset=alt.XOffset("Équipe:N", sort=sel_equipes_graph),
-                        y=alt.Y("Pointage:Q"),
-                        text=alt.Text("Pointage:Q", format="d")
-                    )
-                    _afficher_graphique_14_semaines(base_grid_eq + plafond_rule_eq + bars_eq_14 + txt_eq_14, height=340)
+                    line_eq = base_eq_line.mark_line(strokeWidth=3).encode(order="NumSemaine:Q")
+                    pts_eq = base_eq_line.mark_circle(size=150, opacity=1.0, stroke="#ffffff", strokeWidth=1.5)
+                    txt_eq = base_eq_line.mark_text(
+                        align="center", baseline="bottom", dy=-10, fontSize=11.5, fontWeight="bold", color="#0f172a"
+                    ).encode(text="ScoreTxt:N")
+                    _afficher_graphique_14_semaines(guide_eq + line_eq + pts_eq + txt_eq, height=h_eq_line)
                 else:
-                    _afficher_graphique_14_semaines(base_grid_eq + plafond_rule_eq, height=300)
+                    _afficher_graphique_14_semaines(guide_eq, height=h_eq_line)
 
     st.markdown("---")
 
@@ -34372,83 +34366,77 @@ def afficher_tableau_de_bord_progression(historique):
 
         afficher_tableau_html_compatible(pd.DataFrame(lignes_tab_j))
 
-        # Graphique de 14 semaines pour les joueurs (Maximum 24 points par match / semaine)
+        # Graphique linéaire de 14 semaines pour les joueurs (Axe Y = Nom des joueurs, Max 24 pts / match)
         with st.container(border=True):
-            st.markdown("##### 📊 Pointage des joueurs sur 14 semaines (Maximum 24 pts / match)")
-            noms_j_dispo = [j["nom"] for j in classement_joueurs]
-            defaut_j_sel = noms_j_dispo[:3] if len(noms_j_dispo) >= 3 else noms_j_dispo
-            sel_joueurs_graph = st.multiselect(
-                "Sélectionner un ou plusieurs joueurs à afficher sur les 14 semaines :",
-                options=noms_j_dispo,
-                default=defaut_j_sel,
-                key="multiselect_joueurs_14_semaines"
-            ) or defaut_j_sel[:1]
+            st.markdown("##### 📈 Graphique linéaire des Joueurs sur 14 semaines (Maximum 24 pts / match)")
+            ordre_j_labels = [f"{j['nom']} ({j['equipe']})" for j in classement_joueurs]
 
+            rows_grid_j = []
             rows_j_14 = []
-            for j_nom_sel in sel_joueurs_graph:
-                j_info = stats_joueurs.get(j_nom_sel, {})
+            for j_info in classement_joueurs:
+                j_lbl = f"{j_info['nom']} ({j_info['equipe']})"
+                for s_lbl in semaines_14:
+                    rows_grid_j.append({"Joueur": j_lbl, "Semaine": s_lbl, "OffsetZero": 0.0})
                 synthese_dict = j_info.get("matchs_synthese", {})
                 for idx_sem, m_key in enumerate(sorted(synthese_dict.keys())[:14], start=1):
                     sm = synthese_dict[m_key]
+                    pts_m = min(24, max(0, int(sm.get("pts", 0))))
+                    offset_y = round(((12.0 - float(pts_m)) / 12.0) * 11.0, 2)
                     rows_j_14.append({
                         "Semaine": f"Sem {idx_sem}",
                         "NumSemaine": idx_sem,
-                        "Joueur": f"{j_nom_sel} ({j_info.get('equipe', '')})",
-                        "Pointage": int(sm.get("pts", 0)),
+                        "Joueur": j_lbl,
+                        "Équipe": j_info.get("equipe", ""),
+                        "Pointage": pts_m,
+                        "ScoreTxt": f"{pts_m}/24",
+                        "OffsetY": offset_y,
                         "Bilan": f"{sm.get('v', 0)}V - {sm.get('d', 0)}D",
                         "Date": sm.get("date", "—")
                     })
 
-            ordre_j_labels = [f"{jn} ({stats_joueurs.get(jn, {}).get('equipe', '')})" for jn in sel_joueurs_graph]
-
             if has_altair:
-                base_grid_j = alt.Chart(df_grille_14).mark_point(opacity=0).encode(
+                df_grid_j = pd.DataFrame(rows_grid_j)
+                h_j_line = max(420, len(ordre_j_labels) * 44)
+                guide_j = alt.Chart(df_grid_j).mark_line(color="#e2e8f0", strokeDash=[4, 4], strokeWidth=1.5).encode(
                     x=alt.X(
                         "Semaine:N",
                         sort=semaines_14,
                         scale=alt.Scale(domain=semaines_14),
-                        axis=alt.Axis(labelAngle=0, title="Calendrier de 14 semaines (Sem 1 à Sem 14)")
+                        axis=alt.Axis(labelAngle=0, title="Calendrier de 14 semaines (Maximum 24 pts / match)")
                     ),
                     y=alt.Y(
-                        "Zero:Q",
-                        scale=alt.Scale(domain=[0, 24], nice=False, zero=True),
-                        axis=alt.Axis(values=[0, 4, 8, 12, 16, 20, 24], title="Pointage par match (Max 24 pts)")
-                    )
+                        "Joueur:N",
+                        sort=ordre_j_labels,
+                        scale=alt.Scale(domain=ordre_j_labels),
+                        axis=alt.Axis(title="Nom des joueurs")
+                    ),
+                    detail="Joueur:N"
                 )
-                plafond_rule_j = alt.Chart(pd.DataFrame({"Max24": [24]})).mark_rule(
-                    color="#dc2626", strokeDash=[6, 4], size=1.5
-                ).encode(y="Max24:Q")
 
                 if rows_j_14:
                     df_j_14 = pd.DataFrame(rows_j_14)
-                    bars_j_14 = alt.Chart(df_j_14).mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3).encode(
+                    base_j_line = alt.Chart(df_j_14).encode(
                         x=alt.X("Semaine:N", sort=semaines_14, scale=alt.Scale(domain=semaines_14)),
-                        xOffset=alt.XOffset("Joueur:N", sort=ordre_j_labels),
-                        y=alt.Y("Pointage:Q", scale=alt.Scale(domain=[0, 24], nice=False, zero=True)),
-                        color=alt.Color(
-                            "Joueur:N",
-                            sort=ordre_j_labels,
-                            legend=alt.Legend(orient="top", title="Joueur")
-                        ),
+                        y=alt.Y("Joueur:N", sort=ordre_j_labels, scale=alt.Scale(domain=ordre_j_labels)),
+                        yOffset=alt.YOffset("OffsetY:Q", scale=alt.Scale(domain=[-18, 18])),
+                        color=alt.Color("Équipe:N", legend=alt.Legend(orient="top", title="Équipe")),
+                        detail="Joueur:N",
                         tooltip=[
-                            alt.Tooltip("Semaine:N", title="Semaine"),
                             alt.Tooltip("Joueur:N", title="Joueur"),
+                            alt.Tooltip("Semaine:N", title="Semaine"),
                             alt.Tooltip("Pointage:Q", title="Pointage (/24 pts)"),
                             alt.Tooltip("Bilan:N", title="Manches (V - D)"),
                             alt.Tooltip("Date:N", title="Date")
                         ]
                     )
-                    txt_j_14 = alt.Chart(df_j_14).mark_text(
-                        align="center", baseline="bottom", dy=-3, fontSize=11, fontWeight="bold", color="#0f172a"
-                    ).encode(
-                        x=alt.X("Semaine:N", sort=semaines_14, scale=alt.Scale(domain=semaines_14)),
-                        xOffset=alt.XOffset("Joueur:N", sort=ordre_j_labels),
-                        y=alt.Y("Pointage:Q"),
-                        text=alt.Text("Pointage:Q", format="d")
-                    )
-                    _afficher_graphique_14_semaines(base_grid_j + plafond_rule_j + bars_j_14 + txt_j_14, height=340)
+                    line_j = base_j_line.mark_line(strokeWidth=2.5).encode(order="NumSemaine:Q")
+                    pts_j = base_j_line.mark_circle(size=130, opacity=1.0, stroke="#ffffff", strokeWidth=1.5)
+                    txt_j = base_j_line.mark_text(
+                        align="center", baseline="bottom", dy=-9, fontSize=11, fontWeight="bold", color="#0f172a"
+                    ).encode(text="ScoreTxt:N")
+                    _afficher_graphique_14_semaines(guide_j + line_j + pts_j + txt_j, height=h_j_line)
                 else:
-                    _afficher_graphique_14_semaines(base_grid_j + plafond_rule_j, height=300)
+                    _afficher_graphique_14_semaines(guide_j, height=h_j_line)
 
 
 # ==============================================================================
