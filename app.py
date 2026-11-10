@@ -6301,7 +6301,7 @@ def lister_horaires_saisons_disponibles():
     Retourne une liste de dicts triés par numéro de saison : [{'num': int, 'label': str, 'chemin': str, 'nb_semaines': int}].
     """
     res = []
-    base_dirs = [DATA_DIR, BASE_DIR, os.getcwd()]
+    base_dirs = [BASE_DIR, os.getcwd()]
     vus = set()
 
     for b_dir in base_dirs:

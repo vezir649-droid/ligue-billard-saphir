@@ -1,17 +1,13 @@
 {
-    "date": "10/11/2026",
+    "date": "2026-11-10 18:41",
     "receveur": "Foxtrot",
     "visiteur": "Golf",
     "choix_rec": "Foxtrot",
     "choix_vis": "Golf",
-    "input_custom_rec": "",
-    "input_custom_vis": "",
     "sel_j1_rec": "Sylvain Derasp",
     "sel_j2_rec": "Valérie Turcotte",
-    "sel_j3_rec": "Gabriel Labrecque",
     "sel_j1_vis": "André Lauzon",
     "sel_j2_vis": "Suzanne Blaquière",
-    "sel_j3_vis": "Yves Pilon",
     "joueurs": {
         "j1_rec": {
             "nom": "Sylvain Derasp",
@@ -54,79 +50,76 @@
         "1": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "Sylvain Derasp",
-            "joueur_b": "André Lauzon",
+            "joueur_a": "",
+            "joueur_b": "",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "2": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "Valérie Turcotte",
-            "joueur_b": "Suzanne Blaquière",
+            "joueur_a": "",
+            "joueur_b": "",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "3": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "Gabriel Labrecque",
-            "joueur_b": "Yves Pilon",
+            "joueur_a": "",
+            "joueur_b": "",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "4": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "Sylvain Derasp",
-            "joueur_b": "Suzanne Blaquière",
+            "joueur_a": "",
+            "joueur_b": "",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "5": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "Valérie Turcotte",
-            "joueur_b": "Yves Pilon",
+            "joueur_a": "",
+            "joueur_b": "",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "6": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "Gabriel Labrecque",
-            "joueur_b": "André Lauzon",
+            "joueur_a": "",
+            "joueur_b": "",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "7": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "Sylvain Derasp",
-            "joueur_b": "Yves Pilon",
+            "joueur_a": "",
+            "joueur_b": "",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "8": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "Valérie Turcotte",
-            "joueur_b": "André Lauzon",
+            "joueur_a": "",
+            "joueur_b": "",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "9": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "Gabriel Labrecque",
-            "joueur_b": "Suzanne Blaquière",
+            "joueur_a": "",
+            "joueur_b": "",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         }
     },
-    "total_receveur": 0,
-    "total_visiteur": 0,
-    "date_match": "10/11/2026",
-    "derniere_mise_a_jour": "14:48:32",
-    "ts_modif": 1794340112.2361841
+    "derniere_mise_a_jour": "18:41:53",
+    "ts_modif": 1794354113.6466641
 }
