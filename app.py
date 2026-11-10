@@ -36207,7 +36207,8 @@ def afficher_configuration_debut_saison(key_prefix="cfg_saison", afficher_reset_
 
 
 def afficher_section_horaire_saison(est_spectateur=False, key_prefix="horaire_main", editeur_ouvert=False):
-    """Affiche l'horaire complet de la saison et permet de l'éditer (sauvegarde dans horaire_saphir.json + GitHub)."""
+    """Affiche l'horaire complet de la saison en mode consultation sur la page principale en soulignant la semaine courante."""
+    import html as _html
     lignes_horaire = charger_horaire_json()
     if not isinstance(lignes_horaire, list):
         lignes_horaire = []
@@ -36225,86 +36226,121 @@ def afficher_section_horaire_saison(est_spectateur=False, key_prefix="horaire_ma
     }
     d_fin_horaire = d_deb_horaire + timedelta(days=(nb_sem_horaire - 1) * 7 + 3)
 
-    st.markdown("### 📅 Horaire officiel de la saison")
-
-    # Bandeau Début de saison pour l'horaire
-    with st.container(border=True):
-        c_hd1, c_hd2, c_hd3 = st.columns([1.8, 1.1, 1.3])
-        with c_hd1:
-            st.markdown(
-                f"**🗓️ Début de la saison (Semaine 1) :** `{d_deb_horaire.day} {mois_fr_map.get(d_deb_horaire.month, '')} {d_deb_horaire.year}`  \n"
-                f"<span style='font-size:12.5px; color:#94a3b8;'>Fin prévue (Semaine {nb_sem_horaire}) : "
-                f"{d_fin_horaire.day} {mois_fr_map.get(d_fin_horaire.month, '')} {d_fin_horaire.year} • {len(lignes_horaire)} semaine(s) au calendrier</span>",
-                unsafe_allow_html=True
-            )
-        with c_hd2:
-            nouv_d_deb_bar = st.date_input(
-                "Modifier le début de saison :",
-                value=d_deb_horaire,
-                key=f"{key_prefix}_bar_date_debut",
-                label_visibility="collapsed"
-            )
-        with c_hd3:
-            if st.button("📅 Appliquer ce début de saison à l'horaire", use_container_width=True, key=f"{key_prefix}_btn_bar_date_debut"):
-                cfg_saison_h["date_debut_saison"] = nouv_d_deb_bar.strftime("%Y-%m-%d")
-                sauvegarder_config_saison(cfg_saison_h)
-                lignes_maj_d = recalculer_dates_horaire_depuis_debut(nouv_d_deb_bar, lignes_horaire, nb_sem_horaire)
-                sauvegarder_horaire_json(lignes_maj_d)
-                st.success(f"✅ Début de saison fixé au {nouv_d_deb_bar.strftime('%d/%m/%Y')} et dates de l'horaire recalculées !")
-                time.sleep(0.6)
-                st.rerun()
-
-    # Panneau des prérequis pour démarrer une saison (Date de début, Joueurs inscrits, Équipes et Contraintes des joueurs)
-    with st.expander("🚀 Démarrer une saison — Prérequis (Date de début, Joueurs inscrits, Équipes & Contraintes des joueurs)", expanded=False):
-        afficher_configuration_debut_saison(key_prefix=f"{key_prefix}_prerequis", afficher_reset_historique=True)
-
     rencontre_jour = determiner_match_du_jour(lignes_horaire)
+    semaine_courante = ""
+    match_courant_txt = ""
+    if rencontre_jour and str(rencontre_jour.get("semaine", "")).strip():
+        semaine_courante = str(rencontre_jour.get("semaine", "")).strip()
+        match_courant_txt = str(rencontre_jour.get("texte", "")).strip()
+    else:
+        semaine_courante = f"Semaine {calculer_semaine_saison(datetime.today())}"
+
+    st.markdown("### 📅 Horaire officiel de la saison")
+    st.caption(
+        f"🗓️ **Début de la saison :** {d_deb_horaire.day} {mois_fr_map.get(d_deb_horaire.month, '')} {d_deb_horaire.year} • "
+        f"**Fin prévue :** {d_fin_horaire.day} {mois_fr_map.get(d_fin_horaire.month, '')} {d_fin_horaire.year} • "
+        f"**Semaine courante :** `{semaine_courante}` *(La création et l'édition de l'horaire s'effectuent dans **⚙️ Administration → 🗓️ Saison**)*"
+    )
+
     if rencontre_jour:
         statut_j = "🟢 **Match programmé aujourd'hui**" if rencontre_jour.get("est_aujourdhui") else "🔜 **Prochain match au calendrier**"
         st.info(
-            f"{statut_j} ({rencontre_jour.get('semaine', '')} — {rencontre_jour.get('date_texte', '')}) : "
+            f"{statut_j} (**{semaine_courante}** — {rencontre_jour.get('date_texte', '')}) : "
             f"**{rencontre_jour.get('receveur', '')}** (Receveur) vs **{rencontre_jour.get('visiteur', '')}** (Visiteur)"
         )
 
-    # Construction du tableau d'affichage
-    lignes_table = []
-    a_match_5 = False
-    a_match_6 = False
+    if not lignes_horaire:
+        st.warning("Aucune semaine n'est actuellement définie dans l'horaire de la saison.")
+        return
+
+    # Construction du tableau HTML avec soulignement et mise en évidence de la semaine courante
+    a_match_5 = any(isinstance(r, list) and len(r) > 5 and str(r[5]).strip() not in ("", "—", "-") for r in lignes_horaire)
+    a_match_6 = any(isinstance(r, list) and len(r) > 6 and str(r[6]).strip() not in ("", "—", "-") for r in lignes_horaire)
+
+    colonnes_h = ["Semaine", "Match 1 (Lundi)", "Match 2 (Mardi)", "Match 3 (Mercredi)", "Match 4 (Jeudi)"]
+    if a_match_5:
+        colonnes_h.append("Match 5")
+    if a_match_6:
+        colonnes_h.append("Match 6")
+
+    ths_html = "".join(
+        f'<th style="background-color:#0b3c5d; color:#ffffff; font-weight:700; padding:9px 10px; border:1px solid #334155; text-align:left; font-size:13.5px;">{_html.escape(c)}</th>'
+        for c in colonnes_h
+    )
+
+    trs_html = []
     for idx_r, row in enumerate(lignes_horaire):
         if not isinstance(row, list) or not row:
             continue
         sem_lbl = str(row[0]).strip() if len(row) > 0 else f"Semaine {idx_r + 1}"
-        m1 = str(row[1]).strip() if len(row) > 1 and str(row[1]).strip() else "—"
-        m2 = str(row[2]).strip() if len(row) > 2 and str(row[2]).strip() else "—"
-        m3 = str(row[3]).strip() if len(row) > 3 and str(row[3]).strip() else "—"
-        m4 = str(row[4]).strip() if len(row) > 4 and str(row[4]).strip() else "—"
-        m5 = str(row[5]).strip() if len(row) > 5 and str(row[5]).strip() else "—"
-        m6 = str(row[6]).strip() if len(row) > 6 and str(row[6]).strip() else "—"
-        if m5 not in ("—", "-", ""):
-            a_match_5 = True
-        if m6 not in ("—", "-", ""):
-            a_match_6 = True
-        item_t = {
-            "Semaine": sem_lbl,
-            "Match 1 (Lundi)": m1,
-            "Match 2 (Mardi)": m2,
-            "Match 3 (Mercredi)": m3,
-            "Match 4 (Jeudi)": m4,
-        }
+        est_sem_courante = (sem_lbl.strip().lower() == semaine_courante.strip().lower())
+
+        bg_row = "linear-gradient(90deg, rgba(14,165,233,0.30), rgba(30,58,138,0.45))" if est_sem_courante else ("#0f172a" if idx_r % 2 == 0 else "#1e293b")
+        border_row = "2px solid #38bdf8" if est_sem_courante else "1px solid #334155"
+
+        valeurs_cells = [
+            sem_lbl,
+            str(row[1]).strip() if len(row) > 1 and str(row[1]).strip() else "—",
+            str(row[2]).strip() if len(row) > 2 and str(row[2]).strip() else "—",
+            str(row[3]).strip() if len(row) > 3 and str(row[3]).strip() else "—",
+            str(row[4]).strip() if len(row) > 4 and str(row[4]).strip() else "—",
+        ]
         if a_match_5:
-            item_t["Match 5"] = m5
+            valeurs_cells.append(str(row[5]).strip() if len(row) > 5 and str(row[5]).strip() else "—")
         if a_match_6:
-            item_t["Match 6"] = m6
-        lignes_table.append(item_t)
+            valeurs_cells.append(str(row[6]).strip() if len(row) > 6 and str(row[6]).strip() else "—")
 
-    if lignes_table:
-        df_aff_horaire = pd.DataFrame(lignes_table)
-        afficher_tableau_html_compatible(df_aff_horaire)
-    else:
-        st.warning("Aucune semaine n'est actuellement définie dans l'horaire de la saison.")
+        tds_row = []
+        for c_i, val_c in enumerate(valeurs_cells):
+            val_esc = _html.escape(val_c)
+            if est_sem_courante:
+                if c_i == 0:
+                    contenu_td = (
+                        f'<span style="text-decoration:underline; text-decoration-thickness:2px; text-underline-offset:3px; font-weight:800; color:#7dd3fc;">'
+                        f'👉 {val_esc}</span> '
+                        f'<span style="display:inline-block; background:#0284c7; color:#ffffff; font-size:11px; font-weight:700; padding:1px 6px; border-radius:99px; margin-left:4px;">En cours</span>'
+                    )
+                else:
+                    est_match_jour = bool(match_courant_txt and val_c.strip().lower() == match_courant_txt.lower())
+                    couleur_m = "#fde047" if est_match_jour else "#f8fafc"
+                    contenu_td = (
+                        f'<span style="text-decoration:underline; text-decoration-thickness:2px; text-underline-offset:3px; font-weight:800; color:{couleur_m};">'
+                        f'{val_esc}</span>'
+                    )
+                tds_row.append(
+                    f'<td style="padding:9px 10px; border-top:{border_row}; border-bottom:{border_row}; border-left:1px solid #38bdf8; border-right:1px solid #38bdf8; font-size:13.5px;">{contenu_td}</td>'
+                )
+            else:
+                fw = "700" if c_i == 0 else "500"
+                col_txt = "#e2e8f0" if c_i == 0 else "#f1f5f9"
+                tds_row.append(
+                    f'<td style="padding:8px 10px; border:1px solid #334155; color:{col_txt}; font-weight:{fw}; font-size:13px;">{val_esc}</td>'
+                )
 
-    # Section d'édition de l'horaire
-    with st.expander("✏️ Éditer l'horaire de la saison (Modifier, ajouter ou supprimer des semaines/matchs)", expanded=editeur_ouvert):
+        trs_html.append(f'<tr style="background:{bg_row};">{"".join(tds_row)}</tr>')
+
+    html_table_horaire = (
+        '<div style="width:100%; overflow-x:auto; margin:6px 0 12px 0;">'
+        '<table style="width:100%; border-collapse:collapse; font-family:inherit; background-color:#0f172a; border-radius:8px; overflow:hidden;">'
+        f'<thead><tr>{ths_html}</tr></thead>'
+        f'<tbody>{"".join(trs_html)}</tbody>'
+        '</table></div>'
+    )
+    st.markdown(html_table_horaire, unsafe_allow_html=True)
+
+
+def afficher_editeur_horaire_saison(key_prefix="admin_horaire", editeur_ouvert=True):
+    """Affiche les outils de création et d'édition manuelle de l'horaire de la saison (réservé au volet Administration -> Saison)."""
+    lignes_horaire = charger_horaire_json()
+    if not isinstance(lignes_horaire, list):
+        lignes_horaire = []
+
+    mois_fr_map = {
+        1: "janvier", 2: "février", 3: "mars", 4: "avril", 5: "mai", 6: "juin",
+        7: "juillet", 8: "août", 9: "septembre", 10: "octobre", 11: "novembre", 12: "décembre"
+    }
+
+    with st.expander("✏️ Éditer manuellement l'horaire de la saison (Modifier, ajouter ou supprimer des semaines/matchs)", expanded=editeur_ouvert):
         st.caption(
             "Modifiez directement les cellules du tableau ci-dessous (format recommandé : `JJ mois Receveur Visiteur`, ex. `26 octobre Echo Alpha`), "
             "ajoutez une semaine avec le bouton `+` en bas du tableau ou utilisez l'assistant rapide, puis cliquez sur **💾 Enregistrer l'horaire de la saison**."
@@ -36418,13 +36454,10 @@ def afficher_section_horaire_saison(est_spectateur=False, key_prefix="horaire_ma
                     m2_val = str(r_ed.get("Match 2", "—") or "—").strip()
                     m3_val = str(r_ed.get("Match 3", "—") or "—").strip()
                     m4_val = str(r_ed.get("Match 4", "—") or "—").strip()
-                    for v_m in (m1_val, m2_val, m3_val, m4_val):
-                        pass
                     m1_val = "—" if not m1_val or m1_val.lower() == "nan" else m1_val
                     m2_val = "—" if not m2_val or m2_val.lower() == "nan" else m2_val
                     m3_val = "—" if not m3_val or m3_val.lower() == "nan" else m3_val
                     m4_val = "—" if not m4_val or m4_val.lower() == "nan" else m4_val
-                    # Conserver d'éventuelles colonnes 5 et 6 si présentes à l'origine
                     m5_val = "—"
                     m6_val = "—"
                     if idx_row < len(lignes_horaire) and isinstance(lignes_horaire[idx_row], list):
@@ -38474,7 +38507,7 @@ with tab_feuille:
 
 
 
-    with st.expander("📅 Horaire de la Saison — Consulter & Éditer le calendrier", expanded=False):
+    with st.expander("📅 Horaire de la Saison — Consulter le calendrier", expanded=False):
 
         afficher_section_horaire_saison(est_spectateur=est_spectateur, key_prefix="main_page_horaire", editeur_ouvert=False)
 
@@ -41025,9 +41058,15 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
 
             with tab_saison:
 
-                st.markdown("#### 🗓️ Démarrer une nouvelle saison")
+                st.markdown("#### 🗓️ Démarrer une nouvelle saison & Créer / Éditer l'horaire")
 
                 afficher_configuration_debut_saison(key_prefix="admin_tab_saison", afficher_reset_historique=True)
+
+                st.divider()
+
+                afficher_section_horaire_saison(est_spectateur=False, key_prefix="admin_apercu_horaire", editeur_ouvert=False)
+
+                afficher_editeur_horaire_saison(key_prefix="admin_editeur_horaire", editeur_ouvert=True)
 
                 st.divider()
 
