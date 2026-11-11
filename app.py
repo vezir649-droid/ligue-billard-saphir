@@ -6589,8 +6589,8 @@ def _invalider_caches_joueurs_ui():
         for k_ver in (
             "equipes_csv_editor_ver",
             "sms_editor_version",
-            "top_joueurs_joueurs_editor_ver",
-            "top_equipes_joueurs_editor_ver",
+            "adm_joueurs_joueurs_editor_ver",
+            "adm_equipes_joueurs_editor_ver",
         ):
             st.session_state[k_ver] = st.session_state.get(k_ver, 1) + 1
         st.session_state.pop("joueurs_sms_modifies", None)
@@ -37210,7 +37210,7 @@ def afficher_configuration_debut_saison(key_prefix="cfg_saison", afficher_reset_
 
     st.info(
         "👥 **Séparation sécurisée :** La gestion des joueurs (`👥 Joueurs & Contraintes`) et des équipes de la saison (`🛡️ Équipes de la saison`) "
-        "se trouve désormais directement dans le **volet supérieur** pour éviter toute réinitialisation accidentelle de la saison en cours."
+        "dispose désormais de ses propres onglets dédiés au niveau **⚙️ Administration**, séparés de l'onglet **🗓️ Saison**, pour éviter toute réinitialisation accidentelle."
     )
 
     st.markdown("##### 📅 Définir la date de début de la saison pour l'horaire")
@@ -37848,7 +37848,7 @@ def afficher_editeur_horaire_saison(key_prefix="admin_horaire", editeur_ouvert=T
 
 # ==============================================================================
 
-# NAVIGATION PRINCIPALE PAR ONGLETS (FEUILLE DE MATCH vs HORAIRE vs STATISTIQUES vs TOURNOIS vs JOUEURS vs ÉQUIPES vs ADMINISTRATION)
+# NAVIGATION PRINCIPALE PAR ONGLETS (FEUILLE DE MATCH vs HORAIRE vs STATISTIQUES vs TOURNOIS vs ADMINISTRATION)
 
 # ==============================================================================
 
@@ -37861,7 +37861,7 @@ est_admin = st.session_state.get("est_admin", False)
 
 if est_admin and not est_spectateur:
 
-    tab_feuille, tab_horaire, tab_stats, tab_tournoi, tab_joueurs_top, tab_equipes_top, tab_admin = st.tabs([
+    tab_feuille, tab_horaire, tab_stats, tab_tournoi, tab_admin = st.tabs([
 
         "🎱 Feuille de match & Consultation",
 
@@ -37870,10 +37870,6 @@ if est_admin and not est_spectateur:
         "📈 Statistiques & Progression",
 
         "🏆 Tournois",
-
-        "👥 Joueurs & Contraintes",
-
-        "🛡️ Équipes de la saison",
 
         "⚙️ Administration"
 
@@ -37892,10 +37888,6 @@ else:
         "🏆 Tournois"
 
     ])
-
-    tab_joueurs_top = None
-
-    tab_equipes_top = None
 
     tab_admin = None
 
@@ -41937,11 +41929,11 @@ with tab_feuille:
 
     if est_admin and not est_spectateur:
 
-        st.caption("💡 *Astuce : La gestion des joueurs (**👥 Joueurs & Contraintes**), la gestion des équipes (**🛡️ Équipes de la saison**) et l'Administration (**⚙️ Administration**) sont accessibles directement dans les onglets en haut de page.*")
+        st.caption("💡 *Astuce : L'Espace Administration (**⚙️ Administration** : Joueurs & Contraintes, Équipes de la saison, Nouvelle saison, Rectifications, SMTP et Sécurité) est accessible directement via l'onglet en haut de page.*")
 
     elif not est_spectateur:
 
-        st.caption("🔒 *Note : Les volets **👥 Joueurs & Contraintes**, **🛡️ Équipes de la saison** et **⚙️ Administration** sont réservés à l'Administrateur (accessible via **🛡️ Accès Administrateur** sur la page de démarrage).*")
+        st.caption("🔒 *Note : Le volet **⚙️ Administration** est réservé à l'Administrateur (accessible via **🛡️ Accès Administrateur** sur la page de démarrage).*")
 
 
 
@@ -41951,15 +41943,19 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
 
         st.markdown("### ⚙️ Espace Administration de la Ligue")
 
-        st.caption("Rectifiez un match archivé, gérez la date de début ou démarrez une nouvelle saison, ou configurez la messagerie SMTP et la sécurité.")
+        st.caption("Gérez les joueurs et contraintes, la composition des équipes de la saison, rectifiez un match archivé, démarrez une nouvelle saison ou configurez la messagerie SMTP et la sécurité.")
 
         if True:
 
-            st.info("📌 **Sections d'administration :** 📝 Match antérieur | ✏️ Rectifications | 🗓️ Saison & Horaire | 💾 Sauvegardes & JSON | 🌐 **Test POST API Saphir** | 📲 Sentinelle SMS | 📧 SMTP | 🔑 Sécurité *(Joueurs et Équipes sont maintenant dans le volet supérieur)*")
+            st.info("📌 **Sections d'administration :** 👥 Joueurs & Contraintes | 🛡️ Équipes de la saison | 📝 Match antérieur | ✏️ Rectifications | 🗓️ Saison & Horaire | 💾 Sauvegardes & JSON | 🌐 **Test POST API Saphir** | 📲 Sentinelle SMS | 📧 SMTP | 🔑 Sécurité")
 
             afficher_etat_secrets_admin()
 
-            tab_saisie_ant, tab_rectif, tab_saison, tab_export, tab_api_saphir, tab_sms, tab_smtp, tab_secu = st.tabs([
+            tab_joueurs_adm, tab_equipes_adm, tab_saisie_ant, tab_rectif, tab_saison, tab_export, tab_api_saphir, tab_sms, tab_smtp, tab_secu = st.tabs([
+
+                "👥 Joueurs & Contraintes",
+
+                "🛡️ Équipes de la saison",
 
                 "📝 Match passé",
 
@@ -41978,6 +41974,18 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                 "🔑 Sécurité"
 
             ])
+
+
+
+            with tab_joueurs_adm:
+
+                afficher_gestion_joueurs_et_contraintes(key_prefix="adm_joueurs")
+
+
+
+            with tab_equipes_adm:
+
+                afficher_gestion_equipes_saison(key_prefix="adm_equipes")
 
 
 
@@ -44608,20 +44616,4 @@ with tab_stats:
 with tab_tournoi:
 
     afficher_onglet_tournois()
-
-
-
-if tab_joueurs_top is not None and st.session_state.get("est_admin", False):
-
-    with tab_joueurs_top:
-
-        afficher_gestion_joueurs_et_contraintes(key_prefix="top_joueurs")
-
-
-
-if tab_equipes_top is not None and st.session_state.get("est_admin", False):
-
-    with tab_equipes_top:
-
-        afficher_gestion_equipes_saison(key_prefix="top_equipes")
 
