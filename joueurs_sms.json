@@ -85,7 +85,7 @@
         "telephone": "4185806222",
         "courriel": "s.blaquiere@icloud.com",
         "consentement": false,
-        "actif": true
+        "actif": false
     },
     {
         "nom": "Yves Pilon",
@@ -188,14 +188,6 @@
         "equipe": "Delta",
         "telephone": "4384046870",
         "courriel": "alain.bellemare@hotmail.com",
-        "consentement": false,
-        "actif": true
-    },
-    {
-        "nom": "Patrick Fortin",
-        "equipe": "Golf",
-        "telephone": "",
-        "courriel": "",
         "consentement": false,
         "actif": true
     }
