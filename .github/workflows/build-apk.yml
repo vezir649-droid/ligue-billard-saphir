@@ -1,3 +1,21 @@
+name: Compiler SaphirSMS APK
+on:
+  push:
+    paths:
+      - 'android-saphir-sms/**'
+      - '.github/workflows/build-apk.yml'
+  workflow_dispatch:
+concurrency:
+  group: build-saphir-sms-apk-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    name: Compilation de l'APK Android
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupération du code source
+        uses: actions/checkout@v7
+      - name: Configuration de Java JDK 17
         uses: actions/setup-java@v6
         with:
           distribution: 'temurin'
