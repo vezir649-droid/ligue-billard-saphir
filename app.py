@@ -37848,7 +37848,7 @@ def afficher_editeur_horaire_saison(key_prefix="admin_horaire", editeur_ouvert=T
 
 # ==============================================================================
 
-# NAVIGATION PRINCIPALE PAR ONGLETS (FEUILLE DE MATCH vs HORAIRE vs STATISTIQUES vs TOURNOIS vs ADMINISTRATION)
+# NAVIGATION PRINCIPALE PAR ONGLETS (HORAIRE vs FEUILLE DE MATCH vs STATISTIQUES vs TOURNOIS vs ADMINISTRATION)
 
 # ==============================================================================
 
@@ -37861,11 +37861,11 @@ est_admin = st.session_state.get("est_admin", False)
 
 if est_admin and not est_spectateur:
 
-    tab_feuille, tab_horaire, tab_stats, tab_tournoi, tab_admin = st.tabs([
-
-        "🎱 Feuille de match & Consultation",
+    tab_horaire, tab_feuille, tab_stats, tab_tournoi, tab_admin = st.tabs([
 
         "📅 Horaire de la Saison",
+
+        "🎱 Feuille de match & Consultation",
 
         "📈 Statistiques & Progression",
 
@@ -37877,11 +37877,11 @@ if est_admin and not est_spectateur:
 
 else:
 
-    tab_feuille, tab_horaire, tab_stats, tab_tournoi = st.tabs([
-
-        "🎱 Feuille de match & Consultation",
+    tab_horaire, tab_feuille, tab_stats, tab_tournoi = st.tabs([
 
         "📅 Horaire de la Saison",
+
+        "🎱 Feuille de match & Consultation",
 
         "📈 Statistiques & Progression",
 
