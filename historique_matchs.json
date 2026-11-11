@@ -564,5 +564,361 @@
             }
         },
         "saisi_via_scanner_ia": true
+    },
+    {
+        "date": "2026-11-10 17:51",
+        "receveur": "Echo",
+        "visiteur": "Charlie",
+        "choix_rec": "Echo",
+        "choix_vis": "Charlie",
+        "input_custom_rec": "",
+        "input_custom_vis": "",
+        "sel_j1_rec": "Guy Vézina",
+        "sel_j2_rec": "André St-Pierre",
+        "sel_j3_rec": "Gilles Dumais",
+        "sel_j1_vis": "Marcel Larouche",
+        "sel_j2_vis": "Denis Viens",
+        "sel_j3_vis": "Denis Chamberland",
+        "joueurs": {
+            "j1_rec": {
+                "nom": "Guy Vézina",
+                "present": true,
+                "moyenne": 0.87,
+                "pts_absent": 7
+            },
+            "j2_rec": {
+                "nom": "André St-Pierre",
+                "present": true,
+                "moyenne": 0.926,
+                "pts_absent": 7
+            },
+            "j3_rec": {
+                "nom": "Gilles Dumais",
+                "present": true,
+                "moyenne": 0.852,
+                "pts_absent": 7
+            },
+            "j1_vis": {
+                "nom": "Marcel Larouche",
+                "present": true,
+                "moyenne": 0.727,
+                "pts_absent": 6
+            },
+            "j2_vis": {
+                "nom": "Denis Viens",
+                "present": true,
+                "moyenne": 0.843,
+                "pts_absent": 7
+            },
+            "j3_vis": {
+                "nom": "Denis Chamberland",
+                "present": true,
+                "moyenne": 0.935,
+                "pts_absent": 7
+            }
+        },
+        "matchs": {
+            "1": {
+                "score_a": 8,
+                "score_b": 4,
+                "joueur_a": "Guy Vézina",
+                "joueur_b": "Marcel Larouche",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "2": {
+                "score_a": 8,
+                "score_b": 5,
+                "joueur_a": "André St-Pierre",
+                "joueur_b": "Denis Viens",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "3": {
+                "score_a": 5,
+                "score_b": 8,
+                "joueur_a": "Gilles Dumais",
+                "joueur_b": "Denis Chamberland",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "4": {
+                "score_a": 5,
+                "score_b": 8,
+                "joueur_a": "Guy Vézina",
+                "joueur_b": "Denis Viens",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "5": {
+                "score_a": 8,
+                "score_b": 7,
+                "joueur_a": "André St-Pierre",
+                "joueur_b": "Denis Chamberland",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "6": {
+                "score_a": 8,
+                "score_b": 7,
+                "joueur_a": "Gilles Dumais",
+                "joueur_b": "Marcel Larouche",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "7": {
+                "score_a": 6,
+                "score_b": 8,
+                "joueur_a": "Guy Vézina",
+                "joueur_b": "Denis Chamberland",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "8": {
+                "score_a": 8,
+                "score_b": 7,
+                "joueur_a": "André St-Pierre",
+                "joueur_b": "Marcel Larouche",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "9": {
+                "score_a": 7,
+                "score_b": 8,
+                "joueur_a": "Gilles Dumais",
+                "joueur_b": "Denis Viens",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            }
+        },
+        "total_receveur": 63,
+        "total_visiteur": 62,
+        "approbateur_receveur": "Guy Vézina",
+        "approbateur_visiteur": "Marcel Larouche",
+        "points_par_joueur": {
+            "j1_rec": {
+                "nom": "Guy Vézina",
+                "equipe": "Echo",
+                "points": 19,
+                "present": true,
+                "moyenne": 0.87
+            },
+            "j2_rec": {
+                "nom": "André St-Pierre",
+                "equipe": "Echo",
+                "points": 24,
+                "present": true,
+                "moyenne": 0.926
+            },
+            "j3_rec": {
+                "nom": "Gilles Dumais",
+                "equipe": "Echo",
+                "points": 20,
+                "present": true,
+                "moyenne": 0.852
+            },
+            "j1_vis": {
+                "nom": "Marcel Larouche",
+                "equipe": "Charlie",
+                "points": 18,
+                "present": true,
+                "moyenne": 0.727
+            },
+            "j2_vis": {
+                "nom": "Denis Viens",
+                "equipe": "Charlie",
+                "points": 21,
+                "present": true,
+                "moyenne": 0.843
+            },
+            "j3_vis": {
+                "nom": "Denis Chamberland",
+                "equipe": "Charlie",
+                "points": 23,
+                "present": true,
+                "moyenne": 0.935
+            }
+        },
+        "date_enregistrement": "10/11/2026 à 17:51",
+        "date_match": "2026-11-10 17:51"
+    },
+    {
+        "date": "11/11/2026 à 02:18",
+        "receveur": "Golf",
+        "visiteur": "Foxtrot",
+        "choix_rec": "Golf",
+        "choix_vis": "Foxtrot",
+        "input_custom_rec": "",
+        "input_custom_vis": "",
+        "sel_j1_rec": "Yves Pilon",
+        "sel_j2_rec": "Remplaçant...",
+        "sel_j3_rec": "André Lauzon",
+        "sel_j1_vis": "Gabriel Labrecque",
+        "sel_j2_vis": "Sylvain Derasp",
+        "sel_j3_vis": "Valérie Turcotte",
+        "joueurs": {
+            "j1_rec": {
+                "nom": "Yves Pilon",
+                "present": true,
+                "moyenne": 0.778,
+                "pts_absent": 6
+            },
+            "j2_rec": {
+                "nom": "Patrick Fortin",
+                "present": true,
+                "moyenne": 0.0,
+                "pts_absent": 0
+            },
+            "j3_rec": {
+                "nom": "André Lauzon",
+                "present": true,
+                "moyenne": 0.898,
+                "pts_absent": 7
+            },
+            "j1_vis": {
+                "nom": "Gabriel Labrecque",
+                "present": true,
+                "moyenne": 0.662,
+                "pts_absent": 5
+            },
+            "j2_vis": {
+                "nom": "Sylvain Derasp",
+                "present": true,
+                "moyenne": 0.977,
+                "pts_absent": 7
+            },
+            "j3_vis": {
+                "nom": "Valérie Turcotte",
+                "present": true,
+                "moyenne": 0.759,
+                "pts_absent": 6
+            }
+        },
+        "matchs": {
+            "1": {
+                "score_a": 8,
+                "score_b": 2,
+                "joueur_a": "Yves Pilon",
+                "joueur_b": "Gabriel Labrecque",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "2": {
+                "score_a": 8,
+                "score_b": 1,
+                "joueur_a": "Patrick Fortin",
+                "joueur_b": "Sylvain Derasp",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "3": {
+                "score_a": 8,
+                "score_b": 3,
+                "joueur_a": "André Lauzon",
+                "joueur_b": "Valérie Turcotte",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "4": {
+                "score_a": 7,
+                "score_b": 8,
+                "joueur_a": "Yves Pilon",
+                "joueur_b": "Sylvain Derasp",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "5": {
+                "score_a": 8,
+                "score_b": 5,
+                "joueur_a": "Patrick Fortin",
+                "joueur_b": "Valérie Turcotte",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "6": {
+                "score_a": 8,
+                "score_b": 6,
+                "joueur_a": "André Lauzon",
+                "joueur_b": "Gabriel Labrecque",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "7": {
+                "score_a": 6,
+                "score_b": 8,
+                "joueur_a": "Yves Pilon",
+                "joueur_b": "Valérie Turcotte",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "8": {
+                "score_a": 8,
+                "score_b": 7,
+                "joueur_a": "Patrick Fortin",
+                "joueur_b": "Gabriel Labrecque",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            },
+            "9": {
+                "score_a": 5,
+                "score_b": 8,
+                "joueur_a": "André Lauzon",
+                "joueur_b": "Sylvain Derasp",
+                "joueur_a_absent": false,
+                "joueur_b_absent": false
+            }
+        },
+        "total_receveur": 66,
+        "total_visiteur": 48,
+        "date_match": "11/11/2026 à 02:18",
+        "approbateur_receveur": "Yves Pilon",
+        "approbateur_visiteur": "Gabriel Labrecque",
+        "points_par_joueur": {
+            "j1_rec": {
+                "nom": "Yves Pilon",
+                "equipe": "Golf",
+                "points": 21,
+                "present": true,
+                "moyenne": 0.778
+            },
+            "j2_rec": {
+                "nom": "Patrick Fortin",
+                "equipe": "Golf",
+                "points": 24,
+                "present": true,
+                "moyenne": 0.0
+            },
+            "j3_rec": {
+                "nom": "André Lauzon",
+                "equipe": "Golf",
+                "points": 21,
+                "present": true,
+                "moyenne": 0.898
+            },
+            "j1_vis": {
+                "nom": "Gabriel Labrecque",
+                "equipe": "Foxtrot",
+                "points": 15,
+                "present": true,
+                "moyenne": 0.662
+            },
+            "j2_vis": {
+                "nom": "Sylvain Derasp",
+                "equipe": "Foxtrot",
+                "points": 17,
+                "present": true,
+                "moyenne": 0.977
+            },
+            "j3_vis": {
+                "nom": "Valérie Turcotte",
+                "equipe": "Foxtrot",
+                "points": 16,
+                "present": true,
+                "moyenne": 0.759
+            }
+        },
+        "date_enregistrement": "11/11/2026 à 02:19",
+        "saison_type": "Automne",
+        "saison": 4
     }
 ]

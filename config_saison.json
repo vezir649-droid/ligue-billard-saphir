@@ -351,26 +351,33 @@
       "contraintes": ""
     }
   ],
+  "date_debut_saison": "2026-09-07",
+  "nb_semaines": 14,
   "equipes": {
     "Echo": [
       "Gilles Dumais",
       "Guy Vézina",
       "André St-Pierre"
     ],
-    "Hotel": [
-      "Richard Lavoie",
-      "Richard Théberge",
-      "Jean-Yves Brochu"
+    "Golf": [
+      "Yves Pilon",
+      "Patrick Fortin",
+      "André Lauzon"
     ],
     "Charlie": [
       "Denis Viens",
       "Marcel Larouche",
       "Denis Chamberland"
     ],
-    "Golf": [
-      "Yves Pilon",
-      "Patrick Fortin",
-      "André Lauzon"
+    "Foxtrot": [
+      "Sylvain Derasp",
+      "Valérie Turcotte",
+      "Gabriel Labrecque"
+    ],
+    "Hotel": [
+      "Richard Lavoie",
+      "Richard Théberge",
+      "Jean-Yves Brochu"
     ],
     "Bravo": [
       "Richard Vézina",
@@ -381,11 +388,6 @@
       "Claude Harvey",
       "Gaston Lavoie",
       "Léon Morin"
-    ],
-    "Foxtrot": [
-      "Sylvain Derasp",
-      "Valérie Turcotte",
-      "Gabriel Labrecque"
     ],
     "Delta": [
       "Serge Nollet",
