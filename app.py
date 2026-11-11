@@ -6631,7 +6631,10 @@ def recalculer_dates_horaire_depuis_debut(date_debut_saison, lignes_horaire=None
 
 
 def generer_horaire_saison_selon_prerequis(date_debut_saison, equipes_dict, joueurs_inscrits, nb_semaines=14):
-    """Génère un horaire complet de 14 semaines en respectant la date de début et les équipes.
+    """Génère un horaire complet en respectant la date de début et les équipes.
+    Dans le cas d'un nombre impair d'équipes, génère un calendrier équilibré incluant
+    des semaines vacantes (BYE) réparties de manière à ce que TOUTES les équipes
+    jouent exactement le même nombre de matchs.
     En cas de conflits de calendrier, optimise l'affectation des soirs (Lundi à Jeudi)
     pour minimiser strictement le nombre total d'absences de joueurs.
     """
@@ -6652,34 +6655,66 @@ def generer_horaire_saison_selon_prerequis(date_debut_saison, equipes_dict, joue
     if len(noms_equipes) < 2:
         noms_equipes = ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel"]
 
+    est_nb_impair = (len(noms_equipes) % 2 == 1)
+    n_eq_reel = len(noms_equipes)
+
+    conflits = []
+
+    # Si nombre impair d'équipes : calibrer le nombre de semaines pour compléter des cycles entiers
+    # de sorte que chaque équipe reçoive exactement le même nombre de semaines vacantes et joue le même nombre de matchs.
+    if est_nb_impair:
+        if nb_semaines % n_eq_reel != 0:
+            nb_cycles = max(1, round(nb_semaines / n_eq_reel))
+            nb_semaines_ajuste = nb_cycles * n_eq_reel
+            conflits.append(
+                f"ℹ️ Saison à nombre impair d'équipes ({n_eq_reel}) : l'horaire a été calibré sur {nb_semaines_ajuste} semaines "
+                f"({nb_cycles} cycles complets de {n_eq_reel} semaines) pour garantir que chaque équipe joue exactement "
+                f"{nb_cycles * (n_eq_reel - 1)} matchs et bénéficie d'exactement {nb_cycles} semaine(s) vacante(s)."
+            )
+        else:
+            nb_cycles = max(1, nb_semaines // n_eq_reel)
+            nb_semaines_ajuste = nb_semaines
+            conflits.append(
+                f"ℹ️ Calendrier équilibré ({n_eq_reel} équipes, {nb_semaines_ajuste} semaines) : chaque équipe joue "
+                f"exactement {nb_cycles * (n_eq_reel - 1)} matchs et bénéficie de {nb_cycles} semaine(s) vacante(s) équitablement réparties."
+            )
+    else:
+        nb_semaines_ajuste = nb_semaines
+
     # Algorithme Round-Robin (méthode du cercle)
     eq_rr = list(noms_equipes)
-    if len(eq_rr) % 2 == 1:
+    if est_nb_impair:
         eq_rr.append("BYE")
     n_eq = len(eq_rr)
     nb_rondes_cycle = max(1, n_eq - 1)
 
     rondes_base = []
+    byes_base = []
     rotation = list(eq_rr)
     for r_idx in range(nb_rondes_cycle):
         matchs_ronde = []
+        bye_team = None
         for i in range(n_eq // 2):
             e1 = rotation[i]
             e2 = rotation[n_eq - 1 - i]
-            if e1 != "BYE" and e2 != "BYE":
+            if e1 == "BYE":
+                bye_team = e2
+            elif e2 == "BYE":
+                bye_team = e1
+            else:
                 if (r_idx + i) % 2 == 0:
                     matchs_ronde.append((e1, e2))
                 else:
                     matchs_ronde.append((e2, e1))
         rondes_base.append(matchs_ronde)
+        byes_base.append(bye_team)
         rotation = [rotation[0]] + [rotation[-1]] + rotation[1:-1]
 
     nouvelles_lignes = []
-    conflits = []
     jours_noms = ["Lundi", "Mardi", "Mercredi", "Jeudi"]
     import itertools
 
-    for sem_idx in range(nb_semaines):
+    for sem_idx in range(nb_semaines_ajuste):
         num_sem = sem_idx + 1
         cycle_num = sem_idx // nb_rondes_cycle
         ronde_base_idx = sem_idx % nb_rondes_cycle
@@ -6690,38 +6725,36 @@ def generer_horaire_saison_selon_prerequis(date_debut_saison, equipes_dict, joue
             else:
                 matchs_sem.append((rec, vis))
 
+        bye_team_sem = byes_base[ronde_base_idx] if est_nb_impair else None
         nb_m = min(4, len(matchs_sem))
 
         # Évaluer toutes les permutations de créneaux (0..3) pour minimiser les absences
-        # Critères :
-        # 1. Minimiser nb_absences_total (0 étant l'idéal sans conflit)
-        # 2. Minimiser les conflits d'équipes ayant au moins un absent
-        # 3. Préserver l'équilibre
         meilleure_perm = None
         min_absences = 999999
         detail_meilleure_perm = []
 
-        for perm_slots in itertools.permutations(range(4), nb_m):
-            total_abs_perm = 0
-            detail_abs_perm = []
-            for m_i in range(nb_m):
-                rec_m, vis_m = matchs_sem[m_i]
-                jour_slot = perm_slots[m_i]
-                nb_abs, liste_abs = calculer_absences_joueurs_pour_match(
-                    rec_m, vis_m, jour_slot, joueurs_inscrits, equipes_dict
-                )
-                total_abs_perm += nb_abs
-                if nb_abs > 0:
-                    detail_abs_perm.append(
-                        f"Semaine {num_sem} ({jours_noms[jour_slot]}) : {rec_m} vs {vis_m} ({', '.join(liste_abs)})"
+        if nb_m > 0:
+            for perm_slots in itertools.permutations(range(4), nb_m):
+                total_abs_perm = 0
+                detail_abs_perm = []
+                for m_i in range(nb_m):
+                    rec_m, vis_m = matchs_sem[m_i]
+                    jour_slot = perm_slots[m_i]
+                    nb_abs, liste_abs = calculer_absences_joueurs_pour_match(
+                        rec_m, vis_m, jour_slot, joueurs_inscrits, equipes_dict
                     )
+                    total_abs_perm += nb_abs
+                    if nb_abs > 0:
+                        detail_abs_perm.append(
+                            f"Semaine {num_sem} ({jours_noms[jour_slot]}) : {rec_m} vs {vis_m} ({', '.join(liste_abs)})"
+                        )
 
-            if total_abs_perm < min_absences:
-                min_absences = total_abs_perm
-                meilleure_perm = perm_slots
-                detail_meilleure_perm = detail_abs_perm
-                if total_abs_perm == 0:
-                    break
+                if total_abs_perm < min_absences:
+                    min_absences = total_abs_perm
+                    meilleure_perm = perm_slots
+                    detail_meilleure_perm = detail_abs_perm
+                    if total_abs_perm == 0:
+                        break
 
         slots_assignes = ["—", "—", "—", "—"]
         for m_i in range(nb_m):
@@ -6733,13 +6766,15 @@ def generer_horaire_saison_selon_prerequis(date_debut_saison, equipes_dict, joue
         if detail_meilleure_perm:
             conflits.extend(detail_meilleure_perm)
 
+        col_vacante = f"Semaine vacante : {bye_team_sem}" if bye_team_sem else "—"
+
         nouvelles_lignes.append([
             f"Semaine {num_sem}",
             slots_assignes[0],
             slots_assignes[1],
             slots_assignes[2],
             slots_assignes[3],
-            "—",
+            col_vacante,
             "—",
         ])
 
@@ -36337,6 +36372,14 @@ def afficher_configuration_debut_saison(key_prefix="cfg_saison", afficher_reset_
                 st.rerun()
 
     st.divider()
+    if len(equipes_actuelles) % 2 == 1:
+        nb_eq_act = len(equipes_actuelles)
+        st.info(
+            f"ℹ️ **Saison à nombre impair d'équipes ({nb_eq_act} équipes) :** la génération produira un calendrier équilibré "
+            f"qui inclut des semaines vacantes (BYE) réparties de manière à ce que **toutes les équipes jouent exactement le même nombre de matchs** "
+            f"({2 * (nb_eq_act - 1)} matchs pour 2 cycles aller-retour, avec 2 semaines de repos par équipe)."
+        )
+
     col_gen1, col_gen2 = st.columns([1.6, 1.4] if afficher_reset_historique else [1, 0.01])
     with col_gen1:
         if st.button(
@@ -36348,20 +36391,21 @@ def afficher_configuration_debut_saison(key_prefix="cfg_saison", afficher_reset_
         ):
             d_cible = st.session_state.get(f"{key_prefix}_date_debut_input", date_deb_init)
             n_sem_cible = int(st.session_state.get(f"{key_prefix}_nb_sem_input", nb_sem_init))
-            cfg_s["date_debut_saison"] = d_cible.strftime("%Y-%m-%d")
-            cfg_s["nb_semaines"] = n_sem_cible
-            sauvegarder_config_saison(cfg_s)
             nouvelles_lignes_gen, conflits_gen = generer_horaire_saison_selon_prerequis(
                 d_cible, equipes_actuelles, joueurs_inscrits, n_sem_cible
             )
+            n_sem_reelles = len(nouvelles_lignes_gen)
+            cfg_s["date_debut_saison"] = d_cible.strftime("%Y-%m-%d")
+            cfg_s["nb_semaines"] = n_sem_reelles
+            sauvegarder_config_saison(cfg_s)
             if sauvegarder_horaire_json(nouvelles_lignes_gen):
                 if conflits_gen:
                     st.warning(
-                        f"⚠️ Horaire optimisé généré ({n_sem_cible} semaines). Les absences ont été réduites au minimum ({len(conflits_gen)} match(s) avec absence inévitable) :\n- "
+                        f"⚠️ Horaire optimisé généré ({n_sem_reelles} semaines) :\n- "
                         + "\n- ".join(conflits_gen[:6])
                     )
                 else:
-                    st.success(f"✅ Horaire complet de {n_sem_cible} semaines généré avec succès (0 absence, 100% des contraintes respectées) !")
+                    st.success(f"✅ Horaire complet et équilibré de {n_sem_reelles} semaines généré avec succès !")
                 time.sleep(0.9)
                 st.rerun()
 
@@ -36381,15 +36425,16 @@ def afficher_configuration_debut_saison(key_prefix="cfg_saison", afficher_reset_
                     if st.button("🔴 Confirmer et démarrer la nouvelle saison", type="primary", use_container_width=True, key=f"{key_prefix}_btn_confirm_new_season"):
                         d_cible = st.session_state.get(f"{key_prefix}_date_debut_input", date_deb_init)
                         n_sem_cible = int(st.session_state.get(f"{key_prefix}_nb_sem_input", nb_sem_init))
-                        cfg_s["date_debut_saison"] = d_cible.strftime("%Y-%m-%d")
-                        cfg_s["nb_semaines"] = n_sem_cible
-                        sauvegarder_config_saison(cfg_s)
                         nouvelles_lignes_gen, _ = generer_horaire_saison_selon_prerequis(
                             d_cible, equipes_actuelles, joueurs_inscrits, n_sem_cible
                         )
+                        n_sem_reelles = len(nouvelles_lignes_gen)
+                        cfg_s["date_debut_saison"] = d_cible.strftime("%Y-%m-%d")
+                        cfg_s["nb_semaines"] = n_sem_reelles
+                        sauvegarder_config_saison(cfg_s)
                         sauvegarder_horaire_json(nouvelles_lignes_gen)
                         sauvegarder_historique_matchs([])
-                        st.success("✅ Nouvelle saison démarrée, horaire généré et historique réinitialisé !")
+                        st.success(f"✅ Nouvelle saison démarrée, horaire généré ({n_sem_reelles} semaines) et historique réinitialisé !")
                         time.sleep(0.9)
                         st.rerun()
 
@@ -36423,18 +36468,33 @@ def afficher_section_horaire_saison(est_spectateur=False, key_prefix="horaire_ma
     else:
         semaine_courante = f"Semaine {calculer_semaine_saison(datetime.today())}"
 
+    # Détecter si une équipe est en semaine vacante pour la semaine courante
+    equipe_vacante_semaine = ""
+    for r_check in (lignes_horaire or []):
+        if isinstance(r_check, list) and len(r_check) > 0 and str(r_check[0]).strip().lower() == semaine_courante.lower():
+            for c_chk in r_check[1:]:
+                c_chk_str = str(c_chk or "").strip()
+                if "vacant" in c_chk_str.lower() or "exempt" in c_chk_str.lower() or "bye" in c_chk_str.lower():
+                    m_eq_v = re.search(r'(?:vacante|exempt|bye)\s*:\s*([a-zA-ZÀ-ſ0-9_\- ]+)', c_chk_str, re.IGNORECASE)
+                    equipe_vacante_semaine = m_eq_v.group(1).strip() if m_eq_v else c_chk_str.replace("Semaine vacante", "").replace(":", "").strip()
+                    break
+            if equipe_vacante_semaine:
+                break
+
     st.markdown("### 📅 Horaire officiel de la saison")
+    txt_vac_cap = f" • ⏸️ **Semaine vacante :** `{equipe_vacante_semaine}`" if equipe_vacante_semaine else ""
     st.caption(
         f"🗓️ **Début de la saison :** {d_deb_horaire.day} {mois_fr_map.get(d_deb_horaire.month, '')} {d_deb_horaire.year} • "
         f"**Fin prévue :** {d_fin_horaire.day} {mois_fr_map.get(d_fin_horaire.month, '')} {d_fin_horaire.year} • "
-        f"**Semaine courante :** `{semaine_courante}` *(La création et l'édition de l'horaire s'effectuent dans **⚙️ Administration → 🗓️ Saison**)*"
+        f"**Semaine courante :** `{semaine_courante}`{txt_vac_cap} *(La création et l'édition de l'horaire s'effectuent dans **⚙️ Administration → 🗓️ Saison**)*"
     )
 
     if rencontre_jour:
         statut_j = "🟢 **Match programmé aujourd'hui**" if rencontre_jour.get("est_aujourdhui") else "🔜 **Prochain match au calendrier**"
+        info_vac_txt = f" • ⏸️ *Équipe vacante (exemptée) :* **{equipe_vacante_semaine}**" if equipe_vacante_semaine else ""
         st.info(
             f"{statut_j} (**{semaine_courante}** — {rencontre_jour.get('date_texte', '')}) : "
-            f"**{rencontre_jour.get('receveur', '')}** (Receveur) vs **{rencontre_jour.get('visiteur', '')}** (Visiteur)"
+            f"**{rencontre_jour.get('receveur', '')}** (Receveur) vs **{rencontre_jour.get('visiteur', '')}** (Visiteur){info_vac_txt}"
         )
 
     if not lignes_horaire:
@@ -36445,9 +36505,18 @@ def afficher_section_horaire_saison(est_spectateur=False, key_prefix="horaire_ma
     a_match_5 = any(isinstance(r, list) and len(r) > 5 and str(r[5]).strip() not in ("", "—", "-") for r in lignes_horaire)
     a_match_6 = any(isinstance(r, list) and len(r) > 6 and str(r[6]).strip() not in ("", "—", "-") for r in lignes_horaire)
 
+    # Détecter si la colonne 5 contient des semaines vacantes (nombre impair d'équipes)
+    a_semaine_vacante = any(
+        isinstance(r, list) and len(r) > 5 and ("vacant" in str(r[5]).lower() or "exempt" in str(r[5]).lower() or "bye" in str(r[5]).lower())
+        for r in lignes_horaire
+    )
+
     colonnes_h = ["Semaine", "Match 1 (Lundi)", "Match 2 (Mardi)", "Match 3 (Mercredi)", "Match 4 (Jeudi)"]
     if a_match_5:
-        colonnes_h.append("Match 5")
+        if a_semaine_vacante:
+            colonnes_h.append("Semaine vacante")
+        else:
+            colonnes_h.append("Match 5")
     if a_match_6:
         colonnes_h.append("Match 6")
 
@@ -36517,6 +36586,20 @@ def afficher_section_horaire_saison(est_spectateur=False, key_prefix="horaire_ma
                             f'📅 {_html.escape(date_part)}</div>'
                             f'<div style="font-size:13.5px; font-weight:700; color:#f8fafc;">'
                             f'{_html.escape(rec_nom)} <span style="font-size:11px; font-weight:500; color:#64748b;">vs</span> {_html.escape(vis_nom)}</div>'
+                        )
+                elif "vacant" in val_c.lower() or "exempt" in val_c.lower() or "bye" in val_c.lower():
+                    # Semaine vacante / équipe exemptée
+                    m_eq_val = re.search(r'(?:vacante|exempt|bye)\s*:\s*([a-zA-ZÀ-ſ0-9_\- ]+)', val_c, re.IGNORECASE)
+                    nom_vac_cell = m_eq_val.group(1).strip() if m_eq_val else val_c.replace("Semaine vacante", "").replace(":", "").strip()
+                    if est_sem_courante:
+                        contenu_td = (
+                            f'<div style="font-size:12px; font-weight:700; color:#fde047; background:rgba(234,179,8,0.20); border:1.5px solid #eab308; border-radius:6px; padding:4px 6px; text-align:center;">'
+                            f'⏸️ Semaine vacante en cours<br><span style="color:#ffffff; font-weight:800; font-size:13.5px;">{_html.escape(nom_vac_cell)}</span></div>'
+                        )
+                    else:
+                        contenu_td = (
+                            f'<div style="font-size:12px; font-weight:600; color:#fbbf24; background:rgba(245,158,11,0.10); border:1px dashed #d97706; border-radius:6px; padding:4px 6px; text-align:center;">'
+                            f'⏸️ Semaine vacante<br><span style="color:#e2e8f0; font-weight:700; font-size:13px;">{_html.escape(nom_vac_cell)}</span></div>'
                         )
                 elif val_c in ("—", "-", ""):
                     contenu_td = '<div style="color:#64748b; font-size:13px; text-align:center;">—</div>'
@@ -36636,9 +36719,15 @@ def afficher_editeur_horaire_saison(key_prefix="admin_horaire", editeur_ouvert=T
             semaines_existantes = [f"Semaine {i}" for i in range(1, 15)]
         options_sem_assist = semaines_existantes + ["➕ Nouvelle semaine..."]
 
+        a_semaine_vacante = any(
+            isinstance(r, list) and len(r) > 5 and ("vacant" in str(r[5]).lower() or "exempt" in str(r[5]).lower() or "bye" in str(r[5]).lower())
+            for r in lignes_horaire
+        )
+        a_match_5 = any(isinstance(r, list) and len(r) > 5 and str(r[5]).strip() not in ("", "—", "-") for r in lignes_horaire)
+
         with st.container(border=True):
-            st.markdown("##### 🛠️ Assistant rapide : insérer ou modifier un match dans une semaine")
-            c_as1, c_as2, c_as3, c_as4, c_as5 = st.columns([1.2, 1.1, 1.2, 1.1, 1.1])
+            st.markdown("##### 🛠️ Assistant rapide : insérer ou modifier un match ou une semaine vacante")
+            c_as1, c_as2, c_as3, c_as4, c_as5 = st.columns([1.2, 1.2, 1.1, 1.1, 1.1])
             with c_as1:
                 sem_choisie = st.selectbox("Semaine :", options_sem_assist, key=f"{key_prefix}_as_sem")
                 if sem_choisie == "➕ Nouvelle semaine...":
@@ -36648,39 +36737,52 @@ def afficher_editeur_horaire_saison(key_prefix="admin_horaire", editeur_ouvert=T
             with c_as2:
                 slot_choisi = st.selectbox(
                     "Emplacement :",
-                    ["Match 1 (Lundi)", "Match 2 (Mardi)", "Match 3 (Mercredi)", "Match 4 (Jeudi)"],
+                    ["Match 1 (Lundi)", "Match 2 (Mardi)", "Match 3 (Mercredi)", "Match 4 (Jeudi)", "Semaine vacante (Exempt)"],
                     key=f"{key_prefix}_as_slot"
                 )
+            est_slot_vacant = (slot_choisi == "Semaine vacante (Exempt)")
             with c_as3:
-                date_choisie = st.date_input("Date du match :", value=datetime.today(), key=f"{key_prefix}_as_date")
+                date_choisie = st.date_input("Date du match :", value=datetime.today(), key=f"{key_prefix}_as_date", disabled=est_slot_vacant)
             with c_as4:
-                rec_choisi = st.selectbox("🏠 Receveur :", liste_eq_h, index=0, key=f"{key_prefix}_as_rec")
+                lbl_rec = "⏸️ Équipe vacante :" if est_slot_vacant else "🏠 Receveur :"
+                rec_choisi = st.selectbox(lbl_rec, liste_eq_h, index=0, key=f"{key_prefix}_as_rec")
             with c_as5:
                 idx_vis_def = 1 if len(liste_eq_h) > 1 else 0
-                vis_choisi = st.selectbox("🚗 Visiteur :", liste_eq_h, index=idx_vis_def, key=f"{key_prefix}_as_vis")
+                vis_choisi = st.selectbox("🚗 Visiteur :", liste_eq_h, index=idx_vis_def, key=f"{key_prefix}_as_vis", disabled=est_slot_vacant)
 
-            texte_match_compose = f"{date_choisie.day} {mois_fr_map.get(date_choisie.month, 'janvier')} {rec_choisi} {vis_choisi}"
+            if est_slot_vacant:
+                texte_compose = f"Semaine vacante : {rec_choisi}"
+            else:
+                texte_compose = f"{date_choisie.day} {mois_fr_map.get(date_choisie.month, 'janvier')} {rec_choisi} {vis_choisi}"
+
             col_ap1, col_ap2 = st.columns([2.5, 1.5])
             with col_ap1:
-                st.caption(f"Aperçu de la cellule : **`{texte_match_compose}`** ({sem_cible_finale} • {slot_choisi})")
+                st.caption(f"Aperçu de la cellule : **`{texte_compose}`** ({sem_cible_finale} • {slot_choisi})")
             with col_ap2:
-                if st.button("➕ Appliquer ce match à l'horaire", use_container_width=True, key=f"{key_prefix}_btn_apply_assist"):
-                    slot_idx = ["Match 1 (Lundi)", "Match 2 (Mardi)", "Match 3 (Mercredi)", "Match 4 (Jeudi)"].index(slot_choisi) + 1
+                if st.button("➕ Appliquer à l'horaire", use_container_width=True, key=f"{key_prefix}_btn_apply_assist"):
                     nouvelles_lignes_as = [list(r) for r in lignes_horaire if isinstance(r, list) and r]
                     trouve_sem = False
                     for r_item in nouvelles_lignes_as:
                         while len(r_item) < 7:
                             r_item.append("—")
                         if str(r_item[0]).strip().lower() == sem_cible_finale.lower():
-                            r_item[slot_idx] = texte_match_compose
+                            if est_slot_vacant:
+                                r_item[5] = texte_compose
+                            else:
+                                slot_idx = ["Match 1 (Lundi)", "Match 2 (Mardi)", "Match 3 (Mercredi)", "Match 4 (Jeudi)"].index(slot_choisi) + 1
+                                r_item[slot_idx] = texte_compose
                             trouve_sem = True
                             break
                     if not trouve_sem:
                         nouv_row = [sem_cible_finale, "—", "—", "—", "—", "—", "—"]
-                        nouv_row[slot_idx] = texte_match_compose
+                        if est_slot_vacant:
+                            nouv_row[5] = texte_compose
+                        else:
+                            slot_idx = ["Match 1 (Lundi)", "Match 2 (Mardi)", "Match 3 (Mercredi)", "Match 4 (Jeudi)"].index(slot_choisi) + 1
+                            nouv_row[slot_idx] = texte_compose
                         nouvelles_lignes_as.append(nouv_row)
                     if sauvegarder_horaire_json(nouvelles_lignes_as):
-                        st.success(f"✅ Match `{texte_match_compose}` enregistré dans {sem_cible_finale} ({slot_choisi}) !")
+                        st.success(f"✅ `{texte_compose}` enregistré dans {sem_cible_finale} !")
                         time.sleep(0.6)
                         st.rerun()
                     else:
@@ -36691,13 +36793,19 @@ def afficher_editeur_horaire_saison(key_prefix="admin_horaire", editeur_ouvert=T
         for idx_r, row in enumerate(lignes_horaire):
             if not isinstance(row, list) or not row:
                 continue
-            lignes_edit_init.append({
+            item = {
                 "Semaine": str(row[0]).strip() if len(row) > 0 else f"Semaine {idx_r + 1}",
                 "Match 1": str(row[1]).strip() if len(row) > 1 and str(row[1]).strip() else "—",
                 "Match 2": str(row[2]).strip() if len(row) > 2 and str(row[2]).strip() else "—",
                 "Match 3": str(row[3]).strip() if len(row) > 3 and str(row[3]).strip() else "—",
                 "Match 4": str(row[4]).strip() if len(row) > 4 and str(row[4]).strip() else "—",
-            })
+            }
+            if a_semaine_vacante:
+                item["Semaine vacante"] = str(row[5]).strip() if len(row) > 5 and str(row[5]).strip() else "—"
+            elif a_match_5:
+                item["Match 5"] = str(row[5]).strip() if len(row) > 5 and str(row[5]).strip() else "—"
+            lignes_edit_init.append(item)
+
         if not lignes_edit_init:
             for i_s in range(1, 15):
                 lignes_edit_init.append({
@@ -36709,19 +36817,25 @@ def afficher_editeur_horaire_saison(key_prefix="admin_horaire", editeur_ouvert=T
                 })
 
         df_edit_init = pd.DataFrame(lignes_edit_init)
+        col_cfg_editor = {
+            "Semaine": st.column_config.TextColumn("Semaine", required=True, width="small"),
+            "Match 1": st.column_config.TextColumn("Match 1 (Lundi)", width="medium"),
+            "Match 2": st.column_config.TextColumn("Match 2 (Mardi)", width="medium"),
+            "Match 3": st.column_config.TextColumn("Match 3 (Mercredi)", width="medium"),
+            "Match 4": st.column_config.TextColumn("Match 4 (Jeudi)", width="medium"),
+        }
+        if a_semaine_vacante:
+            col_cfg_editor["Semaine vacante"] = st.column_config.TextColumn("Semaine vacante (Exempt)", width="medium")
+        elif a_match_5:
+            col_cfg_editor["Match 5"] = st.column_config.TextColumn("Match 5", width="medium")
+
         df_horaire_modifie = st.data_editor(
             df_edit_init,
             num_rows="dynamic",
             use_container_width=True,
             hide_index=True,
             key=f"{key_prefix}_data_editor",
-            column_config={
-                "Semaine": st.column_config.TextColumn("Semaine", required=True, width="small"),
-                "Match 1": st.column_config.TextColumn("Match 1 (Lundi)", width="medium"),
-                "Match 2": st.column_config.TextColumn("Match 2 (Mardi)", width="medium"),
-                "Match 3": st.column_config.TextColumn("Match 3 (Mercredi)", width="medium"),
-                "Match 4": st.column_config.TextColumn("Match 4 (Jeudi)", width="medium"),
-            }
+            column_config=col_cfg_editor
         )
 
         col_sv1, col_sv2 = st.columns([2, 1])
@@ -36742,11 +36856,16 @@ def afficher_editeur_horaire_saison(key_prefix="admin_horaire", editeur_ouvert=T
                     m4_val = "—" if not m4_val or m4_val.lower() == "nan" else m4_val
                     m5_val = "—"
                     m6_val = "—"
-                    if idx_row < len(lignes_horaire) and isinstance(lignes_horaire[idx_row], list):
-                        if len(lignes_horaire[idx_row]) > 5:
-                            m5_val = str(lignes_horaire[idx_row][5] or "—")
-                        if len(lignes_horaire[idx_row]) > 6:
-                            m6_val = str(lignes_horaire[idx_row][6] or "—")
+                    if "Semaine vacante" in r_ed:
+                        m5_val = str(r_ed.get("Semaine vacante", "—") or "—").strip()
+                    elif "Match 5" in r_ed:
+                        m5_val = str(r_ed.get("Match 5", "—") or "—").strip()
+                    elif idx_row < len(lignes_horaire) and isinstance(lignes_horaire[idx_row], list) and len(lignes_horaire[idx_row]) > 5:
+                        m5_val = str(lignes_horaire[idx_row][5] or "—")
+                    m5_val = "—" if not m5_val or m5_val.lower() == "nan" else m5_val
+                    if idx_row < len(lignes_horaire) and isinstance(lignes_horaire[idx_row], list) and len(lignes_horaire[idx_row]) > 6:
+                        m6_val = str(lignes_horaire[idx_row][6] or "—")
+                    m6_val = "—" if not m6_val or m6_val.lower() == "nan" else m6_val
                     nouvelles_lignes_horaire.append([sem_val, m1_val, m2_val, m3_val, m4_val, m5_val, m6_val])
 
                 if not nouvelles_lignes_horaire:
