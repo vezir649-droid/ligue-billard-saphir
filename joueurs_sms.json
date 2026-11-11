@@ -85,7 +85,7 @@
         "telephone": "4185806222",
         "courriel": "s.blaquiere@icloud.com",
         "consentement": false,
-        "actif": false
+        "actif": true
     },
     {
         "nom": "Yves Pilon",
