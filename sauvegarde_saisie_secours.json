@@ -1,17 +1,13 @@
 {
-    "date": "11/11/2026",
+    "date": "2026-11-11 14:33",
     "receveur": "Alpha",
     "visiteur": "Hotel",
     "choix_rec": "Alpha",
     "choix_vis": "Hotel",
-    "input_custom_rec": "",
-    "input_custom_vis": "",
     "sel_j1_rec": "Claude Harvey",
     "sel_j2_rec": "Gaston Lavoie",
-    "sel_j3_rec": "Léon Morin",
     "sel_j1_vis": "Richard Lavoie",
     "sel_j2_vis": "Richard Théberge",
-    "sel_j3_vis": "Jean-Yves Brochu",
     "joueurs": {
         "j1_rec": {
             "nom": "Claude Harvey",
@@ -54,79 +50,76 @@
         "1": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "Claude Harvey",
-            "joueur_b": "Richard Lavoie",
+            "joueur_a": "",
+            "joueur_b": "",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "2": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "Gaston Lavoie",
-            "joueur_b": "Richard Théberge",
+            "joueur_a": "",
+            "joueur_b": "",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "3": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "Léon Morin",
-            "joueur_b": "Jean-Yves Brochu",
+            "joueur_a": "",
+            "joueur_b": "",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "4": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "Claude Harvey",
-            "joueur_b": "Richard Théberge",
+            "joueur_a": "",
+            "joueur_b": "",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "5": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "Gaston Lavoie",
-            "joueur_b": "Jean-Yves Brochu",
+            "joueur_a": "",
+            "joueur_b": "",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "6": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "Léon Morin",
-            "joueur_b": "Richard Lavoie",
+            "joueur_a": "",
+            "joueur_b": "",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "7": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "Claude Harvey",
-            "joueur_b": "Jean-Yves Brochu",
+            "joueur_a": "",
+            "joueur_b": "",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "8": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "Gaston Lavoie",
-            "joueur_b": "Richard Lavoie",
+            "joueur_a": "",
+            "joueur_b": "",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         },
         "9": {
             "score_a": 0,
             "score_b": 0,
-            "joueur_a": "Léon Morin",
-            "joueur_b": "Richard Théberge",
+            "joueur_a": "",
+            "joueur_b": "",
             "joueur_a_absent": false,
             "joueur_b_absent": false
         }
     },
-    "total_receveur": 0,
-    "total_visiteur": 0,
-    "date_match": "11/11/2026",
-    "derniere_mise_a_jour": "14:29:06",
-    "ts_modif": 1794425346.6013355
+    "derniere_mise_a_jour": "14:33:15",
+    "ts_modif": 1794425595.659416
 }

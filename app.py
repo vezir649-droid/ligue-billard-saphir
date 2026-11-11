@@ -6638,6 +6638,32 @@ def charger_registre_joueurs(forcer_cloud=False):
         except Exception:
             pass
 
+    # Synchroniser les nouveaux joueurs qui seraient apparus dans joueurs_sms.json
+    if os.path.exists(JOUEURS_SMS_FILE):
+        try:
+            noms_deja = {str(j.get("nom", "")).strip().lower() for j in joueurs if isinstance(j, dict) and j.get("nom")}
+            with open(JOUEURS_SMS_FILE, "r", encoding="utf-8") as f_sms:
+                for j_s in json.load(f_sms):
+                    if isinstance(j_s, dict) and j_s.get("nom"):
+                        k_s = str(j_s["nom"]).strip().lower()
+                        if k_s and k_s not in noms_deja:
+                            noms_deja.add(k_s)
+                            joueurs.append({
+                                "nom": str(j_s["nom"]).strip(),
+                                "telephone": str(j_s.get("telephone", "") or "").strip(),
+                                "courriel": str(j_s.get("courriel", "") or "").strip(),
+                                "actif": bool(j_s.get("actif", True)),
+                                "capitaine": False,
+                                "lundi": True,
+                                "mardi": True,
+                                "mercredi": True,
+                                "jeudi": True,
+                                "contraintes": "",
+                                "equipe": str(j_s.get("equipe", "") or "").strip()
+                            })
+        except Exception:
+            pass
+
     # 4. Nettoyage strict et normalisation des champs
     liste_propre = []
     vus = set()
