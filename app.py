@@ -6905,12 +6905,61 @@ def calculer_numero_saison(date_match, date_debut_saison_1=None):
 
 
 
+def deduire_saison_match(m, date_debut_saison_1=None):
+    """Détermine le numéro de saison d'un match de l'historique (champ 'saison' ou calcul à partir de date_match)."""
+    if not isinstance(m, dict):
+        return 1
+    if m.get("saison") is not None:
+        try:
+            return int(m["saison"])
+        except Exception:
+            pass
+    if m.get("numero_saison") is not None:
+        try:
+            return int(m["numero_saison"])
+        except Exception:
+            pass
+
+    # Déduire à partir de la date du match
+    d_raw = m.get("date_match") or m.get("date") or m.get("date_enregistrement") or ""
+    d_obj = None
+    if isinstance(d_raw, str):
+        for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d", "%d/%m/%Y à %H:%M", "%d/%m/%Y", "%Y/%m/%d"):
+            try:
+                d_obj = datetime.strptime(d_raw.strip(), fmt).date()
+                break
+            except Exception:
+                pass
+    elif isinstance(d_raw, (date, datetime)):
+        d_obj = d_raw if isinstance(d_raw, date) else d_raw.date()
+
+    if d_obj:
+        num_s, _ = calculer_numero_saison(d_obj, date_debut_saison_1=date_debut_saison_1)
+        return num_s
+    return 1
+
+
+def filtrer_matchs_par_saison(historique, num_saison=None):
+    """Filtre une liste de matchs pour ne conserver que ceux de la saison spécifiée (par défaut la saison courante)."""
+    if not historique:
+        return []
+    if num_saison is None:
+        num_saison = st.session_state.get("saison_active_selectionnee", 1)
+    try:
+        ns_cible = int(num_saison)
+    except Exception:
+        ns_cible = 1
+
+    filtres = []
+    for m in historique:
+        if isinstance(m, dict) and deduire_saison_match(m) == ns_cible:
+            filtres.append(m)
+    return filtres
+
+
 def trouver_match_par_date(date_cible, lignes_horaire=None):
-
     """Recherche un match dans l'horaire officiel correspondant au jour et mois de date_cible.
-
     Retourne un dict avec receveur, visiteur, saison_int, semaine_int, texte ou None si aucun match.
-
     """
 
     if not lignes_horaire:
@@ -33088,6 +33137,10 @@ def calculer_statistiques_et_progression(historique):
 
     historique = historique or []
 
+    # Filtrer systématiquement les calculs de statistiques et pointages sur la saison sélectionnée
+    num_saison_stats = st.session_state.get("saison_active_selectionnee", 1)
+    historique = [m for m in historique if isinstance(m, dict) and deduire_saison_match(m) == int(num_saison_stats)]
+
     equipes_officielles = charger_equipes_csv() or {}
 
     joueurs_csv_stats = charger_joueurs_stats_csv() or {}
@@ -38631,7 +38684,11 @@ with tab_feuille:
 
     # ==============================================================================
 
-    historique_matchs = charger_historique_matchs()
+    historique_matchs_brut = charger_historique_matchs()
+
+    num_saison_en_cours = st.session_state.get("saison_active_selectionnee", 1)
+
+    historique_matchs = filtrer_matchs_par_saison(historique_matchs_brut, num_saison_en_cours)
 
 
 
@@ -38641,7 +38698,7 @@ with tab_feuille:
 
     label_saphir = "🌐 Consulter https://saphirbillard.com (Joueurs, Équipes, Horaire)"
 
-    # L'historique des matchs contient uniquement le match en direct et les rencontres archivées
+    # L'historique des matchs contient uniquement le match en direct et les rencontres archivées de la saison courante
     options_matchs = [label_direct]
 
     mapping_matchs = {}
@@ -40618,6 +40675,17 @@ with tab_feuille:
                     donnees_finales["date_match"] = d_match
 
                     donnees_finales["date_enregistrement"] = date_enreg_officielle
+
+                    # Associer explicitement le numéro et le type de saison au match
+                    num_saison_enreg = st.session_state.get("saison_active_selectionnee", 1)
+                    try:
+                        d_eval = datetime.strptime(d_match.split()[0], "%d/%m/%Y").date() if "/" in d_match else datetime.today().date()
+                        s_calc, s_typ = calculer_numero_saison(d_eval)
+                        num_saison_enreg = s_calc
+                        donnees_finales["saison_type"] = s_typ
+                    except Exception:
+                        donnees_finales["saison_type"] = "Automne"
+                    donnees_finales["saison"] = int(num_saison_enreg)
 
                     donnees_finales.pop("html_officiel", None)
 
