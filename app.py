@@ -178,6 +178,8 @@ CONFIG_SAISON_FILE = get_data_path("config_saison.json")
 
 JOUEURS_SMS_FILE = get_data_path("joueurs_sms.json")
 
+JOUEURS_FILE = get_data_path("joueurs.json")
+
 CONFIG_SMS_FILE = get_data_path("config_sms.json")
 
 COMMANDES_SMS_FILE = get_data_path("commandes_sms.json")
@@ -1897,6 +1899,10 @@ def lister_fichiers_locaux_donnees():
 
         ADMIN_CONFIG_FILE,
 
+        CONFIG_SAISON_FILE,
+
+        JOUEURS_FILE,
+
         JOUEURS_SMS_FILE,
 
         CONFIG_SMS_FILE,
@@ -2088,7 +2094,7 @@ def synchroniser_fichier_github(filepath, commit_message=None, forcer=False):
 
 
 
-            if sha_actuel and filename == "historique_matchs.json":
+            if sha_actuel and filename == "historique_matchs.json" and not forcer:
 
                 try:
 
@@ -3815,9 +3821,9 @@ def synchroniser_fichier_supabase(filepath, commit_message=None, forcer=False):
         if not forcer and _LAST_SYNCED_SHA_SUPABASE.get(filename) == sha1_initial:
             return True, f"Fichier {filename} déjà strictement à jour sur Supabase (cache SHA1)."
 
-        # Protection anti-perte de matchs pour historique_matchs.json
+        # Protection anti-perte de matchs pour historique_matchs.json (contournable si forcer=True)
 
-        if filename == "historique_matchs.json":
+        if filename == "historique_matchs.json" and not forcer:
 
             try:
 
@@ -4043,7 +4049,7 @@ def synchroniser_fichiers_cibles_cloud(filepaths, commit_prefix=None):
     return len(succes_list), succes_list, erreurs_list
 
 
-def synchroniser_fichier_cloud(filepath, commit_message=None):
+def synchroniser_fichier_cloud(filepath, commit_message=None, forcer=False):
 
     """Route la synchronisation du fichier selon le mode Cloud Hybride configuré (Mode 1 Supabase, Mode 2 Hybride, Mode 3 GitHub)."""
 
@@ -4051,19 +4057,19 @@ def synchroniser_fichier_cloud(filepath, commit_message=None):
 
     if mode == "supabase":
 
-        return synchroniser_fichier_supabase(filepath, commit_message)
+        return synchroniser_fichier_supabase(filepath, commit_message, forcer=forcer)
 
     elif mode == "supabase_github":
 
-        ok_sb, msg_sb = synchroniser_fichier_supabase(filepath, commit_message)
+        ok_sb, msg_sb = synchroniser_fichier_supabase(filepath, commit_message, forcer=forcer)
 
-        ok_gh, msg_gh = synchroniser_fichier_github(filepath, commit_message)
+        ok_gh, msg_gh = synchroniser_fichier_github(filepath, commit_message, forcer=forcer)
 
         return (ok_sb or ok_gh), f"Supabase: {msg_sb} | GitHub: {msg_gh}"
 
     else:
 
-        return synchroniser_fichier_github(filepath, commit_message)
+        return synchroniser_fichier_github(filepath, commit_message, forcer=forcer)
 
 
 
@@ -4296,6 +4302,10 @@ def restaurer_tout_depuis_supabase(forcer=False):
             ("joueurs_stats.csv", JOUEURS_CSV_FILE),
 
             ("config_email.json", CONFIG_EMAIL_FILE),
+
+            ("joueurs.json", JOUEURS_FILE),
+
+            ("config_saison.json", CONFIG_SAISON_FILE),
 
             ("joueurs_sms.json", JOUEURS_SMS_FILE),
 
@@ -6352,6 +6362,81 @@ def lister_horaires_saisons_disponibles():
     return res
 
 
+def obtenir_chemin_historique_saison(num_saison=None):
+    """Retourne le chemin du fichier d'historique des matchs pour une saison donnée.
+    Si num_saison est None : retourne l'historique de la saison active (historique_matchs.json).
+    Si num_saison est spécifié : retourne get_data_path(f"historique_matchs_saison_{ns}.json").
+    """
+    if num_saison is None:
+        return HISTORIQUE_FILE
+    try:
+        ns = int(num_saison)
+        f_archive = get_data_path(f"historique_matchs_saison_{ns}.json")
+        return f_archive
+    except Exception:
+        return HISTORIQUE_FILE
+
+
+def lister_historiques_saisons_disponibles():
+    """Détecte et liste tous les fichiers d'historiques des matchs disponibles
+    (historique_matchs.json pour la saison courante et historique_matchs_saison_X.json archivés).
+    Retourne une liste de dicts : [{'num': int, 'nom_fichier': str, 'label': str, 'chemin': str, 'nb_matchs': int, 'est_courante': bool}].
+    """
+    res = []
+    base_dirs = [BASE_DIR, os.getcwd()]
+    vus = set()
+
+    for b_dir in base_dirs:
+        if not b_dir or not os.path.exists(b_dir):
+            continue
+        try:
+            for nom_f in os.listdir(b_dir):
+                nom_lower = nom_f.lower()
+                m_s = re.match(r"^historique_matchs_saison_(\d+)\.json$", nom_lower)
+                if not (nom_lower == "historique_matchs.json" or m_s):
+                    continue
+                full_p = os.path.abspath(os.path.join(b_dir, nom_f))
+                if full_p in vus:
+                    continue
+                vus.add(full_p)
+
+                num_s = None
+                if m_s:
+                    num_s = int(m_s.group(1))
+
+                # Charger pour compter les matchs
+                nb_m = 0
+                try:
+                    with open(full_p, "r", encoding="utf-8") as f:
+                        d = json.load(f)
+                        if isinstance(d, list):
+                            nb_m = len(d)
+                except Exception:
+                    nb_m = 0
+
+                est_courante = (nom_f.lower() == "historique_matchs.json")
+                if num_s is not None:
+                    lbl = f"Archive Saison {num_s} ({nom_f}) — {nb_m} match(s)"
+                else:
+                    num_s = 9999
+                    lbl = f"Saison en cours ({nom_f}) — {nb_m} match(s)"
+
+                res.append({
+                    "num": num_s,
+                    "nom_fichier": nom_f,
+                    "label": lbl,
+                    "chemin": full_p,
+                    "nb_matchs": nb_m,
+                    "est_courante": est_courante
+                })
+        except Exception:
+            pass
+
+    # Trier : archives par saison croissante, puis saison courante
+    res.sort(key=lambda x: (1 if x["est_courante"] else 0, x["num"]))
+    return res
+
+
 def charger_horaire_json(num_saison=None):
     """Charge le calendrier des rencontres depuis le fichier local horaire_saphir.json ou horaire_saison_X.json
     (avec cache mémoire sur mtime). Au démarrage, charge la saison en cours si num_saison n'est pas spécifié.
@@ -6451,6 +6536,239 @@ def deduire_date_debut_saison_depuis_horaire(lignes_horaire=None):
     return date(annee_courante, 1, 5)
 
 
+def charger_registre_joueurs(forcer_cloud=False):
+    """Charge le registre officiel de tous les joueurs (nom, telephone, courriel, actif, lundi, mardi, mercredi, jeudi, contraintes, equipe).
+    Garantit la synchronisation avec PostgreSQL (Supabase) et GitHub.
+    Initialise automatiquement à partir de joueurs_sms.json et equipes-saphir.csv si non existant.
+    """
+    ok_c, val_c = _lire_cache_fichier("joueurs_registre", JOUEURS_FILE)
+    if not forcer_cloud and ok_c and isinstance(val_c, list) and len(val_c) > 0:
+        return val_c
+
+    joueurs = []
+    # 1. Vérifier si le fichier local existe
+    if os.path.exists(JOUEURS_FILE):
+        try:
+            with open(JOUEURS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, list) and len(data) > 0:
+                    joueurs = data
+        except Exception:
+            joueurs = []
+
+    # 2. Si forcer_cloud ou si aucun fichier local, tenter Supabase puis GitHub
+    if forcer_cloud or not joueurs:
+        try:
+            raw_sb = telecharger_fichier_supabase("joueurs.json")
+            if raw_sb:
+                data_sb = json.loads(raw_sb)
+                if isinstance(data_sb, list) and len(data_sb) > 0:
+                    joueurs = data_sb
+        except Exception:
+            pass
+
+    if not joueurs:
+        try:
+            raw_gh = telecharger_json_depuis_github("joueurs.json")
+            if isinstance(raw_gh, list) and len(raw_gh) > 0:
+                joueurs = raw_gh
+        except Exception:
+            pass
+
+    # 3. Si toujours vide, initialiser depuis joueurs_sms.json, equipes-saphir.csv et config_saison.json
+    if not joueurs:
+        joueurs_sms_map = {}
+        if os.path.exists(JOUEURS_SMS_FILE):
+            try:
+                with open(JOUEURS_SMS_FILE, "r", encoding="utf-8") as f_sms:
+                    for j_s in json.load(f_sms):
+                        if isinstance(j_s, dict) and j_s.get("nom"):
+                            joueurs_sms_map[str(j_s["nom"]).strip().lower()] = j_s
+            except Exception:
+                pass
+
+        equipes_map = charger_equipes_csv() or {}
+        vus_noms = set()
+
+        for eq_n, jl in equipes_map.items():
+            for j_nom in jl:
+                j_clean = str(j_nom).strip()
+                if not j_clean or (j_clean.lower().startswith("joueur ") and len(j_clean) <= 9 and j_clean[7:].isdigit()):
+                    continue
+                k_j = j_clean.lower()
+                vus_noms.add(k_j)
+                sms_item = joueurs_sms_map.get(k_j, {})
+                joueurs.append({
+                    "nom": j_clean,
+                    "telephone": str(sms_item.get("telephone", "") or "").strip(),
+                    "courriel": str(sms_item.get("courriel", "") or "").strip(),
+                    "actif": bool(sms_item.get("actif", True)),
+                    "lundi": True,
+                    "mardi": True,
+                    "mercredi": True,
+                    "jeudi": True,
+                    "contraintes": "",
+                    "equipe": eq_n
+                })
+
+        for k_j, sms_item in joueurs_sms_map.items():
+            if k_j not in vus_noms:
+                nom_j = str(sms_item.get("nom", "")).strip()
+                if nom_j:
+                    joueurs.append({
+                        "nom": nom_j,
+                        "telephone": str(sms_item.get("telephone", "") or "").strip(),
+                        "courriel": str(sms_item.get("courriel", "") or "").strip(),
+                        "actif": bool(sms_item.get("actif", True)),
+                        "lundi": True,
+                        "mardi": True,
+                        "mercredi": True,
+                        "jeudi": True,
+                        "contraintes": "",
+                        "equipe": str(sms_item.get("equipe", "") or "").strip()
+                    })
+
+        try:
+            with open(JOUEURS_FILE, "w", encoding="utf-8") as f_out:
+                json.dump(joueurs, f_out, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
+    # 4. Nettoyage strict et normalisation des champs
+    liste_propre = []
+    vus = set()
+    for item in joueurs:
+        if not isinstance(item, dict):
+            continue
+        nom_val = str(item.get("nom") or item.get("joueur") or "").strip()
+        if not nom_val or (nom_val.lower().startswith("joueur ") and len(nom_val) <= 9 and nom_val[7:].isdigit()):
+            continue
+        cle_u = nom_val.lower()
+        if cle_u in vus:
+            continue
+        vus.add(cle_u)
+
+        tel_val = str(item.get("telephone", "") or "").strip()
+        if tel_val.lower() in ("nan", "none", "null", "undefined"):
+            tel_val = ""
+        tel_val = re.sub(r"[^0-9+]", "", tel_val)
+
+        courriel_val = str(item.get("courriel", "") or "").strip()
+        if courriel_val.lower() in ("nan", "none", "null", "undefined"):
+            courriel_val = ""
+
+        eq_val = str(item.get("equipe", "") or "").strip()
+        if eq_val.lower() in ("nan", "none", "null", "undefined"):
+            eq_val = ""
+
+        c_val = str(item.get("contraintes", "") or "").strip()
+        if c_val.lower() in ("nan", "none", "null", "undefined"):
+            c_val = ""
+
+        liste_propre.append({
+            "nom": nom_val,
+            "telephone": tel_val,
+            "courriel": courriel_val,
+            "actif": bool(item.get("actif", True)),
+            "capitaine": bool(item.get("capitaine", False)),
+            "lundi": bool(item.get("lundi", True)),
+            "mardi": bool(item.get("mardi", True)),
+            "mercredi": bool(item.get("mercredi", True)),
+            "jeudi": bool(item.get("jeudi", True)),
+            "contraintes": c_val,
+            "equipe": eq_val
+        })
+
+    _ecrire_cache_fichier("joueurs_registre", JOUEURS_FILE, liste_propre)
+    return liste_propre
+
+
+def sauvegarder_registre_joueurs(liste_joueurs):
+    """Sauvegarde le registre officiel des joueurs dans joueurs.json et synchronise sur Supabase & GitHub."""
+    if not isinstance(liste_joueurs, list):
+        return False, "La liste de joueurs fournie est invalide."
+
+    liste_propre = []
+    vus = set()
+    for item in liste_joueurs:
+        if not isinstance(item, dict):
+            continue
+        nom_val = str(item.get("nom") or item.get("joueur") or "").strip()
+        if not nom_val or (nom_val.lower().startswith("joueur ") and len(nom_val) <= 9 and nom_val[7:].isdigit()):
+            continue
+        cle_u = nom_val.lower()
+        if cle_u in vus:
+            continue
+        vus.add(cle_u)
+
+        tel_val = str(item.get("telephone", "") or "").strip()
+        if tel_val.lower() in ("nan", "none", "null", "undefined"):
+            tel_val = ""
+        tel_val = re.sub(r"[^0-9+]", "", tel_val)
+
+        courriel_val = str(item.get("courriel", "") or "").strip()
+        if courriel_val.lower() in ("nan", "none", "null", "undefined"):
+            courriel_val = ""
+
+        eq_val = str(item.get("equipe", "") or "").strip()
+        if eq_val.lower() in ("nan", "none", "null", "undefined"):
+            eq_val = ""
+
+        c_val = str(item.get("contraintes", "") or "").strip()
+        if c_val.lower() in ("nan", "none", "null", "undefined"):
+            c_val = ""
+
+        liste_propre.append({
+            "nom": nom_val,
+            "telephone": tel_val,
+            "courriel": courriel_val,
+            "actif": bool(item.get("actif", True)),
+            "capitaine": bool(item.get("capitaine", False)),
+            "lundi": bool(item.get("lundi", True)),
+            "mardi": bool(item.get("mardi", True)),
+            "mercredi": bool(item.get("mercredi", True)),
+            "jeudi": bool(item.get("jeudi", True)),
+            "contraintes": c_val,
+            "equipe": eq_val
+        })
+
+    try:
+        with open(JOUEURS_FILE, "w", encoding="utf-8") as f:
+            json.dump(liste_propre, f, ensure_ascii=False, indent=2)
+        _ecrire_cache_fichier("joueurs_registre", JOUEURS_FILE, liste_propre)
+    except Exception as e:
+        return False, f"Erreur lors de l'enregistrement de joueurs.json : {e}"
+
+    commit_msg = f"Sauvegarde joueurs.json ({len(liste_propre)} joueurs)"
+    declencher_sync_github_arriere_plan(delai=1.0, commit_prefix=commit_msg, filepath=JOUEURS_FILE)
+    try:
+        synchroniser_fichier_supabase(JOUEURS_FILE, commit_msg)
+    except Exception:
+        pass
+
+    try:
+        sms_actuels = charger_joueurs_sms() or []
+        sms_map = {str(s.get("nom", "")).strip().lower(): s for s in sms_actuels if isinstance(s, dict) and s.get("nom")}
+        nouv_sms = []
+        for j in liste_propre:
+            k = j["nom"].lower()
+            ex_sms = sms_map.get(k, {})
+            nouv_sms.append({
+                "nom": j["nom"],
+                "equipe": j["equipe"],
+                "telephone": j["telephone"],
+                "courriel": j["courriel"],
+                "consentement": bool(ex_sms.get("consentement", False)),
+                "actif": bool(j["actif"])
+            })
+        if nouv_sms:
+            sauvegarder_joueurs_sms(nouv_sms)
+    except Exception:
+        pass
+
+    return True, f"{len(liste_propre)} joueur(s) enregistré(s) avec succès dans joueurs.json."
+
+
 def charger_config_saison():
     """Charge la configuration de début de saison (date de début, joueurs inscrits, équipes et contraintes)."""
     ok_c, val_c = _lire_cache_fichier("config_saison", CONFIG_SAISON_FILE)
@@ -6474,45 +6792,55 @@ def charger_config_saison():
     if not cfg.get("nb_semaines"):
         cfg["nb_semaines"] = 14
 
-    # Synchroniser les joueurs inscrits avec equipes-saphir.csv tout en préservant les contraintes existantes
-    joueurs_existants = {}
-    for item_j in cfg.get("joueurs_inscrits", []):
-        if isinstance(item_j, dict) and str(item_j.get("joueur", "")).strip():
-            cle_j = str(item_j["joueur"]).strip().lower()
-            joueurs_existants[cle_j] = item_j
-
+    # Synchroniser avec le registre officiel des joueurs
+    registre = charger_registre_joueurs()
     liste_joueurs_finale = []
     vus_j = set()
+
+    for j_reg in registre:
+        nom_j = str(j_reg.get("nom", "")).strip()
+        if not nom_j or (nom_j.lower().startswith("joueur ") and len(nom_j) <= 9 and nom_j[7:].isdigit()):
+            continue
+        cle_j = nom_j.lower()
+        vus_j.add(cle_j)
+        eq_j = str(j_reg.get("equipe", "")).strip()
+        liste_joueurs_finale.append({
+            "joueur": nom_j,
+            "nom": nom_j,
+            "telephone": str(j_reg.get("telephone", "")).strip(),
+            "courriel": str(j_reg.get("courriel", "")).strip(),
+            "actif": bool(j_reg.get("actif", True)),
+            "capitaine": bool(j_reg.get("capitaine", False)),
+            "equipe": eq_j,
+            "lundi": bool(j_reg.get("lundi", True)),
+            "mardi": bool(j_reg.get("mardi", True)),
+            "mercredi": bool(j_reg.get("mercredi", True)),
+            "jeudi": bool(j_reg.get("jeudi", True)),
+            "contraintes": str(j_reg.get("contraintes", "") or "").strip(),
+        })
+
+    # Synchroniser également avec equipes_csv au cas où un nouveau joueur y aurait été ajouté manuellement
     for eq_nom, j_liste in (equipes_csv or {}).items():
         for j_nom in j_liste:
             j_clean = str(j_nom).strip()
-            if not j_clean:
+            if not j_clean or (j_clean.lower().startswith("joueur ") and len(j_clean) <= 9 and j_clean[7:].isdigit()):
                 continue
             cle_j = j_clean.lower()
-            vus_j.add(cle_j)
-            ex = joueurs_existants.get(cle_j, {})
-            liste_joueurs_finale.append({
-                "joueur": j_clean,
-                "equipe": str(ex.get("equipe") or eq_nom).strip(),
-                "lundi": bool(ex.get("lundi", True)),
-                "mardi": bool(ex.get("mardi", True)),
-                "mercredi": bool(ex.get("mercredi", True)),
-                "jeudi": bool(ex.get("jeudi", True)),
-                "contraintes": str(ex.get("contraintes", "") or "").strip(),
-            })
-
-    # Conserver aussi les joueurs inscrits supplémentaires non encore dans equipes_csv
-    for cle_j, ex in joueurs_existants.items():
-        if cle_j not in vus_j:
-            liste_joueurs_finale.append({
-                "joueur": str(ex.get("joueur", "")).strip(),
-                "equipe": str(ex.get("equipe", "")).strip(),
-                "lundi": bool(ex.get("lundi", True)),
-                "mardi": bool(ex.get("mardi", True)),
-                "mercredi": bool(ex.get("mercredi", True)),
-                "jeudi": bool(ex.get("jeudi", True)),
-                "contraintes": str(ex.get("contraintes", "") or "").strip(),
-            })
+            if cle_j not in vus_j:
+                vus_j.add(cle_j)
+                liste_joueurs_finale.append({
+                    "joueur": j_clean,
+                    "nom": j_clean,
+                    "telephone": "",
+                    "courriel": "",
+                    "actif": True,
+                    "equipe": eq_nom,
+                    "lundi": True,
+                    "mardi": True,
+                    "mercredi": True,
+                    "jeudi": True,
+                    "contraintes": "",
+                })
 
     cfg["joueurs_inscrits"] = liste_joueurs_finale
     cfg["equipes"] = equipes_csv
@@ -16942,114 +17270,216 @@ def afficher_onglet_sentinelle_sms():
 
 
 
-def charger_historique_matchs():
+def charger_historique_matchs(num_saison=None):
+    """Charge la liste des matchs archivés depuis le fichier d'historique de la saison spécifiée
+    (ou de la saison courante dans historique_matchs.json si num_saison est None)."""
+    fichier_cible = obtenir_chemin_historique_saison(num_saison)
+    cle_cache = f"historique_matchs_{num_saison}" if num_saison is not None else "historique_matchs"
 
-    """Charge la liste des matchs archivés depuis le fichier d'historique (avec repli sur la sauvegarde .bak ou GitHub si nécessaire)."""
-
-    ok_c, val_c = _lire_cache_fichier("historique_matchs", HISTORIQUE_FILE)
-
-    if ok_c and isinstance(val_c, list) and len(val_c) > 0:
+    ok_c, val_c = _lire_cache_fichier(cle_cache, fichier_cible)
+    if ok_c and isinstance(val_c, list):
         for m_c in val_c:
             if isinstance(m_c, dict):
                 obtenir_totaux_match_fiables(m_c)
         return val_c
 
-    for chemin in [HISTORIQUE_FILE, f"{HISTORIQUE_FILE}.bak"]:
+    # 1. Lire directement le fichier local cible s'il existe (y compris s'il est vide [])
+    if os.path.exists(fichier_cible):
+        try:
+            with open(fichier_cible, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, list):
+                for m_d in data:
+                    if isinstance(m_d, dict):
+                        obtenir_totaux_match_fiables(m_d)
+                _ecrire_cache_fichier(cle_cache, fichier_cible, data)
+                return data
+        except Exception:
+            pass
 
-        if os.path.exists(chemin):
+    # Si c'est un fichier d'archive d'une saison spécifique et qu'il n'existe pas en local,
+    # tenter de le récupérer depuis Supabase ou GitHub
+    nom_base = os.path.basename(fichier_cible)
+    if num_saison is not None:
+        try:
+            raw_sb = telecharger_fichier_supabase(nom_base)
+            if raw_sb:
+                sb_data = json.loads(raw_sb)
+                if isinstance(sb_data, list):
+                    for m_s in sb_data:
+                        if isinstance(m_s, dict):
+                            obtenir_totaux_match_fiables(m_s)
+                    with open(fichier_cible, "w", encoding="utf-8") as f_w:
+                        json.dump(sb_data, f_w, ensure_ascii=False, indent=4)
+                    _ecrire_cache_fichier(cle_cache, fichier_cible, sb_data)
+                    return sb_data
+        except Exception:
+            pass
+        try:
+            gh_data = telecharger_json_depuis_github(nom_base)
+            if isinstance(gh_data, list):
+                for m_g in gh_data:
+                    if isinstance(m_g, dict):
+                        obtenir_totaux_match_fiables(m_g)
+                with open(fichier_cible, "w", encoding="utf-8") as f_w:
+                    json.dump(gh_data, f_w, ensure_ascii=False, indent=4)
+                _ecrire_cache_fichier(cle_cache, fichier_cible, gh_data)
+                return gh_data
+        except Exception:
+            pass
+        return []
 
-            try:
-
-                with open(chemin, "r", encoding="utf-8") as f:
-
-                    data = json.load(f)
-
-                    if isinstance(data, list) and len(data) > 0:
-                        for m_d in data:
-                            if isinstance(m_d, dict):
-                                obtenir_totaux_match_fiables(m_d)
-
-                        if chemin == HISTORIQUE_FILE:
-
-                            _ecrire_cache_fichier("historique_matchs", HISTORIQUE_FILE, data)
-
-                        return data
-
-            except Exception:
-
-                continue
-
-    # Repli de sécurité : tenter de récupérer la sauvegarde officielle directement depuis GitHub
+    # Pour historique_matchs.json principal uniquement :
+    # Si le fichier local n'existe pas ou est corrompu, repli sur .bak puis Cloud
+    if os.path.exists(f"{HISTORIQUE_FILE}.bak"):
+        try:
+            with open(f"{HISTORIQUE_FILE}.bak", "r", encoding="utf-8") as f_bak:
+                data_bak = json.load(f_bak)
+            if isinstance(data_bak, list):
+                for m_d in data_bak:
+                    if isinstance(m_d, dict):
+                        obtenir_totaux_match_fiables(m_d)
+                return data_bak
+        except Exception:
+            pass
 
     try:
-
         raw_sb = telecharger_fichier_supabase("historique_matchs.json")
-
         if raw_sb:
-
             sb_data = json.loads(raw_sb)
-
-            if isinstance(sb_data, list) and len(sb_data) > 0:
+            if isinstance(sb_data, list):
                 for m_s in sb_data:
                     if isinstance(m_s, dict):
                         obtenir_totaux_match_fiables(m_s)
-
                 with open(HISTORIQUE_FILE, "w", encoding="utf-8") as f_w:
-
                     json.dump(sb_data, f_w, ensure_ascii=False, indent=4)
-
                 _ecrire_cache_fichier("historique_matchs", HISTORIQUE_FILE, sb_data)
-
                 return sb_data
-
     except Exception:
-
         pass
 
     try:
-
         gh_data = telecharger_json_depuis_github("historique_matchs.json")
-
-        if isinstance(gh_data, list) and len(gh_data) > 0:
+        if isinstance(gh_data, list):
             for m_g in gh_data:
                 if isinstance(m_g, dict):
                     obtenir_totaux_match_fiables(m_g)
-
             with open(HISTORIQUE_FILE, "w", encoding="utf-8") as f_w:
-
                 json.dump(gh_data, f_w, ensure_ascii=False, indent=4)
-
             return gh_data
-
     except Exception:
-
         pass
 
     return []
 
 
 
-def sauvegarder_historique_matchs(historique_list):
+def archiver_et_reinitialiser_historique_saison(num_saison_a_archiver=None):
+    """Sauvegarde une copie intégrale de l'historique actuel dans historique_matchs_saison_{N}.json,
+    synchronise l'archive sur le Cloud (GitHub et Supabase), puis réinitialise
+    historique_matchs.json à zéro pour la nouvelle saison.
+    Retourne (succes: bool, message: str, nom_fichier_archive: str, nb_matchs: int).
+    """
+    try:
+        # 1. Charger l'historique actuel des matchs
+        matchs_actuels = []
+        if os.path.exists(HISTORIQUE_FILE):
+            try:
+                with open(HISTORIQUE_FILE, "r", encoding="utf-8") as f:
+                    d = json.load(f)
+                    if isinstance(d, list):
+                        matchs_actuels = d
+            except Exception:
+                matchs_actuels = charger_historique_matchs()
+        else:
+            matchs_actuels = charger_historique_matchs()
 
-    """Sauvegarde de façon atomique et sécurisée la liste des matchs dans historique_matchs.json sans HTML, avec copie .bak."""
+        # Nettoyage systématique des matchs pour l'archive
+        for m in (matchs_actuels or []):
+            if isinstance(m, dict):
+                m.pop("html_officiel", None)
+                m.pop("html", None)
+                obtenir_totaux_match_fiables(m)
 
+        # 2. Déterminer le numéro de la saison à archiver
+        if num_saison_a_archiver is None:
+            saisons_vus = [deduire_saison_match(m) for m in (matchs_actuels or []) if isinstance(m, dict)]
+            if saisons_vus:
+                from collections import Counter
+                num_saison_a_archiver = Counter(saisons_vus).most_common(1)[0][0]
+            else:
+                cfg_s = charger_config_saison()
+                d_deb_str = str(cfg_s.get("date_debut_saison", "") or "").strip()
+                if d_deb_str:
+                    try:
+                        d_deb_obj = datetime.strptime(d_deb_str, "%Y-%m-%d").date()
+                        num_saison_a_archiver, _ = calculer_numero_saison(d_deb_obj)
+                    except Exception:
+                        num_saison_a_archiver = 1
+                else:
+                    num_saison_a_archiver = 1
+
+        num_s = int(num_saison_a_archiver)
+        fichier_archive = get_data_path(f"historique_matchs_saison_{num_s}.json")
+        nom_archive = os.path.basename(fichier_archive)
+        nb_matchs = len(matchs_actuels or [])
+
+        # 3. Sauvegarder l'archive de la saison terminée sur le disque
+        with open(fichier_archive, "w", encoding="utf-8") as f_arch:
+            json.dump(matchs_actuels, f_arch, ensure_ascii=False, indent=4)
+        _ecrire_cache_fichier(f"historique_matchs_{num_s}", fichier_archive, matchs_actuels)
+
+        # Synchroniser l'archive sur Supabase et GitHub
+        synchroniser_fichier_cloud(
+            fichier_archive,
+            commit_message=f"Archivage officiel Saison {num_s} ({nb_matchs} matchs)",
+            forcer=True
+        )
+
+        # 4. Remise à zéro de l'historique pour la nouvelle saison
+        with open(HISTORIQUE_FILE, "w", encoding="utf-8") as f_actuel:
+            json.dump([], f_actuel, ensure_ascii=False, indent=4)
+
+        # Mettre également la sauvegarde .bak à vide
+        with open(f"{HISTORIQUE_FILE}.bak", "w", encoding="utf-8") as f_bak:
+            json.dump([], f_bak, ensure_ascii=False, indent=4)
+
+        _ecrire_cache_fichier("historique_matchs", HISTORIQUE_FILE, [])
+
+        # Forcer la synchronisation du fichier vide vers GitHub et Supabase sans fusionner l'ancienne saison
+        synchroniser_fichier_cloud(
+            HISTORIQUE_FILE,
+            commit_message=f"Réinitialisation historique_matchs.json pour nouvelle saison (Archive Saison {num_s} sauvegardée)",
+            forcer=True
+        )
+
+        try:
+            diffuser_evenement_pubsub_sms("NOUVEAU_MATCH", {"match_count": 0, "action": "RESET_SAISON", "archive": nom_archive})
+        except Exception:
+            pass
+
+        return True, f"Historique de la Saison {num_s} archivé avec succès dans '{nom_archive}' ({nb_matchs} match(s)). Historique de la nouvelle saison réinitialisé à zéro.", nom_archive, nb_matchs
+
+    except Exception as e:
+        return False, f"Erreur lors de l'archivage de l'historique : {e}", "", 0
+
+
+def sauvegarder_historique_matchs(historique_list, forcer_reset=False, num_saison=None):
+    """Sauvegarde de façon atomique et sécurisée la liste des matchs dans historique_matchs.json (ou fichier de saison) sans HTML, avec copie .bak."""
     if not isinstance(historique_list, list):
-
         return False
 
-    try:
+    fichier_cible = obtenir_chemin_historique_saison(num_saison)
+    cle_cache = f"historique_matchs_{num_saison}" if num_saison is not None else "historique_matchs"
 
+    try:
         # Nettoyage systématique : aucun HTML dans le JSON d'historique (données pures uniquement) et totaux toujours synchronisés avec les 9 manches
         maintenant_enreg_str = datetime.now().strftime("%d/%m/%Y à %H:%M")
 
         for idx_m, m in enumerate(historique_list):
-
             if isinstance(m, dict):
-
                 m.pop("html_officiel", None)
-
                 m.pop("html", None)
-
                 obtenir_totaux_match_fiables(m)
 
                 rec_m_sv = m.get("receveur", m.get("equipe_receveur", ""))
@@ -17062,81 +17492,72 @@ def sauvegarder_historique_matchs(historique_list):
                 m["date"] = d_match_sv
 
                 if not m.get("date_enregistrement"):
-
                     m["date_enregistrement"] = maintenant_enreg_str
 
-
-
-        if os.path.exists(HISTORIQUE_FILE) and os.path.getsize(HISTORIQUE_FILE) > 2:
-
+        if os.path.exists(fichier_cible) and os.path.getsize(fichier_cible) > 2 and not forcer_reset:
             try:
-
-                with open(HISTORIQUE_FILE, "r", encoding="utf-8") as f_src:
-
+                with open(fichier_cible, "r", encoding="utf-8") as f_src:
                     ancien_contenu = f_src.read()
-
-                with open(f"{HISTORIQUE_FILE}.bak", "w", encoding="utf-8") as f_bak:
-
+                with open(f"{fichier_cible}.bak", "w", encoding="utf-8") as f_bak:
                     f_bak.write(ancien_contenu)
-
             except Exception:
-
+                pass
+        elif forcer_reset:
+            try:
+                with open(f"{fichier_cible}.bak", "w", encoding="utf-8") as f_bak:
+                    json.dump([], f_bak, ensure_ascii=False, indent=4)
+            except Exception:
                 pass
 
-        tmp_file = f"{HISTORIQUE_FILE}.tmp"
-
+        tmp_file = f"{fichier_cible}.tmp"
         with open(tmp_file, "w", encoding="utf-8") as f_tmp:
-
             json.dump(historique_list, f_tmp, ensure_ascii=False, indent=4)
 
         try:
-
-            os.replace(tmp_file, HISTORIQUE_FILE)
-
+            os.replace(tmp_file, fichier_cible)
         except Exception:
-
-            with open(HISTORIQUE_FILE, "w", encoding="utf-8") as f_direct:
-
+            with open(fichier_cible, "w", encoding="utf-8") as f_direct:
                 json.dump(historique_list, f_direct, ensure_ascii=False, indent=4)
-
             if os.path.exists(tmp_file):
-
                 try:
-
                     os.remove(tmp_file)
-
                 except Exception:
-
                     pass
 
-        declencher_sync_github_arriere_plan(delai=1.0, commit_prefix=f"Sauvegarde match ({len(historique_list)} matchs)", filepath=HISTORIQUE_FILE)
+        _ecrire_cache_fichier(cle_cache, fichier_cible, historique_list)
+
+        if forcer_reset:
+            synchroniser_fichier_cloud(
+                fichier_cible,
+                commit_message="Réinitialisation historique début de nouvelle saison (0 match)",
+                forcer=True
+            )
+        else:
+            declencher_sync_github_arriere_plan(
+                delai=1.0,
+                commit_prefix=f"Sauvegarde match ({len(historique_list)} matchs)",
+                filepath=fichier_cible
+            )
 
         try:
-
             diffuser_evenement_pubsub_sms("NOUVEAU_MATCH", {"match_count": len(historique_list)})
-
         except Exception:
-
             pass
 
         return True
 
     except Exception as e:
-
         try:
-
-            with open(HISTORIQUE_FILE, "w", encoding="utf-8") as f_direct:
-
+            with open(fichier_cible, "w", encoding="utf-8") as f_direct:
                 json.dump(historique_list, f_direct, ensure_ascii=False, indent=4)
-
-            declencher_sync_github_arriere_plan(delai=1.0, commit_prefix=f"Sauvegarde match ({len(historique_list)} matchs)", filepath=HISTORIQUE_FILE)
-
+            _ecrire_cache_fichier(cle_cache, fichier_cible, historique_list)
+            if forcer_reset:
+                synchroniser_fichier_cloud(fichier_cible, commit_message="Réinitialisation historique", forcer=True)
+            else:
+                declencher_sync_github_arriere_plan(delai=1.0, commit_prefix=f"Sauvegarde match ({len(historique_list)} matchs)", filepath=fichier_cible)
             return True
-
         except Exception:
-
             st.error(f"Erreur lors de la sauvegarde de l'historique des matchs : {e}")
-
             return False
 
 
@@ -36239,28 +36660,217 @@ def afficher_configuration_debut_saison(key_prefix="cfg_saison", afficher_reset_
                 st.rerun()
 
     with sub_tab_joueurs:
-        st.markdown("##### 👥 Liste des joueurs inscrits et contraintes des joueurs pour jouer")
+        st.markdown("##### 👥 Registre officiel des joueurs & Contraintes pour jouer (`joueurs.json`)")
         st.caption(
-            "Inscrivez les joueurs de la saison, leur équipe et cochez/décochez leurs jours de disponibilité (`Lundi`, `Mardi`, `Mercredi`, `Jeudi`) "
-            "ou ajoutez une note de contrainte. Lors de la génération de l'horaire, une équipe ne sera pas programmée un soir où l'un de ses joueurs est indisponible."
+            "Gérez ici l'ensemble des joueurs de la ligue : **Nom complet**, **Numéro de téléphone**, **Adresse courriel**, "
+            "**Statut (Actif ou Inactif)**, **Équipe assignée** et **Contraintes de journées (Lundi, Mardi, Mercredi, Jeudi)**. "
+            "Cette liste est utilisée en début de saison pour composer les équipes et générer automatiquement un calendrier conforme aux disponibilités de chacun."
         )
+
+        registre_actuel = charger_registre_joueurs()
+
+        # --- SECTIONS AJOUTER & RETIRER UN JOUEUR ---
+        col_exp_add, col_exp_del = st.columns(2)
+
+        with col_exp_add:
+            with st.expander("➕ Ajouter un nouveau joueur", expanded=False):
+                with st.form(f"{key_prefix}_form_ajout_joueur", clear_on_submit=True):
+                    n_nom = st.text_input("Nom complet du joueur :", placeholder="Ex: Martin Leblanc", key=f"{key_prefix}_n_nom")
+                    n_tel = st.text_input("Numéro de téléphone :", placeholder="Ex: 4181234567", key=f"{key_prefix}_n_tel")
+                    n_courriel = st.text_input("Adresse courriel :", placeholder="Ex: martin.leblanc@example.com", key=f"{key_prefix}_n_email")
+
+                    opts_eq_add = ["(Sans équipe / Remplaçant)"] + sorted(list(equipes_actuelles.keys())) + ["➕ Autre équipe..."]
+                    choix_eq_add = st.selectbox("Équipe assignée :", options=opts_eq_add, index=0, key=f"{key_prefix}_n_eq_sel")
+                    autre_eq_txt = ""
+                    if choix_eq_add == "➕ Autre équipe...":
+                        autre_eq_txt = st.text_input("Nom de la nouvelle équipe :", placeholder="Ex: India", key=f"{key_prefix}_n_eq_txt")
+
+                    st.markdown("**Disponibilités pour jouer :**")
+                    col_d_lun, col_d_mar, col_d_mer, col_d_jeu = st.columns(4)
+                    with col_d_lun:
+                        nd_lun = st.checkbox("Lundi", value=True, key=f"{key_prefix}_n_d_lun")
+                    with col_d_mar:
+                        nd_mar = st.checkbox("Mardi", value=True, key=f"{key_prefix}_n_d_mar")
+                    with col_d_mer:
+                        nd_mer = st.checkbox("Mercredi", value=True, key=f"{key_prefix}_n_d_mer")
+                    with col_d_jeu:
+                        nd_jeu = st.checkbox("Jeudi", value=True, key=f"{key_prefix}_n_d_jeu")
+
+                    col_a_st1, col_a_st2 = st.columns(2)
+                    with col_a_st1:
+                        n_actif = st.checkbox("Joueur actif pour la saison", value=True, key=f"{key_prefix}_n_actif")
+                    with col_a_st2:
+                        n_capitaine = st.checkbox("Capitaine d'équipe 👑", value=False, key=f"{key_prefix}_n_capitaine")
+                    n_contr = st.text_input("Contraintes / Notes spécifiques :", placeholder="Ex: Pas avant 19h30", key=f"{key_prefix}_n_contr")
+
+                    btn_creer_j = st.form_submit_button("➕ Enregistrer le joueur", type="primary", use_container_width=True)
+                    if btn_creer_j:
+                        nom_p = n_nom.strip()
+                        if not nom_p:
+                            st.error("❌ Le nom complet du joueur est obligatoire.")
+                        elif any(j["nom"].strip().lower() == nom_p.lower() for j in registre_actuel):
+                            st.error(f"❌ Le joueur '{nom_p}' existe déjà dans le registre.")
+                        else:
+                            eq_fin = autre_eq_txt.strip() if choix_eq_add == "➕ Autre équipe..." else ("" if choix_eq_add.startswith("(Sans") else choix_eq_add)
+                            nouveau_rec = {
+                                "nom": nom_p,
+                                "telephone": n_tel.strip(),
+                                "courriel": n_courriel.strip(),
+                                "actif": bool(n_actif),
+                                "capitaine": bool(n_capitaine),
+                                "lundi": bool(nd_lun),
+                                "mardi": bool(nd_mar),
+                                "mercredi": bool(nd_mer),
+                                "jeudi": bool(nd_jeu),
+                                "contraintes": n_contr.strip(),
+                                "equipe": eq_fin
+                            }
+                            registre_actuel.append(nouveau_rec)
+                            sauvegarder_registre_joueurs(registre_actuel)
+
+                            # Si une équipe est désignée, mettre à jour equipes-saphir.csv
+                            if eq_fin:
+                                eq_maj = dict(equipes_actuelles)
+                                jl = list(eq_maj.get(eq_fin, []))
+                                remplace_placeholder = False
+                                for idx_slot, nom_s in enumerate(jl):
+                                    if nom_s.lower().startswith("joueur ") and (len(nom_s) <= 9 and nom_s[7:].isdigit()):
+                                        jl[idx_slot] = nom_p
+                                        remplace_placeholder = True
+                                        break
+                                if not remplace_placeholder:
+                                    jl.append(nom_p)
+                                while len(jl) < 3:
+                                    jl.append(f"Joueur {len(jl) + 1}")
+                                eq_maj[eq_fin] = jl[:3]
+                                sauvegarder_equipes_csv(eq_maj)
+                                cfg_s["equipes"] = eq_maj
+
+                            sauvegarder_config_saison(charger_config_saison())
+                            st.success(f"✅ Le joueur '{nom_p}' a été ajouté avec succès au registre officiel !")
+                            time.sleep(0.8)
+                            st.rerun()
+
+        with col_exp_del:
+            with st.expander("🗑️ Retirer ou désactiver un joueur", expanded=False):
+                noms_existants = [j["nom"] for j in registre_actuel]
+                if not noms_existants:
+                    st.info("Aucun joueur n'est présent dans le registre.")
+                else:
+                    j_choisi_del = st.selectbox(
+                        "Choisir le joueur :",
+                        options=noms_existants,
+                        key=f"{key_prefix}_sel_joueur_del"
+                    )
+                    j_obj_del = next((j for j in registre_actuel if j["nom"] == j_choisi_del), None)
+                    if j_obj_del:
+                        st_ico = "🟢 Actif" if j_obj_del.get("actif", True) else "🔴 Inactif"
+                        cap_ico = " | 👑 Capitaine" if j_obj_del.get("capitaine", False) else ""
+                        eq_aff = j_obj_del.get("equipe") or "Sans équipe"
+                        tel_aff = j_obj_del.get("telephone") or "Non renseigné"
+                        courriel_aff = j_obj_del.get("courriel") or "Non renseigné"
+                        st.info(f"**{j_obj_del['nom']}** ({st_ico}{cap_ico}) — Équipe : **{eq_aff}**\nTél : `{tel_aff}` | Courriel : `{courriel_aff}`")
+
+                        col_act1, col_act2, col_act3 = st.columns(3)
+                        with col_act1:
+                            est_act_cur = j_obj_del.get("actif", True)
+                            lbl_btn_toggle = "⏸️ Désactiver" if est_act_cur else "▶️ Réactiver"
+                            if st.button(lbl_btn_toggle, use_container_width=True, key=f"{key_prefix}_btn_toggle_act_j"):
+                                for j_it_mod in registre_actuel:
+                                    if j_it_mod["nom"] == j_choisi_del:
+                                        j_it_mod["actif"] = not est_act_cur
+                                sauvegarder_registre_joueurs(registre_actuel)
+                                sauvegarder_config_saison(charger_config_saison())
+                                stat_str = "inactif" if est_act_cur else "actif"
+                                st.success(f"✅ Le joueur '{j_choisi_del}' est désormais {stat_str}.")
+                                time.sleep(0.8)
+                                st.rerun()
+
+                        with col_act2:
+                            est_cap_cur = bool(j_obj_del.get("capitaine", False))
+                            lbl_btn_cap = "👑 Retirer Capitaine" if est_cap_cur else "👑 Nommer Capitaine"
+                            if st.button(lbl_btn_cap, use_container_width=True, key=f"{key_prefix}_btn_toggle_cap_j"):
+                                for j_it_mod in registre_actuel:
+                                    if j_it_mod["nom"] == j_choisi_del:
+                                        j_it_mod["capitaine"] = not est_cap_cur
+                                sauvegarder_registre_joueurs(registre_actuel)
+                                sauvegarder_config_saison(charger_config_saison())
+                                cap_str = "nommé capitaine 👑" if not est_cap_cur else "retiré du rôle de capitaine"
+                                st.success(f"✅ Le joueur '{j_choisi_del}' est maintenant {cap_str}.")
+                                time.sleep(0.8)
+                                st.rerun()
+
+                        with col_act3:
+                            if st.button(f"🗑️ Supprimer", type="secondary", use_container_width=True, key=f"{key_prefix}_btn_suppr_def_j"):
+                                registre_actuel = [j for j in registre_actuel if j["nom"] != j_choisi_del]
+                                sauvegarder_registre_joueurs(registre_actuel)
+
+                                # Retirer aussi de equipes-saphir.csv si présent
+                                eq_maj = dict(equipes_actuelles)
+                                maj_eq_needed = False
+                                for en, jl in eq_maj.items():
+                                    if j_choisi_del in jl:
+                                        jl_clean = [x for x in jl if x != j_choisi_del]
+                                        while len(jl_clean) < 3:
+                                            jl_clean.append(f"Joueur {len(jl_clean) + 1}")
+                                        eq_maj[en] = jl_clean[:3]
+                                        maj_eq_needed = True
+                                if maj_eq_needed:
+                                    sauvegarder_equipes_csv(eq_maj)
+                                    cfg_s["equipes"] = eq_maj
+
+                                sauvegarder_config_saison(charger_config_saison())
+                                st.success(f"✅ Le joueur '{j_choisi_del}' a été supprimé définitivement du registre.")
+                                time.sleep(0.8)
+                                st.rerun()
+
+        st.divider()
+
+        # --- FILTRE ET ÉDITEUR DU REGISTRE ---
+        col_fil1, col_fil2 = st.columns([2.5, 1.5])
+        with col_fil1:
+            filtre_vue_joueurs = st.radio(
+                "Affichage du registre :",
+                options=["Tous les joueurs", "Joueurs actifs seulement", "Joueurs inactifs seulement"],
+                horizontal=True,
+                key=f"{key_prefix}_filtre_vue_joueurs"
+            )
+        with col_fil2:
+            nb_act_tot = len([j for j in registre_actuel if j.get("actif", True)])
+            st.metric("👥 Total des joueurs", f"{len(registre_actuel)} inscrit(s)", f"{nb_act_tot} actif(s)")
+
         lignes_j_df = []
-        for j_it in joueurs_inscrits:
+        for j_it in registre_actuel:
             if not isinstance(j_it, dict):
                 continue
+            est_a = bool(j_it.get("actif", True))
+            if filtre_vue_joueurs == "Joueurs actifs seulement" and not est_a:
+                continue
+            if filtre_vue_joueurs == "Joueurs inactifs seulement" and est_a:
+                continue
+            nom_j_aff = str(j_it.get("nom", "") or j_it.get("joueur", "")).strip()
             lignes_j_df.append({
-                "Joueur": str(j_it.get("joueur", "")).strip(),
+                "Nom complet": nom_j_aff,
                 "Équipe": str(j_it.get("equipe", "")).strip(),
+                "Capitaine": bool(j_it.get("capitaine", False)),
+                "Actif": est_a,
+                "Téléphone": str(j_it.get("telephone", "")).strip(),
+                "Courriel": str(j_it.get("courriel", "")).strip(),
                 "Dispo Lundi": bool(j_it.get("lundi", True)),
                 "Dispo Mardi": bool(j_it.get("mardi", True)),
                 "Dispo Mercredi": bool(j_it.get("mercredi", True)),
                 "Dispo Jeudi": bool(j_it.get("jeudi", True)),
                 "Contraintes / Notes": str(j_it.get("contraintes", "") or "").strip(),
             })
+
         if not lignes_j_df:
             lignes_j_df.append({
-                "Joueur": "Joueur 1",
+                "Nom complet": "Joueur 1",
                 "Équipe": "Alpha",
+                "Capitaine": False,
+                "Actif": True,
+                "Téléphone": "",
+                "Courriel": "",
                 "Dispo Lundi": True,
                 "Dispo Mardi": True,
                 "Dispo Mercredi": True,
@@ -36273,53 +36883,85 @@ def afficher_configuration_debut_saison(key_prefix="cfg_saison", afficher_reset_
             num_rows="dynamic",
             use_container_width=True,
             hide_index=True,
-            key=f"{key_prefix}_editor_joueurs_contraintes",
+            key=f"{key_prefix}_editor_joueurs_registre",
             column_config={
-                "Joueur": st.column_config.TextColumn("Joueur inscrit", required=True, width="medium"),
-                "Équipe": st.column_config.TextColumn("Équipe", required=True, width="small"),
-                "Dispo Lundi": st.column_config.CheckboxColumn("Dispo Lundi", default=True),
-                "Dispo Mardi": st.column_config.CheckboxColumn("Dispo Mardi", default=True),
-                "Dispo Mercredi": st.column_config.CheckboxColumn("Dispo Mercredi", default=True),
-                "Dispo Jeudi": st.column_config.CheckboxColumn("Dispo Jeudi", default=True),
-                "Contraintes / Notes": st.column_config.TextColumn("Contraintes pour jouer (ex: Pas lundi)", width="medium"),
+                "Nom complet": st.column_config.TextColumn("Nom complet", required=True, width="medium"),
+                "Équipe": st.column_config.TextColumn("Équipe", required=False, width="small"),
+                "Capitaine": st.column_config.CheckboxColumn("Capitaine 👑", default=False, width="small"),
+                "Actif": st.column_config.CheckboxColumn("Actif", default=True, width="small"),
+                "Téléphone": st.column_config.TextColumn("Téléphone", width="small"),
+                "Courriel": st.column_config.TextColumn("Courriel", width="medium"),
+                "Dispo Lundi": st.column_config.CheckboxColumn("Lundi", default=True, width="small"),
+                "Dispo Mardi": st.column_config.CheckboxColumn("Mardi", default=True, width="small"),
+                "Dispo Mercredi": st.column_config.CheckboxColumn("Mercredi", default=True, width="small"),
+                "Dispo Jeudi": st.column_config.CheckboxColumn("Jeudi", default=True, width="small"),
+                "Contraintes / Notes": st.column_config.TextColumn("Contraintes particulières (ex: Pas lundi)", width="medium"),
             }
         )
 
-        if st.button("💾 Enregistrer la liste des joueurs inscrits et leurs contraintes", type="primary", use_container_width=True, key=f"{key_prefix}_btn_save_joueurs"):
-            nouv_joueurs = []
+        if st.button("💾 Enregistrer le registre des joueurs et leurs contraintes", type="primary", use_container_width=True, key=f"{key_prefix}_btn_save_joueurs"):
+            nouv_joueurs_dict = {j["nom"].strip().lower(): dict(j) for j in registre_actuel}
             eq_grouped = {}
+
             for _, r_j in df_j_edit.iterrows():
-                nom_j = str(r_j.get("Joueur", "") or "").strip()
-                if not nom_j or nom_j.lower() == "nan":
+                nom_j = str(r_j.get("Nom complet", "") or "").strip()
+                if not nom_j or nom_j.lower() == "nan" or (nom_j.lower().startswith("joueur ") and len(nom_j) <= 9 and nom_j[7:].isdigit()):
                     continue
                 eq_j = str(r_j.get("Équipe", "") or "").strip()
                 if eq_j.lower() == "nan":
                     eq_j = ""
-                nouv_joueurs.append({
-                    "joueur": nom_j,
-                    "equipe": eq_j,
+                cle_j = nom_j.lower()
+
+                tel_j = str(r_j.get("Téléphone", "") or "").strip()
+                if tel_j.lower() in ("nan", "none", "null", "undefined"):
+                    tel_j = ""
+                tel_j = re.sub(r"[^0-9+]", "", tel_j)
+
+                courriel_j = str(r_j.get("Courriel", "") or "").strip()
+                if courriel_j.lower() in ("nan", "none", "null", "undefined"):
+                    courriel_j = ""
+
+                contr_j = str(r_j.get("Contraintes / Notes", "") or "").strip()
+                if contr_j.lower() in ("nan", "none", "null", "undefined"):
+                    contr_j = ""
+
+                item_maj = {
+                    "nom": nom_j,
+                    "telephone": tel_j,
+                    "courriel": courriel_j,
+                    "actif": bool(r_j.get("Actif", True)),
+                    "capitaine": bool(r_j.get("Capitaine", False)),
                     "lundi": bool(r_j.get("Dispo Lundi", True)),
                     "mardi": bool(r_j.get("Dispo Mardi", True)),
                     "mercredi": bool(r_j.get("Dispo Mercredi", True)),
                     "jeudi": bool(r_j.get("Dispo Jeudi", True)),
-                    "contraintes": "" if str(r_j.get("Contraintes / Notes", "") or "").strip().lower() == "nan" else str(r_j.get("Contraintes / Notes", "") or "").strip(),
-                })
-                if eq_j:
+                    "contraintes": contr_j,
+                    "equipe": eq_j
+                }
+                nouv_joueurs_dict[cle_j] = item_maj
+                if eq_j and bool(r_j.get("Actif", True)):
                     eq_grouped.setdefault(eq_j, []).append(nom_j)
 
-            cfg_s["joueurs_inscrits"] = nouv_joueurs
-            # Mettre aussi à jour equipes-saphir.csv si des équipes ont été modifiées
+            liste_finale_sauvegardee = list(nouv_joueurs_dict.values())
+            succes_reg, msg_reg = sauvegarder_registre_joueurs(liste_finale_sauvegardee)
+
+            # Mettre à jour equipes-saphir.csv
             if eq_grouped:
                 eq_maj = dict(equipes_actuelles)
                 for eq_k, jl_k in eq_grouped.items():
-                    while len(jl_k) < 3:
-                        jl_k.append(f"Joueur {len(jl_k) + 1}")
-                    eq_maj[eq_k] = jl_k[:3]
+                    jl_unique = []
+                    for nom_u in jl_k:
+                        if nom_u not in jl_unique:
+                            jl_unique.append(nom_u)
+                    while len(jl_unique) < 3:
+                        jl_unique.append(f"Joueur {len(jl_unique) + 1}")
+                    eq_maj[eq_k] = jl_unique[:3]
                 sauvegarder_equipes_csv(eq_maj)
                 cfg_s["equipes"] = eq_maj
-            sauvegarder_config_saison(cfg_s)
-            st.success(f"✅ {len(nouv_joueurs)} joueur(s) inscrit(s) et leurs contraintes ont été enregistrés !")
-            time.sleep(0.7)
+
+            sauvegarder_config_saison(charger_config_saison())
+            st.success(f"✅ {len(liste_finale_sauvegardee)} joueur(s) et leurs contraintes ont été enregistrés avec succès dans joueurs.json !")
+            time.sleep(0.8)
             st.rerun()
 
     with sub_tab_equipes:
@@ -36445,7 +37087,8 @@ def afficher_configuration_debut_saison(key_prefix="cfg_saison", afficher_reset_
                         f"Cette action va :\n"
                         f"1. Enregistrer la date de début de saison (**{txt_deb_fr}**)\n"
                         f"2. Générer le nouvel horaire officiel de **{nb_sem_init} semaines**\n"
-                        f"3. Réinitialiser l'historique des matchs (`historique_matchs.json`) à zéro."
+                        f"3. Archiver l'historique complet des matchs précédents dans `historique_matchs_saison_X.json`\n"
+                        f"4. Réinitialiser l'historique des matchs (`historique_matchs.json`) à zéro pour la nouvelle saison."
                     )
                     if st.button("🔴 Confirmer et démarrer la nouvelle saison", type="primary", use_container_width=True, key=f"{key_prefix}_btn_confirm_new_season"):
                         d_cible = st.session_state.get(f"{key_prefix}_date_debut_input", date_deb_init)
@@ -36458,9 +37101,13 @@ def afficher_configuration_debut_saison(key_prefix="cfg_saison", afficher_reset_
                         cfg_s["nb_semaines"] = n_sem_reelles
                         sauvegarder_config_saison(cfg_s)
                         sauvegarder_horaire_json(nouvelles_lignes_gen, ecraser_principal=True)
-                        sauvegarder_historique_matchs([])
-                        st.success(f"✅ Nouvelle saison démarrée, horaire généré ({n_sem_reelles} semaines) et historique réinitialisé !")
-                        time.sleep(0.9)
+                        ok_arch, msg_arch, nom_arch, nb_m_arch = archiver_et_reinitialiser_historique_saison()
+                        if ok_arch:
+                            st.success(f"✅ {msg_arch}\nHoraire officiel généré ({n_sem_reelles} semaines).")
+                        else:
+                            sauvegarder_historique_matchs([], forcer_reset=True)
+                            st.warning(f"⚠️ {msg_arch}")
+                        time.sleep(1.0)
                         st.rerun()
 
     # Affichage du bloc de prévisualisation de simulation (aucun impact sur la saison active)
@@ -38885,11 +39532,11 @@ with tab_feuille:
 
     # ==============================================================================
 
-    historique_matchs_brut = charger_historique_matchs()
-
     num_saison_en_cours = st.session_state.get("saison_active_selectionnee", 1)
 
-    historique_matchs = filtrer_matchs_par_saison(historique_matchs_brut, num_saison_en_cours)
+    historique_matchs_brut = charger_historique_matchs(num_saison_en_cours)
+
+    historique_matchs = filtrer_matchs_par_saison(historique_matchs_brut, num_saison_en_cours) if historique_matchs_brut else []
 
 
 
@@ -41592,31 +42239,39 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
 
                 st.write(f"📊 **Statut de l'historique :** `{nb_matchs} match(s)` actuellement enregistré(s) dans `{HISTORIQUE_FILE}`.")
 
-                st.warning("⚠️ **Attention :** Démarrer une nouvelle saison réinitialise complètement l'historique de tous les matchs précédents. Aucun archivage n'est effectué.")
+                st.info(f"💡 **Archivage automatique :** Lors du démarrage d'une nouvelle saison, l'historique complet ({nb_matchs} match(s)) est automatiquement sauvegardé dans un fichier d'archive officiel (`historique_matchs_saison_X.json`) sur le disque et dans le Cloud avant la remise à zéro.")
 
 
 
-                with st.popover("🚨 Réinitialiser et démarrer la nouvelle saison", use_container_width=True):
+                with st.popover("🚨 Archiver et démarrer la nouvelle saison", use_container_width=True):
 
-                    st.markdown("### ⚠️ Confirmation obligatoire")
+                    st.markdown("### ⚠️ Démarrer une nouvelle saison")
 
-                    st.write(f"Voulez-vous vraiment effacer les **{nb_matchs} match(s)** enregistrés dans l'historique ?")
+                    st.write("Cette action va :")
+                    st.write(f"1. **Sauvegarder l'archive complète** des **{nb_matchs} match(s)** actuels dans `historique_matchs_saison_X.json` (avec synchronisation GitHub et Supabase).")
+                    st.write("2. **Réinitialiser à zéro** l'historique des matchs (`historique_matchs.json`) pour la nouvelle saison.")
 
-                    st.write("Cette action est irréversible et supprimera le fichier d'historique.")
-
-                    if st.button("🔴 Confirmer la réinitialisation de la saison", type="primary", use_container_width=True):
+                    if st.button("🔴 Confirmer l'archivage et le démarrage de la nouvelle saison", type="primary", use_container_width=True):
 
                         try:
 
-                            sauvegarder_historique_matchs([])
+                            ok_arch, msg_arch, nom_arch, nb_m_arch = archiver_et_reinitialiser_historique_saison()
 
-                            st.success("✅ Historique réinitialisé avec succès (localement et sur GitHub) ! La nouvelle saison est ouverte.")
+                            if ok_arch:
+
+                                st.success(f"✅ {msg_arch} La nouvelle saison est officiellement ouverte !")
+
+                            else:
+
+                                st.error(f"Erreur lors de l'archivage : {msg_arch}")
+
+                            time.sleep(1.0)
 
                             st.rerun()
 
                         except Exception as e_hist:
 
-                            st.error(f"Erreur lors de la suppression de l'historique : {e_hist}")
+                            st.error(f"Erreur lors de l'archivage et réinitialisation : {e_hist}")
 
 
 
@@ -43364,6 +44019,33 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
 
                                     st.error(f"Erreur d'importation : {e_up_m}")
 
+                        # Section Archives des saisons précédentes
+                        try:
+                            archives_saisons = [h for h in lister_historiques_saisons_disponibles() if not h.get("est_courante")]
+                            if archives_saisons:
+                                st.divider()
+                                st.markdown("###### 📦 Archives des saisons précédentes")
+                                for a_info in archives_saisons:
+                                    col_a1, col_a2 = st.columns([2.5, 1.5])
+                                    with col_a1:
+                                        st.caption(f"**{a_info['label']}**")
+                                    with col_a2:
+                                        try:
+                                            with open(a_info["chemin"], "r", encoding="utf-8") as f_a:
+                                                d_a_json = f_a.read()
+                                            st.download_button(
+                                                label="📥 Télécharger",
+                                                data=d_a_json,
+                                                file_name=a_info["nom_fichier"],
+                                                mime="application/json",
+                                                key=f"dl_archive_{a_info['num']}",
+                                                use_container_width=True
+                                            )
+                                        except Exception:
+                                            pass
+                        except Exception:
+                            pass
+
                 with col_json_t:
 
                     with st.container(border=True):
@@ -43627,6 +44309,108 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
                                 except Exception as e_up_t:
 
                                     st.error(f"Erreur d'importation : {e_up_t}")
+
+                st.divider()
+
+                st.markdown("#### 👥 Sauvegarde & Restauration du Registre officiel des joueurs (`joueurs.json`)")
+
+                st.caption("Téléchargez ou restaurez directement le fichier maître officiel des joueurs avec leurs coordonnées (téléphone, courriel), statut actif/inactif et contraintes de journées (Lundi, Mardi, Mercredi, Jeudi).")
+
+                if "msg_restauration_joueurs_succes" in st.session_state:
+                    st.success(st.session_state.pop("msg_restauration_joueurs_succes"))
+
+                with st.container(border=True):
+                    col_j_hdr1, col_j_hdr2 = st.columns([3, 1])
+                    with col_j_hdr1:
+                        st.markdown("###### 👥 Registre officiel des joueurs (`joueurs.json`)")
+                    registre_sauvegarde = charger_registre_joueurs()
+                    with col_j_hdr2:
+                        nb_act_sb = len([j for j in registre_sauvegarde if j.get("actif", True)])
+                        st.caption(f"**{len(registre_sauvegarde)} joueur(s)** ({nb_act_sb} actif(s))")
+
+                    col_btn_j1, col_btn_j2, col_btn_j3 = st.columns(3)
+                    with col_btn_j1:
+                        st.download_button(
+                            label="📥 Télécharger JSON",
+                            data=json.dumps(registre_sauvegarde, ensure_ascii=False, indent=2),
+                            file_name="joueurs.json",
+                            mime="application/json",
+                            use_container_width=True,
+                            key="btn_dl_json_joueurs"
+                        )
+                    with col_btn_j2:
+                        if st.button("⚡ Restaurer Supabase", use_container_width=True, key="btn_pull_sb_joueurs_specifique", help="Télécharge et restaure le registre des joueurs depuis Supabase PostgreSQL"):
+                            with st.spinner("Restauration de joueurs.json depuis Supabase PostgreSQL..."):
+                                raw_sb_j = telecharger_fichier_supabase("joueurs.json")
+                                if raw_sb_j:
+                                    try:
+                                        sb_j_list = json.loads(raw_sb_j)
+                                        if isinstance(sb_j_list, list) and len(sb_j_list) > 0:
+                                            ok_j_sb, msg_j_sb = sauvegarder_registre_joueurs(sb_j_list)
+                                            if ok_j_sb:
+                                                sauvegarder_config_saison(charger_config_saison())
+                                                st.session_state["msg_restauration_joueurs_succes"] = f"✅ {len(sb_j_list)} joueur(s) restauré(s) depuis Supabase PostgreSQL !"
+                                                time.sleep(0.8)
+                                                st.rerun()
+                                            else:
+                                                st.error(f"Erreur de sauvegarde : {msg_j_sb}")
+                                        else:
+                                            st.error("Le fichier sur Supabase ne contient aucun joueur valide.")
+                                    except Exception as e_p_sb_j:
+                                        st.error(f"Erreur lors de la lecture Supabase : {e_p_sb_j}")
+                                else:
+                                    st.error("Impossible de récupérer joueurs.json depuis Supabase.")
+
+                    with col_btn_j3:
+                        if st.button("🐙 Restaurer GitHub", use_container_width=True, key="btn_pull_gh_joueurs_specifique", help="Télécharge et restaure le registre des joueurs depuis la plus récente sauvegarde GitHub"):
+                            with st.spinner("Téléchargement de joueurs.json depuis GitHub..."):
+                                commit_j = obtenir_infos_dernier_commit_github("joueurs.json")
+                                gh_raw_j = telecharger_fichier_brut_depuis_github("joueurs.json", ref_override=commit_j.get("sha") if commit_j else None)
+                                if gh_raw_j:
+                                    try:
+                                        gh_j_list = json.loads(gh_raw_j.decode("utf-8-sig"))
+                                        if isinstance(gh_j_list, list) and len(gh_j_list) > 0:
+                                            ok_j_gh, msg_j_gh = sauvegarder_registre_joueurs(gh_j_list)
+                                            if ok_j_gh:
+                                                sauvegarder_config_saison(charger_config_saison())
+                                                sha_j = commit_j.get("sha", "")[:7] if commit_j else ""
+                                                st.session_state["msg_restauration_joueurs_succes"] = f"✅ {len(gh_j_list)} joueur(s) restauré(s) depuis GitHub (Commit {sha_j}) !"
+                                                time.sleep(0.8)
+                                                st.rerun()
+                                            else:
+                                                st.error(f"Erreur de sauvegarde : {msg_j_gh}")
+                                        else:
+                                            st.error("Le fichier sur GitHub ne contient aucune liste de joueurs valide.")
+                                    except Exception as e_p_j:
+                                        st.error(f"Erreur lors de la lecture du fichier GitHub : {e_p_j}")
+                                else:
+                                    st.error("Impossible de récupérer joueurs.json depuis GitHub.")
+
+                    with st.expander("📤 Restaurer / Importer un fichier joueurs.json", expanded=False):
+                        up_j = st.file_uploader("Fichier JSON de sauvegarde des joueurs", type=["json"], key="up_json_joueurs")
+                        if up_j is not None:
+                            try:
+                                raw_j = up_j.getvalue().decode("utf-8-sig")
+                                data_j_up = json.loads(raw_j)
+                                if isinstance(data_j_up, dict):
+                                    for k_cand in ["joueurs", "registre", "joueurs_inscrits", "data"]:
+                                        if k_cand in data_j_up and isinstance(data_j_up[k_cand], list):
+                                            data_j_up = data_j_up[k_cand]
+                                            break
+                                if isinstance(data_j_up, list) and len(data_j_up) > 0:
+                                    st.info(f"📄 **{up_j.name}** : **{len(data_j_up)} joueur(s)** détecté(s).")
+                                    if st.button("📥 Valider la restauration du registre des joueurs", type="primary", use_container_width=True, key="btn_conf_up_j"):
+                                        ok_sv_j, msg_sv_j = sauvegarder_registre_joueurs(data_j_up)
+                                        if ok_sv_j:
+                                            sauvegarder_config_saison(charger_config_saison())
+                                            st.session_state["msg_restauration_joueurs_succes"] = f"✅ {len(data_j_up)} joueur(s) restauré(s) avec succès !"
+                                            st.rerun()
+                                        else:
+                                            st.error(f"Erreur d'enregistrement : {msg_sv_j}")
+                                else:
+                                    st.error("Format JSON invalide (une liste de joueurs est attendue).")
+                            except Exception as e_up_j:
+                                st.error(f"Erreur d'importation : {e_up_j}")
 
 
 
