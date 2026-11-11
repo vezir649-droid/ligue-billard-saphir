@@ -133,7 +133,7 @@
     "nom": "Suzanne Blaquière",
     "telephone": "4185806222",
     "courriel": "s.blaquiere@icloud.com",
-    "actif": true,
+    "actif": false,
     "capitaine": false,
     "lundi": true,
     "mardi": true,
@@ -310,5 +310,18 @@
     "jeudi": true,
     "contraintes": "",
     "equipe": "Delta"
+  },
+  {
+    "nom": "Patrick Fortin",
+    "telephone": "4189072287",
+    "courriel": "patrickfortin08@gmail.com",
+    "actif": true,
+    "capitaine": false,
+    "lundi": true,
+    "mardi": true,
+    "mercredi": true,
+    "jeudi": true,
+    "contraintes": "",
+    "equipe": "Golf"
   }
 ]

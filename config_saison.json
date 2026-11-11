@@ -145,7 +145,7 @@
       "nom": "Suzanne Blaquière",
       "telephone": "4185806222",
       "courriel": "s.blaquiere@icloud.com",
-      "actif": true,
+      "actif": false,
       "capitaine": false,
       "equipe": "Golf",
       "lundi": true,
@@ -335,6 +335,62 @@
       "mercredi": true,
       "jeudi": true,
       "contraintes": ""
+    },
+    {
+      "joueur": "Patrick Fortin",
+      "nom": "Patrick Fortin",
+      "telephone": "4189072287",
+      "courriel": "patrickfortin08@gmail.com",
+      "actif": true,
+      "capitaine": false,
+      "equipe": "Golf",
+      "lundi": true,
+      "mardi": true,
+      "mercredi": true,
+      "jeudi": true,
+      "contraintes": ""
     }
-  ]
+  ],
+  "equipes": {
+    "Echo": [
+      "Gilles Dumais",
+      "Guy Vézina",
+      "André St-Pierre"
+    ],
+    "Hotel": [
+      "Richard Lavoie",
+      "Richard Théberge",
+      "Jean-Yves Brochu"
+    ],
+    "Charlie": [
+      "Denis Viens",
+      "Marcel Larouche",
+      "Denis Chamberland"
+    ],
+    "Golf": [
+      "Yves Pilon",
+      "Patrick Fortin",
+      "André Lauzon"
+    ],
+    "Bravo": [
+      "Richard Vézina",
+      "Denis Beaudoin",
+      "Michel Caron"
+    ],
+    "Alpha": [
+      "Claude Harvey",
+      "Gaston Lavoie",
+      "Léon Morin"
+    ],
+    "Foxtrot": [
+      "Sylvain Derasp",
+      "Valérie Turcotte",
+      "Gabriel Labrecque"
+    ],
+    "Delta": [
+      "Serge Nollet",
+      "Marc Savard",
+      "Alain Bellemare"
+    ]
+  }
 }
