@@ -18940,7 +18940,7 @@ def envoyer_courriel(destinataires_str, sujet, texte_brut, html_contenu, config,
 
             f"Configuration SMTP incomplète : Le mot de passe / clé d'application SMTP est absent pour le compte `{email_login}`. "
 
-            f"Pour Gmail, vous devez renseigner une **Clé d'application Google** (16 lettres) dans l'onglet Administration > Paramètres SMTP."
+            f"Pour Gmail, vous devez renseigner une **Clé d'application Google** (16 lettres) dans l'onglet Administration > 🔧 Avancé > 📧 SMTP."
 
         )
 
@@ -19294,7 +19294,7 @@ def envoyer_courriel(destinataires_str, sujet, texte_brut, html_contenu, config,
 
             f"4. Créez un mot de passe nommé 'Ligue Billard' : Google affichera une clé de 16 lettres (ex: `abcd efgh ijkl mnop`).\n"
 
-            f"5. Saisissez cette clé de 16 lettres dans l'onglet **Administration > Configuration SMTP** de l'application.\n"
+            f"5. Saisissez cette clé de 16 lettres dans l'onglet **Administration > 🔧 Avancé > 📧 SMTP** de l'application.\n"
 
             f"*(Ne pas utiliser votre mot de passe habituel de boîte courriel)*."
 
@@ -37210,7 +37210,7 @@ def afficher_configuration_debut_saison(key_prefix="cfg_saison", afficher_reset_
 
     st.info(
         "👥 **Séparation sécurisée :** La gestion des joueurs (`👥 Joueurs & Contraintes`) et des équipes de la saison (`🛡️ Équipes de la saison`) "
-        "dispose désormais de ses propres onglets dédiés au niveau **⚙️ Administration**, séparés de l'onglet **🗓️ Saison**, pour éviter toute réinitialisation accidentelle."
+        "dispose désormais de ses propres onglets dédiés au niveau **⚙️ Administration**, séparés de l'onglet **🔧 Avancé → 🗓️ Saison**, pour éviter toute réinitialisation accidentelle."
     )
 
     st.markdown("##### 📅 Définir la date de début de la saison pour l'horaire")
@@ -41929,12 +41929,1703 @@ with tab_feuille:
 
     if est_admin and not est_spectateur:
 
-        st.caption("💡 *Astuce : L'Espace Administration (**⚙️ Administration** : Joueurs & Contraintes, Équipes de la saison, Nouvelle saison, Rectifications, SMTP et Sécurité) est accessible directement via l'onglet en haut de page.*")
+        st.caption("💡 *Astuce : L'Espace Administration (**⚙️ Administration** : Joueurs & Contraintes, Équipes de la saison, Match passé, Rectifications et **🔧 Avancé** pour Saison, Sauvegardes, API, SMS, SMTP et Sécurité) est accessible directement via l'onglet en haut de page.*")
 
     elif not est_spectateur:
 
         st.caption("🔒 *Note : Le volet **⚙️ Administration** est réservé à l'Administrateur (accessible via **🛡️ Accès Administrateur** sur la page de démarrage).*")
 
+
+def _afficher_admin_saison():
+    """Affiche l'onglet avancé Saison & Horaire (configuration, édition et archivage)."""
+    st.markdown("#### 🗓️ Démarrer une nouvelle saison & Créer / Éditer l'horaire")
+
+    afficher_configuration_debut_saison(key_prefix="admin_tab_saison", afficher_reset_historique=True)
+
+    st.divider()
+
+    afficher_section_horaire_saison(est_spectateur=False, key_prefix="admin_apercu_horaire", editeur_ouvert=False)
+
+    afficher_editeur_horaire_saison(key_prefix="admin_editeur_horaire", editeur_ouvert=True)
+
+    st.divider()
+
+
+
+    nb_matchs = 0
+
+    if os.path.exists(HISTORIQUE_FILE):
+
+        try:
+
+            with open(HISTORIQUE_FILE, "r", encoding="utf-8") as f:
+
+                data_hist = json.load(f)
+
+                if isinstance(data_hist, list):
+
+                    nb_matchs = len(data_hist)
+
+        except Exception:
+
+            nb_matchs = 0
+
+
+
+    st.write(f"📊 **Statut de l'historique :** `{nb_matchs} match(s)` actuellement enregistré(s) dans `{HISTORIQUE_FILE}`.")
+
+    st.info(f"💡 **Archivage automatique :** Lors du démarrage d'une nouvelle saison, l'historique complet ({nb_matchs} match(s)) est automatiquement sauvegardé dans un fichier d'archive officiel (`historique_matchs_saison_X.json`) sur le disque et dans le Cloud avant la remise à zéro.")
+
+
+
+    with st.popover("🚨 Archiver et démarrer la nouvelle saison", use_container_width=True):
+
+        st.markdown("### ⚠️ Démarrer une nouvelle saison")
+
+        st.write("Cette action va :")
+        st.write(f"1. **Sauvegarder l'archive complète** des **{nb_matchs} match(s)** actuels dans `historique_matchs_saison_X.json` (avec synchronisation GitHub et Supabase).")
+        st.write("2. **Réinitialiser à zéro** l'historique des matchs (`historique_matchs.json`) pour la nouvelle saison.")
+
+        if st.button("🔴 Confirmer l'archivage et le démarrage de la nouvelle saison", type="primary", use_container_width=True):
+
+            try:
+
+                ok_arch, msg_arch, nom_arch, nb_m_arch = archiver_et_reinitialiser_historique_saison()
+
+                if ok_arch:
+
+                    st.success(f"✅ {msg_arch} La nouvelle saison est officiellement ouverte !")
+
+                else:
+
+                    st.error(f"Erreur lors de l'archivage : {msg_arch}")
+
+                time.sleep(1.0)
+
+                st.rerun()
+
+            except Exception as e_hist:
+
+                st.error(f"Erreur lors de l'archivage et réinitialisation : {e_hist}")
+
+
+def _afficher_admin_sauvegardes():
+    """Affiche l'onglet avancé Sauvegardes, exports JSON et historique par saison."""
+    st.markdown("#### 📤 Envoyer l'historique complet des matchs par courriel")
+
+    st.caption("Génère un bilan officiel complet et convivial (classement général des équipes, chronologie et détails des rencontres) et l'expédie à l'adresse de votre choix.")
+
+
+
+    historique_export = charger_historique_matchs()
+
+    if not historique_export:
+
+        st.info("ℹ️ Aucun match n'est actuellement archivé dans l'historique. L'envoi sera disponible dès qu'une rencontre aura été validée.")
+
+    else:
+
+        col_nb1, col_nb2 = st.columns(2)
+
+        col_nb1.metric("📊 Total de matchs archivés", f"{len(historique_export)} match(s)")
+
+
+
+        pts_totaux_saison = 0
+
+        for m_tmp in historique_export:
+
+            tr_tmp = m_tmp.get("total_receveur")
+
+            tv_tmp = m_tmp.get("total_visiteur")
+
+            if tr_tmp is None:
+
+                tr_tmp = sum(m_tmp.get("matchs", {}).get(str(i), {}).get("score_a", 0) for i in range(1, 10))
+
+            if tv_tmp is None:
+
+                tv_tmp = sum(m_tmp.get("matchs", {}).get(str(i), {}).get("score_b", 0) for i in range(1, 10))
+
+            try:
+
+                pts_totaux_saison += int(tr_tmp) + int(tv_tmp)
+
+            except (ValueError, TypeError):
+
+                pass
+
+
+
+        col_nb2.metric("🎱 Points cumulés dans la ligue", f"{pts_totaux_saison} pts")
+
+
+
+        st.markdown("##### ✉️ Paramètres d'envoi du bilan officiel")
+
+        dest_def = config_email.get("destinataires", "").strip()
+
+
+
+        col_dest_in, col_dest_pj = st.columns([3, 2])
+
+        with col_dest_in:
+
+            dest_rapport = st.text_input(
+
+                "Adresse(s) courriel de destination :",
+
+                value=dest_def,
+
+                placeholder="Ex: president@ligue.com, secretaire@ligue.com",
+
+                key="input_dest_rapport_historique",
+
+                help="Saisissez une ou plusieurs adresses courriel séparées par des virgules."
+
+            )
+
+        with col_dest_pj:
+
+            st.write("")
+
+            st.write("")
+
+            inclure_pj_json = st.checkbox(
+
+                "Joindre le fichier brut (`historique_matchs.json`)",
+
+                value=True,
+
+                key="chk_pj_json_hist",
+
+                help="Ajoute le fichier JSON officiel en pièce jointe du courriel pour archivage informatique."
+
+            )
+
+
+
+        texte_rapport, html_rapport = generer_rapport_historique_convivial(historique_export)
+
+
+
+        col_btn_send, col_btn_dl = st.columns([2, 1])
+
+        with col_btn_send:
+
+            if st.button("📤 Envoyer le rapport officiel complet", type="primary", use_container_width=True, key="btn_send_rapport_complet"):
+
+                dest_clean = dest_rapport.strip()
+
+                if not dest_clean or "@" not in dest_clean:
+
+                    st.error("⚠️ Veuillez renseigner au moins une adresse courriel valide.")
+
+                elif not config_email.get("smtp_serveur"):
+
+                    st.error("⚠️ Le serveur SMTP n'est pas encore configuré. Rendez-vous dans l'onglet '📧 SMTP' (sous 🔧 Avancé) pour le configurer.")
+
+                else:
+
+                    date_jour = datetime.now().strftime("%d/%m/%Y")
+
+                    sujet_rapport = f"🎱 Ligue de billard Boule en main : Bilan officiel et Historique ({len(historique_export)} matchs) - {date_jour}"
+
+                    pj_list = [HISTORIQUE_FILE] if (inclure_pj_json and os.path.exists(HISTORIQUE_FILE)) else None
+
+
+
+                    with st.spinner("Génération et envoi de l'historique complet en cours..."):
+
+                        ok_env, msg_env = envoyer_courriel(
+
+                            dest_clean,
+
+                            sujet_rapport,
+
+                            texte_rapport,
+
+                            html_rapport,
+
+                            config_email,
+
+                            pieces_jointes=pj_list
+
+                        )
+
+                    if ok_env:
+
+                        pj_str = " (avec `historique_matchs.json` en pièce jointe)" if pj_list else ""
+
+                        st.success(f"✅ {msg_env} — Bilan officiel envoyé à `{dest_clean}`{pj_str} !")
+
+                    else:
+
+                        st.error(f"❌ Échec de l'envoi : {msg_env}")
+
+
+
+        with col_btn_dl:
+
+            st.download_button(
+
+                label="📥 Télécharger le bilan (HTML)",
+
+                data=html_rapport,
+
+                file_name=f"bilan_historique_boule_en_main_{datetime.now().strftime('%Y%m%d_%H%M')}.html",
+
+                mime="text/html",
+
+                use_container_width=True,
+
+                key="dl_rapport_historique_html"
+
+            )
+
+
+
+        with st.expander("👁️ Prévisualiser le rapport convivial avant l'envoi", expanded=False):
+
+            st.components.v1.html(html_rapport, height=650, scrolling=True)
+
+
+
+    st.divider()
+
+    st.markdown("#### 🏆 Envoyer l'historique officiel des tournois par courriel")
+
+    st.caption("Expédie le fichier officiel `historique_tournois.json` avec la liste et les résultats de tous les tournois enregistrés aux administrateurs définis dans la configuration SMTP.")
+
+    hist_t_exp = charger_historique_tournois()
+
+    col_exp_t1, col_exp_t2 = st.columns(2)
+
+    col_exp_t1.metric("🏆 Tournois dans l'historique", f"{len(hist_t_exp)} tournoi(s)")
+
+    dest_def_t = config_email.get("destinataires", "").strip()
+
+    col_exp_t2.metric("📬 Destinataire(s) SMTP", dest_def_t if dest_def_t else "Non configuré")
+
+
+
+    dest_t_input = st.text_input(
+
+        "Adresse(s) courriel des administrateurs destinataires :",
+
+        value=dest_def_t,
+
+        placeholder="Ex: president@ligue.com, marqueur@ligue.com",
+
+        key="input_dest_t_export",
+
+        help="Par défaut, les adresses des administrateurs enregistrées dans la configuration SMTP ci-dessous."
+
+    )
+
+
+
+    if st.button("📤 Envoyer l'historique des tournois (avec pièce jointe JSON)", type="primary", key="btn_send_export_t_email"):
+
+        with st.spinner("Envoi de l'historique des tournois en cours..."):
+
+            ok_exp_t, msg_exp_t = envoyer_courriel_sauvegarde_tournoi(None, destinataires_specifiques=dest_t_input.strip())
+
+        if ok_exp_t:
+
+            st.success(f"✅ {msg_exp_t} (Envoyé à : `{dest_t_input.strip()}` avec `{os.path.basename(HISTORIQUE_TOURNOIS_FILE)}`)")
+
+        else:
+
+            st.error(f"❌ {msg_exp_t}")
+
+
+
+    st.divider()
+
+    st.markdown("#### 💾 Sauvegarde locale & Restauration des fichiers JSON officiels")
+
+    st.caption("Téléchargez ou restaurez directement les fichiers d'historique officiels (`historique_matchs.json` et `historique_tournois.json`). Les fichiers ne contiennent que les données pures JSON (sans code HTML).")
+
+
+
+    if "msg_restauration_matchs_succes" in st.session_state:
+
+        st.success(st.session_state.pop("msg_restauration_matchs_succes"))
+
+    if "msg_restauration_tournois_succes" in st.session_state:
+
+        st.success(st.session_state.pop("msg_restauration_tournois_succes"))
+
+
+
+    col_json_m, col_json_t = st.columns(2)
+
+    with col_json_m:
+
+        with st.container(border=True):
+
+            st.markdown("###### 🎱 Historique des matchs (`historique_matchs.json`)")
+
+            hist_m_actuel = charger_historique_matchs()
+
+            st.caption(f"**{len(hist_m_actuel)} match(s)** actuellement enregistré(s) sur le disque.")
+
+
+
+            # Nettoyer hist_m_actuel pour le téléchargement (aucun HTML dans le JSON)
+
+            hist_m_clean = []
+
+            for m_item in hist_m_actuel:
+
+                if isinstance(m_item, dict):
+
+                    m_c = dict(m_item)
+
+                    m_c.pop("html_officiel", None)
+
+                    m_c.pop("html", None)
+
+                    hist_m_clean.append(m_c)
+
+
+
+            col_btn_m1, col_btn_m2, col_btn_m3 = st.columns(3)
+
+            with col_btn_m1:
+
+                st.download_button(
+
+                    label="📥 Télécharger JSON",
+
+                    data=json.dumps(hist_m_clean, ensure_ascii=False, indent=4),
+
+                    file_name="historique_matchs.json",
+
+                    mime="application/json",
+
+                    use_container_width=True,
+
+                    key="btn_dl_json_matchs"
+
+                )
+
+            with col_btn_m2:
+
+                if st.button("⚡ Restaurer Supabase", use_container_width=True, key="btn_pull_sb_matchs_specifique", help="Télécharge et restaure l'historique des matchs depuis Supabase PostgreSQL avec fusion intelligente"):
+
+                    with st.spinner("Restauration depuis Supabase PostgreSQL..."):
+
+                        raw_sb_m = telecharger_fichier_supabase("historique_matchs.json")
+
+                        if raw_sb_m:
+
+                            try:
+
+                                sb_list = json.loads(raw_sb_m)
+
+                                if isinstance(sb_list, list) and len(sb_list) > 0:
+
+                                    if os.path.exists(HISTORIQUE_FILE):
+
+                                        try:
+
+                                            with open(f"{HISTORIQUE_FILE}.bak", "wb") as f_bak:
+
+                                                with open(HISTORIQUE_FILE, "rb") as f_cur:
+
+                                                    f_bak.write(f_cur.read())
+
+                                        except Exception:
+
+                                            pass
+
+                                    loc_matchs = []
+
+                                    if os.path.exists(HISTORIQUE_FILE):
+
+                                        try:
+
+                                            with open(HISTORIQUE_FILE, "r", encoding="utf-8") as f_r:
+
+                                                loc_matchs = json.load(f_r)
+
+                                            if not isinstance(loc_matchs, list):
+
+                                                loc_matchs = []
+
+                                        except Exception:
+
+                                            loc_matchs = []
+
+                                    cles_sb = {_cle_match_unique(m) for m in sb_list if _cle_match_unique(m)}
+
+                                    fusion = _fusionner_listes_matchs(sb_list, loc_matchs)
+
+                                    with open(HISTORIQUE_FILE, "w", encoding="utf-8") as f_w:
+
+                                        json.dump(fusion, f_w, ensure_ascii=False, indent=4)
+
+                                    try:
+
+                                        _FILE_MEM_CACHE.pop("historique_matchs", None)
+
+                                    except Exception:
+
+                                        pass
+
+                                    st.session_state.pop("select_match_to_rectify", None)
+
+                                    st.session_state.pop("choix_match_vue", None)
+
+                                    st.session_state["msg_restauration_matchs_succes"] = f"✅ {len(fusion)} match(s) restauré(s) depuis Supabase PostgreSQL !"
+
+                                    time.sleep(0.8)
+
+                                    st.rerun()
+
+                                else:
+
+                                    st.error("Le fichier sur Supabase ne contient aucun match valide.")
+
+                            except Exception as e_p_sb:
+
+                                st.error(f"Erreur lors de la lecture Supabase : {e_p_sb}")
+
+                        else:
+
+                            st.error("Impossible de récupérer historique_matchs.json depuis Supabase.")
+
+            with col_btn_m3:
+
+                if st.button("🐙 Restaurer GitHub", use_container_width=True, key="btn_pull_gh_matchs_specifique", help="Télécharge et restaure l'historique des matchs depuis GitHub avec fusion sécurisée"):
+
+                    with st.spinner("Téléchargement de la plus récente sauvegarde depuis GitHub..."):
+
+                        commit_m = obtenir_infos_dernier_commit_github("historique_matchs.json")
+
+                        gh_raw_m = telecharger_fichier_brut_depuis_github("historique_matchs.json", ref_override=commit_m.get("sha") if commit_m else None)
+
+                        if gh_raw_m:
+
+                            try:
+
+                                gh_list = json.loads(gh_raw_m.decode("utf-8-sig"))
+
+                                if isinstance(gh_list, list) and len(gh_list) > 0:
+
+                                    if os.path.exists(HISTORIQUE_FILE):
+
+                                        try:
+
+                                            with open(f"{HISTORIQUE_FILE}.bak", "wb") as f_bak:
+
+                                                with open(HISTORIQUE_FILE, "rb") as f_cur:
+
+                                                    f_bak.write(f_cur.read())
+
+                                        except Exception:
+
+                                            pass
+
+                                    loc_matchs = []
+
+                                    if os.path.exists(HISTORIQUE_FILE):
+
+                                        try:
+
+                                            with open(HISTORIQUE_FILE, "r", encoding="utf-8") as f_r:
+
+                                                loc_matchs = json.load(f_r)
+
+                                            if not isinstance(loc_matchs, list):
+
+                                                loc_matchs = []
+
+                                        except Exception:
+
+                                            loc_matchs = []
+
+                                    cles_gh = {_cle_match_unique(m) for m in gh_list if _cle_match_unique(m)}
+
+                                    fusion = _fusionner_listes_matchs(gh_list, loc_matchs)
+
+                                    with open(HISTORIQUE_FILE, "w", encoding="utf-8") as f_w:
+
+                                        json.dump(fusion, f_w, ensure_ascii=False, indent=4)
+
+                                    try:
+
+                                        _FILE_MEM_CACHE.pop("historique_matchs", None)
+
+                                    except Exception:
+
+                                        pass
+
+                                    st.session_state.pop("select_match_to_rectify", None)
+
+                                    st.session_state.pop("choix_match_vue", None)
+
+                                    sha_c = commit_m.get("sha", "")[:7] if commit_m else ""
+
+                                    st.session_state["msg_restauration_matchs_succes"] = f"✅ {len(fusion)} match(s) restauré(s) depuis GitHub (Commit {sha_c}) !"
+
+                                    time.sleep(0.8)
+
+                                    st.rerun()
+
+                                else:
+
+                                    st.error("Le fichier sur GitHub ne contient aucune liste de matchs valide.")
+
+                            except Exception as e_p_m:
+
+                                st.error(f"Erreur lors de la lecture du fichier GitHub : {e_p_m}")
+
+                        else:
+
+                            st.error("Impossible de récupérer historique_matchs.json depuis GitHub.")
+
+            with st.expander("📤 Restaurer / Importer un fichier historique_matchs.json", expanded=False):
+
+                up_m = st.file_uploader("Fichier JSON de sauvegarde des matchs", type=["json"], key="up_json_matchs")
+
+                if up_m is not None:
+
+                    try:
+
+                        raw_m = up_m.getvalue().decode("utf-8-sig")
+
+                        data_m_up = json.loads(raw_m)
+
+                        if isinstance(data_m_up, dict):
+
+                            for k_cand in ["historique_matchs", "matchs", "historique", "data"]:
+
+                                if k_cand in data_m_up and isinstance(data_m_up[k_cand], list):
+
+                                    data_m_up = data_m_up[k_cand]
+
+                                    break
+
+                            else:
+
+                                if "receveur" in data_m_up and "visiteur" in data_m_up:
+
+                                    data_m_up = [data_m_up]
+
+
+
+                        if isinstance(data_m_up, list):
+
+                            nb_m = len(data_m_up)
+
+                            st.info(f"📄 **{up_m.name}** : **{nb_m} match(s)** détecté(s).")
+
+                            if nb_m > 0:
+
+                                apercu_m = [f"• {m.get('receveur', '?')} vs {m.get('visiteur', '?')} ({m.get('date_enregistrement', m.get('date', 'Date'))})" for m in data_m_up[-3:]]
+
+                                st.caption("Aperçu des derniers matchs :<br>" + "<br>".join(apercu_m), unsafe_allow_html=True)
+
+
+
+                            if st.button("📥 Valider la restauration des matchs", type="primary", use_container_width=True, key="btn_conf_up_m"):
+
+                                # Nettoyage systématique de tout résidu HTML
+
+                                for m in data_m_up:
+
+                                    if isinstance(m, dict):
+
+                                        m.pop("html_officiel", None)
+
+                                        m.pop("html", None)
+
+
+
+                                ok_sv_m = sauvegarder_historique_matchs(data_m_up)
+
+                                if ok_sv_m:
+
+                                    # Réinitialisation de session pour mise à jour immédiate des listes déroulantes
+
+                                    st.session_state.pop("select_match_to_rectify", None)
+
+                                    st.session_state.pop("choix_match_vue", None)
+
+                                    st.session_state["msg_restauration_matchs_succes"] = f"✅ {nb_m} match(s) restauré(s) avec succès ! Les listes déroulantes de consultation et de rectification ont été mises à jour."
+
+                                    st.rerun()
+
+                                else:
+
+                                    st.error("Erreur lors de l'enregistrement de l'historique des matchs sur le disque.")
+
+                        else:
+
+                            st.error("Format JSON invalide (une liste de matchs est attendue).")
+
+                    except Exception as e_up_m:
+
+                        st.error(f"Erreur d'importation : {e_up_m}")
+
+            # Section Archives des saisons précédentes
+            try:
+                archives_saisons = [h for h in lister_historiques_saisons_disponibles() if not h.get("est_courante")]
+                if archives_saisons:
+                    st.divider()
+                    st.markdown("###### 📦 Archives des saisons précédentes")
+                    for a_info in archives_saisons:
+                        col_a1, col_a2 = st.columns([2.5, 1.5])
+                        with col_a1:
+                            st.caption(f"**{a_info['label']}**")
+                        with col_a2:
+                            try:
+                                with open(a_info["chemin"], "r", encoding="utf-8") as f_a:
+                                    d_a_json = f_a.read()
+                                st.download_button(
+                                    label="📥 Télécharger",
+                                    data=d_a_json,
+                                    file_name=a_info["nom_fichier"],
+                                    mime="application/json",
+                                    key=f"dl_archive_{a_info['num']}",
+                                    use_container_width=True
+                                )
+                            except Exception:
+                                pass
+            except Exception:
+                pass
+
+    with col_json_t:
+
+        with st.container(border=True):
+
+            st.markdown("###### 🏆 Historique des tournois (`historique_tournois.json`)")
+
+            hist_t_actuel = charger_historique_tournois()
+
+            st.caption(f"**{len(hist_t_actuel)} tournoi(s)** actuellement enregistré(s) sur le disque.")
+
+
+
+            hist_t_clean = []
+
+            for t_item in hist_t_actuel:
+
+                if isinstance(t_item, dict):
+
+                    t_c = dict(t_item)
+
+                    t_c.pop("html_officiel", None)
+
+                    t_c.pop("html", None)
+
+                    hist_t_clean.append(t_c)
+
+
+
+            col_btn_t1, col_btn_t2, col_btn_t3 = st.columns(3)
+
+            with col_btn_t1:
+
+                st.download_button(
+
+                    label="📥 Télécharger JSON",
+
+                    data=json.dumps(hist_t_clean, ensure_ascii=False, indent=4),
+
+                    file_name="historique_tournois.json",
+
+                    mime="application/json",
+
+                    use_container_width=True,
+
+                    key="btn_dl_json_tournois"
+
+                )
+
+            with col_btn_t2:
+
+                if st.button("⚡ Restaurer Supabase", use_container_width=True, key="btn_pull_sb_tournois_specifique", help="Télécharge et restaure l'historique des tournois depuis Supabase PostgreSQL"):
+
+                    with st.spinner("Restauration des tournois depuis Supabase..."):
+
+                        raw_sb_t = telecharger_fichier_supabase("historique_tournois.json")
+
+                        if raw_sb_t:
+
+                            try:
+
+                                sb_t_list = json.loads(raw_sb_t)
+
+                                if isinstance(sb_t_list, list) and len(sb_t_list) > 0:
+
+                                    if os.path.exists(HISTORIQUE_TOURNOIS_FILE):
+
+                                        try:
+
+                                            with open(f"{HISTORIQUE_TOURNOIS_FILE}.bak", "wb") as f_bakt:
+
+                                                with open(HISTORIQUE_TOURNOIS_FILE, "rb") as f_curt:
+
+                                                    f_bakt.write(f_curt.read())
+
+                                        except Exception:
+
+                                            pass
+
+                                    with open(HISTORIQUE_TOURNOIS_FILE, "w", encoding="utf-8") as f_wt:
+
+                                        json.dump(sb_t_list, f_wt, ensure_ascii=False, indent=4)
+
+                                    try:
+
+                                        td_curr = charger_tournois_data()
+
+                                        if isinstance(td_curr, dict):
+
+                                            td_curr["historique"] = sb_t_list
+
+                                            _ecrire_json_atomique(TOURNOIS_FILE, td_curr)
+
+                                    except Exception:
+
+                                        pass
+
+                                    try:
+
+                                        _FILE_MEM_CACHE.pop("historique_tournois", None)
+
+                                    except Exception:
+
+                                        pass
+
+                                    st.session_state["msg_restauration_tournois_succes"] = f"✅ {len(sb_t_list)} tournoi(s) restauré(s) depuis Supabase PostgreSQL !"
+
+                                    time.sleep(0.8)
+
+                                    st.rerun()
+
+                                else:
+
+                                    st.error("Aucun tournoi valide trouvé sur Supabase.")
+
+                            except Exception as e_p_sbt:
+
+                                st.error(f"Erreur Supabase tournois : {e_p_sbt}")
+
+                        else:
+
+                            st.error("Impossible de récupérer historique_tournois.json depuis Supabase.")
+
+            with col_btn_t3:
+
+                if st.button("🐙 Restaurer GitHub", use_container_width=True, key="btn_pull_gh_tournois_specifique", help="Télécharge et restaure la sauvegarde la plus récente de l'historique des tournois depuis GitHub"):
+
+                    with st.spinner("Téléchargement de la plus récente sauvegarde depuis GitHub..."):
+
+                        commit_t = obtenir_infos_dernier_commit_github("historique_tournois.json")
+
+                        gh_raw_t = telecharger_fichier_brut_depuis_github("historique_tournois.json", ref_override=commit_t.get("sha") if commit_t else None)
+
+                        if gh_raw_t:
+
+                            try:
+
+                                gh_t_list = json.loads(gh_raw_t.decode("utf-8-sig"))
+
+                                if isinstance(gh_t_list, list) and len(gh_t_list) > 0:
+
+                                    if os.path.exists(HISTORIQUE_TOURNOIS_FILE):
+
+                                        try:
+
+                                            with open(f"{HISTORIQUE_TOURNOIS_FILE}.bak", "wb") as f_bakt:
+
+                                                with open(HISTORIQUE_TOURNOIS_FILE, "rb") as f_curt:
+
+                                                    f_bakt.write(f_curt.read())
+
+                                        except Exception:
+
+                                            pass
+
+                                    with open(HISTORIQUE_TOURNOIS_FILE, "wb") as f_wt:
+
+                                        f_wt.write(gh_raw_t)
+
+                                    try:
+
+                                        td_curr = charger_tournois_data()
+
+                                        if isinstance(td_curr, dict):
+
+                                            td_curr["historique"] = gh_t_list
+
+                                            _ecrire_json_atomique(TOURNOIS_FILE, td_curr)
+
+                                    except Exception:
+
+                                        pass
+
+                                    try:
+
+                                        _FILE_MEM_CACHE.pop("historique_tournois", None)
+
+                                    except Exception:
+
+                                        pass
+
+                                    sha_t = commit_t.get("sha", "")[:7] if commit_t else ""
+
+                                    st.session_state["msg_restauration_tournois_succes"] = f"✅ {len(gh_t_list)} tournoi(s) restauré(s) depuis la plus récente sauvegarde GitHub (Commit {sha_t}) !"
+
+                                    time.sleep(0.8)
+
+                                    st.rerun()
+
+                                else:
+
+                                    st.error("Le fichier sur GitHub ne contient aucun tournoi valide.")
+
+                            except Exception as e_p_t:
+
+                                st.error(f"Erreur lors de la lecture du fichier GitHub : {e_p_t}")
+
+                        else:
+
+                            st.error("Impossible de récupérer historique_tournois.json depuis GitHub.")
+
+            with st.expander("📤 Restaurer / Importer un fichier historique_tournois.json", expanded=False):
+
+                up_t = st.file_uploader("Fichier JSON de sauvegarde des tournois", type=["json"], key="up_json_tournois")
+
+                if up_t is not None:
+
+                    try:
+
+                        raw_t = up_t.getvalue().decode("utf-8-sig")
+
+                        data_t_up = json.loads(raw_t)
+
+                        if isinstance(data_t_up, dict):
+
+                            for k_cand in ["historique_tournois", "tournois", "historique", "data"]:
+
+                                if k_cand in data_t_up and isinstance(data_t_up[k_cand], list):
+
+                                    data_t_up = data_t_up[k_cand]
+
+                                    break
+
+                            else:
+
+                                if "nom" in data_t_up or "id_archive" in data_t_up:
+
+                                    data_t_up = [data_t_up]
+
+
+
+                        if isinstance(data_t_up, list):
+
+                            st.info(f"📄 **{up_t.name}** : **{len(data_t_up)} tournoi(s)** détecté(s).")
+
+                            if st.button("📥 Valider la restauration des tournois", type="primary", use_container_width=True, key="btn_conf_up_t"):
+
+                                for t in data_t_up:
+
+                                    if isinstance(t, dict):
+
+                                        t.pop("html", None)
+
+                                        t.pop("html_officiel", None)
+
+                                ok_sv_t = sauvegarder_historique_tournois(data_t_up)
+
+                                if ok_sv_t:
+
+                                    st.session_state["msg_restauration_tournois_succes"] = f"✅ {len(data_t_up)} tournoi(s) restauré(s) avec succès !"
+
+                                    st.rerun()
+
+                                else:
+
+                                    st.error("Erreur lors de l'enregistrement de l'historique des tournois.")
+
+                        else:
+
+                            st.error("Format JSON invalide (une liste de tournois est attendue).")
+
+                    except Exception as e_up_t:
+
+                        st.error(f"Erreur d'importation : {e_up_t}")
+
+    st.divider()
+
+    st.markdown("#### 👥 Sauvegarde & Restauration du Registre officiel des joueurs (`joueurs.json`)")
+
+    st.caption("Téléchargez ou restaurez directement le fichier maître officiel des joueurs avec leurs coordonnées (téléphone, courriel), statut actif/inactif et contraintes de journées (Lundi, Mardi, Mercredi, Jeudi).")
+
+    if "msg_restauration_joueurs_succes" in st.session_state:
+        st.success(st.session_state.pop("msg_restauration_joueurs_succes"))
+
+    with st.container(border=True):
+        col_j_hdr1, col_j_hdr2 = st.columns([3, 1])
+        with col_j_hdr1:
+            st.markdown("###### 👥 Registre officiel des joueurs (`joueurs.json`)")
+        registre_sauvegarde = charger_registre_joueurs()
+        with col_j_hdr2:
+            nb_act_sb = len([j for j in registre_sauvegarde if j.get("actif", True)])
+            st.caption(f"**{len(registre_sauvegarde)} joueur(s)** ({nb_act_sb} actif(s))")
+
+        col_btn_j1, col_btn_j2, col_btn_j3 = st.columns(3)
+        with col_btn_j1:
+            st.download_button(
+                label="📥 Télécharger JSON",
+                data=json.dumps(registre_sauvegarde, ensure_ascii=False, indent=2),
+                file_name="joueurs.json",
+                mime="application/json",
+                use_container_width=True,
+                key="btn_dl_json_joueurs"
+            )
+        with col_btn_j2:
+            if st.button("⚡ Restaurer Supabase", use_container_width=True, key="btn_pull_sb_joueurs_specifique", help="Télécharge et restaure le registre des joueurs depuis Supabase PostgreSQL"):
+                with st.spinner("Restauration de joueurs.json depuis Supabase PostgreSQL..."):
+                    raw_sb_j = telecharger_fichier_supabase("joueurs.json")
+                    if raw_sb_j:
+                        try:
+                            sb_j_list = json.loads(raw_sb_j)
+                            if isinstance(sb_j_list, list) and len(sb_j_list) > 0:
+                                ok_j_sb, msg_j_sb = sauvegarder_registre_joueurs(sb_j_list)
+                                if ok_j_sb:
+                                    sauvegarder_config_saison(charger_config_saison())
+                                    st.session_state["msg_restauration_joueurs_succes"] = f"✅ {len(sb_j_list)} joueur(s) restauré(s) depuis Supabase PostgreSQL !"
+                                    time.sleep(0.8)
+                                    st.rerun()
+                                else:
+                                    st.error(f"Erreur de sauvegarde : {msg_j_sb}")
+                            else:
+                                st.error("Le fichier sur Supabase ne contient aucun joueur valide.")
+                        except Exception as e_p_sb_j:
+                            st.error(f"Erreur lors de la lecture Supabase : {e_p_sb_j}")
+                    else:
+                        st.error("Impossible de récupérer joueurs.json depuis Supabase.")
+
+        with col_btn_j3:
+            if st.button("🐙 Restaurer GitHub", use_container_width=True, key="btn_pull_gh_joueurs_specifique", help="Télécharge et restaure le registre des joueurs depuis la plus récente sauvegarde GitHub"):
+                with st.spinner("Téléchargement de joueurs.json depuis GitHub..."):
+                    commit_j = obtenir_infos_dernier_commit_github("joueurs.json")
+                    gh_raw_j = telecharger_fichier_brut_depuis_github("joueurs.json", ref_override=commit_j.get("sha") if commit_j else None)
+                    if gh_raw_j:
+                        try:
+                            gh_j_list = json.loads(gh_raw_j.decode("utf-8-sig"))
+                            if isinstance(gh_j_list, list) and len(gh_j_list) > 0:
+                                ok_j_gh, msg_j_gh = sauvegarder_registre_joueurs(gh_j_list)
+                                if ok_j_gh:
+                                    sauvegarder_config_saison(charger_config_saison())
+                                    sha_j = commit_j.get("sha", "")[:7] if commit_j else ""
+                                    st.session_state["msg_restauration_joueurs_succes"] = f"✅ {len(gh_j_list)} joueur(s) restauré(s) depuis GitHub (Commit {sha_j}) !"
+                                    time.sleep(0.8)
+                                    st.rerun()
+                                else:
+                                    st.error(f"Erreur de sauvegarde : {msg_j_gh}")
+                            else:
+                                st.error("Le fichier sur GitHub ne contient aucune liste de joueurs valide.")
+                        except Exception as e_p_j:
+                            st.error(f"Erreur lors de la lecture du fichier GitHub : {e_p_j}")
+                    else:
+                        st.error("Impossible de récupérer joueurs.json depuis GitHub.")
+
+        with st.expander("📤 Restaurer / Importer un fichier joueurs.json", expanded=False):
+            up_j = st.file_uploader("Fichier JSON de sauvegarde des joueurs", type=["json"], key="up_json_joueurs")
+            if up_j is not None:
+                try:
+                    raw_j = up_j.getvalue().decode("utf-8-sig")
+                    data_j_up = json.loads(raw_j)
+                    if isinstance(data_j_up, dict):
+                        for k_cand in ["joueurs", "registre", "joueurs_inscrits", "data"]:
+                            if k_cand in data_j_up and isinstance(data_j_up[k_cand], list):
+                                data_j_up = data_j_up[k_cand]
+                                break
+                    if isinstance(data_j_up, list) and len(data_j_up) > 0:
+                        st.info(f"📄 **{up_j.name}** : **{len(data_j_up)} joueur(s)** détecté(s).")
+                        if st.button("📥 Valider la restauration du registre des joueurs", type="primary", use_container_width=True, key="btn_conf_up_j"):
+                            ok_sv_j, msg_sv_j = sauvegarder_registre_joueurs(data_j_up)
+                            if ok_sv_j:
+                                sauvegarder_config_saison(charger_config_saison())
+                                st.session_state["msg_restauration_joueurs_succes"] = f"✅ {len(data_j_up)} joueur(s) restauré(s) avec succès !"
+                                st.rerun()
+                            else:
+                                st.error(f"Erreur d'enregistrement : {msg_sv_j}")
+                    else:
+                        st.error("Format JSON invalide (une liste de joueurs est attendue).")
+                except Exception as e_up_j:
+                    st.error(f"Erreur d'importation : {e_up_j}")
+
+
+
+
+
+    st.divider()
+
+    st.markdown("#### 🌐 Passerelle API Saphir (`billardImport`)")
+
+    st.caption("Vous pouvez tester l'envoi direct de pointages en HTTP POST vers **https://saphirbillard.com**.")
+
+    with st.expander("🚀 Ouvrir le module de test POST API Saphir", expanded=True):
+
+        afficher_module_test_post_saphir(key_prefix="export_sec")
+
+
+def _afficher_admin_smtp():
+    """Affiche l'onglet avancé de configuration et de test du serveur SMTP."""
+    global config_email
+    st.markdown("#### ⚙️ Configuration du serveur de messagerie (SMTP)")
+
+    st.info(
+
+        "💡 **Pour utiliser Gmail** : Google requiert l'activation de la **Validation en 2 étapes** "
+
+        "et la création d'un **Mot de passe d'application** (clé de 16 lettres). "
+
+        "Les espaces (format `xxxx xxxx xxxx xxxx`) sont retirés automatiquement."
+
+    )
+
+    smtp_dest = st.text_input(
+
+        "Courriels administrateurs / Destinataire(s) (séparés par virgule)",
+
+        value=config_email.get("destinataires", ""),
+
+        key="admin_smtp_dest",
+
+        help="Adresses qui recevront les résultats officiels des matchs, feuilles numérisées et sauvegardes."
+
+    )
+
+    col_c1, col_c2 = st.columns(2)
+
+    smtp_serveur = col_c1.text_input(
+
+        "Serveur SMTP",
+
+        value=config_email.get("smtp_serveur", "smtp.gmail.com"),
+
+        key="admin_smtp_serveur"
+
+    )
+
+    port_actuel = int(config_email.get("smtp_port", 587)) if str(config_email.get("smtp_port", "")).isdigit() else 587
+
+    smtp_port = col_c2.number_input(
+
+        "Port SMTP (587 STARTTLS ou 465 SSL)",
+
+        value=port_actuel,
+
+        key="admin_smtp_port"
+
+    )
+
+    smtp_expediteur = col_c1.text_input(
+
+        "Courriel expéditeur (compte Google / Gmail)",
+
+        value=config_email.get("smtp_expediteur", ""),
+
+        key="admin_smtp_exp",
+
+        placeholder="exemple@gmail.com"
+
+    )
+
+
+
+    mdp_smtp_actuel = str(config_email.get("smtp_mdp", "") or "").strip()
+
+    with col_c2:
+
+        if mdp_smtp_actuel:
+
+            st.caption("🔒 Clé SMTP enregistrée : `••••••••••••`")
+
+            modifier_smtp_pwd = st.checkbox("Modifier la clé d'application SMTP", key="chk_edit_smtp_pwd")
+
+            if modifier_smtp_pwd:
+
+                nouveau_mdp = st.text_input(
+
+                    "Nouvelle clé d'application SMTP (16 lettres)",
+
+                    type="password",
+
+                    key="admin_smtp_pwd",
+
+                    placeholder="ex: abcd efgh ijkl mnop",
+
+                    help="Collez les 16 caractères générés dans votre compte Google (Sécurité > Mots de passe d'application)."
+
+                )
+
+                smtp_mdp = nouveau_mdp.strip().replace(" ", "") if nouveau_mdp.strip() else mdp_smtp_actuel
+
+            else:
+
+                smtp_mdp = mdp_smtp_actuel
+
+        else:
+
+            nouveau_mdp = st.text_input(
+
+                "Clé d'application SMTP (16 lettres)",
+
+                type="password",
+
+                key="admin_smtp_pwd",
+
+                placeholder="ex: abcd efgh ijkl mnop",
+
+                help="Pour Gmail, générez une clé d'application dans votre compte Google (Sécurité > Mots de passe des applications)."
+
+            )
+
+            smtp_mdp = nouveau_mdp.strip().replace(" ", "")
+
+
+
+    smtp_ssl = st.checkbox(
+
+        "Utiliser SSL direct (Port 465 recommandé en cas de blocage du port 587)",
+
+        value=bool(config_email.get("smtp_ssl", False) or port_actuel == 465),
+
+        key="admin_smtp_ssl"
+
+    )
+
+
+
+    col_btn_cfg1, col_btn_cfg2 = st.columns(2)
+
+    with col_btn_cfg1:
+
+        if st.button("💾 Enregistrer la configuration SMTP", use_container_width=True):
+
+            # Ajustement automatique du port selon le mode SSL si non personnalisé
+
+            p_sauv = int(smtp_port)
+
+            if smtp_ssl and p_sauv == 587:
+
+                p_sauv = 465
+
+            elif not smtp_ssl and p_sauv == 465:
+
+                p_sauv = 587
+
+
+
+            nouvelle_cfg = {
+
+                "destinataires": smtp_dest.strip(),
+
+                "smtp_serveur": smtp_serveur.strip(),
+
+                "smtp_port": p_sauv,
+
+                "smtp_expediteur": smtp_expediteur.strip(),
+
+                "smtp_mdp": smtp_mdp.strip().replace(" ", ""),
+
+                "smtp_ssl": smtp_ssl
+
+            }
+
+            if sauvegarder_config_email(nouvelle_cfg):
+
+                config_email = nouvelle_cfg
+
+                st.success("✅ Configuration SMTP enregistrée avec succès dans le fichier !")
+
+                time.sleep(0.5)
+
+                st.rerun()
+
+            else:
+
+                st.error("Erreur lors de la sauvegarde du fichier.")
+
+
+
+    with col_btn_cfg2:
+
+        if st.button("🧪 Tester la configuration (courriel test)", use_container_width=True):
+
+            if not smtp_dest:
+
+                st.error("⚠️ Veuillez renseigner au moins une adresse de destinataire.")
+
+            elif not smtp_expediteur:
+
+                st.error("⚠️ Veuillez renseigner l'adresse courriel de l'expéditeur.")
+
+            elif not smtp_mdp:
+
+                st.error("⚠️ Veuillez renseigner la clé d'application SMTP Google (16 lettres).")
+
+            else:
+
+                p_test = int(smtp_port)
+
+                if smtp_ssl and p_test == 587:
+
+                    p_test = 465
+
+                cfg_test = {
+
+                    "destinataires": smtp_dest.strip(),
+
+                    "smtp_serveur": smtp_serveur.strip(),
+
+                    "smtp_port": p_test,
+
+                    "smtp_expediteur": smtp_expediteur.strip(),
+
+                    "smtp_mdp": smtp_mdp.strip().replace(" ", ""),
+
+                    "smtp_ssl": smtp_ssl
+
+                }
+
+                with st.spinner("Test de connexion SMTP en cours..."):
+
+                    succes_test, msg_test = envoyer_courriel(
+
+                        smtp_dest,
+
+                        "🎱 Test de configuration SMTP - Ligue de billard Boule en main",
+
+                        "Ce message confirme que votre configuration SMTP fonctionne correctement !",
+
+                        "<p>Ce message confirme que votre configuration <strong>SMTP</strong> fonctionne correctement !</p>",
+
+                        cfg_test
+
+                    )
+
+                if succes_test:
+
+                    st.success(f"✅ {msg_test} (Envoyé à : `{smtp_dest}`)")
+
+                else:
+
+                    st.error(f"❌ {msg_test}")
+
+
+def _afficher_admin_securite():
+    """Affiche l'onglet avancé Sécurité (mots de passe et synchronisation Cloud)."""
+    st.markdown("#### 🔑 Gestion des mots de passe d'accès")
+
+    col_pwd_m, col_pwd_a = st.columns(2)
+
+    with col_pwd_m:
+
+        with st.container(border=True):
+
+            st.markdown("##### 🔒 Mot de passe Marqueur / Éditeur")
+
+            st.caption("Permet la saisie des matchs et la gestion des tournois (défaut : `saphir2026`).")
+
+            modifier_m_pwd = st.checkbox("Modifier le mot de passe Marqueur", key="chk_mod_m_pwd")
+
+            if modifier_m_pwd:
+
+                nouveau_mdp = st.text_input("Nouveau mot de passe Marqueur", type="password", key="new_admin_pwd")
+
+                confirm_mdp = st.text_input("Confirmer le mot de passe Marqueur", type="password", key="confirm_admin_pwd")
+
+                if st.button("💾 Mettre à jour le mot de passe Marqueur", use_container_width=True, key="btn_save_pwd_marqueur"):
+
+                    if not nouveau_mdp:
+
+                        st.error("Le mot de passe ne peut pas être vide.")
+
+                    elif nouveau_mdp != confirm_mdp:
+
+                        st.error("Les deux mots de passe ne correspondent pas.")
+
+                    else:
+
+                        if sauvegarder_mot_de_passe_admin(nouveau_mdp):
+
+                            st.success("✅ Mot de passe Marqueur mis à jour avec succès !")
+
+                        else:
+
+                            st.error("Erreur lors de la sauvegarde.")
+
+    with col_pwd_a:
+
+        with st.container(border=True):
+
+            st.markdown("##### 🛡️ Mot de passe Administrateur")
+
+            st.caption("Donne seul accès au volet **⚙️ Administration** (défaut : `admin2026`).")
+
+            modifier_a_pwd = st.checkbox("Modifier le mot de passe Administrateur", key="chk_mod_a_pwd")
+
+            if modifier_a_pwd:
+
+                nouveau_mdp_sup = st.text_input("Nouveau mot de passe Administrateur", type="password", key="new_super_admin_pwd")
+
+                confirm_mdp_sup = st.text_input("Confirmer le mot de passe Administrateur", type="password", key="confirm_super_admin_pwd")
+
+                if st.button("💾 Mettre à jour le mot de passe Administrateur", type="primary", use_container_width=True, key="btn_save_pwd_super_admin"):
+
+                    if not nouveau_mdp_sup:
+
+                        st.error("Le mot de passe administrateur ne peut pas être vide.")
+
+                    elif nouveau_mdp_sup != confirm_mdp_sup:
+
+                        st.error("Les deux mots de passe ne correspondent pas.")
+
+                    else:
+
+                        if sauvegarder_mot_de_passe_super_admin(nouveau_mdp_sup):
+
+                            st.success("✅ Mot de passe Administrateur mis à jour avec succès !")
+
+                        else:
+
+                            st.error("Erreur lors de la sauvegarde.")
+
+
+
+    st.divider()
+
+    st.markdown("#### ☁️ Synchronisation Cloud Hybride & Persistance des Données")
+
+    st.caption(
+
+        "Protégez vos données contre la mise en veille de Streamlit Community Cloud. "
+
+        "Le **Mode 1 (Supabase PostgreSQL)** élimine les rechargements intempestifs de page lors des matchs en sauvegardant "
+
+        "instantanément en base de données sans déclencher de redémarrage Git."
+
+    )
+
+
+
+    # Récupération des paramètres actuels
+
+    url_sb_actuel, key_sb_actuel, mode_sb_actuel = obtenir_parametres_supabase()
+
+    tok_gh_actuel, repo_gh_actuel, branch_gh_actuel = obtenir_parametres_github()
+
+
+
+    # Sélecteur de Mode Cloud
+
+    modes_options = [
+
+        "🟢 Mode 1 : Supabase PostgreSQL prioritaire (Recommandé - Anti-rechargement)",
+
+        "🔵 Mode 2 : Hybride (Supabase PostgreSQL + Backup GitHub)",
+
+        "⚪ Mode 3 : GitHub classique"
+
+    ]
+
+    mode_index = 0
+
+    if mode_sb_actuel == "supabase_github":
+
+        mode_index = 1
+
+    elif mode_sb_actuel == "github":
+
+        mode_index = 2
+
+
+
+    choix_mode_str = st.radio(
+
+        "**Mode de persistance Cloud :**",
+
+        options=modes_options,
+
+        index=mode_index,
+
+        help="En Mode 1, les données sont envoyées instantanément à Supabase sans créer de commits GitHub, évitant ainsi le rechargement intempestif de Streamlit Cloud."
+
+    )
+
+
+
+    nouveau_mode = "supabase"
+
+    if "Mode 2" in choix_mode_str:
+
+        nouveau_mode = "supabase_github"
+
+    elif "Mode 3" in choix_mode_str:
+
+        nouveau_mode = "github"
+
+
+
+    if nouveau_mode == "supabase":
+
+        st.info("💡 **Mode 1 actif :** Les scores et historiques sont sauvegardés instantanément sur votre base Supabase PostgreSQL. Aucune coupure de session Streamlit Cloud.")
+
+    elif nouveau_mode == "supabase_github":
+
+        st.info("💡 **Mode 2 actif :** Double persistance. Chaque mise à jour est enregistrée sur Supabase PostgreSQL et poussée en parallèle sur GitHub.")
+
+    else:
+
+        st.info("💡 **Mode 3 actif :** Les données sont poussées directement sur GitHub via des commits Git.")
+
+
+
+    # Section Supabase
+
+    with st.expander("🗄️ Configuration Supabase PostgreSQL", expanded=(nouveau_mode in ("supabase", "supabase_github"))):
+
+        col_sb1, col_sb2 = st.columns([2, 1])
+
+        with col_sb1:
+
+            saisie_sb_url = st.text_input(
+
+                "URL du projet Supabase :",
+
+                value=url_sb_actuel or "https://ueikhwdfmtnavqqscdoe.supabase.co",
+
+                placeholder="https://ueikhwdfmtnavqqscdoe.supabase.co",
+
+                key="input_sb_url_admin"
+
+            )
+
+            if key_sb_actuel:
+
+                masque_k = (key_sb_actuel[:10] + "••••••••") if len(key_sb_actuel) > 10 else "••••••••"
+
+                st.caption(f"🔑 Clé API secrète active : `{masque_k}` (Détectée via Secrets ou Config)")
+
+                mod_sb_key = st.checkbox("Modifier ou remplacer la clé API Supabase", key="chk_mod_sb_key")
+
+                if mod_sb_key:
+
+                    saisie_sb_key = st.text_input("Nouvelle clé secrète Supabase :", type="password", key="input_sb_key_admin")
+
+                else:
+
+                    saisie_sb_key = key_sb_actuel
+
+            else:
+
+                st.caption("ℹ️ Clé non encore détectée. Saisissez-la ci-dessous ou vérifiez Streamlit Secrets :")
+
+                saisie_sb_key = st.text_input("Clé secrète Supabase (sb_secret_...) :", type="password", key="input_sb_key_admin", placeholder="sb_secret_...")
+
+        with col_sb2:
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            if st.button("🧪 Tester connexion Supabase", use_container_width=True, key="btn_test_sb"):
+
+                cle_eval = (saisie_sb_key or key_sb_actuel or obtenir_parametres_supabase()[1]).strip()
+
+                url_eval = (saisie_sb_url or url_sb_actuel or obtenir_parametres_supabase()[0]).strip()
+
+                with st.spinner("Test de communication avec Supabase PostgreSQL..."):
+
+                    ok_test_sb, msg_test_sb = tester_connexion_supabase(url_eval, cle_eval)
+
+                if ok_test_sb:
+
+                    st.success(f"✅ {msg_test_sb}")
+
+                else:
+
+                    st.error(f"❌ {msg_test_sb}")
+
+
+
+    # Section GitHub
+
+    with st.expander("🐙 Configuration Dépôt GitHub", expanded=(nouveau_mode in ("supabase_github", "github"))):
+
+        col_gh1, col_gh2 = st.columns([2, 1])
+
+        with col_gh1:
+
+            if tok_gh_actuel:
+
+                st.caption("🔑 Jeton GitHub enregistré : `ghp_••••••••••••••••••••••••`")
+
+                mod_gh_tok = st.checkbox("Modifier le jeton GitHub", key="chk_mod_gh_tok")
+
+                if mod_gh_tok:
+
+                    saisie_gh_token = st.text_input("Nouveau jeton GitHub :", type="password", placeholder="ghp_...", key="input_gh_token_admin")
+
+                else:
+
+                    saisie_gh_token = tok_gh_actuel
+
+            else:
+
+                saisie_gh_token = st.text_input("Jeton GitHub (Personal Access Token) :", type="password", placeholder="ghp_...", key="input_gh_token_admin")
+
+        with col_gh2:
+
+            saisie_gh_repo = st.text_input("Dépôt GitHub (propriétaire/nom) :", value=repo_gh_actuel, key="input_gh_repo_admin")
+
+
+
+    # Boutons d'action globale
+
+    col_cld_btn1, col_cld_btn2, col_cld_btn3, col_cld_btn4 = st.columns(4)
+
+    with col_cld_btn1:
+
+        if st.button("💾 Enregistrer la configuration", type="primary", use_container_width=True, key="btn_save_cloud_cfg"):
+
+            cle_finale = (saisie_sb_key or key_sb_actuel or "").strip()
+
+            ok_s = sauvegarder_parametres_supabase(saisie_sb_url, cle_finale, nouveau_mode)
+
+            ok_g = sauvegarder_parametres_github(saisie_gh_token, saisie_gh_repo, branch_gh_actuel)
+
+            if ok_s and ok_g:
+
+                with st.spinner("Configuration enregistrée ! Sauvegarde automatique de tous les fichiers vers le Cloud en cours..."):
+
+                    nb_cld, l_cld_ok, l_cld_err = synchroniser_tous_les_fichiers_cloud()
+
+                if nb_cld > 0 and not l_cld_err:
+
+                    st.success(f"✅ Configuration enregistrée et {nb_cld} fichier(s) sauvegardé(s) vers le Cloud ({', '.join(l_cld_ok)}) !")
+
+                elif nb_cld > 0:
+
+                    st.warning(f"⚠️ Configuration enregistrée. Fichiers sauvegardés : {', '.join(l_cld_ok)} | Erreurs : {'; '.join(l_cld_err)}")
+
+                else:
+
+                    st.success("✅ Configuration Cloud et mode enregistrés avec succès !")
+
+                time.sleep(1.2)
+
+                st.rerun()
+
+            else:
+
+                st.error("❌ Erreur lors de l'enregistrement.")
+
+
+
+    with col_cld_btn2:
+
+        if st.button("☁️ Sauvegarder tout (Cloud)", use_container_width=True, key="btn_push_all_cloud"):
+
+            with st.spinner("Sauvegarde vers le Cloud en cours..."):
+
+                nb_ok, l_ok, l_err = synchroniser_tous_les_fichiers_cloud()
+
+            if nb_ok > 0 and not l_err:
+
+                st.success(f"✅ {nb_ok} fichier(s) sauvegardé(s) sur le Cloud : {', '.join(l_ok)}")
+
+            elif nb_ok > 0:
+
+                st.warning(f"⚠️ Fichiers sauvegardés : {', '.join(l_ok)} | Erreur(s) : {'; '.join(l_err)}")
+
+            else:
+
+                st.error(f"❌ Échec de la sauvegarde Cloud : {'; '.join(l_err)}")
+
+
+
+    with col_cld_btn3:
+
+        if st.button("⚡ Tout restaurer de Supabase", use_container_width=True, key="btn_pull_all_supabase", help="Télécharge et restaure l'ensemble des fichiers de la ligue depuis la table public.saphir_files de Supabase PostgreSQL"):
+
+            with st.spinner("Restauration complète depuis Supabase PostgreSQL en cours..."):
+
+                maj_ok, msg_pull = restaurer_tout_depuis_supabase(forcer=True)
+
+            if maj_ok:
+
+                st.success(f"✅ Données restaurées depuis Supabase : {msg_pull}")
+
+                time.sleep(0.8)
+
+                st.rerun()
+
+            else:
+
+                st.info(f"ℹ️ {msg_pull}")
+
+
+
+    with col_cld_btn4:
+
+        if st.button("🐙 Tout restaurer de GitHub", use_container_width=True, key="btn_pull_all_github", help="Télécharge et restaure l'ensemble des fichiers de données depuis le dépôt GitHub"):
+
+            with st.spinner("Restauration complète depuis GitHub en cours..."):
+
+                maj_ok, msg_pull = restaurer_depuis_github_au_reveil(forcer=True)
+
+            if maj_ok:
+
+                st.success(f"✅ Données restaurées depuis GitHub : {msg_pull}")
+
+                time.sleep(0.8)
+
+                st.rerun()
+
+            else:
+
+                st.info(f"ℹ️ {msg_pull}")
+
+
+def _afficher_admin_avance():
+    """Regroupe les onglets avancés d'administration à partir de 🗓️ Saison."""
+    tab_saison, tab_export, tab_api_saphir, tab_sms, tab_smtp, tab_secu = st.tabs([
+        "🗓️ Saison",
+        "💾 Sauvegardes",
+        "🌐 Test POST Saphir",
+        "📲 Sentinelle SMS",
+        "📧 SMTP",
+        "🔑 Sécurité",
+    ])
+
+    with tab_saison:
+        _afficher_admin_saison()
+
+    with tab_export:
+        _afficher_admin_sauvegardes()
+
+    with tab_api_saphir:
+        afficher_module_test_post_saphir(key_prefix="admin_tab")
+
+    with tab_sms:
+        afficher_onglet_sentinelle_sms()
+
+    with tab_smtp:
+        _afficher_admin_smtp()
+
+    with tab_secu:
+        _afficher_admin_securite()
 
 
 if tab_admin is not None and st.session_state.get("est_admin", False):
@@ -41943,39 +43634,21 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
 
         st.markdown("### ⚙️ Espace Administration de la Ligue")
 
-        st.caption("Gérez les joueurs et contraintes, la composition des équipes de la saison, rectifiez un match archivé, démarrez une nouvelle saison ou configurez la messagerie SMTP et la sécurité.")
+        st.caption("Gérez les joueurs et contraintes, la composition des équipes de la saison, les matchs passés et rectifications, ou ouvrez **🔧 Avancé** pour la saison, les sauvegardes, l'API, les SMS, le SMTP et la sécurité.")
 
         if True:
 
-            st.info("📌 **Sections d'administration :** 👥 Joueurs & Contraintes | 🛡️ Équipes de la saison | 📝 Match antérieur | ✏️ Rectifications | 🗓️ Saison & Horaire | 💾 Sauvegardes & JSON | 🌐 **Test POST API Saphir** | 📲 Sentinelle SMS | 📧 SMTP | 🔑 Sécurité")
+            st.info("📌 **Sections d'administration :** 👥 Joueurs & Contraintes | 🛡️ Équipes de la saison | 📝 Match passé | ✏️ Rectifications | 🔧 Avancé *(🗓️ Saison, 💾 Sauvegardes, 🌐 Test POST Saphir, 📲 Sentinelle SMS, 📧 SMTP, 🔑 Sécurité)*")
 
             afficher_etat_secrets_admin()
 
-            tab_joueurs_adm, tab_equipes_adm, tab_saisie_ant, tab_rectif, tab_saison, tab_export, tab_api_saphir, tab_sms, tab_smtp, tab_secu = st.tabs([
-
+            tab_joueurs_adm, tab_equipes_adm, tab_saisie_ant, tab_rectif, tab_avance = st.tabs([
                 "👥 Joueurs & Contraintes",
-
                 "🛡️ Équipes de la saison",
-
                 "📝 Match passé",
-
                 "✏️ Rectifications",
-
-                "🗓️ Saison",
-
-                "💾 Sauvegardes",
-
-                "🌐 Test POST Saphir",
-
-                "📲 Sentinelle SMS",
-
-                "📧 SMTP",
-
-                "🔑 Sécurité"
-
+                "🔧 Avancé",
             ])
-
-
 
             with tab_joueurs_adm:
 
@@ -41986,80 +43659,6 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
             with tab_equipes_adm:
 
                 afficher_gestion_equipes_saison(key_prefix="adm_equipes")
-
-
-
-            with tab_saison:
-
-                st.markdown("#### 🗓️ Démarrer une nouvelle saison & Créer / Éditer l'horaire")
-
-                afficher_configuration_debut_saison(key_prefix="admin_tab_saison", afficher_reset_historique=True)
-
-                st.divider()
-
-                afficher_section_horaire_saison(est_spectateur=False, key_prefix="admin_apercu_horaire", editeur_ouvert=False)
-
-                afficher_editeur_horaire_saison(key_prefix="admin_editeur_horaire", editeur_ouvert=True)
-
-                st.divider()
-
-            
-
-                nb_matchs = 0
-
-                if os.path.exists(HISTORIQUE_FILE):
-
-                    try:
-
-                        with open(HISTORIQUE_FILE, "r", encoding="utf-8") as f:
-
-                            data_hist = json.load(f)
-
-                            if isinstance(data_hist, list):
-
-                                nb_matchs = len(data_hist)
-
-                    except Exception:
-
-                        nb_matchs = 0
-
-
-
-                st.write(f"📊 **Statut de l'historique :** `{nb_matchs} match(s)` actuellement enregistré(s) dans `{HISTORIQUE_FILE}`.")
-
-                st.info(f"💡 **Archivage automatique :** Lors du démarrage d'une nouvelle saison, l'historique complet ({nb_matchs} match(s)) est automatiquement sauvegardé dans un fichier d'archive officiel (`historique_matchs_saison_X.json`) sur le disque et dans le Cloud avant la remise à zéro.")
-
-
-
-                with st.popover("🚨 Archiver et démarrer la nouvelle saison", use_container_width=True):
-
-                    st.markdown("### ⚠️ Démarrer une nouvelle saison")
-
-                    st.write("Cette action va :")
-                    st.write(f"1. **Sauvegarder l'archive complète** des **{nb_matchs} match(s)** actuels dans `historique_matchs_saison_X.json` (avec synchronisation GitHub et Supabase).")
-                    st.write("2. **Réinitialiser à zéro** l'historique des matchs (`historique_matchs.json`) pour la nouvelle saison.")
-
-                    if st.button("🔴 Confirmer l'archivage et le démarrage de la nouvelle saison", type="primary", use_container_width=True):
-
-                        try:
-
-                            ok_arch, msg_arch, nom_arch, nb_m_arch = archiver_et_reinitialiser_historique_saison()
-
-                            if ok_arch:
-
-                                st.success(f"✅ {msg_arch} La nouvelle saison est officiellement ouverte !")
-
-                            else:
-
-                                st.error(f"Erreur lors de l'archivage : {msg_arch}")
-
-                            time.sleep(1.0)
-
-                            st.rerun()
-
-                        except Exception as e_hist:
-
-                            st.error(f"Erreur lors de l'archivage et réinitialisation : {e_hist}")
 
 
 
@@ -42996,1608 +44595,8 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
 
 
 
-            with tab_export:
-
-                st.markdown("#### 📤 Envoyer l'historique complet des matchs par courriel")
-
-                st.caption("Génère un bilan officiel complet et convivial (classement général des équipes, chronologie et détails des rencontres) et l'expédie à l'adresse de votre choix.")
-
-
-
-                historique_export = charger_historique_matchs()
-
-                if not historique_export:
-
-                    st.info("ℹ️ Aucun match n'est actuellement archivé dans l'historique. L'envoi sera disponible dès qu'une rencontre aura été validée.")
-
-                else:
-
-                    col_nb1, col_nb2 = st.columns(2)
-
-                    col_nb1.metric("📊 Total de matchs archivés", f"{len(historique_export)} match(s)")
-
-
-
-                    pts_totaux_saison = 0
-
-                    for m_tmp in historique_export:
-
-                        tr_tmp = m_tmp.get("total_receveur")
-
-                        tv_tmp = m_tmp.get("total_visiteur")
-
-                        if tr_tmp is None:
-
-                            tr_tmp = sum(m_tmp.get("matchs", {}).get(str(i), {}).get("score_a", 0) for i in range(1, 10))
-
-                        if tv_tmp is None:
-
-                            tv_tmp = sum(m_tmp.get("matchs", {}).get(str(i), {}).get("score_b", 0) for i in range(1, 10))
-
-                        try:
-
-                            pts_totaux_saison += int(tr_tmp) + int(tv_tmp)
-
-                        except (ValueError, TypeError):
-
-                            pass
-
-
-
-                    col_nb2.metric("🎱 Points cumulés dans la ligue", f"{pts_totaux_saison} pts")
-
-
-
-                    st.markdown("##### ✉️ Paramètres d'envoi du bilan officiel")
-
-                    dest_def = config_email.get("destinataires", "").strip()
-
-
-
-                    col_dest_in, col_dest_pj = st.columns([3, 2])
-
-                    with col_dest_in:
-
-                        dest_rapport = st.text_input(
-
-                            "Adresse(s) courriel de destination :",
-
-                            value=dest_def,
-
-                            placeholder="Ex: president@ligue.com, secretaire@ligue.com",
-
-                            key="input_dest_rapport_historique",
-
-                            help="Saisissez une ou plusieurs adresses courriel séparées par des virgules."
-
-                        )
-
-                    with col_dest_pj:
-
-                        st.write("")
-
-                        st.write("")
-
-                        inclure_pj_json = st.checkbox(
-
-                            "Joindre le fichier brut (`historique_matchs.json`)",
-
-                            value=True,
-
-                            key="chk_pj_json_hist",
-
-                            help="Ajoute le fichier JSON officiel en pièce jointe du courriel pour archivage informatique."
-
-                        )
-
-
-
-                    texte_rapport, html_rapport = generer_rapport_historique_convivial(historique_export)
-
-
-
-                    col_btn_send, col_btn_dl = st.columns([2, 1])
-
-                    with col_btn_send:
-
-                        if st.button("📤 Envoyer le rapport officiel complet", type="primary", use_container_width=True, key="btn_send_rapport_complet"):
-
-                            dest_clean = dest_rapport.strip()
-
-                            if not dest_clean or "@" not in dest_clean:
-
-                                st.error("⚠️ Veuillez renseigner au moins une adresse courriel valide.")
-
-                            elif not config_email.get("smtp_serveur"):
-
-                                st.error("⚠️ Le serveur SMTP n'est pas encore configuré. Rendez-vous dans l'onglet 'Configuration SMTP' pour le configurer.")
-
-                            else:
-
-                                date_jour = datetime.now().strftime("%d/%m/%Y")
-
-                                sujet_rapport = f"🎱 Ligue de billard Boule en main : Bilan officiel et Historique ({len(historique_export)} matchs) - {date_jour}"
-
-                                pj_list = [HISTORIQUE_FILE] if (inclure_pj_json and os.path.exists(HISTORIQUE_FILE)) else None
-
-
-
-                                with st.spinner("Génération et envoi de l'historique complet en cours..."):
-
-                                    ok_env, msg_env = envoyer_courriel(
-
-                                        dest_clean,
-
-                                        sujet_rapport,
-
-                                        texte_rapport,
-
-                                        html_rapport,
-
-                                        config_email,
-
-                                        pieces_jointes=pj_list
-
-                                    )
-
-                                if ok_env:
-
-                                    pj_str = " (avec `historique_matchs.json` en pièce jointe)" if pj_list else ""
-
-                                    st.success(f"✅ {msg_env} — Bilan officiel envoyé à `{dest_clean}`{pj_str} !")
-
-                                else:
-
-                                    st.error(f"❌ Échec de l'envoi : {msg_env}")
-
-
-
-                    with col_btn_dl:
-
-                        st.download_button(
-
-                            label="📥 Télécharger le bilan (HTML)",
-
-                            data=html_rapport,
-
-                            file_name=f"bilan_historique_boule_en_main_{datetime.now().strftime('%Y%m%d_%H%M')}.html",
-
-                            mime="text/html",
-
-                            use_container_width=True,
-
-                            key="dl_rapport_historique_html"
-
-                        )
-
-
-
-                    with st.expander("👁️ Prévisualiser le rapport convivial avant l'envoi", expanded=False):
-
-                        st.components.v1.html(html_rapport, height=650, scrolling=True)
-
-
-
-                st.divider()
-
-                st.markdown("#### 🏆 Envoyer l'historique officiel des tournois par courriel")
-
-                st.caption("Expédie le fichier officiel `historique_tournois.json` avec la liste et les résultats de tous les tournois enregistrés aux administrateurs définis dans la configuration SMTP.")
-
-                hist_t_exp = charger_historique_tournois()
-
-                col_exp_t1, col_exp_t2 = st.columns(2)
-
-                col_exp_t1.metric("🏆 Tournois dans l'historique", f"{len(hist_t_exp)} tournoi(s)")
-
-                dest_def_t = config_email.get("destinataires", "").strip()
-
-                col_exp_t2.metric("📬 Destinataire(s) SMTP", dest_def_t if dest_def_t else "Non configuré")
-
-
-
-                dest_t_input = st.text_input(
-
-                    "Adresse(s) courriel des administrateurs destinataires :",
-
-                    value=dest_def_t,
-
-                    placeholder="Ex: president@ligue.com, marqueur@ligue.com",
-
-                    key="input_dest_t_export",
-
-                    help="Par défaut, les adresses des administrateurs enregistrées dans la configuration SMTP ci-dessous."
-
-                )
-
-
-
-                if st.button("📤 Envoyer l'historique des tournois (avec pièce jointe JSON)", type="primary", key="btn_send_export_t_email"):
-
-                    with st.spinner("Envoi de l'historique des tournois en cours..."):
-
-                        ok_exp_t, msg_exp_t = envoyer_courriel_sauvegarde_tournoi(None, destinataires_specifiques=dest_t_input.strip())
-
-                    if ok_exp_t:
-
-                        st.success(f"✅ {msg_exp_t} (Envoyé à : `{dest_t_input.strip()}` avec `{os.path.basename(HISTORIQUE_TOURNOIS_FILE)}`)")
-
-                    else:
-
-                        st.error(f"❌ {msg_exp_t}")
-
-
-
-                st.divider()
-
-                st.markdown("#### 💾 Sauvegarde locale & Restauration des fichiers JSON officiels")
-
-                st.caption("Téléchargez ou restaurez directement les fichiers d'historique officiels (`historique_matchs.json` et `historique_tournois.json`). Les fichiers ne contiennent que les données pures JSON (sans code HTML).")
-
-                
-
-                if "msg_restauration_matchs_succes" in st.session_state:
-
-                    st.success(st.session_state.pop("msg_restauration_matchs_succes"))
-
-                if "msg_restauration_tournois_succes" in st.session_state:
-
-                    st.success(st.session_state.pop("msg_restauration_tournois_succes"))
-
-
-
-                col_json_m, col_json_t = st.columns(2)
-
-                with col_json_m:
-
-                    with st.container(border=True):
-
-                        st.markdown("###### 🎱 Historique des matchs (`historique_matchs.json`)")
-
-                        hist_m_actuel = charger_historique_matchs()
-
-                        st.caption(f"**{len(hist_m_actuel)} match(s)** actuellement enregistré(s) sur le disque.")
-
-                        
-
-                        # Nettoyer hist_m_actuel pour le téléchargement (aucun HTML dans le JSON)
-
-                        hist_m_clean = []
-
-                        for m_item in hist_m_actuel:
-
-                            if isinstance(m_item, dict):
-
-                                m_c = dict(m_item)
-
-                                m_c.pop("html_officiel", None)
-
-                                m_c.pop("html", None)
-
-                                hist_m_clean.append(m_c)
-
-
-
-                        col_btn_m1, col_btn_m2, col_btn_m3 = st.columns(3)
-
-                        with col_btn_m1:
-
-                            st.download_button(
-
-                                label="📥 Télécharger JSON",
-
-                                data=json.dumps(hist_m_clean, ensure_ascii=False, indent=4),
-
-                                file_name="historique_matchs.json",
-
-                                mime="application/json",
-
-                                use_container_width=True,
-
-                                key="btn_dl_json_matchs"
-
-                            )
-
-                        with col_btn_m2:
-
-                            if st.button("⚡ Restaurer Supabase", use_container_width=True, key="btn_pull_sb_matchs_specifique", help="Télécharge et restaure l'historique des matchs depuis Supabase PostgreSQL avec fusion intelligente"):
-
-                                with st.spinner("Restauration depuis Supabase PostgreSQL..."):
-
-                                    raw_sb_m = telecharger_fichier_supabase("historique_matchs.json")
-
-                                    if raw_sb_m:
-
-                                        try:
-
-                                            sb_list = json.loads(raw_sb_m)
-
-                                            if isinstance(sb_list, list) and len(sb_list) > 0:
-
-                                                if os.path.exists(HISTORIQUE_FILE):
-
-                                                    try:
-
-                                                        with open(f"{HISTORIQUE_FILE}.bak", "wb") as f_bak:
-
-                                                            with open(HISTORIQUE_FILE, "rb") as f_cur:
-
-                                                                f_bak.write(f_cur.read())
-
-                                                    except Exception:
-
-                                                        pass
-
-                                                loc_matchs = []
-
-                                                if os.path.exists(HISTORIQUE_FILE):
-
-                                                    try:
-
-                                                        with open(HISTORIQUE_FILE, "r", encoding="utf-8") as f_r:
-
-                                                            loc_matchs = json.load(f_r)
-
-                                                        if not isinstance(loc_matchs, list):
-
-                                                            loc_matchs = []
-
-                                                    except Exception:
-
-                                                        loc_matchs = []
-
-                                                cles_sb = {_cle_match_unique(m) for m in sb_list if _cle_match_unique(m)}
-
-                                                fusion = _fusionner_listes_matchs(sb_list, loc_matchs)
-
-                                                with open(HISTORIQUE_FILE, "w", encoding="utf-8") as f_w:
-
-                                                    json.dump(fusion, f_w, ensure_ascii=False, indent=4)
-
-                                                try:
-
-                                                    _FILE_MEM_CACHE.pop("historique_matchs", None)
-
-                                                except Exception:
-
-                                                    pass
-
-                                                st.session_state.pop("select_match_to_rectify", None)
-
-                                                st.session_state.pop("choix_match_vue", None)
-
-                                                st.session_state["msg_restauration_matchs_succes"] = f"✅ {len(fusion)} match(s) restauré(s) depuis Supabase PostgreSQL !"
-
-                                                time.sleep(0.8)
-
-                                                st.rerun()
-
-                                            else:
-
-                                                st.error("Le fichier sur Supabase ne contient aucun match valide.")
-
-                                        except Exception as e_p_sb:
-
-                                            st.error(f"Erreur lors de la lecture Supabase : {e_p_sb}")
-
-                                    else:
-
-                                        st.error("Impossible de récupérer historique_matchs.json depuis Supabase.")
-
-                        with col_btn_m3:
-
-                            if st.button("🐙 Restaurer GitHub", use_container_width=True, key="btn_pull_gh_matchs_specifique", help="Télécharge et restaure l'historique des matchs depuis GitHub avec fusion sécurisée"):
-
-                                with st.spinner("Téléchargement de la plus récente sauvegarde depuis GitHub..."):
-
-                                    commit_m = obtenir_infos_dernier_commit_github("historique_matchs.json")
-
-                                    gh_raw_m = telecharger_fichier_brut_depuis_github("historique_matchs.json", ref_override=commit_m.get("sha") if commit_m else None)
-
-                                    if gh_raw_m:
-
-                                        try:
-
-                                            gh_list = json.loads(gh_raw_m.decode("utf-8-sig"))
-
-                                            if isinstance(gh_list, list) and len(gh_list) > 0:
-
-                                                if os.path.exists(HISTORIQUE_FILE):
-
-                                                    try:
-
-                                                        with open(f"{HISTORIQUE_FILE}.bak", "wb") as f_bak:
-
-                                                            with open(HISTORIQUE_FILE, "rb") as f_cur:
-
-                                                                f_bak.write(f_cur.read())
-
-                                                    except Exception:
-
-                                                        pass
-
-                                                loc_matchs = []
-
-                                                if os.path.exists(HISTORIQUE_FILE):
-
-                                                    try:
-
-                                                        with open(HISTORIQUE_FILE, "r", encoding="utf-8") as f_r:
-
-                                                            loc_matchs = json.load(f_r)
-
-                                                        if not isinstance(loc_matchs, list):
-
-                                                            loc_matchs = []
-
-                                                    except Exception:
-
-                                                        loc_matchs = []
-
-                                                cles_gh = {_cle_match_unique(m) for m in gh_list if _cle_match_unique(m)}
-
-                                                fusion = _fusionner_listes_matchs(gh_list, loc_matchs)
-
-                                                with open(HISTORIQUE_FILE, "w", encoding="utf-8") as f_w:
-
-                                                    json.dump(fusion, f_w, ensure_ascii=False, indent=4)
-
-                                                try:
-
-                                                    _FILE_MEM_CACHE.pop("historique_matchs", None)
-
-                                                except Exception:
-
-                                                    pass
-
-                                                st.session_state.pop("select_match_to_rectify", None)
-
-                                                st.session_state.pop("choix_match_vue", None)
-
-                                                sha_c = commit_m.get("sha", "")[:7] if commit_m else ""
-
-                                                st.session_state["msg_restauration_matchs_succes"] = f"✅ {len(fusion)} match(s) restauré(s) depuis GitHub (Commit {sha_c}) !"
-
-                                                time.sleep(0.8)
-
-                                                st.rerun()
-
-                                            else:
-
-                                                st.error("Le fichier sur GitHub ne contient aucune liste de matchs valide.")
-
-                                        except Exception as e_p_m:
-
-                                            st.error(f"Erreur lors de la lecture du fichier GitHub : {e_p_m}")
-
-                                    else:
-
-                                        st.error("Impossible de récupérer historique_matchs.json depuis GitHub.")
-
-                        with st.expander("📤 Restaurer / Importer un fichier historique_matchs.json", expanded=False):
-
-                            up_m = st.file_uploader("Fichier JSON de sauvegarde des matchs", type=["json"], key="up_json_matchs")
-
-                            if up_m is not None:
-
-                                try:
-
-                                    raw_m = up_m.getvalue().decode("utf-8-sig")
-
-                                    data_m_up = json.loads(raw_m)
-
-                                    if isinstance(data_m_up, dict):
-
-                                        for k_cand in ["historique_matchs", "matchs", "historique", "data"]:
-
-                                            if k_cand in data_m_up and isinstance(data_m_up[k_cand], list):
-
-                                                data_m_up = data_m_up[k_cand]
-
-                                                break
-
-                                        else:
-
-                                            if "receveur" in data_m_up and "visiteur" in data_m_up:
-
-                                                data_m_up = [data_m_up]
-
-
-
-                                    if isinstance(data_m_up, list):
-
-                                        nb_m = len(data_m_up)
-
-                                        st.info(f"📄 **{up_m.name}** : **{nb_m} match(s)** détecté(s).")
-
-                                        if nb_m > 0:
-
-                                            apercu_m = [f"• {m.get('receveur', '?')} vs {m.get('visiteur', '?')} ({m.get('date_enregistrement', m.get('date', 'Date'))})" for m in data_m_up[-3:]]
-
-                                            st.caption("Aperçu des derniers matchs :<br>" + "<br>".join(apercu_m), unsafe_allow_html=True)
-
-                                        
-
-                                        if st.button("📥 Valider la restauration des matchs", type="primary", use_container_width=True, key="btn_conf_up_m"):
-
-                                            # Nettoyage systématique de tout résidu HTML
-
-                                            for m in data_m_up:
-
-                                                if isinstance(m, dict):
-
-                                                    m.pop("html_officiel", None)
-
-                                                    m.pop("html", None)
-
-                                            
-
-                                            ok_sv_m = sauvegarder_historique_matchs(data_m_up)
-
-                                            if ok_sv_m:
-
-                                                # Réinitialisation de session pour mise à jour immédiate des listes déroulantes
-
-                                                st.session_state.pop("select_match_to_rectify", None)
-
-                                                st.session_state.pop("choix_match_vue", None)
-
-                                                st.session_state["msg_restauration_matchs_succes"] = f"✅ {nb_m} match(s) restauré(s) avec succès ! Les listes déroulantes de consultation et de rectification ont été mises à jour."
-
-                                                st.rerun()
-
-                                            else:
-
-                                                st.error("Erreur lors de l'enregistrement de l'historique des matchs sur le disque.")
-
-                                    else:
-
-                                        st.error("Format JSON invalide (une liste de matchs est attendue).")
-
-                                except Exception as e_up_m:
-
-                                    st.error(f"Erreur d'importation : {e_up_m}")
-
-                        # Section Archives des saisons précédentes
-                        try:
-                            archives_saisons = [h for h in lister_historiques_saisons_disponibles() if not h.get("est_courante")]
-                            if archives_saisons:
-                                st.divider()
-                                st.markdown("###### 📦 Archives des saisons précédentes")
-                                for a_info in archives_saisons:
-                                    col_a1, col_a2 = st.columns([2.5, 1.5])
-                                    with col_a1:
-                                        st.caption(f"**{a_info['label']}**")
-                                    with col_a2:
-                                        try:
-                                            with open(a_info["chemin"], "r", encoding="utf-8") as f_a:
-                                                d_a_json = f_a.read()
-                                            st.download_button(
-                                                label="📥 Télécharger",
-                                                data=d_a_json,
-                                                file_name=a_info["nom_fichier"],
-                                                mime="application/json",
-                                                key=f"dl_archive_{a_info['num']}",
-                                                use_container_width=True
-                                            )
-                                        except Exception:
-                                            pass
-                        except Exception:
-                            pass
-
-                with col_json_t:
-
-                    with st.container(border=True):
-
-                        st.markdown("###### 🏆 Historique des tournois (`historique_tournois.json`)")
-
-                        hist_t_actuel = charger_historique_tournois()
-
-                        st.caption(f"**{len(hist_t_actuel)} tournoi(s)** actuellement enregistré(s) sur le disque.")
-
-                        
-
-                        hist_t_clean = []
-
-                        for t_item in hist_t_actuel:
-
-                            if isinstance(t_item, dict):
-
-                                t_c = dict(t_item)
-
-                                t_c.pop("html_officiel", None)
-
-                                t_c.pop("html", None)
-
-                                hist_t_clean.append(t_c)
-
-
-
-                        col_btn_t1, col_btn_t2, col_btn_t3 = st.columns(3)
-
-                        with col_btn_t1:
-
-                            st.download_button(
-
-                                label="📥 Télécharger JSON",
-
-                                data=json.dumps(hist_t_clean, ensure_ascii=False, indent=4),
-
-                                file_name="historique_tournois.json",
-
-                                mime="application/json",
-
-                                use_container_width=True,
-
-                                key="btn_dl_json_tournois"
-
-                            )
-
-                        with col_btn_t2:
-
-                            if st.button("⚡ Restaurer Supabase", use_container_width=True, key="btn_pull_sb_tournois_specifique", help="Télécharge et restaure l'historique des tournois depuis Supabase PostgreSQL"):
-
-                                with st.spinner("Restauration des tournois depuis Supabase..."):
-
-                                    raw_sb_t = telecharger_fichier_supabase("historique_tournois.json")
-
-                                    if raw_sb_t:
-
-                                        try:
-
-                                            sb_t_list = json.loads(raw_sb_t)
-
-                                            if isinstance(sb_t_list, list) and len(sb_t_list) > 0:
-
-                                                if os.path.exists(HISTORIQUE_TOURNOIS_FILE):
-
-                                                    try:
-
-                                                        with open(f"{HISTORIQUE_TOURNOIS_FILE}.bak", "wb") as f_bakt:
-
-                                                            with open(HISTORIQUE_TOURNOIS_FILE, "rb") as f_curt:
-
-                                                                f_bakt.write(f_curt.read())
-
-                                                    except Exception:
-
-                                                        pass
-
-                                                with open(HISTORIQUE_TOURNOIS_FILE, "w", encoding="utf-8") as f_wt:
-
-                                                    json.dump(sb_t_list, f_wt, ensure_ascii=False, indent=4)
-
-                                                try:
-
-                                                    td_curr = charger_tournois_data()
-
-                                                    if isinstance(td_curr, dict):
-
-                                                        td_curr["historique"] = sb_t_list
-
-                                                        _ecrire_json_atomique(TOURNOIS_FILE, td_curr)
-
-                                                except Exception:
-
-                                                    pass
-
-                                                try:
-
-                                                    _FILE_MEM_CACHE.pop("historique_tournois", None)
-
-                                                except Exception:
-
-                                                    pass
-
-                                                st.session_state["msg_restauration_tournois_succes"] = f"✅ {len(sb_t_list)} tournoi(s) restauré(s) depuis Supabase PostgreSQL !"
-
-                                                time.sleep(0.8)
-
-                                                st.rerun()
-
-                                            else:
-
-                                                st.error("Aucun tournoi valide trouvé sur Supabase.")
-
-                                        except Exception as e_p_sbt:
-
-                                            st.error(f"Erreur Supabase tournois : {e_p_sbt}")
-
-                                    else:
-
-                                        st.error("Impossible de récupérer historique_tournois.json depuis Supabase.")
-
-                        with col_btn_t3:
-
-                            if st.button("🐙 Restaurer GitHub", use_container_width=True, key="btn_pull_gh_tournois_specifique", help="Télécharge et restaure la sauvegarde la plus récente de l'historique des tournois depuis GitHub"):
-
-                                with st.spinner("Téléchargement de la plus récente sauvegarde depuis GitHub..."):
-
-                                    commit_t = obtenir_infos_dernier_commit_github("historique_tournois.json")
-
-                                    gh_raw_t = telecharger_fichier_brut_depuis_github("historique_tournois.json", ref_override=commit_t.get("sha") if commit_t else None)
-
-                                    if gh_raw_t:
-
-                                        try:
-
-                                            gh_t_list = json.loads(gh_raw_t.decode("utf-8-sig"))
-
-                                            if isinstance(gh_t_list, list) and len(gh_t_list) > 0:
-
-                                                if os.path.exists(HISTORIQUE_TOURNOIS_FILE):
-
-                                                    try:
-
-                                                        with open(f"{HISTORIQUE_TOURNOIS_FILE}.bak", "wb") as f_bakt:
-
-                                                            with open(HISTORIQUE_TOURNOIS_FILE, "rb") as f_curt:
-
-                                                                f_bakt.write(f_curt.read())
-
-                                                    except Exception:
-
-                                                        pass
-
-                                                with open(HISTORIQUE_TOURNOIS_FILE, "wb") as f_wt:
-
-                                                    f_wt.write(gh_raw_t)
-
-                                                try:
-
-                                                    td_curr = charger_tournois_data()
-
-                                                    if isinstance(td_curr, dict):
-
-                                                        td_curr["historique"] = gh_t_list
-
-                                                        _ecrire_json_atomique(TOURNOIS_FILE, td_curr)
-
-                                                except Exception:
-
-                                                    pass
-
-                                                try:
-
-                                                    _FILE_MEM_CACHE.pop("historique_tournois", None)
-
-                                                except Exception:
-
-                                                    pass
-
-                                                sha_t = commit_t.get("sha", "")[:7] if commit_t else ""
-
-                                                st.session_state["msg_restauration_tournois_succes"] = f"✅ {len(gh_t_list)} tournoi(s) restauré(s) depuis la plus récente sauvegarde GitHub (Commit {sha_t}) !"
-
-                                                time.sleep(0.8)
-
-                                                st.rerun()
-
-                                            else:
-
-                                                st.error("Le fichier sur GitHub ne contient aucun tournoi valide.")
-
-                                        except Exception as e_p_t:
-
-                                            st.error(f"Erreur lors de la lecture du fichier GitHub : {e_p_t}")
-
-                                    else:
-
-                                        st.error("Impossible de récupérer historique_tournois.json depuis GitHub.")
-
-                        with st.expander("📤 Restaurer / Importer un fichier historique_tournois.json", expanded=False):
-
-                            up_t = st.file_uploader("Fichier JSON de sauvegarde des tournois", type=["json"], key="up_json_tournois")
-
-                            if up_t is not None:
-
-                                try:
-
-                                    raw_t = up_t.getvalue().decode("utf-8-sig")
-
-                                    data_t_up = json.loads(raw_t)
-
-                                    if isinstance(data_t_up, dict):
-
-                                        for k_cand in ["historique_tournois", "tournois", "historique", "data"]:
-
-                                            if k_cand in data_t_up and isinstance(data_t_up[k_cand], list):
-
-                                                data_t_up = data_t_up[k_cand]
-
-                                                break
-
-                                        else:
-
-                                            if "nom" in data_t_up or "id_archive" in data_t_up:
-
-                                                data_t_up = [data_t_up]
-
-
-
-                                    if isinstance(data_t_up, list):
-
-                                        st.info(f"📄 **{up_t.name}** : **{len(data_t_up)} tournoi(s)** détecté(s).")
-
-                                        if st.button("📥 Valider la restauration des tournois", type="primary", use_container_width=True, key="btn_conf_up_t"):
-
-                                            for t in data_t_up:
-
-                                                if isinstance(t, dict):
-
-                                                    t.pop("html", None)
-
-                                                    t.pop("html_officiel", None)
-
-                                            ok_sv_t = sauvegarder_historique_tournois(data_t_up)
-
-                                            if ok_sv_t:
-
-                                                st.session_state["msg_restauration_tournois_succes"] = f"✅ {len(data_t_up)} tournoi(s) restauré(s) avec succès !"
-
-                                                st.rerun()
-
-                                            else:
-
-                                                st.error("Erreur lors de l'enregistrement de l'historique des tournois.")
-
-                                    else:
-
-                                        st.error("Format JSON invalide (une liste de tournois est attendue).")
-
-                                except Exception as e_up_t:
-
-                                    st.error(f"Erreur d'importation : {e_up_t}")
-
-                st.divider()
-
-                st.markdown("#### 👥 Sauvegarde & Restauration du Registre officiel des joueurs (`joueurs.json`)")
-
-                st.caption("Téléchargez ou restaurez directement le fichier maître officiel des joueurs avec leurs coordonnées (téléphone, courriel), statut actif/inactif et contraintes de journées (Lundi, Mardi, Mercredi, Jeudi).")
-
-                if "msg_restauration_joueurs_succes" in st.session_state:
-                    st.success(st.session_state.pop("msg_restauration_joueurs_succes"))
-
-                with st.container(border=True):
-                    col_j_hdr1, col_j_hdr2 = st.columns([3, 1])
-                    with col_j_hdr1:
-                        st.markdown("###### 👥 Registre officiel des joueurs (`joueurs.json`)")
-                    registre_sauvegarde = charger_registre_joueurs()
-                    with col_j_hdr2:
-                        nb_act_sb = len([j for j in registre_sauvegarde if j.get("actif", True)])
-                        st.caption(f"**{len(registre_sauvegarde)} joueur(s)** ({nb_act_sb} actif(s))")
-
-                    col_btn_j1, col_btn_j2, col_btn_j3 = st.columns(3)
-                    with col_btn_j1:
-                        st.download_button(
-                            label="📥 Télécharger JSON",
-                            data=json.dumps(registre_sauvegarde, ensure_ascii=False, indent=2),
-                            file_name="joueurs.json",
-                            mime="application/json",
-                            use_container_width=True,
-                            key="btn_dl_json_joueurs"
-                        )
-                    with col_btn_j2:
-                        if st.button("⚡ Restaurer Supabase", use_container_width=True, key="btn_pull_sb_joueurs_specifique", help="Télécharge et restaure le registre des joueurs depuis Supabase PostgreSQL"):
-                            with st.spinner("Restauration de joueurs.json depuis Supabase PostgreSQL..."):
-                                raw_sb_j = telecharger_fichier_supabase("joueurs.json")
-                                if raw_sb_j:
-                                    try:
-                                        sb_j_list = json.loads(raw_sb_j)
-                                        if isinstance(sb_j_list, list) and len(sb_j_list) > 0:
-                                            ok_j_sb, msg_j_sb = sauvegarder_registre_joueurs(sb_j_list)
-                                            if ok_j_sb:
-                                                sauvegarder_config_saison(charger_config_saison())
-                                                st.session_state["msg_restauration_joueurs_succes"] = f"✅ {len(sb_j_list)} joueur(s) restauré(s) depuis Supabase PostgreSQL !"
-                                                time.sleep(0.8)
-                                                st.rerun()
-                                            else:
-                                                st.error(f"Erreur de sauvegarde : {msg_j_sb}")
-                                        else:
-                                            st.error("Le fichier sur Supabase ne contient aucun joueur valide.")
-                                    except Exception as e_p_sb_j:
-                                        st.error(f"Erreur lors de la lecture Supabase : {e_p_sb_j}")
-                                else:
-                                    st.error("Impossible de récupérer joueurs.json depuis Supabase.")
-
-                    with col_btn_j3:
-                        if st.button("🐙 Restaurer GitHub", use_container_width=True, key="btn_pull_gh_joueurs_specifique", help="Télécharge et restaure le registre des joueurs depuis la plus récente sauvegarde GitHub"):
-                            with st.spinner("Téléchargement de joueurs.json depuis GitHub..."):
-                                commit_j = obtenir_infos_dernier_commit_github("joueurs.json")
-                                gh_raw_j = telecharger_fichier_brut_depuis_github("joueurs.json", ref_override=commit_j.get("sha") if commit_j else None)
-                                if gh_raw_j:
-                                    try:
-                                        gh_j_list = json.loads(gh_raw_j.decode("utf-8-sig"))
-                                        if isinstance(gh_j_list, list) and len(gh_j_list) > 0:
-                                            ok_j_gh, msg_j_gh = sauvegarder_registre_joueurs(gh_j_list)
-                                            if ok_j_gh:
-                                                sauvegarder_config_saison(charger_config_saison())
-                                                sha_j = commit_j.get("sha", "")[:7] if commit_j else ""
-                                                st.session_state["msg_restauration_joueurs_succes"] = f"✅ {len(gh_j_list)} joueur(s) restauré(s) depuis GitHub (Commit {sha_j}) !"
-                                                time.sleep(0.8)
-                                                st.rerun()
-                                            else:
-                                                st.error(f"Erreur de sauvegarde : {msg_j_gh}")
-                                        else:
-                                            st.error("Le fichier sur GitHub ne contient aucune liste de joueurs valide.")
-                                    except Exception as e_p_j:
-                                        st.error(f"Erreur lors de la lecture du fichier GitHub : {e_p_j}")
-                                else:
-                                    st.error("Impossible de récupérer joueurs.json depuis GitHub.")
-
-                    with st.expander("📤 Restaurer / Importer un fichier joueurs.json", expanded=False):
-                        up_j = st.file_uploader("Fichier JSON de sauvegarde des joueurs", type=["json"], key="up_json_joueurs")
-                        if up_j is not None:
-                            try:
-                                raw_j = up_j.getvalue().decode("utf-8-sig")
-                                data_j_up = json.loads(raw_j)
-                                if isinstance(data_j_up, dict):
-                                    for k_cand in ["joueurs", "registre", "joueurs_inscrits", "data"]:
-                                        if k_cand in data_j_up and isinstance(data_j_up[k_cand], list):
-                                            data_j_up = data_j_up[k_cand]
-                                            break
-                                if isinstance(data_j_up, list) and len(data_j_up) > 0:
-                                    st.info(f"📄 **{up_j.name}** : **{len(data_j_up)} joueur(s)** détecté(s).")
-                                    if st.button("📥 Valider la restauration du registre des joueurs", type="primary", use_container_width=True, key="btn_conf_up_j"):
-                                        ok_sv_j, msg_sv_j = sauvegarder_registre_joueurs(data_j_up)
-                                        if ok_sv_j:
-                                            sauvegarder_config_saison(charger_config_saison())
-                                            st.session_state["msg_restauration_joueurs_succes"] = f"✅ {len(data_j_up)} joueur(s) restauré(s) avec succès !"
-                                            st.rerun()
-                                        else:
-                                            st.error(f"Erreur d'enregistrement : {msg_sv_j}")
-                                else:
-                                    st.error("Format JSON invalide (une liste de joueurs est attendue).")
-                            except Exception as e_up_j:
-                                st.error(f"Erreur d'importation : {e_up_j}")
-
-
-
-
-
-                st.divider()
-
-                st.markdown("#### 🌐 Passerelle API Saphir (`billardImport`)")
-
-                st.caption("Vous pouvez tester l'envoi direct de pointages en HTTP POST vers **https://saphirbillard.com**.")
-
-                with st.expander("🚀 Ouvrir le module de test POST API Saphir", expanded=True):
-
-                    afficher_module_test_post_saphir(key_prefix="export_sec")
-
-
-
-            with tab_api_saphir:
-
-                afficher_module_test_post_saphir(key_prefix="admin_tab")
-
-
-
-            with tab_sms:
-
-                afficher_onglet_sentinelle_sms()
-
-
-
-            with tab_smtp:
-
-                st.markdown("#### ⚙️ Configuration du serveur de messagerie (SMTP)")
-
-                st.info(
-
-                    "💡 **Pour utiliser Gmail** : Google requiert l'activation de la **Validation en 2 étapes** "
-
-                    "et la création d'un **Mot de passe d'application** (clé de 16 lettres). "
-
-                    "Les espaces (format `xxxx xxxx xxxx xxxx`) sont retirés automatiquement."
-
-                )
-
-                smtp_dest = st.text_input(
-
-                    "Courriels administrateurs / Destinataire(s) (séparés par virgule)",
-
-                    value=config_email.get("destinataires", ""),
-
-                    key="admin_smtp_dest",
-
-                    help="Adresses qui recevront les résultats officiels des matchs, feuilles numérisées et sauvegardes."
-
-                )
-
-                col_c1, col_c2 = st.columns(2)
-
-                smtp_serveur = col_c1.text_input(
-
-                    "Serveur SMTP",
-
-                    value=config_email.get("smtp_serveur", "smtp.gmail.com"),
-
-                    key="admin_smtp_serveur"
-
-                )
-
-                port_actuel = int(config_email.get("smtp_port", 587)) if str(config_email.get("smtp_port", "")).isdigit() else 587
-
-                smtp_port = col_c2.number_input(
-
-                    "Port SMTP (587 STARTTLS ou 465 SSL)",
-
-                    value=port_actuel,
-
-                    key="admin_smtp_port"
-
-                )
-
-                smtp_expediteur = col_c1.text_input(
-
-                    "Courriel expéditeur (compte Google / Gmail)",
-
-                    value=config_email.get("smtp_expediteur", ""),
-
-                    key="admin_smtp_exp",
-
-                    placeholder="exemple@gmail.com"
-
-                )
-
-
-
-                mdp_smtp_actuel = str(config_email.get("smtp_mdp", "") or "").strip()
-
-                with col_c2:
-
-                    if mdp_smtp_actuel:
-
-                        st.caption("🔒 Clé SMTP enregistrée : `••••••••••••`")
-
-                        modifier_smtp_pwd = st.checkbox("Modifier la clé d'application SMTP", key="chk_edit_smtp_pwd")
-
-                        if modifier_smtp_pwd:
-
-                            nouveau_mdp = st.text_input(
-
-                                "Nouvelle clé d'application SMTP (16 lettres)",
-
-                                type="password",
-
-                                key="admin_smtp_pwd",
-
-                                placeholder="ex: abcd efgh ijkl mnop",
-
-                                help="Collez les 16 caractères générés dans votre compte Google (Sécurité > Mots de passe d'application)."
-
-                            )
-
-                            smtp_mdp = nouveau_mdp.strip().replace(" ", "") if nouveau_mdp.strip() else mdp_smtp_actuel
-
-                        else:
-
-                            smtp_mdp = mdp_smtp_actuel
-
-                    else:
-
-                        nouveau_mdp = st.text_input(
-
-                            "Clé d'application SMTP (16 lettres)",
-
-                            type="password",
-
-                            key="admin_smtp_pwd",
-
-                            placeholder="ex: abcd efgh ijkl mnop",
-
-                            help="Pour Gmail, générez une clé d'application dans votre compte Google (Sécurité > Mots de passe des applications)."
-
-                        )
-
-                        smtp_mdp = nouveau_mdp.strip().replace(" ", "")
-
-
-
-                smtp_ssl = st.checkbox(
-
-                    "Utiliser SSL direct (Port 465 recommandé en cas de blocage du port 587)",
-
-                    value=bool(config_email.get("smtp_ssl", False) or port_actuel == 465),
-
-                    key="admin_smtp_ssl"
-
-                )
-
-
-
-                col_btn_cfg1, col_btn_cfg2 = st.columns(2)
-
-                with col_btn_cfg1:
-
-                    if st.button("💾 Enregistrer la configuration SMTP", use_container_width=True):
-
-                        # Ajustement automatique du port selon le mode SSL si non personnalisé
-
-                        p_sauv = int(smtp_port)
-
-                        if smtp_ssl and p_sauv == 587:
-
-                            p_sauv = 465
-
-                        elif not smtp_ssl and p_sauv == 465:
-
-                            p_sauv = 587
-
-
-
-                        nouvelle_cfg = {
-
-                            "destinataires": smtp_dest.strip(),
-
-                            "smtp_serveur": smtp_serveur.strip(),
-
-                            "smtp_port": p_sauv,
-
-                            "smtp_expediteur": smtp_expediteur.strip(),
-
-                            "smtp_mdp": smtp_mdp.strip().replace(" ", ""),
-
-                            "smtp_ssl": smtp_ssl
-
-                        }
-
-                        if sauvegarder_config_email(nouvelle_cfg):
-
-                            config_email = nouvelle_cfg
-
-                            st.success("✅ Configuration SMTP enregistrée avec succès dans le fichier !")
-
-                            time.sleep(0.5)
-
-                            st.rerun()
-
-                        else:
-
-                            st.error("Erreur lors de la sauvegarde du fichier.")
-
-
-
-                with col_btn_cfg2:
-
-                    if st.button("🧪 Tester la configuration (courriel test)", use_container_width=True):
-
-                        if not smtp_dest:
-
-                            st.error("⚠️ Veuillez renseigner au moins une adresse de destinataire.")
-
-                        elif not smtp_expediteur:
-
-                            st.error("⚠️ Veuillez renseigner l'adresse courriel de l'expéditeur.")
-
-                        elif not smtp_mdp:
-
-                            st.error("⚠️ Veuillez renseigner la clé d'application SMTP Google (16 lettres).")
-
-                        else:
-
-                            p_test = int(smtp_port)
-
-                            if smtp_ssl and p_test == 587:
-
-                                p_test = 465
-
-                            cfg_test = {
-
-                                "destinataires": smtp_dest.strip(),
-
-                                "smtp_serveur": smtp_serveur.strip(),
-
-                                "smtp_port": p_test,
-
-                                "smtp_expediteur": smtp_expediteur.strip(),
-
-                                "smtp_mdp": smtp_mdp.strip().replace(" ", ""),
-
-                                "smtp_ssl": smtp_ssl
-
-                            }
-
-                            with st.spinner("Test de connexion SMTP en cours..."):
-
-                                succes_test, msg_test = envoyer_courriel(
-
-                                    smtp_dest,
-
-                                    "🎱 Test de configuration SMTP - Ligue de billard Boule en main",
-
-                                    "Ce message confirme que votre configuration SMTP fonctionne correctement !",
-
-                                    "<p>Ce message confirme que votre configuration <strong>SMTP</strong> fonctionne correctement !</p>",
-
-                                    cfg_test
-
-                                )
-
-                            if succes_test:
-
-                                st.success(f"✅ {msg_test} (Envoyé à : `{smtp_dest}`)")
-
-                            else:
-
-                                st.error(f"❌ {msg_test}")
-
-
-
-            with tab_secu:
-
-                st.markdown("#### 🔑 Gestion des mots de passe d'accès")
-
-                col_pwd_m, col_pwd_a = st.columns(2)
-
-                with col_pwd_m:
-
-                    with st.container(border=True):
-
-                        st.markdown("##### 🔒 Mot de passe Marqueur / Éditeur")
-
-                        st.caption("Permet la saisie des matchs et la gestion des tournois (défaut : `saphir2026`).")
-
-                        modifier_m_pwd = st.checkbox("Modifier le mot de passe Marqueur", key="chk_mod_m_pwd")
-
-                        if modifier_m_pwd:
-
-                            nouveau_mdp = st.text_input("Nouveau mot de passe Marqueur", type="password", key="new_admin_pwd")
-
-                            confirm_mdp = st.text_input("Confirmer le mot de passe Marqueur", type="password", key="confirm_admin_pwd")
-
-                            if st.button("💾 Mettre à jour le mot de passe Marqueur", use_container_width=True, key="btn_save_pwd_marqueur"):
-
-                                if not nouveau_mdp:
-
-                                    st.error("Le mot de passe ne peut pas être vide.")
-
-                                elif nouveau_mdp != confirm_mdp:
-
-                                    st.error("Les deux mots de passe ne correspondent pas.")
-
-                                else:
-
-                                    if sauvegarder_mot_de_passe_admin(nouveau_mdp):
-
-                                        st.success("✅ Mot de passe Marqueur mis à jour avec succès !")
-
-                                    else:
-
-                                        st.error("Erreur lors de la sauvegarde.")
-
-                with col_pwd_a:
-
-                    with st.container(border=True):
-
-                        st.markdown("##### 🛡️ Mot de passe Administrateur")
-
-                        st.caption("Donne seul accès au volet **⚙️ Administration** (défaut : `admin2026`).")
-
-                        modifier_a_pwd = st.checkbox("Modifier le mot de passe Administrateur", key="chk_mod_a_pwd")
-
-                        if modifier_a_pwd:
-
-                            nouveau_mdp_sup = st.text_input("Nouveau mot de passe Administrateur", type="password", key="new_super_admin_pwd")
-
-                            confirm_mdp_sup = st.text_input("Confirmer le mot de passe Administrateur", type="password", key="confirm_super_admin_pwd")
-
-                            if st.button("💾 Mettre à jour le mot de passe Administrateur", type="primary", use_container_width=True, key="btn_save_pwd_super_admin"):
-
-                                if not nouveau_mdp_sup:
-
-                                    st.error("Le mot de passe administrateur ne peut pas être vide.")
-
-                                elif nouveau_mdp_sup != confirm_mdp_sup:
-
-                                    st.error("Les deux mots de passe ne correspondent pas.")
-
-                                else:
-
-                                    if sauvegarder_mot_de_passe_super_admin(nouveau_mdp_sup):
-
-                                        st.success("✅ Mot de passe Administrateur mis à jour avec succès !")
-
-                                    else:
-
-                                        st.error("Erreur lors de la sauvegarde.")
-
-
-
-                st.divider()
-
-                st.markdown("#### ☁️ Synchronisation Cloud Hybride & Persistance des Données")
-
-                st.caption(
-
-                    "Protégez vos données contre la mise en veille de Streamlit Community Cloud. "
-
-                    "Le **Mode 1 (Supabase PostgreSQL)** élimine les rechargements intempestifs de page lors des matchs en sauvegardant "
-
-                    "instantanément en base de données sans déclencher de redémarrage Git."
-
-                )
-
-
-
-                # Récupération des paramètres actuels
-
-                url_sb_actuel, key_sb_actuel, mode_sb_actuel = obtenir_parametres_supabase()
-
-                tok_gh_actuel, repo_gh_actuel, branch_gh_actuel = obtenir_parametres_github()
-
-
-
-                # Sélecteur de Mode Cloud
-
-                modes_options = [
-
-                    "🟢 Mode 1 : Supabase PostgreSQL prioritaire (Recommandé - Anti-rechargement)",
-
-                    "🔵 Mode 2 : Hybride (Supabase PostgreSQL + Backup GitHub)",
-
-                    "⚪ Mode 3 : GitHub classique"
-
-                ]
-
-                mode_index = 0
-
-                if mode_sb_actuel == "supabase_github":
-
-                    mode_index = 1
-
-                elif mode_sb_actuel == "github":
-
-                    mode_index = 2
-
-
-
-                choix_mode_str = st.radio(
-
-                    "**Mode de persistance Cloud :**",
-
-                    options=modes_options,
-
-                    index=mode_index,
-
-                    help="En Mode 1, les données sont envoyées instantanément à Supabase sans créer de commits GitHub, évitant ainsi le rechargement intempestif de Streamlit Cloud."
-
-                )
-
-
-
-                nouveau_mode = "supabase"
-
-                if "Mode 2" in choix_mode_str:
-
-                    nouveau_mode = "supabase_github"
-
-                elif "Mode 3" in choix_mode_str:
-
-                    nouveau_mode = "github"
-
-
-
-                if nouveau_mode == "supabase":
-
-                    st.info("💡 **Mode 1 actif :** Les scores et historiques sont sauvegardés instantanément sur votre base Supabase PostgreSQL. Aucune coupure de session Streamlit Cloud.")
-
-                elif nouveau_mode == "supabase_github":
-
-                    st.info("💡 **Mode 2 actif :** Double persistance. Chaque mise à jour est enregistrée sur Supabase PostgreSQL et poussée en parallèle sur GitHub.")
-
-                else:
-
-                    st.info("💡 **Mode 3 actif :** Les données sont poussées directement sur GitHub via des commits Git.")
-
-
-
-                # Section Supabase
-
-                with st.expander("🗄️ Configuration Supabase PostgreSQL", expanded=(nouveau_mode in ("supabase", "supabase_github"))):
-
-                    col_sb1, col_sb2 = st.columns([2, 1])
-
-                    with col_sb1:
-
-                        saisie_sb_url = st.text_input(
-
-                            "URL du projet Supabase :",
-
-                            value=url_sb_actuel or "https://ueikhwdfmtnavqqscdoe.supabase.co",
-
-                            placeholder="https://ueikhwdfmtnavqqscdoe.supabase.co",
-
-                            key="input_sb_url_admin"
-
-                        )
-
-                        if key_sb_actuel:
-
-                            masque_k = (key_sb_actuel[:10] + "••••••••") if len(key_sb_actuel) > 10 else "••••••••"
-
-                            st.caption(f"🔑 Clé API secrète active : `{masque_k}` (Détectée via Secrets ou Config)")
-
-                            mod_sb_key = st.checkbox("Modifier ou remplacer la clé API Supabase", key="chk_mod_sb_key")
-
-                            if mod_sb_key:
-
-                                saisie_sb_key = st.text_input("Nouvelle clé secrète Supabase :", type="password", key="input_sb_key_admin")
-
-                            else:
-
-                                saisie_sb_key = key_sb_actuel
-
-                        else:
-
-                            st.caption("ℹ️ Clé non encore détectée. Saisissez-la ci-dessous ou vérifiez Streamlit Secrets :")
-
-                            saisie_sb_key = st.text_input("Clé secrète Supabase (sb_secret_...) :", type="password", key="input_sb_key_admin", placeholder="sb_secret_...")
-
-                    with col_sb2:
-
-                        st.markdown("<br>", unsafe_allow_html=True)
-
-                        if st.button("🧪 Tester connexion Supabase", use_container_width=True, key="btn_test_sb"):
-
-                            cle_eval = (saisie_sb_key or key_sb_actuel or obtenir_parametres_supabase()[1]).strip()
-
-                            url_eval = (saisie_sb_url or url_sb_actuel or obtenir_parametres_supabase()[0]).strip()
-
-                            with st.spinner("Test de communication avec Supabase PostgreSQL..."):
-
-                                ok_test_sb, msg_test_sb = tester_connexion_supabase(url_eval, cle_eval)
-
-                            if ok_test_sb:
-
-                                st.success(f"✅ {msg_test_sb}")
-
-                            else:
-
-                                st.error(f"❌ {msg_test_sb}")
-
-
-
-                # Section GitHub
-
-                with st.expander("🐙 Configuration Dépôt GitHub", expanded=(nouveau_mode in ("supabase_github", "github"))):
-
-                    col_gh1, col_gh2 = st.columns([2, 1])
-
-                    with col_gh1:
-
-                        if tok_gh_actuel:
-
-                            st.caption("🔑 Jeton GitHub enregistré : `ghp_••••••••••••••••••••••••`")
-
-                            mod_gh_tok = st.checkbox("Modifier le jeton GitHub", key="chk_mod_gh_tok")
-
-                            if mod_gh_tok:
-
-                                saisie_gh_token = st.text_input("Nouveau jeton GitHub :", type="password", placeholder="ghp_...", key="input_gh_token_admin")
-
-                            else:
-
-                                saisie_gh_token = tok_gh_actuel
-
-                        else:
-
-                            saisie_gh_token = st.text_input("Jeton GitHub (Personal Access Token) :", type="password", placeholder="ghp_...", key="input_gh_token_admin")
-
-                    with col_gh2:
-
-                        saisie_gh_repo = st.text_input("Dépôt GitHub (propriétaire/nom) :", value=repo_gh_actuel, key="input_gh_repo_admin")
-
-
-
-                # Boutons d'action globale
-
-                col_cld_btn1, col_cld_btn2, col_cld_btn3, col_cld_btn4 = st.columns(4)
-
-                with col_cld_btn1:
-
-                    if st.button("💾 Enregistrer la configuration", type="primary", use_container_width=True, key="btn_save_cloud_cfg"):
-
-                        cle_finale = (saisie_sb_key or key_sb_actuel or "").strip()
-
-                        ok_s = sauvegarder_parametres_supabase(saisie_sb_url, cle_finale, nouveau_mode)
-
-                        ok_g = sauvegarder_parametres_github(saisie_gh_token, saisie_gh_repo, branch_gh_actuel)
-
-                        if ok_s and ok_g:
-
-                            with st.spinner("Configuration enregistrée ! Sauvegarde automatique de tous les fichiers vers le Cloud en cours..."):
-
-                                nb_cld, l_cld_ok, l_cld_err = synchroniser_tous_les_fichiers_cloud()
-
-                            if nb_cld > 0 and not l_cld_err:
-
-                                st.success(f"✅ Configuration enregistrée et {nb_cld} fichier(s) sauvegardé(s) vers le Cloud ({', '.join(l_cld_ok)}) !")
-
-                            elif nb_cld > 0:
-
-                                st.warning(f"⚠️ Configuration enregistrée. Fichiers sauvegardés : {', '.join(l_cld_ok)} | Erreurs : {'; '.join(l_cld_err)}")
-
-                            else:
-
-                                st.success("✅ Configuration Cloud et mode enregistrés avec succès !")
-
-                            time.sleep(1.2)
-
-                            st.rerun()
-
-                        else:
-
-                            st.error("❌ Erreur lors de l'enregistrement.")
-
-
-
-                with col_cld_btn2:
-
-                    if st.button("☁️ Sauvegarder tout (Cloud)", use_container_width=True, key="btn_push_all_cloud"):
-
-                        with st.spinner("Sauvegarde vers le Cloud en cours..."):
-
-                            nb_ok, l_ok, l_err = synchroniser_tous_les_fichiers_cloud()
-
-                        if nb_ok > 0 and not l_err:
-
-                            st.success(f"✅ {nb_ok} fichier(s) sauvegardé(s) sur le Cloud : {', '.join(l_ok)}")
-
-                        elif nb_ok > 0:
-
-                            st.warning(f"⚠️ Fichiers sauvegardés : {', '.join(l_ok)} | Erreur(s) : {'; '.join(l_err)}")
-
-                        else:
-
-                            st.error(f"❌ Échec de la sauvegarde Cloud : {'; '.join(l_err)}")
-
-
-
-                with col_cld_btn3:
-
-                    if st.button("⚡ Tout restaurer de Supabase", use_container_width=True, key="btn_pull_all_supabase", help="Télécharge et restaure l'ensemble des fichiers de la ligue depuis la table public.saphir_files de Supabase PostgreSQL"):
-
-                        with st.spinner("Restauration complète depuis Supabase PostgreSQL en cours..."):
-
-                            maj_ok, msg_pull = restaurer_tout_depuis_supabase(forcer=True)
-
-                        if maj_ok:
-
-                            st.success(f"✅ Données restaurées depuis Supabase : {msg_pull}")
-
-                            time.sleep(0.8)
-
-                            st.rerun()
-
-                        else:
-
-                            st.info(f"ℹ️ {msg_pull}")
-
-
-
-                with col_cld_btn4:
-
-                    if st.button("🐙 Tout restaurer de GitHub", use_container_width=True, key="btn_pull_all_github", help="Télécharge et restaure l'ensemble des fichiers de données depuis le dépôt GitHub"):
-
-                        with st.spinner("Restauration complète depuis GitHub en cours..."):
-
-                            maj_ok, msg_pull = restaurer_depuis_github_au_reveil(forcer=True)
-
-                        if maj_ok:
-
-                            st.success(f"✅ Données restaurées depuis GitHub : {msg_pull}")
-
-                            time.sleep(0.8)
-
-                            st.rerun()
-
-                        else:
-
-                            st.info(f"ℹ️ {msg_pull}")
-
-
+            with tab_avance:
+                _afficher_admin_avance()
 
 
 
