@@ -6384,8 +6384,8 @@ def charger_horaire_json(num_saison=None):
     return []
 
 
-def sauvegarder_horaire_json(lignes_horaire, num_saison=None):
-    """Enregistre le calendrier des rencontres dans horaire_saphir.json et horaire_saison_X.json, et synchronise sur GitHub."""
+def sauvegarder_horaire_json(lignes_horaire, num_saison=None, ecraser_principal=True):
+    """Enregistre le calendrier des rencontres dans horaire_saison_X.json et optionnellement horaire_saphir.json (saison active), et synchronise sur GitHub."""
     if not lignes_horaire:
         return False
 
@@ -6402,8 +6402,10 @@ def sauvegarder_horaire_json(lignes_horaire, num_saison=None):
             num_saison = 1
 
     fichier_saison = obtenir_chemin_horaire_saison(num_saison)
-    fichiers_a_ecrire = [HORAIRE_SAPHIR_FILE]
-    if fichier_saison != HORAIRE_SAPHIR_FILE:
+    fichiers_a_ecrire = []
+    if ecraser_principal:
+        fichiers_a_ecrire.append(HORAIRE_SAPHIR_FILE)
+    if fichier_saison not in fichiers_a_ecrire:
         fichiers_a_ecrire.append(fichier_saison)
 
     succes = True
@@ -36380,10 +36382,33 @@ def afficher_configuration_debut_saison(key_prefix="cfg_saison", afficher_reset_
             f"({2 * (nb_eq_act - 1)} matchs pour 2 cycles aller-retour, avec 2 semaines de repos par équipe)."
         )
 
-    col_gen1, col_gen2 = st.columns([1.6, 1.4] if afficher_reset_historique else [1, 0.01])
+    col_sim, col_gen1, col_gen2 = st.columns([1.3, 1.4, 1.3] if afficher_reset_historique else [1.2, 1.5, 0.01])
+    with col_sim:
+        if st.button(
+            "🧪 Simuler l'horaire (sans enregistrer)",
+            use_container_width=True,
+            key=f"{key_prefix}_btn_simuler_horaire",
+            disabled=not (ok_date and ok_joueurs and ok_equipes)
+        ):
+            d_cible = st.session_state.get(f"{key_prefix}_date_debut_input", date_deb_init)
+            n_sem_cible = int(st.session_state.get(f"{key_prefix}_nb_sem_input", nb_sem_init))
+            sim_lignes, sim_conflits = generer_horaire_saison_selon_prerequis(
+                d_cible, equipes_actuelles, joueurs_inscrits, n_sem_cible
+            )
+            num_s_sim, typ_s_sim = calculer_numero_saison(d_cible)
+            st.session_state[f"{key_prefix}_sim_preview"] = {
+                "lignes": sim_lignes,
+                "conflits": sim_conflits,
+                "date_debut": d_cible,
+                "saison_num": num_s_sim,
+                "saison_type": typ_s_sim,
+                "nb_semaines": len(sim_lignes)
+            }
+            st.rerun()
+
     with col_gen1:
         if st.button(
-            f"⚡ Générer l'horaire de la saison ({nb_sem_init} semaines) en minimisant les absences",
+            f"⚡ Générer l'horaire officiel ({nb_sem_init} sem.)",
             type="primary",
             use_container_width=True,
             key=f"{key_prefix}_btn_gen_horaire_complet",
@@ -36398,20 +36423,20 @@ def afficher_configuration_debut_saison(key_prefix="cfg_saison", afficher_reset_
             cfg_s["date_debut_saison"] = d_cible.strftime("%Y-%m-%d")
             cfg_s["nb_semaines"] = n_sem_reelles
             sauvegarder_config_saison(cfg_s)
-            if sauvegarder_horaire_json(nouvelles_lignes_gen):
+            if sauvegarder_horaire_json(nouvelles_lignes_gen, ecraser_principal=True):
                 if conflits_gen:
                     st.warning(
-                        f"⚠️ Horaire optimisé généré ({n_sem_reelles} semaines) :\n- "
+                        f"⚠️ Horaire officiel généré ({n_sem_reelles} semaines) :\n- "
                         + "\n- ".join(conflits_gen[:6])
                     )
                 else:
-                    st.success(f"✅ Horaire complet et équilibré de {n_sem_reelles} semaines généré avec succès !")
+                    st.success(f"✅ Horaire officiel de {n_sem_reelles} semaines généré avec succès !")
                 time.sleep(0.9)
                 st.rerun()
 
     if afficher_reset_historique:
         with col_gen2:
-            with st.popover("🚨 Démarrer une nouvelle saison (Générer l'horaire + Réinitialiser les scores)", use_container_width=True):
+            with st.popover("🚨 Démarrer une nouvelle saison (Générer + Reset)", use_container_width=True):
                 st.markdown("### ⚠️ Démarrer une nouvelle saison officielle")
                 if not (ok_date and ok_joueurs and ok_equipes):
                     st.error("❌ Veuillez d'abord compléter les 3 prérequis (Date de début, Liste des joueurs inscrits, Liste des équipes).")
@@ -36419,7 +36444,7 @@ def afficher_configuration_debut_saison(key_prefix="cfg_saison", afficher_reset_
                     st.write(
                         f"Cette action va :\n"
                         f"1. Enregistrer la date de début de saison (**{txt_deb_fr}**)\n"
-                        f"2. Générer le nouvel horaire de **{nb_sem_init} semaines** selon les équipes et les contraintes des joueurs\n"
+                        f"2. Générer le nouvel horaire officiel de **{nb_sem_init} semaines**\n"
                         f"3. Réinitialiser l'historique des matchs (`historique_matchs.json`) à zéro."
                     )
                     if st.button("🔴 Confirmer et démarrer la nouvelle saison", type="primary", use_container_width=True, key=f"{key_prefix}_btn_confirm_new_season"):
@@ -36432,11 +36457,68 @@ def afficher_configuration_debut_saison(key_prefix="cfg_saison", afficher_reset_
                         cfg_s["date_debut_saison"] = d_cible.strftime("%Y-%m-%d")
                         cfg_s["nb_semaines"] = n_sem_reelles
                         sauvegarder_config_saison(cfg_s)
-                        sauvegarder_horaire_json(nouvelles_lignes_gen)
+                        sauvegarder_horaire_json(nouvelles_lignes_gen, ecraser_principal=True)
                         sauvegarder_historique_matchs([])
                         st.success(f"✅ Nouvelle saison démarrée, horaire généré ({n_sem_reelles} semaines) et historique réinitialisé !")
                         time.sleep(0.9)
                         st.rerun()
+
+    # Affichage du bloc de prévisualisation de simulation (aucun impact sur la saison active)
+    sim_data = st.session_state.get(f"{key_prefix}_sim_preview")
+    if sim_data:
+        s_num = sim_data.get("saison_num", 5)
+        s_typ = sim_data.get("saison_type", "Hiver")
+        d_deb_sim = sim_data.get("date_debut")
+        d_deb_sim_txt = d_deb_sim.strftime("%d/%m/%Y") if hasattr(d_deb_sim, "strftime") else str(d_deb_sim)
+        sim_lignes_aff = sim_data.get("lignes", [])
+        sim_conf = sim_data.get("conflits", [])
+
+        with st.container(border=True):
+            st.markdown(f"#### 🧪 Aperçu de simulation : Saison {s_num} ({s_typ} • Début {d_deb_sim_txt})")
+            st.success("🔒 **Mode simulation sécurisé :** Cet horaire n'a PAS été appliqué à la saison courante et n'a aucun impact sur vos scores actuels.")
+
+            if sim_conf:
+                with st.expander("ℹ️ Notes d'optimisation et équilibrage", expanded=True):
+                    for cf in sim_conf:
+                        st.write(f"- {cf}")
+
+            # Afficher le tableau de simulation
+            df_sim_preview = []
+            for r in sim_lignes_aff:
+                if isinstance(r, list) and r:
+                    row_dict = {
+                        "Semaine": r[0] if len(r) > 0 else "",
+                        "Match 1": r[1] if len(r) > 1 else "",
+                        "Match 2": r[2] if len(r) > 2 else "",
+                        "Match 3": r[3] if len(r) > 3 else "",
+                        "Match 4": r[4] if len(r) > 4 else "",
+                    }
+                    if len(r) > 5 and str(r[5]).strip() not in ("", "—", "-"):
+                        row_dict["Semaine vacante"] = r[5]
+                    df_sim_preview.append(row_dict)
+
+            if df_sim_preview:
+                st.dataframe(pd.DataFrame(df_sim_preview), use_container_width=True, hide_index=True)
+
+            col_act_sim1, col_act_sim2 = st.columns([1.5, 1.0])
+            with col_act_sim1:
+                nom_fic_saison = f"horaire_saison_{s_num}.json"
+                if st.button(
+                    f"💾 Sauvegarder uniquement comme horaire de la Saison {s_num} (`{nom_fic_saison}`)",
+                    key=f"{key_prefix}_btn_save_draft_sim",
+                    use_container_width=True
+                ):
+                    # Sauvegarder UNIQUEMENT dans horaire_saison_X.json sans écraser horaire_saphir.json ni config_saison.json
+                    if sauvegarder_horaire_json(sim_lignes_aff, num_saison=s_num, ecraser_principal=False):
+                        st.success(f"✅ Simulation enregistrée dans `{nom_fic_saison}` ! La saison actuelle reste 100% intacte.")
+                        time.sleep(1.0)
+                        st.rerun()
+                    else:
+                        st.error("❌ Erreur lors de la sauvegarde du fichier.")
+            with col_act_sim2:
+                if st.button("❌ Fermer la prévisualisation", key=f"{key_prefix}_btn_close_sim", use_container_width=True):
+                    st.session_state.pop(f"{key_prefix}_sim_preview", None)
+                    st.rerun()
 
 
 def afficher_section_horaire_saison(est_spectateur=False, key_prefix="horaire_main", editeur_ouvert=False):
