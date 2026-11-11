@@ -4687,7 +4687,11 @@ def sauvegarder_equipes_csv(equipes_df_ou_dict):
 
             f.writelines(lignes)
 
-
+        try:
+            _FILE_MEM_CACHE.pop("equipes_csv", None)
+            _FILE_MEM_CACHE.pop("config_saison", None)
+        except Exception:
+            pass
 
         synchroniser_tous_les_fichiers_github(commit_prefix=f"Mise a jour equipes-saphir.csv ({len(lignes)} equipes)")
 
@@ -6805,6 +6809,38 @@ def sauvegarder_registre_joueurs(liste_joueurs):
             })
         if nouv_sms:
             sauvegarder_joueurs_sms(nouv_sms)
+    except Exception:
+        pass
+
+    # Synchronisation immédiate avec equipes-saphir.csv pour retirer les inactifs et intégrer les actifs
+    try:
+        inactifs_set = {j["nom"].strip().lower() for j in liste_propre if not j.get("actif", True)}
+        actifs_par_eq = {}
+        for j in liste_propre:
+            if j.get("actif", True) and j.get("equipe"):
+                actifs_par_eq.setdefault(j["equipe"], []).append(j["nom"])
+
+        eq_cur = charger_equipes_csv()
+        if eq_cur:
+            eq_change = False
+            nouv_eq = {}
+            for eq_k, jl_k in eq_cur.items():
+                jl_clean = []
+                for p in jl_k:
+                    if p.strip().lower() in inactifs_set:
+                        eq_change = True
+                        continue
+                    jl_clean.append(p)
+                for p_act in actifs_par_eq.get(eq_k, []):
+                    if p_act not in jl_clean and len(jl_clean) < 3:
+                        jl_clean.append(p_act)
+                        eq_change = True
+                while len(jl_clean) < 3:
+                    jl_clean.append(f"Joueur {len(jl_clean) + 1}")
+                nouv_eq[eq_k] = jl_clean[:3]
+            if eq_change:
+                sauvegarder_equipes_csv(nouv_eq)
+                _FILE_MEM_CACHE.pop("equipes_csv", None)
     except Exception:
         pass
 
@@ -12651,15 +12687,15 @@ def afficher_vue_scanner_feuille_match(label_direct):
 
                     equipes_dict_scan = charger_equipes_csv()
 
-                    tous_joueurs_scan = []
-
-                    for _eq_n, _j_l in equipes_dict_scan.items():
-
-                        for _jn in _j_l:
-
-                            if _jn and _jn not in tous_joueurs_scan:
-
-                                tous_joueurs_scan.append(_jn)
+                    reg_scan_live = charger_registre_joueurs()
+                    if reg_scan_live:
+                        tous_joueurs_scan = [j["nom"] for j in reg_scan_live if j.get("actif", True)]
+                    else:
+                        tous_joueurs_scan = []
+                        for _eq_n, _j_l in equipes_dict_scan.items():
+                            for _jn in _j_l:
+                                if _jn and _jn not in tous_joueurs_scan:
+                                    tous_joueurs_scan.append(_jn)
 
 
 
@@ -20892,6 +20928,12 @@ def obtenir_info_classement_joueur(nom_joueur):
 def obtenir_tous_les_joueurs_tournoi(equipes_dict=None):
 
     """Récupère l'ensemble des joueurs réguliers inscrits dans la ligue."""
+
+    reg = charger_registre_joueurs()
+    if reg:
+        actifs = [j["nom"] for j in reg if j.get("actif", True) and not j["nom"].lower().startswith("joueur ")]
+        if actifs:
+            return sorted(list(set(actifs)))
 
     joueurs_officiels = []
 
@@ -36729,7 +36771,7 @@ def afficher_configuration_debut_saison(key_prefix="cfg_saison", afficher_reset_
                     n_courriel = st.text_input("Adresse courriel :", placeholder="Ex: martin.leblanc@example.com", key=f"{key_prefix}_n_email")
 
                     opts_eq_add = ["(Sans équipe / Remplaçant)"] + sorted(list(equipes_actuelles.keys())) + ["➕ Autre équipe..."]
-                    choix_eq_add = st.selectbox("Équipe assignée :", options=opts_eq_add, index=0, key=f"{key_prefix}_n_eq_sel")
+                    choix_eq_add = st.selectbox("Équipe assignée :", options=opts_eq_add, index=0, key=f"{key_prefix}_n_eq_sel_{ed_ver}")
                     autre_eq_txt = ""
                     if choix_eq_add == "➕ Autre équipe...":
                         autre_eq_txt = st.text_input("Nom de la nouvelle équipe :", placeholder="Ex: India", key=f"{key_prefix}_n_eq_txt")
@@ -36807,10 +36849,12 @@ def afficher_configuration_debut_saison(key_prefix="cfg_saison", afficher_reset_
                 if not noms_existants:
                     st.info("Aucun joueur n'est présent dans le registre.")
                 else:
+                    dict_actifs_del = {j["nom"]: bool(j.get("actif", True)) for j in registre_actuel}
                     j_choisi_del = st.selectbox(
                         "Choisir le joueur :",
                         options=noms_existants,
-                        key=f"{key_prefix}_sel_joueur_del"
+                        key=f"{key_prefix}_sel_joueur_del_{ed_ver}",
+                        format_func=lambda x: f"{x} (🟢 Actif)" if dict_actifs_del.get(x, True) else f"{x} (🔴 Inactif)"
                     )
                     j_obj_del = next((j for j in registre_actuel if j["nom"] == j_choisi_del), None)
                     if j_obj_del:
@@ -37015,6 +37059,7 @@ def afficher_configuration_debut_saison(key_prefix="cfg_saison", afficher_reset_
 
             st.session_state[f"{key_prefix}_joueurs_editor_ver"] = ed_ver + 1
             st.session_state.pop(f"{key_prefix}_editor_joueurs_registre_{ed_ver}", None)
+            st.session_state.pop(f"{key_prefix}_editor_equipes_saison_{ed_ver}", None)
             st.success(f"✅ {len(liste_finale_sauvegardee)} joueur(s) et leurs contraintes ont été enregistrés avec succès dans joueurs.json !")
             time.sleep(0.8)
             st.rerun()
@@ -37036,18 +37081,24 @@ def afficher_configuration_debut_saison(key_prefix="cfg_saison", afficher_reset_
                 "Jours possibles (selon contraintes)": resume_dispo,
             })
 
+        options_choix_joueurs = sorted(list(set(
+            ["(À déterminer)", "Joueur 1", "Joueur 2", "Joueur 3"]
+            + [j["nom"] for j in registre_actuel if j.get("actif", True)]
+            + [nom for jl in (equipes_actuelles or {}).values() for nom in jl if nom]
+        )))
+
         df_eq_edit = st.data_editor(
             pd.DataFrame(lignes_eq_df),
             num_rows="dynamic",
             use_container_width=True,
             hide_index=True,
-            key=f"{key_prefix}_editor_equipes_saison",
-             disabled=["Jours possibles (selon contraintes)"],
+            key=f"{key_prefix}_editor_equipes_saison_{ed_ver}",
+            disabled=["Jours possibles (selon contraintes)"],
             column_config={
                 "Équipe": st.column_config.TextColumn("Équipe", required=True, width="small"),
-                "Joueur 1": st.column_config.TextColumn("Joueur 1", required=True, width="medium"),
-                "Joueur 2": st.column_config.TextColumn("Joueur 2", required=True, width="medium"),
-                "Joueur 3": st.column_config.TextColumn("Joueur 3", required=True, width="medium"),
+                "Joueur 1": st.column_config.SelectboxColumn("Joueur 1", options=options_choix_joueurs, required=True, width="medium"),
+                "Joueur 2": st.column_config.SelectboxColumn("Joueur 2", options=options_choix_joueurs, required=True, width="medium"),
+                "Joueur 3": st.column_config.SelectboxColumn("Joueur 3", options=options_choix_joueurs, required=True, width="medium"),
                 "Jours possibles (selon contraintes)": st.column_config.TextColumn("Jours disponibles (auto)", width="medium"),
             }
         )
@@ -37066,6 +37117,20 @@ def afficher_configuration_debut_saison(key_prefix="cfg_saison", afficher_reset_
                 sauvegarder_equipes_csv(nouv_eq_dict)
                 cfg_s["equipes"] = nouv_eq_dict
                 sauvegarder_config_saison(cfg_s)
+
+                for j_it in registre_actuel:
+                    nom_c = j_it["nom"].strip().lower()
+                    eq_trouvee = ""
+                    for eq_k, jl_k in nouv_eq_dict.items():
+                        if any(p.strip().lower() == nom_c for p in jl_k):
+                            eq_trouvee = eq_k
+                            break
+                    j_it["equipe"] = eq_trouvee
+                sauvegarder_registre_joueurs(registre_actuel)
+
+                st.session_state[f"{key_prefix}_joueurs_editor_ver"] = ed_ver + 1
+                st.session_state.pop(f"{key_prefix}_editor_equipes_saison_{ed_ver}", None)
+                st.session_state.pop(f"{key_prefix}_editor_joueurs_registre_{ed_ver}", None)
                 st.success(f"✅ {len(nouv_eq_dict)} équipe(s) enregistrée(s) et synchronisée(s) !")
                 time.sleep(0.7)
                 st.rerun()
@@ -38849,194 +38914,116 @@ with tab_feuille:
 
 
 
-        # Options sécurisées pour Joueur 1
+        # Registre des joueurs actifs pour alimenter les listes déroulantes
+        reg_match_live = charger_registre_joueurs()
+        noms_actifs_ligue = [j["nom"] for j in reg_match_live if j.get("actif", True)]
+        dict_actifs_ligue = {j["nom"].strip().lower(): bool(j.get("actif", True)) for j in reg_match_live}
 
-        options_j1_rec = list(roster_rec) + ["Remplaçant..."]
+        # Filtrer le roster receveur pour écarter les inactifs
+        roster_rec_clean = [p for p in roster_rec if dict_actifs_ligue.get(p.strip().lower(), True) or (p.lower().startswith("joueur ") and len(p) <= 9 and p[7:].isdigit())]
+        while len(roster_rec_clean) < 3:
+            roster_rec_clean.append(f"Joueur {len(roster_rec_clean) + 1}")
+        remplacants_rec_dispos = [p for p in noms_actifs_ligue if p not in roster_rec_clean]
+
+        # Options sécurisées pour Joueur 1
+        options_j1_rec = list(roster_rec_clean) + remplacants_rec_dispos + ["Remplaçant..."]
 
         if "sel_j1_rec" in st.session_state and st.session_state["sel_j1_rec"] not in options_j1_rec:
-
             st.session_state["sel_j1_rec"] = options_j1_rec[0]
 
-
-
         def_idx_j1_rec = 0
-
         if "sel_j1_rec" in st.session_state and st.session_state["sel_j1_rec"] in options_j1_rec:
-
             def_idx_j1_rec = options_j1_rec.index(st.session_state["sel_j1_rec"])
 
-
-
         col_j1_r1, col_j1_r2 = st.columns([3, 2])
-
         sel_j1_rec = col_j1_r1.selectbox("Sélection Joueur 1 :", options_j1_rec, index=def_idx_j1_rec, key="sel_j1_rec", disabled=not est_editeur)
-
         if sel_j1_rec == "Remplaçant...":
-
             j1_rec = st.text_input("Nom Joueur 1 (Remplaçant)", value=st.session_state.get("cust_j1_rec", "Remplaçant 1"), key="cust_j1_rec", disabled=not est_editeur)
-
         else:
-
             j1_rec = sel_j1_rec
 
-
-
         if "last_nom_j1_rec" not in st.session_state or st.session_state["last_nom_j1_rec"] != j1_rec:
-
             st.session_state["last_nom_j1_rec"] = j1_rec
-
             st.session_state["moy_j1_rec"] = obtenir_moyenne_joueur(j1_rec)
-
             st.session_state["pts_j1_rec"] = calculer_score_absent(st.session_state["moy_j1_rec"])
 
         j1_rec_pres = col_j1_r2.toggle("Présent", value=st.session_state.get("pres_j1_rec", True), key="pres_j1_rec", on_change=cb_toggle_presence_sb, args=("j1_rec",), disabled=not est_editeur)
-
         if not j1_rec_pres:
-
             def_moy_j1 = float(st.session_state.get("moy_j1_rec", obtenir_moyenne_joueur(j1_rec)))
-
             col_m1, col_m2 = st.columns([3, 2])
-
             moy_j1 = col_m1.number_input(
-
                 f"Moyenne de {j1_rec} :",
-
                 min_value=0.0,
-
                 max_value=100.0,
-
                 value=def_moy_j1,
-
                 step=0.025,
-
                 format="%.3f",
-
                 key="moy_j1_rec",
-
                 disabled=not est_editeur,
-
                 help="Saisissez la moyenne (ex. 0.650 ou 65%). Formule : arrondi(moyenne × 24 ÷ 3), max 7."
-
             )
-
             j1_rec_pts = calculer_score_absent(moy_j1)
-
             st.session_state["pts_j1_rec"] = j1_rec_pts
-
             col_m2.metric("Score", f"{j1_rec_pts} pts")
-
             st.caption(f"📊 *Score calculé : {j1_rec_pts} pts/manche (max 7)*")
-
         else:
-
             j1_rec_pts = int(st.session_state.get("pts_j1_rec", 0))
 
-
-
         # Options sécurisées pour Joueur 2
-
-        options_j2_rec = [p for p in roster_rec if p != sel_j1_rec] + ["Remplaçant..."]
+        options_j2_rec = [p for p in roster_rec_clean if p != sel_j1_rec] + [p for p in remplacants_rec_dispos if p != sel_j1_rec] + ["Remplaçant..."]
 
         if "sel_j2_rec" in st.session_state and st.session_state["sel_j2_rec"] not in options_j2_rec:
-
             st.session_state["sel_j2_rec"] = options_j2_rec[0]
 
-
-
         def_idx_j2_rec = 0
-
         if "sel_j2_rec" in st.session_state and st.session_state["sel_j2_rec"] in options_j2_rec:
-
             def_idx_j2_rec = options_j2_rec.index(st.session_state["sel_j2_rec"])
 
-
-
         col_j2_r1, col_j2_r2 = st.columns([3, 2])
-
         sel_j2_rec = col_j2_r1.selectbox("Sélection Joueur 2 :", options_j2_rec, index=def_idx_j2_rec, key="sel_j2_rec", disabled=not est_editeur)
-
         if sel_j2_rec == "Remplaçant...":
-
             j2_rec = st.text_input("Nom Joueur 2 (Remplaçant)", value=st.session_state.get("cust_j2_rec", "Remplaçant 2"), key="cust_j2_rec", disabled=not est_editeur)
-
         else:
-
             j2_rec = sel_j2_rec
 
-
-
         if "last_nom_j2_rec" not in st.session_state or st.session_state["last_nom_j2_rec"] != j2_rec:
-
             st.session_state["last_nom_j2_rec"] = j2_rec
-
             st.session_state["moy_j2_rec"] = obtenir_moyenne_joueur(j2_rec)
-
             st.session_state["pts_j2_rec"] = calculer_score_absent(st.session_state["moy_j2_rec"])
 
         j2_rec_pres = col_j2_r2.toggle("Présent", value=st.session_state.get("pres_j2_rec", True), key="pres_j2_rec", on_change=cb_toggle_presence_sb, args=("j2_rec",), disabled=not est_editeur)
-
         if not j2_rec_pres:
-
             def_moy_j2 = float(st.session_state.get("moy_j2_rec", obtenir_moyenne_joueur(j2_rec)))
-
             col_m1, col_m2 = st.columns([3, 2])
-
             moy_j2 = col_m1.number_input(
-
                 f"Moyenne de {j2_rec} :",
-
                 min_value=0.0,
-
                 max_value=100.0,
-
                 value=def_moy_j2,
-
                 step=0.025,
-
                 format="%.3f",
-
                 key="moy_j2_rec",
-
                 disabled=not est_editeur,
-
                 help="Saisissez la moyenne (ex. 0.650 ou 65%). Formule : arrondi(moyenne × 24 ÷ 3), max 7."
-
             )
-
             j2_rec_pts = calculer_score_absent(moy_j2)
-
             st.session_state["pts_j2_rec"] = j2_rec_pts
-
             col_m2.metric("Score", f"{j2_rec_pts} pts")
-
             st.caption(f"📊 *Score calculé : {j2_rec_pts} pts/manche (max 7)*")
-
         else:
-
             j2_rec_pts = int(st.session_state.get("pts_j2_rec", 0))
 
-
-
         # Options sécurisées pour Joueur 3 (déduit automatiquement ou remplaçant)
-
-        options_j3_rec = [p for p in roster_rec if p != sel_j1_rec and p != sel_j2_rec] + ["Remplaçant..."]
+        options_j3_rec = [p for p in roster_rec_clean if p != sel_j1_rec and p != sel_j2_rec] + [p for p in remplacants_rec_dispos if p != sel_j1_rec and p != sel_j2_rec] + ["Remplaçant..."]
 
         if "sel_j3_rec" in st.session_state and st.session_state["sel_j3_rec"] not in options_j3_rec:
-
             st.session_state["sel_j3_rec"] = options_j3_rec[0]
 
-
-
         def_idx_j3_rec = 0
-
         if "sel_j3_rec" in st.session_state and st.session_state["sel_j3_rec"] in options_j3_rec:
-
             def_idx_j3_rec = options_j3_rec.index(st.session_state["sel_j3_rec"])
 
-
-
         col_j3_r1, col_j3_r2 = st.columns([3, 2])
-
         sel_j3_rec = col_j3_r1.selectbox("Sélection Joueur 3 :", options_j3_rec, index=def_idx_j3_rec, key="sel_j3_rec", disabled=not est_editeur)
 
         if sel_j3_rec == "Remplaçant...":
@@ -39153,194 +39140,111 @@ with tab_feuille:
 
 
 
-        # Options sécurisées pour Joueur 1
+        # Filtrer le roster visiteur pour écarter les inactifs
+        roster_vis_clean = [p for p in roster_vis if dict_actifs_ligue.get(p.strip().lower(), True) or (p.lower().startswith("joueur ") and len(p) <= 9 and p[7:].isdigit())]
+        while len(roster_vis_clean) < 3:
+            roster_vis_clean.append(f"Joueur {len(roster_vis_clean) + 1}")
+        remplacants_vis_dispos = [p for p in noms_actifs_ligue if p not in roster_vis_clean]
 
-        options_j1_vis = list(roster_vis) + ["Remplaçant..."]
+        # Options sécurisées pour Joueur 1
+        options_j1_vis = list(roster_vis_clean) + remplacants_vis_dispos + ["Remplaçant..."]
 
         if "sel_j1_vis" in st.session_state and st.session_state["sel_j1_vis"] not in options_j1_vis:
-
             st.session_state["sel_j1_vis"] = options_j1_vis[0]
 
-
-
         def_idx_j1_vis = 0
-
         if "sel_j1_vis" in st.session_state and st.session_state["sel_j1_vis"] in options_j1_vis:
-
             def_idx_j1_vis = options_j1_vis.index(st.session_state["sel_j1_vis"])
 
-
-
         col_j1_v1, col_j1_v2 = st.columns([3, 2])
-
         sel_j1_vis = col_j1_v1.selectbox("Sélection Joueur 1 :", options_j1_vis, index=def_idx_j1_vis, key="sel_j1_vis", disabled=not est_editeur)
-
         if sel_j1_vis == "Remplaçant...":
-
             j1_vis = st.text_input("Nom Visiteur 1 (Remplaçant)", value=st.session_state.get("cust_j1_vis", "Remplaçant 1"), key="cust_j1_vis", disabled=not est_editeur)
-
         else:
-
             j1_vis = sel_j1_vis
 
-
-
         if "last_nom_j1_vis" not in st.session_state or st.session_state["last_nom_j1_vis"] != j1_vis:
-
             st.session_state["last_nom_j1_vis"] = j1_vis
-
             st.session_state["moy_j1_vis"] = obtenir_moyenne_joueur(j1_vis)
-
             st.session_state["pts_j1_vis"] = calculer_score_absent(st.session_state["moy_j1_vis"])
 
         j1_vis_pres = col_j1_v2.toggle("Présent", value=st.session_state.get("pres_j1_vis", True), key="pres_j1_vis", on_change=cb_toggle_presence_sb, args=("j1_vis",), disabled=not est_editeur)
-
         if not j1_vis_pres:
-
             def_moy_v1 = float(st.session_state.get("moy_j1_vis", obtenir_moyenne_joueur(j1_vis)))
-
             col_m1, col_m2 = st.columns([3, 2])
-
             moy_v1 = col_m1.number_input(
-
                 f"Moyenne de {j1_vis} :",
-
                 min_value=0.0,
-
                 max_value=100.0,
-
                 value=def_moy_v1,
-
                 step=0.025,
-
                 format="%.3f",
-
                 key="moy_j1_vis",
-
                 disabled=not est_editeur,
-
                 help="Saisissez la moyenne (ex. 0.650 ou 65%). Formule : arrondi(moyenne × 24 ÷ 3), max 7."
-
             )
-
             j1_vis_pts = calculer_score_absent(moy_v1)
-
             st.session_state["pts_j1_vis"] = j1_vis_pts
-
             col_m2.metric("Score", f"{j1_vis_pts} pts")
-
             st.caption(f"📊 *Score calculé : {j1_vis_pts} pts/manche (max 7)*")
-
         else:
-
             j1_vis_pts = int(st.session_state.get("pts_j1_vis", 0))
 
-
-
         # Options sécurisées pour Joueur 2
-
-        options_j2_vis = [p for p in roster_vis if p != sel_j1_vis] + ["Remplaçant..."]
+        options_j2_vis = [p for p in roster_vis_clean if p != sel_j1_vis] + [p for p in remplacants_vis_dispos if p != sel_j1_vis] + ["Remplaçant..."]
 
         if "sel_j2_vis" in st.session_state and st.session_state["sel_j2_vis"] not in options_j2_vis:
-
             st.session_state["sel_j2_vis"] = options_j2_vis[0]
 
-
-
         def_idx_j2_vis = 0
-
         if "sel_j2_vis" in st.session_state and st.session_state["sel_j2_vis"] in options_j2_vis:
-
             def_idx_j2_vis = options_j2_vis.index(st.session_state["sel_j2_vis"])
 
-
-
         col_j2_v1, col_j2_v2 = st.columns([3, 2])
-
         sel_j2_vis = col_j2_v1.selectbox("Sélection Joueur 2 :", options_j2_vis, index=def_idx_j2_vis, key="sel_j2_vis", disabled=not est_editeur)
-
         if sel_j2_vis == "Remplaçant...":
-
             j2_vis = st.text_input("Nom Visiteur 2 (Remplaçant)", value=st.session_state.get("cust_j2_vis", "Remplaçant 2"), key="cust_j2_vis", disabled=not est_editeur)
-
         else:
-
             j2_vis = sel_j2_vis
 
-
-
         if "last_nom_j2_vis" not in st.session_state or st.session_state["last_nom_j2_vis"] != j2_vis:
-
             st.session_state["last_nom_j2_vis"] = j2_vis
-
             st.session_state["moy_j2_vis"] = obtenir_moyenne_joueur(j2_vis)
-
             st.session_state["pts_j2_vis"] = calculer_score_absent(st.session_state["moy_j2_vis"])
 
         j2_vis_pres = col_j2_v2.toggle("Présent", value=st.session_state.get("pres_j2_vis", True), key="pres_j2_vis", on_change=cb_toggle_presence_sb, args=("j2_vis",), disabled=not est_editeur)
-
         if not j2_vis_pres:
-
             def_moy_v2 = float(st.session_state.get("moy_j2_vis", obtenir_moyenne_joueur(j2_vis)))
-
             col_m1, col_m2 = st.columns([3, 2])
-
             moy_v2 = col_m1.number_input(
-
                 f"Moyenne de {j2_vis} :",
-
                 min_value=0.0,
-
                 max_value=100.0,
-
                 value=def_moy_v2,
-
                 step=0.025,
-
                 format="%.3f",
-
                 key="moy_j2_vis",
-
                 disabled=not est_editeur,
-
                 help="Saisissez la moyenne (ex. 0.650 ou 65%). Formule : arrondi(moyenne × 24 ÷ 3), max 7."
-
             )
-
             j2_vis_pts = calculer_score_absent(moy_v2)
-
             st.session_state["pts_j2_vis"] = j2_vis_pts
-
             col_m2.metric("Score", f"{j2_vis_pts} pts")
-
             st.caption(f"📊 *Score calculé : {j2_vis_pts} pts/manche (max 7)*")
-
         else:
-
             j2_vis_pts = int(st.session_state.get("pts_j2_vis", 0))
 
-
-
         # Options sécurisées pour Joueur 3 (déduit automatiquement ou remplaçant)
-
-        options_j3_vis = [p for p in roster_vis if p != sel_j1_vis and p != sel_j2_vis] + ["Remplaçant..."]
+        options_j3_vis = [p for p in roster_vis_clean if p != sel_j1_vis and p != sel_j2_vis] + [p for p in remplacants_vis_dispos if p != sel_j1_vis and p != sel_j2_vis] + ["Remplaçant..."]
 
         if "sel_j3_vis" in st.session_state and st.session_state["sel_j3_vis"] not in options_j3_vis:
-
             st.session_state["sel_j3_vis"] = options_j3_vis[0]
 
-
-
         def_idx_j3_vis = 0
-
         if "sel_j3_vis" in st.session_state and st.session_state["sel_j3_vis"] in options_j3_vis:
-
             def_idx_j3_vis = options_j3_vis.index(st.session_state["sel_j3_vis"])
 
-
-
         col_j3_v1, col_j3_v2 = st.columns([3, 2])
-
         sel_j3_vis = col_j3_v1.selectbox("Sélection Joueur 3 :", options_j3_vis, index=def_idx_j3_vis, key="sel_j3_vis", disabled=not est_editeur)
 
         if sel_j3_vis == "Remplaçant...":
@@ -42412,20 +42316,19 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
 
 
 
-                # Roster des joueurs par défaut selon équipes.csv
+                # Roster des joueurs par défaut selon équipes.csv filtré par statut actif
+                reg_ant_live = charger_registre_joueurs()
+                dict_actifs_ant = {j["nom"].strip().lower(): bool(j.get("actif", True)) for j in reg_ant_live}
+                noms_actifs_ant = [j["nom"] for j in reg_ant_live if j.get("actif", True)]
 
                 roster_rec_def = list(eq_dispo.get(eq_rec_ant, ["Joueur 1", "Joueur 2", "Joueur 3"]))
-
+                roster_rec_def = [p for p in roster_rec_def if dict_actifs_ant.get(p.strip().lower(), True) or (p.lower().startswith("joueur ") and len(p) <= 9 and p[7:].isdigit())]
                 while len(roster_rec_def) < 3:
-
                     roster_rec_def.append(f"Joueur {len(roster_rec_def)+1}")
 
-
-
                 roster_vis_def = list(eq_dispo.get(eq_vis_ant, ["Joueur 1", "Joueur 2", "Joueur 3"]))
-
+                roster_vis_def = [p for p in roster_vis_def if dict_actifs_ant.get(p.strip().lower(), True) or (p.lower().startswith("joueur ") and len(p) <= 9 and p[7:].isdigit())]
                 while len(roster_vis_def) < 3:
-
                     roster_vis_def.append(f"Joueur {len(roster_vis_def)+1}")
 
 
@@ -42518,7 +42421,7 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
 
                     if sel_rec != "Autre / Personnalisée":
 
-                        opts_j1_r = list(roster_rec_def) + ["Remplaçant / Autre..."]
+                        opts_j1_r = list(roster_rec_def) + [p for p in noms_actifs_ant if p not in roster_rec_def] + ["Remplaçant / Autre..."]
 
                         curr_j1_r = st.session_state.get("ant_sel_j1_r", roster_rec_def[0])
 
@@ -42566,7 +42469,7 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
 
                     if sel_rec != "Autre / Personnalisée":
 
-                        opts_j2_r = list(roster_rec_def) + ["Remplaçant / Autre..."]
+                        opts_j2_r = list(roster_rec_def) + [p for p in noms_actifs_ant if p not in roster_rec_def] + ["Remplaçant / Autre..."]
 
                         curr_j2_r = st.session_state.get("ant_sel_j2_r", roster_rec_def[1])
 
@@ -42614,7 +42517,7 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
 
                     if sel_rec != "Autre / Personnalisée":
 
-                        opts_j3_r = list(roster_rec_def) + ["Remplaçant / Autre..."]
+                        opts_j3_r = list(roster_rec_def) + [p for p in noms_actifs_ant if p not in roster_rec_def] + ["Remplaçant / Autre..."]
 
                         curr_j3_r = st.session_state.get("ant_sel_j3_r", roster_rec_def[2])
 
@@ -42668,7 +42571,7 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
 
                     if sel_vis != "Autre / Personnalisée":
 
-                        opts_j1_v = list(roster_vis_def) + ["Remplaçant / Autre..."]
+                        opts_j1_v = list(roster_vis_def) + [p for p in noms_actifs_ant if p not in roster_vis_def] + ["Remplaçant / Autre..."]
 
                         curr_j1_v = st.session_state.get("ant_sel_j1_v", roster_vis_def[0])
 
@@ -42716,7 +42619,7 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
 
                     if sel_vis != "Autre / Personnalisée":
 
-                        opts_j2_v = list(roster_vis_def) + ["Remplaçant / Autre..."]
+                        opts_j2_v = list(roster_vis_def) + [p for p in noms_actifs_ant if p not in roster_vis_def] + ["Remplaçant / Autre..."]
 
                         curr_j2_v = st.session_state.get("ant_sel_j2_v", roster_vis_def[1])
 
@@ -42764,7 +42667,7 @@ if tab_admin is not None and st.session_state.get("est_admin", False):
 
                     if sel_vis != "Autre / Personnalisée":
 
-                        opts_j3_v = list(roster_vis_def) + ["Remplaçant / Autre..."]
+                        opts_j3_v = list(roster_vis_def) + [p for p in noms_actifs_ant if p not in roster_vis_def] + ["Remplaçant / Autre..."]
 
                         curr_j3_v = st.session_state.get("ant_sel_j3_v", roster_vis_def[2])
 
