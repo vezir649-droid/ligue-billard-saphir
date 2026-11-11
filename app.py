@@ -30396,11 +30396,14 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
 
         tous_candidats = sorted(list(set(joueurs_disponibles + st.session_state[key_invites])))
 
-
+        # Nettoyage systématique de sécurité pour éliminer tout joueur inactif ou absent des options
+        for k_sel in list(st.session_state.keys()):
+            if k_sel.startswith("sel_participants_"):
+                val_k = st.session_state.get(k_sel)
+                if isinstance(val_k, (list, tuple, set)):
+                    st.session_state[k_sel] = [x for x in val_k if x in tous_candidats]
 
         participants_finaux = []
-
-
 
         if mode == "simple":
 
@@ -30420,7 +30423,10 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
 
                 st.caption("ℹ️ Par défaut, **tous les joueurs réguliers inscrits** participent au tournoi.")
 
-
+            key_sel_simple = f"sel_participants_{mode}{key_suffix}"
+            if key_sel_simple in st.session_state and isinstance(st.session_state[key_sel_simple], (list, tuple, set)):
+                st.session_state[key_sel_simple] = [p for p in st.session_state[key_sel_simple] if p in tous_candidats]
+            def_sel_simple = [p for p in st.session_state.get(key_sel_simple, tous_candidats) if p in tous_candidats]
 
             selection_j = st.multiselect(
 
@@ -30428,9 +30434,9 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
 
                 options=tous_candidats,
 
-                default=st.session_state.get(f"sel_participants_{mode}{key_suffix}", tous_candidats),
+                default=def_sel_simple,
 
-                key=f"sel_participants_{mode}{key_suffix}",
+                key=key_sel_simple,
 
                 help="Tous les joueurs inscrits sont sélectionnés par défaut."
 
@@ -30439,8 +30445,6 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
             participants_finaux = selection_j
 
             st.caption(f"🎯 **{len(participants_finaux)} joueur(s) inscrit(s)** participant au tournoi.")
-
-
 
         else:
 
@@ -30462,7 +30466,10 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
 
                 st.caption("ℹ️ Par défaut, **tous les joueurs réguliers inscrits** participent. Retirez les absents si nécessaire.")
 
-
+            key_sel_double = f"sel_participants_{mode}{key_suffix}"
+            if key_sel_double in st.session_state and isinstance(st.session_state[key_sel_double], (list, tuple, set)):
+                st.session_state[key_sel_double] = [p for p in st.session_state[key_sel_double] if p in tous_candidats]
+            def_sel_double = [p for p in st.session_state.get(key_sel_double, tous_candidats) if p in tous_candidats]
 
             selection_j_double = st.multiselect(
 
@@ -30470,9 +30477,9 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
 
                 options=tous_candidats,
 
-                default=st.session_state.get(f"sel_participants_{mode}{key_suffix}", tous_candidats),
+                default=def_sel_double,
 
-                key=f"sel_participants_{mode}{key_suffix}",
+                key=key_sel_double,
 
                 help="Tous les joueurs inscrits sont sélectionnés par défaut. Retirez les absents avant de constituer les duos."
 
