@@ -6739,6 +6739,48 @@ def sauvegarder_registre_joueurs(liste_joueurs):
     except Exception as e:
         return False, f"Erreur lors de l'enregistrement de joueurs.json : {e}"
 
+    # Invalider systématiquement les caches mémoire liés aux joueurs et à la saison
+    try:
+        _FILE_MEM_CACHE.pop("joueurs_registre", None)
+        _FILE_MEM_CACHE.pop("config_saison", None)
+    except Exception:
+        pass
+
+    # Mettre à jour immédiatement config_saison.json avec le registre des joueurs
+    try:
+        cfg_s = {}
+        if os.path.exists(CONFIG_SAISON_FILE):
+            try:
+                with open(CONFIG_SAISON_FILE, "r", encoding="utf-8") as f_cfg:
+                    data_cfg = json.load(f_cfg)
+                    if isinstance(data_cfg, dict):
+                        cfg_s = data_cfg
+            except Exception:
+                cfg_s = {}
+        cfg_s["joueurs_inscrits"] = [
+            {
+                "joueur": j["nom"],
+                "nom": j["nom"],
+                "telephone": j.get("telephone", ""),
+                "courriel": j.get("courriel", ""),
+                "actif": bool(j.get("actif", True)),
+                "capitaine": bool(j.get("capitaine", False)),
+                "equipe": j.get("equipe", ""),
+                "lundi": bool(j.get("lundi", True)),
+                "mardi": bool(j.get("mardi", True)),
+                "mercredi": bool(j.get("mercredi", True)),
+                "jeudi": bool(j.get("jeudi", True)),
+                "contraintes": j.get("contraintes", "")
+            }
+            for j in liste_propre
+        ]
+        with open(CONFIG_SAISON_FILE, "w", encoding="utf-8") as f_cfg_w:
+            json.dump(cfg_s, f_cfg_w, indent=2, ensure_ascii=False)
+        _ecrire_cache_fichier("config_saison", CONFIG_SAISON_FILE, cfg_s)
+        declencher_sync_github_arriere_plan(delai=1.0, commit_prefix="Mise a jour config_saison.json", filepath=CONFIG_SAISON_FILE)
+    except Exception:
+        pass
+
     commit_msg = f"Sauvegarde joueurs.json ({len(liste_propre)} joueurs)"
     declencher_sync_github_arriere_plan(delai=1.0, commit_prefix=commit_msg, filepath=JOUEURS_FILE)
     try:
@@ -6771,10 +6813,6 @@ def sauvegarder_registre_joueurs(liste_joueurs):
 
 def charger_config_saison():
     """Charge la configuration de début de saison (date de début, joueurs inscrits, équipes et contraintes)."""
-    ok_c, val_c = _lire_cache_fichier("config_saison", CONFIG_SAISON_FILE)
-    if ok_c and isinstance(val_c, dict) and val_c:
-        return val_c
-
     cfg = {}
     if os.path.exists(CONFIG_SAISON_FILE):
         try:
@@ -6792,7 +6830,7 @@ def charger_config_saison():
     if not cfg.get("nb_semaines"):
         cfg["nb_semaines"] = 14
 
-    # Synchroniser avec le registre officiel des joueurs
+    # Le registre officiel des joueurs est la source de vérité
     registre = charger_registre_joueurs()
     liste_joueurs_finale = []
     vus_j = set()
@@ -6834,6 +6872,7 @@ def charger_config_saison():
                     "telephone": "",
                     "courriel": "",
                     "actif": True,
+                    "capitaine": False,
                     "equipe": eq_nom,
                     "lundi": True,
                     "mardi": True,
@@ -6869,6 +6908,8 @@ def obtenir_jours_disponibles_equipes(equipes_dict, joueurs_inscrits):
     for j_info in (joueurs_inscrits or []):
         if not isinstance(j_info, dict):
             continue
+        if not bool(j_info.get("actif", True)):
+            continue
         eq = str(j_info.get("equipe", "")).strip()
         if not eq:
             continue
@@ -6897,6 +6938,8 @@ def calculer_absences_joueurs_pour_match(rec, vis, jour_semaine, joueurs_inscrit
 
     for j_info in (joueurs_inscrits or []):
         if not isinstance(j_info, dict):
+            continue
+        if not bool(j_info.get("actif", True)):
             continue
         eq_j = str(j_info.get("equipe", "")).strip()
         if eq_j in eq_match:
@@ -36592,13 +36635,14 @@ def afficher_configuration_debut_saison(key_prefix="cfg_saison", afficher_reset_
 
     # Validation des prérequis
     ok_date = isinstance(date_deb_init, date)
-    nb_joueurs_valides = len([j for j in joueurs_inscrits if isinstance(j, dict) and str(j.get("joueur", "")).strip()])
-    ok_joueurs = nb_joueurs_valides >= 6
+    nb_joueurs_actifs = len([j for j in joueurs_inscrits if isinstance(j, dict) and bool(j.get("actif", True)) and str(j.get("joueur", "")).strip()])
+    nb_joueurs_inactifs = len([j for j in joueurs_inscrits if isinstance(j, dict) and not bool(j.get("actif", True)) and str(j.get("joueur", "")).strip()])
+    ok_joueurs = nb_joueurs_actifs >= 6
     nb_equipes_valides = len([eq for eq, jl in (equipes_actuelles or {}).items() if str(eq).strip() and len(jl) >= 1])
     ok_equipes = nb_equipes_valides >= 2
     nb_contraintes = len([
         j for j in joueurs_inscrits
-        if isinstance(j, dict) and (
+        if isinstance(j, dict) and bool(j.get("actif", True)) and (
             not bool(j.get("lundi", True))
             or not bool(j.get("mardi", True))
             or not bool(j.get("mercredi", True))
@@ -36618,7 +36662,8 @@ def afficher_configuration_debut_saison(key_prefix="cfg_saison", afficher_reset_
     st.markdown("#### 🚀 Prérequis pour démarrer une saison & Configuration de l'horaire")
     c_pr1, c_pr2, c_pr3, c_pr4 = st.columns(4)
     c_pr1.metric("1️⃣ Début de saison", txt_deb_fr, f"Fin : {txt_fin_fr} ({nb_sem_init} sem.)")
-    c_pr2.metric("2️⃣ Joueurs inscrits", f"{nb_joueurs_valides} joueur(s)", "✅ Prêt" if ok_joueurs else "⚠️ Min. 6 requis")
+    sous_titre_inactifs = f"({nb_joueurs_inactifs} inactif{'s' if nb_joueurs_inactifs > 1 else ''})" if nb_joueurs_inactifs > 0 else ("✅ Prêt" if ok_joueurs else "⚠️ Min. 6 requis")
+    c_pr2.metric("2️⃣ Joueurs inscrits", f"{nb_joueurs_actifs} actif(s)", sous_titre_inactifs)
     c_pr3.metric("3️⃣ Liste des équipes", f"{nb_equipes_valides} équipe(s)", "✅ Prêt" if ok_equipes else "⚠️ Min. 2 requises")
     c_pr4.metric("4️⃣ Contraintes joueurs", f"{nb_contraintes} joueur(s)", "Prises en compte dans l'horaire")
 
@@ -36660,6 +36705,10 @@ def afficher_configuration_debut_saison(key_prefix="cfg_saison", afficher_reset_
                 st.rerun()
 
     with sub_tab_joueurs:
+        if f"{key_prefix}_joueurs_editor_ver" not in st.session_state:
+            st.session_state[f"{key_prefix}_joueurs_editor_ver"] = 1
+        ed_ver = st.session_state[f"{key_prefix}_joueurs_editor_ver"]
+
         st.markdown("##### 👥 Registre officiel des joueurs & Contraintes pour jouer (`joueurs.json`)")
         st.caption(
             "Gérez ici l'ensemble des joueurs de la ligue : **Nom complet**, **Numéro de téléphone**, **Adresse courriel**, "
@@ -36746,7 +36795,8 @@ def afficher_configuration_debut_saison(key_prefix="cfg_saison", afficher_reset_
                                 sauvegarder_equipes_csv(eq_maj)
                                 cfg_s["equipes"] = eq_maj
 
-                            sauvegarder_config_saison(charger_config_saison())
+                            st.session_state[f"{key_prefix}_joueurs_editor_ver"] = ed_ver + 1
+                            st.session_state.pop(f"{key_prefix}_editor_joueurs_registre_{ed_ver}", None)
                             st.success(f"✅ Le joueur '{nom_p}' a été ajouté avec succès au registre officiel !")
                             time.sleep(0.8)
                             st.rerun()
@@ -36780,7 +36830,8 @@ def afficher_configuration_debut_saison(key_prefix="cfg_saison", afficher_reset_
                                     if j_it_mod["nom"] == j_choisi_del:
                                         j_it_mod["actif"] = not est_act_cur
                                 sauvegarder_registre_joueurs(registre_actuel)
-                                sauvegarder_config_saison(charger_config_saison())
+                                st.session_state[f"{key_prefix}_joueurs_editor_ver"] = ed_ver + 1
+                                st.session_state.pop(f"{key_prefix}_editor_joueurs_registre_{ed_ver}", None)
                                 stat_str = "inactif" if est_act_cur else "actif"
                                 st.success(f"✅ Le joueur '{j_choisi_del}' est désormais {stat_str}.")
                                 time.sleep(0.8)
@@ -36794,7 +36845,8 @@ def afficher_configuration_debut_saison(key_prefix="cfg_saison", afficher_reset_
                                     if j_it_mod["nom"] == j_choisi_del:
                                         j_it_mod["capitaine"] = not est_cap_cur
                                 sauvegarder_registre_joueurs(registre_actuel)
-                                sauvegarder_config_saison(charger_config_saison())
+                                st.session_state[f"{key_prefix}_joueurs_editor_ver"] = ed_ver + 1
+                                st.session_state.pop(f"{key_prefix}_editor_joueurs_registre_{ed_ver}", None)
                                 cap_str = "nommé capitaine 👑" if not est_cap_cur else "retiré du rôle de capitaine"
                                 st.success(f"✅ Le joueur '{j_choisi_del}' est maintenant {cap_str}.")
                                 time.sleep(0.8)
@@ -36819,7 +36871,8 @@ def afficher_configuration_debut_saison(key_prefix="cfg_saison", afficher_reset_
                                     sauvegarder_equipes_csv(eq_maj)
                                     cfg_s["equipes"] = eq_maj
 
-                                sauvegarder_config_saison(charger_config_saison())
+                                st.session_state[f"{key_prefix}_joueurs_editor_ver"] = ed_ver + 1
+                                st.session_state.pop(f"{key_prefix}_editor_joueurs_registre_{ed_ver}", None)
                                 st.success(f"✅ Le joueur '{j_choisi_del}' a été supprimé définitivement du registre.")
                                 time.sleep(0.8)
                                 st.rerun()
@@ -36837,7 +36890,8 @@ def afficher_configuration_debut_saison(key_prefix="cfg_saison", afficher_reset_
             )
         with col_fil2:
             nb_act_tot = len([j for j in registre_actuel if j.get("actif", True)])
-            st.metric("👥 Total des joueurs", f"{len(registre_actuel)} inscrit(s)", f"{nb_act_tot} actif(s)")
+            nb_inact_tot = len(registre_actuel) - nb_act_tot
+            st.metric("👥 Total des joueurs", f"{len(registre_actuel)} inscrit(s)", f"{nb_act_tot} actif(s) | {nb_inact_tot} inactif(s)")
 
         lignes_j_df = []
         for j_it in registre_actuel:
@@ -36883,7 +36937,7 @@ def afficher_configuration_debut_saison(key_prefix="cfg_saison", afficher_reset_
             num_rows="dynamic",
             use_container_width=True,
             hide_index=True,
-            key=f"{key_prefix}_editor_joueurs_registre",
+            key=f"{key_prefix}_editor_joueurs_registre_{ed_ver}",
             column_config={
                 "Nom complet": st.column_config.TextColumn("Nom complet", required=True, width="medium"),
                 "Équipe": st.column_config.TextColumn("Équipe", required=False, width="small"),
@@ -36959,7 +37013,8 @@ def afficher_configuration_debut_saison(key_prefix="cfg_saison", afficher_reset_
                 sauvegarder_equipes_csv(eq_maj)
                 cfg_s["equipes"] = eq_maj
 
-            sauvegarder_config_saison(charger_config_saison())
+            st.session_state[f"{key_prefix}_joueurs_editor_ver"] = ed_ver + 1
+            st.session_state.pop(f"{key_prefix}_editor_joueurs_registre_{ed_ver}", None)
             st.success(f"✅ {len(liste_finale_sauvegardee)} joueur(s) et leurs contraintes ont été enregistrés avec succès dans joueurs.json !")
             time.sleep(0.8)
             st.rerun()
