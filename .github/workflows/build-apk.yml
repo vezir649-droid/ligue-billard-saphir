@@ -1,23 +1,12 @@
-name: Compiler SaphirSMS APK
-on:
-  push:
-  workflow_dispatch:
-jobs:
-  build:
-    name: Compilation de l'APK Android
-    runs-on: ubuntu-latest
-    steps:
-      - name: Récupération du code source
-        uses: actions/checkout@v4
-      - name: Configuration de Java JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: 'temurin'
           java-version: '17'
       - name: Configuration de Gradle 8.5
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '8.5'
+          cache-disabled: true
       - name: Configuration du SDK Android
         working-directory: android-saphir-sms
         run: |
@@ -31,7 +20,7 @@ jobs:
           mkdir -p build-output
           cp android-saphir-sms/app/build/outputs/apk/release/*.apk build-output/SaphirSMS.apk
       - name: Téléverser l'APK téléchargeable
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: SaphirSMS-APK
           path: build-output/SaphirSMS.apk
