@@ -190,5 +190,13 @@
         "courriel": "alain.bellemare@hotmail.com",
         "consentement": false,
         "actif": true
+    },
+    {
+        "nom": "Patrick Fortin",
+        "equipe": "Golf",
+        "telephone": "",
+        "courriel": "",
+        "consentement": false,
+        "actif": true
     }
 ]
