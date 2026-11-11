@@ -85,7 +85,7 @@
         "telephone": "4185806222",
         "courriel": "s.blaquiere@icloud.com",
         "consentement": false,
-        "actif": true
+        "actif": false
     },
     {
         "nom": "Yves Pilon",
@@ -194,8 +194,8 @@
     {
         "nom": "Patrick Fortin",
         "equipe": "Golf",
-        "telephone": "",
-        "courriel": "",
+        "telephone": "4189072287",
+        "courriel": "patrickfortin08@gmail.com",
         "consentement": false,
         "actif": true
     }
