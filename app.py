@@ -5116,6 +5116,12 @@ def restaurer_session(data):
 
 
 
+    # 0. Date de la feuille de match
+    if "date_match" in data or "date" in data:
+        safe_set("date_match_feuille", data.get("date_match") or data.get("date"))
+    if "date_enregistrement" in data:
+        safe_set("date_enregistrement_feuille", data.get("date_enregistrement"))
+
     # 1. Équipes
 
     if "choix_rec" in data:
@@ -7596,6 +7602,74 @@ def trouver_date_match_dans_horaire(receveur, visiteur, date_ref=None, lignes_ho
     return candidats[0].strftime("%d/%m/%Y")
 
 
+def normaliser_date_match_feuille(date_brute, rec="", vis="", fallback_defaut=None):
+    """
+    Normalise rigoureusement la date officielle d'un match (priorité absolue à la date manuscrite sur la feuille).
+    Format retourné : JJ/MM/AAAA.
+    Si aucune date n'est inscrite sur la feuille, utilise la date du calendrier officiel (trouver_date_match_dans_horaire).
+    Ne recourt à la date du jour que si aucune autre source n'est disponible.
+    """
+    s = str(date_brute or "").strip()
+    if " à " in s:
+        s = s.split(" à ")[0].strip()
+    if " " in s and len(s.split()[0]) == 10 and ("-" in s.split()[0] or "/" in s.split()[0]):
+        s = s.split()[0].strip()
+
+    res = None
+    if s and s.lower() not in ("none", "null", "inconnue", "date inconnue"):
+        # 1. Format ISO AAAA-MM-JJ ou AAAA/MM/JJ
+        m_iso = re.search(r"(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})", s)
+        if m_iso:
+            try:
+                y, m, d = int(m_iso.group(1)), int(m_iso.group(2)), int(m_iso.group(3))
+                res = f"{d:02d}/{m:02d}/{y:04d}"
+            except Exception:
+                pass
+
+        # 2. Format JJ/MM/AAAA ou JJ-MM-AAAA
+        if not res:
+            m_fr = re.search(r"(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})", s)
+            if m_fr:
+                try:
+                    d, m, y = int(m_fr.group(1)), int(m_fr.group(2)), int(m_fr.group(3))
+                    res = f"{d:02d}/{m:02d}/{y:04d}"
+                except Exception:
+                    pass
+
+        # 3. Format textuel avec nom de mois en français
+        if not res:
+            mois_map = {
+                "janvier": 1, "fevrier": 2, "février": 2, "mars": 3, "avril": 4,
+                "mai": 5, "juin": 6, "juillet": 7, "aout": 8, "août": 8,
+                "septembre": 9, "octobre": 10, "novembre": 11, "decembre": 12, "décembre": 12,
+                "janv": 1, "fevr": 2, "févr": 2, "avr": 4, "juil": 7, "sept": 9, "oct": 10, "nov": 11, "dec": 12, "déc": 12
+            }
+            for m_nom, m_num in mois_map.items():
+                m_txt = re.search(rf"(\d{{1,2}})\s+{m_nom}\.?\w*\s+(\d{{4}})", s, re.IGNORECASE)
+                if m_txt:
+                    try:
+                        d, y = int(m_txt.group(1)), int(m_txt.group(2))
+                        res = f"{d:02d}/{m_num:02d}/{y:04d}"
+                        break
+                    except Exception:
+                        pass
+
+    # 4. Fallback vers le calendrier officiel si aucune date n'est inscrite sur la feuille
+    if not res and rec and vis:
+        try:
+            d_hor = trouver_date_match_dans_horaire(rec, vis)
+            if d_hor:
+                res = d_hor
+        except Exception:
+            pass
+
+    # 5. Dernier recours : fallback fourni ou date du jour
+    if not res:
+        res = fallback_defaut if fallback_defaut is not None else datetime.today().strftime("%d/%m/%Y")
+
+    return res
+
+
 def extraire_dates_match_historique(m):
     """Extrait (date_du_match, date_enregistrement) d'un dictionnaire de match de l'historique."""
     if not isinstance(m, dict):
@@ -7605,6 +7679,11 @@ def extraire_dates_match_historique(m):
     d_match = str(m.get("date_match") or m.get("date") or "").strip()
     d_enreg = str(m.get("date_enregistrement") or "").strip()
     d_horaire = trouver_date_match_dans_horaire(rec, vis)
+    if " à " in d_match:
+        if d_horaire:
+            d_match = d_horaire
+        else:
+            d_match = d_match.split(" à ")[0].strip()
     if not d_match:
         d_match = d_horaire or d_enreg or "Date inconnue"
     elif d_enreg and d_match == d_enreg and d_horaire:
@@ -7815,6 +7894,14 @@ def appliquer_match_du_jour(rencontre=None, forcer=False):
 
 
 
+    # 0. Date officielle du match du jour
+    d_m_jour = normaliser_date_match_feuille(rencontre.get("date") or rencontre.get("date_match"), eq_rec, eq_vis)
+    if d_m_jour:
+        try:
+            st.session_state["date_match_feuille"] = d_m_jour
+        except Exception:
+            pass
+
     # 1. Équipes
 
     st.session_state["sel_equipe_rec"] = eq_rec
@@ -7971,7 +8058,11 @@ def appliquer_match_du_jour(rencontre=None, forcer=False):
 
         data_init = {
 
-            "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "date": d_m_jour,
+
+            "date_match": d_m_jour,
+
+            "date_enregistrement": datetime.now().strftime("%d/%m/%Y à %H:%M"),
 
             "receveur": eq_rec,
 
@@ -8376,6 +8467,8 @@ Structure JSON attendue :
 }
 
 Consignes strictes :
+
+- date : Lis rigoureusement la date manuscrite inscrite sur la feuille de match physique (généralement en haut). Ne mets JAMAIS la date du jour ni la date du scan. Convertis-la au format AAAA-MM-JJ ou JJ/MM/AAAA. Si aucune date n'est écrite sur la feuille, indique null.
 
 - joueurs_rec DOIT contenir les 3 joueurs de l'équipe receveuse dans l'ordre exact des manches 1, 2 et 3.
 
@@ -9803,6 +9896,11 @@ def cb_injecter_donnees_scanner(data_s, label_direct=None):
 
     eq_v_scan = str(data_s.get("visiteur", "")).strip()
 
+    # Conserver rigoureusement la date manuscrite de la feuille numérisée pour l'injection
+    d_feuille_inj = normaliser_date_match_feuille(data_s.get("date"), eq_r_scan, eq_v_scan)
+    st.session_state["date_match_feuille_scanned"] = d_feuille_inj
+    st.session_state["date_match_feuille"] = d_feuille_inj
+
 
 
     equipes_dict = charger_equipes_csv()
@@ -10013,7 +10111,11 @@ def cb_injecter_donnees_scanner(data_s, label_direct=None):
 
         data_inj = {
 
-            "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "date": d_feuille_inj,
+
+            "date_match": d_feuille_inj,
+
+            "date_enregistrement": datetime.now().strftime("%d/%m/%Y à %H:%M"),
 
             "derniere_mise_a_jour": datetime.now().strftime("%H:%M:%S"),
 
@@ -10124,7 +10226,7 @@ def cb_archiver_match_scanner(data_s):
     matchs_dict = data_s.get("matchs", {})
     rec_arch_sc = str(data_s.get("receveur", "Receveur"))
     vis_arch_sc = str(data_s.get("visiteur", "Visiteur"))
-    d_match_arch_sc = str(data_s.get("date") or trouver_date_match_dans_horaire(rec_arch_sc, vis_arch_sc) or datetime.today().strftime("%d/%m/%Y")).strip()
+    d_match_arch_sc = normaliser_date_match_feuille(data_s.get("date"), rec_arch_sc, vis_arch_sc)
     d_enreg_arch_sc = datetime.now().strftime("%d/%m/%Y à %H:%M")
 
     nouveau_match = {
@@ -10215,27 +10317,18 @@ def cb_injecter_scan_dans_match_anterieur(data_s):
 
 
 
-    # 1. Date du match
-
-    d_str = str(data_s.get("date", "")).strip()
-
-    if len(d_str) >= 10:
-
-        try:
-
-            st.session_state["ant_date_input"] = datetime.strptime(d_str[:10], "%Y-%m-%d").date()
-
-        except Exception:
-
-            pass
-
-
-
-    # 2. Équipes Receveuse et Visiteuse
-
+    # 1. Équipes Receveuse et Visiteuse
     rec_nom = str(data_s.get("receveur", "")).strip()
-
     vis_nom = str(data_s.get("visiteur", "")).strip()
+
+    # 2. Date du match (priorité à la date manuscrite de la feuille numérisée)
+    d_str = str(data_s.get("date", "")).strip()
+    d_norm_ant = normaliser_date_match_feuille(d_str, rec_nom, vis_nom)
+    if d_norm_ant:
+        try:
+            st.session_state["ant_date_input"] = datetime.strptime(d_norm_ant, "%d/%m/%Y").date()
+        except Exception:
+            pass
 
 
 
@@ -10419,7 +10512,7 @@ def cb_archiver_match_anterieur_scanner(data_s):
 
 
 
-    d_match_ant_sc = str(data_s.get("date") or trouver_date_match_dans_horaire(rec_n, vis_n) or datetime.today().strftime("%d/%m/%Y")).strip()
+    d_match_ant_sc = normaliser_date_match_feuille(data_s.get("date"), rec_n, vis_n)
     d_enreg_ant_sc = datetime.now().strftime("%d/%m/%Y à %H:%M")
 
     nouveau_match = {
@@ -12199,7 +12292,7 @@ def afficher_vue_scanner_feuille_match(label_direct):
                                 match_dict_init = res_sc.get("matchs", {})
                                 rec_sc_i = str(res_sc.get("receveur", "Receveur"))
                                 vis_sc_i = str(res_sc.get("visiteur", "Visiteur"))
-                                d_match_sc_i = str(res_sc.get("date") or trouver_date_match_dans_horaire(rec_sc_i, vis_sc_i) or datetime.today().strftime("%d/%m/%Y")).strip()
+                                d_match_sc_i = normaliser_date_match_feuille(res_sc.get("date"), rec_sc_i, vis_sc_i)
                                 d_enreg_sc_i = datetime.now().strftime("%d/%m/%Y à %H:%M")
 
                                 m_scan_init = {
@@ -12793,8 +12886,15 @@ def afficher_vue_scanner_feuille_match(label_direct):
                     c_ed_meta1, c_ed_meta2, c_ed_meta3 = st.columns([1.2, 1.4, 1.4])
 
                     with c_ed_meta1:
-
-                        ed_date_str = st.text_input("📅 Date du match (AAAA-MM-JJ)", value=str(data_s.get("date", datetime.today().strftime("%Y-%m-%d"))), key="scan_ed_date")
+                        val_date_s_brute = data_s.get("date") or trouver_date_match_dans_horaire(rec_nom, vis_nom) or datetime.today().strftime("%Y-%m-%d")
+                        val_date_s_aff = str(val_date_s_brute)
+                        if "/" in val_date_s_aff:
+                            try:
+                                d_pt = datetime.strptime(val_date_s_aff[:10], "%d/%m/%Y")
+                                val_date_s_aff = d_pt.strftime("%Y-%m-%d")
+                            except Exception:
+                                pass
+                        ed_date_str = st.text_input("📅 Date du match (AAAA-MM-JJ)", value=val_date_s_aff, key="scan_ed_date")
 
                     with c_ed_meta2:
 
@@ -13031,16 +13131,22 @@ def afficher_vue_scanner_feuille_match(label_direct):
 
 
                 matchs_dict = data_s.get("matchs", {})
+                rec_m_scan = str(data_s.get("receveur", "Receveur"))
+                vis_m_scan = str(data_s.get("visiteur", "Visiteur"))
+                d_m_scan = normaliser_date_match_feuille(data_s.get("date"), rec_m_scan, vis_m_scan)
+                d_enreg_scan = datetime.now().strftime("%d/%m/%Y à %H:%M")
 
                 m_scan = {
 
-                    "date": str(data_s.get("date", datetime.today().strftime("%Y-%m-%d"))),
+                    "date": d_m_scan,
 
-                    "date_enregistrement": str(data_s.get("date", datetime.today().strftime("%Y-%m-%d"))),
+                    "date_match": d_m_scan,
 
-                    "receveur": str(data_s.get("receveur", "Receveur")),
+                    "date_enregistrement": d_enreg_scan,
 
-                    "visiteur": str(data_s.get("visiteur", "Visiteur")),
+                    "receveur": rec_m_scan,
+
+                    "visiteur": vis_m_scan,
 
                     "total_receveur": _safe_int_val(data_s.get("total_rec", 0)),
 
@@ -40683,9 +40789,18 @@ with tab_feuille:
 
 
 
+        d_cand_live = st.session_state.get("date_match_feuille_scanned") or st.session_state.get("date_match_feuille")
+        date_du_match_init = normaliser_date_match_feuille(d_cand_live, equipe_receveur, equipe_visiteur)
+
         donnees_a_sauvegarder = {
 
-            "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "date": date_du_match_init,
+
+            "date_match": date_du_match_init,
+
+            "date_enregistrement": datetime.now().strftime("%d/%m/%Y à %H:%M"),
+
+            "derniere_mise_a_jour": datetime.now().strftime("%H:%M:%S"),
 
             "receveur": equipe_receveur,
 
@@ -41259,8 +41374,8 @@ with tab_feuille:
 
         # --- VALIDATION FINALE DU MATCH ET ENVOI AUTOMATIQUE (Génération HTML à la demande) ---
 
-        date_horaire_match = trouver_date_match_dans_horaire(equipe_receveur, equipe_visiteur)
-        date_du_match = date_horaire_match if date_horaire_match else datetime.now().strftime("%d/%m/%Y à %H:%M")
+        d_cand_val = st.session_state.get("date_match_feuille_scanned") or st.session_state.get("date_match_feuille") or donnees_a_sauvegarder.get("date_match")
+        date_du_match = normaliser_date_match_feuille(d_cand_val, equipe_receveur, equipe_visiteur)
         donnees_a_sauvegarder["date_match"] = date_du_match
         donnees_a_sauvegarder["date"] = date_du_match
 
