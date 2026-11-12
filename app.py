@@ -39952,6 +39952,16 @@ with tab_feuille:
 
 
 
+    # Initialisation défensive des conteneurs live pour éviter tout NameError selon la vue active
+
+    conteneur_scoreboard_live = None
+
+    conteneur_detail_individuel_live = None
+
+    afficher_dashboard = False
+
+
+
     # 0. Si le scanner de feuille de match par IA est actif
 
     if st.session_state.get("mode_vue_active") == "scanner" or choix_vue == label_scan:
@@ -40675,9 +40685,33 @@ with tab_feuille:
 
 
 
-    if not est_spectateur and choix_vue != label_direct:
+    mode_vue_courant = st.session_state.get("mode_vue_active")
 
-        st.info("💡 **Feuille archivée affichée ci-dessus.** La grille de saisie du match en cours est temporairement masquée (utilisez le bouton **« 🔙 Revenir au match en cours »** en haut à droite pour reprendre la saisie).")
+    vue_speciale_active = (
+
+        (choix_vue != label_direct)
+
+        or (mode_vue_courant in ["scanner", "saphir"])
+
+        or (choix_vue in [label_scan, label_saphir, "saphir"])
+
+    )
+
+
+
+    if not est_spectateur and vue_speciale_active:
+
+        if mode_vue_courant == "scanner" or choix_vue == label_scan:
+
+            pass  # Le scanner de feuille de match par IA est actif et affiché ci-dessus
+
+        elif mode_vue_courant == "saphir" or choix_vue in [label_saphir, "saphir"]:
+
+            pass  # La consultation officielle saphirbillard.com est affichée ci-dessus
+
+        else:
+
+            st.info("💡 **Feuille archivée affichée ci-dessus.** La grille de saisie du match en cours est temporairement masquée (utilisez le bouton **« 🔙 Revenir au match en cours »** en haut à droite pour reprendre la saisie).")
 
     elif not est_spectateur:
 
@@ -41244,7 +41278,9 @@ with tab_feuille:
 
 
 
-        with conteneur_scoreboard_live:
+        ctx_scoreboard = conteneur_scoreboard_live if conteneur_scoreboard_live is not None else st.container()
+
+        with ctx_scoreboard:
 
             with st.container(border=True):
 
@@ -41278,7 +41314,9 @@ with tab_feuille:
 
         if afficher_dashboard:
 
-            with conteneur_detail_individuel_live:
+            ctx_detail = conteneur_detail_individuel_live if conteneur_detail_individuel_live is not None else st.container()
+
+            with ctx_detail:
 
                 with st.container(border=True):
 
