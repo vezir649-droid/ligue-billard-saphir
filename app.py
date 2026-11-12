@@ -34793,7 +34793,12 @@ def calculer_statistiques_et_progression(historique):
 
         sj["nb_matchs"] = len(sj["matchs_joues"])
 
-        sj["semaines_jouees"] = sj["nb_matchs"]
+        if not historique and sj.get("semaines_officielles", 0) > 0:
+            sj["semaines_jouees"] = sj["semaines_officielles"]
+            sj["nb_matchs"] = sj["semaines_officielles"]
+            sj["total_pts"] = sj.get("points_officiels", 0)
+        else:
+            sj["semaines_jouees"] = sj["nb_matchs"]
 
         m_count = sj["manches"]
 
@@ -35461,66 +35466,138 @@ def afficher_tableau_de_bord_progression(historique):
     if not joueurs_tous:
         st.info("ℹ️ Aucune donnée de joueur disponible.")
     else:
-        c_fj1, c_fj2 = st.columns([1.3, 2.2])
+        # Options de tri des joueurs
+        tri_options_j = [
+            "Matchs joués vs Moyenne",
+            "Moyenne globale",
+            "Total de points",
+            "Nb de victoires",
+            "Nb de matchs joués"
+        ]
+        if st.session_state.get("stats_tri_joueurs_simple") == "Nb de semaines":
+            st.session_state["stats_tri_joueurs_simple"] = "Nb de matchs joués"
+        elif st.session_state.get("stats_tri_joueurs_simple") not in tri_options_j:
+            st.session_state["stats_tri_joueurs_simple"] = "Matchs joués vs Moyenne"
+
+        c_fj1, c_fj_m = st.columns([1.2, 1.2])
         with c_fj1:
             filtre_eq_j = st.selectbox(
                 "Filtrer par équipe :",
                 options=["Toutes les équipes"] + sorted(list(stats_equipes.keys())),
                 key="stats_filtre_equipe_joueurs_simple"
             )
-        with c_fj2:
+        with c_fj_m:
+            nb_matchs_dispos = sorted(list({int(j.get("semaines_jouees", 0)) for j in joueurs_tous}), reverse=True)
+            options_filtre_m = ["Tous les matchs"] + [f"{nb} match{'s' if nb > 1 else ''}" for nb in nb_matchs_dispos]
+            filtre_m_j = st.selectbox(
+                "Filtrer par matchs joués :",
+                options=options_filtre_m,
+                key="stats_filtre_matchs_joueurs"
+            )
+
+        c_tri, c_vue = st.columns([1.8, 1.2])
+        with c_tri:
             mode_tri_j = st.radio(
                 "Trier les joueurs par :",
-                ["Total de points", "Moyenne globale", "Nb de victoires", "Nb de semaines"],
+                tri_options_j,
                 horizontal=True,
                 key="stats_tri_joueurs_simple"
             )
+        with c_vue:
+            vue_mode_j = st.radio(
+                "Présentation :",
+                ["📋 Tableau complet", "🎯 Regrouper par nb de matchs"],
+                horizontal=True,
+                key="stats_vue_mode_joueurs"
+            )
+
+        def _nb_m_val(j_it):
+            return int(j_it.get("semaines_jouees", 0))
 
         joueurs_filtres = [
             j for j in joueurs_tous
-            if filtre_eq_j == "Toutes les équipes" or j["equipe"] == filtre_eq_j
+            if (filtre_eq_j == "Toutes les équipes" or j["equipe"] == filtre_eq_j)
+            and (filtre_m_j == "Tous les matchs" or f"{_nb_m_val(j)} match{'s' if _nb_m_val(j) > 1 else ''}" == filtre_m_j)
         ]
 
-        if mode_tri_j == "Moyenne globale":
+        if mode_tri_j == "Matchs joués vs Moyenne":
             classement_joueurs = sorted(
                 joueurs_filtres,
-                key=lambda x: (x["moyenne_globale"], x["total_pts"], x["v"]),
+                key=lambda x: (x["semaines_jouees"], x["moyenne_globale"], x["total_pts"], x["v"], -x["d"]),
+                reverse=True
+            )
+        elif mode_tri_j == "Moyenne globale":
+            classement_joueurs = sorted(
+                joueurs_filtres,
+                key=lambda x: (x["moyenne_globale"], x["semaines_jouees"], x["total_pts"], x["v"], -x["d"]),
                 reverse=True
             )
         elif mode_tri_j == "Nb de victoires":
             classement_joueurs = sorted(
                 joueurs_filtres,
-                key=lambda x: (x["v"], x["total_pts"], x["moyenne_globale"]),
+                key=lambda x: (x["v"], x["moyenne_globale"], x["total_pts"], -x["d"]),
                 reverse=True
             )
-        elif mode_tri_j == "Nb de semaines":
+        elif mode_tri_j in ("Nb de matchs joués", "Nb de semaines"):
             classement_joueurs = sorted(
                 joueurs_filtres,
-                key=lambda x: (x["semaines_jouees"], x["total_pts"], x["v"]),
+                key=lambda x: (x["semaines_jouees"], x["total_pts"], x["moyenne_globale"], x["v"], -x["d"]),
                 reverse=True
             )
         else:
             classement_joueurs = sorted(
                 joueurs_filtres,
-                key=lambda x: (x["total_pts"], x["v"], x["moyenne_globale"]),
+                key=lambda x: (x["total_pts"], x["moyenne_globale"], x["v"], -x["d"]),
                 reverse=True
             )
 
-        lignes_tab_j = []
-        for rang, j_data in enumerate(classement_joueurs, start=1):
-            moy_str = f"{j_data['moyenne_globale']:.3f}"
-            lignes_tab_j.append({
-                "Rang": medailles.get(rang, f"#{rang}"),
-                "Joueur": j_data["nom"],
-                "Équipe": j_data["equipe"],
-                "Semaines": j_data["semaines_jouees"],
-                "Victoires": j_data["v"],
-                "Défaites": j_data["d"],
-                "Total points": j_data["total_pts"],
-                "Moyenne": moy_str
-            })
+        if mode_tri_j == "Matchs joués vs Moyenne":
+            st.caption("ℹ️ **Classement Matchs joués vs Moyenne :** Les joueurs sont classés par volume de matchs disputés décroissant, puis par leur moyenne individuelle.")
 
-        afficher_tableau_html_compatible(pd.DataFrame(lignes_tab_j))
+        if vue_mode_j == "🎯 Regrouper par nb de matchs":
+            # Affichage sectionné par tranche de matchs joués
+            groupes_nb = {}
+            for j_item in classement_joueurs:
+                nb_key = int(j_item.get("semaines_jouees", 0))
+                groupes_nb.setdefault(nb_key, []).append(j_item)
+
+            for nb_m in sorted(groupes_nb.keys(), reverse=True):
+                grp_joueurs = sorted(
+                    groupes_nb[nb_m],
+                    key=lambda x: (x["moyenne_globale"], x["total_pts"], x["v"], -x["d"]),
+                    reverse=True
+                )
+                lbl_m = f"{nb_m} match{'s' if nb_m > 1 else ''} joué{'s' if nb_m > 1 else ''}"
+                st.markdown(f"##### 🎱 Groupe {lbl_m} — {len(grp_joueurs)} joueur{'s' if len(grp_joueurs) > 1 else ''} (Classé par moyenne)")
+                lignes_grp = []
+                for rang, j_data in enumerate(grp_joueurs, start=1):
+                    moy_str = f"{j_data['moyenne_globale']:.3f}"
+                    lignes_grp.append({
+                        "Rang": medailles.get(rang, f"#{rang}"),
+                        "Joueur": j_data["nom"],
+                        "Équipe": j_data["equipe"],
+                        "Matchs joués": j_data["semaines_jouees"],
+                        "Moyenne": moy_str,
+                        "Total points": j_data["total_pts"],
+                        "Victoires": j_data["v"],
+                        "Défaites": j_data["d"]
+                    })
+                afficher_tableau_html_compatible(pd.DataFrame(lignes_grp))
+        else:
+            lignes_tab_j = []
+            for rang, j_data in enumerate(classement_joueurs, start=1):
+                moy_str = f"{j_data['moyenne_globale']:.3f}"
+                lignes_tab_j.append({
+                    "Rang": medailles.get(rang, f"#{rang}"),
+                    "Joueur": j_data["nom"],
+                    "Équipe": j_data["equipe"],
+                    "Matchs joués": j_data["semaines_jouees"],
+                    "Moyenne": moy_str,
+                    "Total points": j_data["total_pts"],
+                    "Victoires": j_data["v"],
+                    "Défaites": j_data["d"]
+                })
+            afficher_tableau_html_compatible(pd.DataFrame(lignes_tab_j))
 
         # Graphique linéaire de 14 semaines pour les joueurs (Axe Y = Nom des joueurs, Max 24 pts / match)
         with st.container(border=True):
