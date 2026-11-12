@@ -8406,15 +8406,24 @@ def analyser_photo_feuille_match(image_bytes, cle_api=None):
 
     models_vision = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"]
 
-    
+    # Chargement de la liste officielle des équipes et de leurs 3 joueurs réguliers
+    equipes_dict_ref = charger_equipes_csv()
+    lignes_eq_ref = []
+    for eq_n_ref, rost_ref in equipes_dict_ref.items():
+        if rost_ref:
+            lignes_eq_ref.append(f"- {eq_n_ref} : {', '.join(rost_ref)}")
+    texte_equipes_ref = "\n".join(lignes_eq_ref)
 
-    prompt = """Tu es un expert officiel de la Ligue de Billard du Saphir.
+    prompt = f"""Tu es un expert officiel de la Ligue de Billard du Saphir.
 
 Analyse cette photo de feuille de match manuscrite et extrait rigoureusement les données en JSON STRICT.
 
+Liste officielle des 8 équipes de la ligue et de leurs 3 joueurs réguliers respectifs (matchs cédulés) :
+{texte_equipes_ref}
+
 Structure JSON attendue :
 
-{
+{{
 
   "date": "AAAA-MM-JJ",
 
@@ -8426,27 +8435,27 @@ Structure JSON attendue :
 
   "joueurs_vis": ["Joueur 1 (Manche 1)", "Joueur 2 (Manche 2)", "Joueur 3 (Manche 3)"],
 
-  "matchs": {
+  "matchs": {{
 
-    "1": {"score_a": 8, "score_b": 4, "joueur_a": "Gille", "joueur_b": "Léon M"},
+    "1": {{"score_a": 8, "score_b": 4, "joueur_a": "Gille", "joueur_b": "Léon M"}},
 
-    "2": {"score_a": 7, "score_b": 8, "joueur_a": "Guy", "joueur_b": "Gaston L"},
+    "2": {{"score_a": 7, "score_b": 8, "joueur_a": "Guy", "joueur_b": "Gaston L"}},
 
-    "3": {"score_a": 8, "score_b": 4, "joueur_a": "André", "joueur_b": "Claude H"},
+    "3": {{"score_a": 8, "score_b": 4, "joueur_a": "André", "joueur_b": "Claude H"}},
 
-    "4": {"score_a": 7, "score_b": 8, "joueur_a": "Gille", "joueur_b": "Gaston L"},
+    "4": {{"score_a": 7, "score_b": 8, "joueur_a": "Gille", "joueur_b": "Gaston L"}},
 
-    "5": {"score_a": 7, "score_b": 8, "joueur_a": "Guy", "joueur_b": "Claude H"},
+    "5": {{"score_a": 7, "score_b": 8, "joueur_a": "Guy", "joueur_b": "Claude H"}},
 
-    "6": {"score_a": 8, "score_b": 6, "joueur_a": "André", "joueur_b": "Léon M"},
+    "6": {{"score_a": 8, "score_b": 6, "joueur_a": "André", "joueur_b": "Léon M"}},
 
-    "7": {"score_a": 6, "score_b": 8, "joueur_a": "Gille", "joueur_b": "Claude H"},
+    "7": {{"score_a": 6, "score_b": 8, "joueur_a": "Gille", "joueur_b": "Claude H"}},
 
-    "8": {"score_a": 7, "score_b": 8, "joueur_a": "Guy", "joueur_b": "Léon M"},
+    "8": {{"score_a": 7, "score_b": 8, "joueur_a": "Guy", "joueur_b": "Léon M"}},
 
-    "9": {"score_a": 8, "score_b": 4, "joueur_a": "André", "joueur_b": "Gaston L"}
+    "9": {{"score_a": 8, "score_b": 4, "joueur_a": "André", "joueur_b": "Gaston L"}}
 
-  },
+  }},
 
   "total_rec": 66,
 
@@ -8464,11 +8473,17 @@ Structure JSON attendue :
 
   "incertitudes": []
 
-}
+}}
 
 Consignes strictes :
 
 - date : Lis rigoureusement la date manuscrite inscrite sur la feuille de match physique (généralement en haut). Ne mets JAMAIS la date du jour ni la date du scan. Convertis-la au format AAAA-MM-JJ ou JJ/MM/AAAA. Si aucune date n'est écrite sur la feuille, indique null.
+
+- Identifie les 2 équipes en priorité parmi les 8 équipes officielles du calendrier ci-dessus.
+
+- Chaque équipe compte 3 joueurs réguliers (alignés respectivement aux manches 1, 2 et 3).
+
+- Si un nom de joueur manuscrit est difficile à lire, abrégé, raturé, ambigu ou manquant, déduis-le rigoureusement en fonction des 3 joueurs officiels de l'équipe cédulée correspondante.
 
 - joueurs_rec DOIT contenir les 3 joueurs de l'équipe receveuse dans l'ordre exact des manches 1, 2 et 3.
 
@@ -8478,7 +8493,7 @@ Consignes strictes :
 
 - est_partiel vaut true si certaines manches ne sont pas encore jouées (cases vides) ou si la feuille est incomplète, sinon false.
 
-- incertitudes est une liste de chaînes signalant toute rature, chiffre manuscrit ambigu (ex: hésitation entre 5 et 6), nom difficile à lire ou case manquante.
+- incertitudes est une liste de chaînes signalant toute rature, chiffre manuscrit ambigu (ex: hésitation entre 5 et 6), nom difficile à lire ou déduit des équipes cédulées.
 
 - Vérifie que les scores des 9 manches correspondent aux totaux par joueur et aux totaux d'équipe (total_rec et total_vis).
 
@@ -8944,138 +8959,177 @@ def correler_donnees_feuille_avec_ligue(data_s):
 
 
 
-    # 2. Correlation intelligente des equipes (nom d'equipe + deduction par les joueurs)
-
+    # 2. Corrélation intelligente des équipes (nom d'équipe + déduction par joueurs + calendrier cédulé)
     eq_rec_raw = str(data_s.get("raw_receveur", data_s.get("receveur", ""))).strip()
-
     eq_vis_raw = str(data_s.get("raw_visiteur", data_s.get("visiteur", ""))).strip()
 
-
-
     eq_rec_off = _deduire_equipe(eq_rec_raw, noms_bruts_rec, eq_exclue=None)
-
     eq_vis_off = _deduire_equipe(eq_vis_raw, noms_bruts_vis, eq_exclue=eq_rec_off)
 
+    # Déduction croisée avec le calendrier officiel (horaire) des matchs cédulés
+    d_feuille_str = str(data_s.get("date") or "").strip()
+    m_sched = None
+    if d_feuille_str:
+        try:
+            d_obj = None
+            if "/" in d_feuille_str:
+                d_obj = datetime.strptime(d_feuille_str[:10], "%d/%m/%Y").date()
+            elif "-" in d_feuille_str:
+                d_obj = datetime.strptime(d_feuille_str[:10], "%Y-%m-%d").date()
+            if d_obj:
+                m_sched = trouver_match_par_date(d_obj)
+        except Exception:
+            pass
 
+    if m_sched:
+        r_sched = m_sched.get("receveur")
+        v_sched = m_sched.get("visiteur")
+        if eq_rec_off not in equipes_dict or eq_vis_off not in equipes_dict:
+            if r_sched in equipes_dict and v_sched in equipes_dict:
+                eq_rec_off = r_sched
+                eq_vis_off = v_sched
+        elif (eq_rec_off in (r_sched, v_sched) and eq_vis_off not in (r_sched, v_sched)):
+            eq_vis_off = v_sched if eq_rec_off == r_sched else r_sched
+    else:
+        if eq_rec_off in equipes_dict and eq_vis_off not in equipes_dict:
+            for row in (charger_horaire_json() or []):
+                for cell in row[1:]:
+                    res_p = parser_ligne_horaire_match(cell)
+                    if res_p and (res_p.get("receveur") == eq_rec_off or res_p.get("visiteur") == eq_rec_off):
+                        adv = res_p.get("visiteur") if res_p.get("receveur") == eq_rec_off else res_p.get("receveur")
+                        if adv in equipes_dict:
+                            eq_vis_off = adv
+                            break
+                if eq_vis_off in equipes_dict:
+                    break
+        elif eq_vis_off in equipes_dict and eq_rec_off not in equipes_dict:
+            for row in (charger_horaire_json() or []):
+                for cell in row[1:]:
+                    res_p = parser_ligne_horaire_match(cell)
+                    if res_p and (res_p.get("receveur") == eq_vis_off or res_p.get("visiteur") == eq_vis_off):
+                        adv = res_p.get("visiteur") if res_p.get("receveur") == eq_vis_off else res_p.get("receveur")
+                        if adv in equipes_dict:
+                            eq_rec_off = adv
+                            break
+                if eq_rec_off in equipes_dict:
+                    break
 
     data_s["receveur"] = eq_rec_off
-
     data_s["visiteur"] = eq_vis_off
 
-
-
     cands_rec = list(equipes_dict.get(eq_rec_off, []))
-
     cands_vis = list(equipes_dict.get(eq_vis_off, []))
-
-
 
     correspondances = {}
 
+    GENERIQUES_J = {
+        "joueur", "joueur 1", "joueur 2", "joueur 3", "joueur a", "joueur b",
+        "j1", "j2", "j3", "inconnu", "none", "null", "", "?", "-", "remplacant",
+        "remplaçant", "signature", "capitaine", "adversaire"
+    }
 
+    # 3. Fonction de déduction automatique des joueurs d'une équipe cédulée
+    def _deduire_joueurs_equipe_slot(roster_equipe, slot_manches_map, src_list, is_rec=True):
+        assigned = [None, None, None]
+        used = set()
+        champ_j = "joueur_a" if is_rec else "joueur_b"
+        label_eq = eq_rec_off if is_rec else eq_vis_off
 
-    # 3. Correlation sans doublon des 3 joueurs receveurs (alignes sur Manches 1, 2, 3)
+        # Passe 1: Reconnaissance directe parmi les joueurs réguliers de l'équipe cédulée
+        for s_idx in range(3):
+            cands_slot = []
+            if s_idx < len(src_list) and str(src_list[s_idx]).strip():
+                cands_slot.append(str(src_list[s_idx]).strip())
+            for m_num in slot_manches_map[s_idx]:
+                val_m = str(raw_matchs.get(str(m_num), {}).get(champ_j, "")).strip()
+                if val_m and val_m not in cands_slot:
+                    cands_slot.append(val_m)
 
+            for cand in cands_slot:
+                c_norm = _norm(cand)
+                if not c_norm or c_norm in GENERIQUES_J or len(c_norm) < 2:
+                    continue
+                j_match = correler_nom_joueur(cand, roster_equipe, [], exclus=used)
+                if j_match in roster_equipe and j_match not in used:
+                    assigned[s_idx] = j_match
+                    used.add(j_match)
+                    for c_raw in cands_slot:
+                        correspondances[c_raw] = j_match
+                    break
+
+        # Passe 2: Déduire les joueurs impossibles à déterminer selon le match cédulé des 2 équipes
+        restants = [p for p in roster_equipe if p not in used]
+        for s_idx in range(3):
+            if not assigned[s_idx]:
+                sub_valide = None
+                cands_slot = []
+                if s_idx < len(src_list) and str(src_list[s_idx]).strip():
+                    cands_slot.append(str(src_list[s_idx]).strip())
+                for m_num in slot_manches_map[s_idx]:
+                    val_m = str(raw_matchs.get(str(m_num), {}).get(champ_j, "")).strip()
+                    if val_m and val_m not in cands_slot:
+                        cands_slot.append(val_m)
+
+                # Vérifier si l'un des textes correspond très explicitement à un remplaçant officiel enregistré
+                for cand in cands_slot:
+                    c_norm = _norm(cand)
+                    if c_norm and c_norm not in GENERIQUES_J and len(c_norm) >= 4:
+                        for tj in tous_joueurs_list:
+                            if tj not in used and _norm(tj) == c_norm:
+                                sub_valide = tj
+                                break
+                    if sub_valide:
+                        break
+
+                if sub_valide:
+                    assigned[s_idx] = sub_valide
+                    used.add(sub_valide)
+                    for c_raw in cands_slot:
+                        correspondances[c_raw] = sub_valide
+                elif restants:
+                    # Déduction rigoureuse selon les joueurs réguliers de l'équipe cédulée
+                    deduit = restants.pop(0)
+                    assigned[s_idx] = deduit
+                    used.add(deduit)
+                    for c_raw in cands_slot:
+                        correspondances[c_raw] = deduit
+                    incerts = data_s.setdefault("incertitudes", [])
+                    msg_inc = f"Joueur J{s_idx+1} ({label_eq}) déduit automatiquement des joueurs cédulés : {deduit}."
+                    if msg_inc not in incerts:
+                        incerts.append(msg_inc)
+                else:
+                    assigned[s_idx] = f"Joueur {s_idx + 1}"
+
+        return assigned
+
+    # Déduction des joueurs receveurs (J1=M1,4,7 ; J2=M2,5,8 ; J3=M3,6,9)
     src_rec = list(data_s.get("raw_joueurs_rec", []))
-
     if len(src_rec) < 3:
-
         for nb in noms_bruts_rec:
-
             if len(src_rec) < 3:
-
                 src_rec.append(nb)
 
-
-
-    joueurs_rec_corr = []
-
-    used_rec = set()
-
-    for idx_slot in range(3):
-
-        j_raw = str(src_rec[idx_slot]).strip() if idx_slot < len(src_rec) else ""
-
-        # Si Manche 1, 2 ou 3 indique explicitement un joueur_a, l'utiliser en priorite pour definir l'ordre J1, J2, J3
-
-        ja_m = str(raw_matchs.get(str(idx_slot + 1), {}).get("joueur_a", "")).strip()
-
-        cible_raw = ja_m if ja_m else j_raw
-
-        j_corr = correler_nom_joueur(cible_raw, cands_rec, tous_joueurs_list, exclus=used_rec) if cible_raw else ""
-
-        if not j_corr or j_corr in used_rec:
-
-            restants = [c for c in cands_rec if c not in used_rec]
-
-            j_corr = restants[0] if restants else (cible_raw or f"Joueur {idx_slot + 1}")
-
-        joueurs_rec_corr.append(j_corr)
-
-        used_rec.add(j_corr)
-
-        if cible_raw:
-
-            correspondances[cible_raw] = j_corr
-
-        if j_raw:
-
-            correspondances[j_raw] = j_corr
-
-
-
+    slot_manches_rec = {
+        0: ["1", "4", "7"],
+        1: ["2", "5", "8"],
+        2: ["3", "6", "9"]
+    }
+    joueurs_rec_corr = _deduire_joueurs_equipe_slot(cands_rec, slot_manches_rec, src_rec, is_rec=True)
     data_s["joueurs_rec"] = joueurs_rec_corr
 
-
-
-    # 4. Correlation sans doublon des 3 joueurs visiteurs (alignes sur Manches 1, 2, 3)
-
+    # Déduction des joueurs visiteurs (J1=M1,6,8 ; J2=M2,4,9 ; J3=M3,5,7)
     src_vis = list(data_s.get("raw_joueurs_vis", []))
-
     if len(src_vis) < 3:
-
         for nb in noms_bruts_vis:
-
             if len(src_vis) < 3:
-
                 src_vis.append(nb)
 
-
-
-    joueurs_vis_corr = []
-
-    used_vis = set()
-
-    for idx_slot in range(3):
-
-        j_raw = str(src_vis[idx_slot]).strip() if idx_slot < len(src_vis) else ""
-
-        jb_m = str(raw_matchs.get(str(idx_slot + 1), {}).get("joueur_b", "")).strip()
-
-        cible_raw = jb_m if jb_m else j_raw
-
-        j_corr = correler_nom_joueur(cible_raw, cands_vis, tous_joueurs_list, exclus=used_vis) if cible_raw else ""
-
-        if not j_corr or j_corr in used_vis:
-
-            restants = [c for c in cands_vis if c not in used_vis]
-
-            j_corr = restants[0] if restants else (cible_raw or f"Joueur {idx_slot + 1}")
-
-        joueurs_vis_corr.append(j_corr)
-
-        used_vis.add(j_corr)
-
-        if cible_raw:
-
-            correspondances[cible_raw] = j_corr
-
-        if j_raw:
-
-            correspondances[j_raw] = j_corr
-
-
-
+    slot_manches_vis = {
+        0: ["1", "6", "8"],
+        1: ["2", "4", "9"],
+        2: ["3", "5", "7"]
+    }
+    joueurs_vis_corr = _deduire_joueurs_equipe_slot(cands_vis, slot_manches_vis, src_vis, is_rec=False)
     data_s["joueurs_vis"] = joueurs_vis_corr
 
 
