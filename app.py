@@ -10647,6 +10647,97 @@ def cb_archiver_match_anterieur_scanner(data_s):
 
 
 
+def _appliquer_ajustements_image_scan(img_bytes, rot_deg=0, enhance_on=False):
+    """Applique rotation (0/90/180/270) et amélioration contraste/netteté sur une image de feuille."""
+    if not img_bytes or (rot_deg == 0 and not enhance_on):
+        return img_bytes
+    try:
+        from PIL import Image, ImageOps, ImageEnhance, ImageFilter
+        import io
+        im_adj = Image.open(io.BytesIO(img_bytes))
+        try:
+            im_adj = ImageOps.exif_transpose(im_adj)
+        except Exception:
+            pass
+        if im_adj.mode != "RGB":
+            im_adj = im_adj.convert("RGB")
+        if rot_deg == 90:
+            im_adj = im_adj.transpose(Image.Transpose.ROTATE_270)
+        elif rot_deg == 180:
+            im_adj = im_adj.transpose(Image.Transpose.ROTATE_180)
+        elif rot_deg == 270:
+            im_adj = im_adj.transpose(Image.Transpose.ROTATE_90)
+        if enhance_on:
+            im_adj = ImageOps.autocontrast(im_adj, cutoff=1)
+            im_adj = ImageEnhance.Contrast(im_adj).enhance(1.25)
+            im_adj = im_adj.filter(ImageFilter.SHARPEN)
+        buf_adj = io.BytesIO()
+        im_adj.save(buf_adj, format="JPEG", quality=92)
+        return buf_adj.getvalue()
+    except Exception:
+        return img_bytes
+
+
+def _executer_analyse_scan_principale(img_data):
+    """Lance l'analyse Gemini Vision, corrèle avec la ligue, prépare le HTML et gère l'envoi admin."""
+    ok_sc, res_sc = analyser_photo_feuille_match(img_data)
+    if not ok_sc:
+        return False, res_sc
+
+    res_sc = correler_donnees_feuille_avec_ligue(res_sc)
+    st.session_state["scan_result_data"] = res_sc
+    st.session_state["scan_photo_bytes"] = img_data
+
+    try:
+        match_dict_init = res_sc.get("matchs", {})
+        rec_sc_i = str(res_sc.get("receveur", "Receveur"))
+        vis_sc_i = str(res_sc.get("visiteur", "Visiteur"))
+        d_match_sc_i = normaliser_date_match_feuille(res_sc.get("date"), rec_sc_i, vis_sc_i)
+        d_enreg_sc_i = datetime.now().strftime("%d/%m/%Y à %H:%M")
+        m_scan_init = {
+            "date": d_match_sc_i,
+            "date_match": d_match_sc_i,
+            "date_enregistrement": d_enreg_sc_i,
+            "receveur": rec_sc_i,
+            "visiteur": vis_sc_i,
+            "total_receveur": _safe_int_val(res_sc.get("total_rec", 0)),
+            "total_visiteur": _safe_int_val(res_sc.get("total_vis", 0)),
+            "approbateur_receveur": str(res_sc.get("approbateur_rec", "")),
+            "approbateur_visiteur": str(res_sc.get("approbateur_vis", "")),
+            "matchs": {
+                str(i): {
+                    "score_a": _safe_int_val(match_dict_init.get(str(i), {}).get("score_a", 0)),
+                    "score_b": _safe_int_val(match_dict_init.get(str(i), {}).get("score_b", 0)),
+                    "joueur_a": str(match_dict_init.get(str(i), {}).get("joueur_a", "")),
+                    "joueur_b": str(match_dict_init.get(str(i), {}).get("joueur_b", ""))
+                } for i in range(1, 10)
+            }
+        }
+        res_sc["html_officiel"] = obtenir_html_match(m_scan_init)
+        st.session_state["scan_result_data"] = res_sc
+    except Exception:
+        pass
+
+    existe_deja_scan, idx_deja_scan, _ = verifier_match_scan_dans_historique(res_sc)
+    if existe_deja_scan:
+        st.session_state["select_match_to_rectify"] = idx_deja_scan
+        st.session_state["scan_email_notif"] = (
+            "warning",
+            "⚠️ Ce match existe déjà dans l'historique officiel : aucun courriel en doublon n'a été envoyé. Veuillez utiliser la fonction « ✏️ Rectifications » du volet « ⚙️ Administration »."
+        )
+    else:
+        cfg_em = charger_config_email()
+        dest_adm = (cfg_em.get("destinataires") or "").strip()
+        if dest_adm and cfg_em.get("smtp_serveur"):
+            ok_m, msg_m = envoyer_feuille_et_photo_administrateurs(res_sc, photo_bytes=img_data)
+            if ok_m:
+                st.session_state["scan_email_notif"] = ("success", f"📧 Feuille officielle et photo transmises aux administrateurs ({dest_adm}) !")
+            else:
+                st.session_state["scan_email_notif"] = ("warning", f"⚠️ Envoi courriel admin : {msg_m}")
+
+    return True, res_sc
+
+
 def afficher_scanner_ia_match_anterieur():
 
     """Module complet de numérisation IA (Gemini Vision) intégré dans l'onglet Administration -> Match passé."""
@@ -10902,160 +10993,69 @@ def afficher_scanner_ia_match_anterieur():
 
 
         if img_data_ant:
-
             import hashlib
-
             raw_hash_ant = hashlib.md5(img_data_ant[:8192] + str(len(img_data_ant)).encode("ascii")).hexdigest()
-
             if st.session_state.get("ant_scan_img_hash") != raw_hash_ant:
-
                 st.session_state["ant_scan_img_hash"] = raw_hash_ant
-
                 st.session_state["ant_scan_img_rot"] = 0
-
                 st.session_state["ant_scan_img_enhance"] = False
 
-
-
             rot_ant = int(st.session_state.get("ant_scan_img_rot", 0)) % 360
-
             enh_ant = bool(st.session_state.get("ant_scan_img_enhance", False))
+            img_data_ant = _appliquer_ajustements_image_scan(img_data_ant, rot_ant, enh_ant)
 
-
-
-            if rot_ant != 0 or enh_ant:
-
-                try:
-
-                    from PIL import Image, ImageOps, ImageEnhance, ImageFilter
-
-                    import io
-
-                    im_a = Image.open(io.BytesIO(img_data_ant))
-
-                    try:
-
-                        im_a = ImageOps.exif_transpose(im_a)
-
-                    except Exception:
-
-                        pass
-
-                    if im_a.mode != "RGB":
-
-                        im_a = im_a.convert("RGB")
-
-                    if rot_ant == 90:
-
-                        im_a = im_a.transpose(Image.Transpose.ROTATE_270)
-
-                    elif rot_ant == 180:
-
-                        im_a = im_a.transpose(Image.Transpose.ROTATE_180)
-
-                    elif rot_ant == 270:
-
-                        im_a = im_a.transpose(Image.Transpose.ROTATE_90)
-
-                    if enh_ant:
-
-                        im_a = ImageOps.autocontrast(im_a, cutoff=1)
-
-                        im_a = ImageEnhance.Contrast(im_a).enhance(1.25)
-
-                        im_a = im_a.filter(ImageFilter.SHARPEN)
-
-                    buf_a = io.BytesIO()
-
-                    im_a.save(buf_a, format="JPEG", quality=92)
-
-                    img_data_ant = buf_a.getvalue()
-
-                except Exception:
-
-                    pass
-
-
-
-            col_ap_ant, col_ac_ant = st.columns([1.3, 2.0])
-
-            with col_ap_ant:
-
-                st.image(img_data_ant, caption=f"Feuille à analyser (Rotation : {rot_ant}°{' • Netteté ON' if enh_ant else ''})", use_container_width=True)
-
-            with col_ac_ant:
-
-                st.markdown("##### 🛠️ Ajustement de l'image & Analyse IA")
-
-                ca1, ca2, ca3, ca4 = st.columns(4)
-
-                with ca1:
-
-                    if st.button("↺ Gauche", use_container_width=True, key="btn_ant_rot_l"):
-
-                        st.session_state["ant_scan_img_rot"] = (rot_ant - 90) % 360
-
+            # Analyse IA automatique dès qu'une nouvelle image est fournie
+            if st.session_state.get("ant_scan_last_analyzed_hash") != raw_hash_ant:
+                st.session_state["ant_scan_last_analyzed_hash"] = raw_hash_ant
+                with st.spinner("Analyse automatique de la feuille passée et corrélation des joueurs en cours..."):
+                    ok_a, res_a = analyser_photo_feuille_match(img_data_ant)
+                    if ok_a:
+                        res_a = correler_donnees_feuille_avec_ligue(res_a)
+                        st.session_state["ant_scan_result_data"] = res_a
+                        cb_injecter_scan_dans_match_anterieur(res_a)
                         st.rerun()
+                    else:
+                        st.error(f"❌ {res_a}")
 
-                with ca2:
+            with st.expander("🛠️ Ajuster l'image (rotation / netteté) et ré-analyser", expanded=not bool(st.session_state.get("ant_scan_result_data"))):
+                col_ap_ant, col_ac_ant = st.columns([1.3, 2.0])
+                with col_ap_ant:
+                    st.image(img_data_ant, caption=f"Feuille à analyser (Rotation : {rot_ant}°{' • Netteté ON' if enh_ant else ''})", use_container_width=True)
+                with col_ac_ant:
+                    ca1, ca2, ca3, ca4 = st.columns(4)
+                    with ca1:
+                        if st.button("↺ Gauche", use_container_width=True, key="btn_ant_rot_l"):
+                            st.session_state["ant_scan_img_rot"] = (rot_ant - 90) % 360
+                            st.rerun()
+                    with ca2:
+                        if st.button("↻ Droite", use_container_width=True, key="btn_ant_rot_r"):
+                            st.session_state["ant_scan_img_rot"] = (rot_ant + 90) % 360
+                            st.rerun()
+                    with ca3:
+                        if st.button("↕️ 180°", use_container_width=True, key="btn_ant_rot_180"):
+                            st.session_state["ant_scan_img_rot"] = (rot_ant + 180) % 360
+                            st.rerun()
+                    with ca4:
+                        if st.button("✨ Netteté" + (" : ON" if enh_ant else ""), use_container_width=True, key="btn_ant_enh", type="primary" if enh_ant else "secondary"):
+                            st.session_state["ant_scan_img_enhance"] = not enh_ant
+                            st.rerun()
 
-                    if st.button("↻ Droite", use_container_width=True, key="btn_ant_rot_r"):
-
-                        st.session_state["ant_scan_img_rot"] = (rot_ant + 90) % 360
-
-                        st.rerun()
-
-                with ca3:
-
-                    if st.button("↕️ 180°", use_container_width=True, key="btn_ant_rot_180"):
-
-                        st.session_state["ant_scan_img_rot"] = (rot_ant + 180) % 360
-
-                        st.rerun()
-
-                with ca4:
-
-                    if st.button("✨ Netteté" + (" : ON" if enh_ant else ""), use_container_width=True, key="btn_ant_enh", type="primary" if enh_ant else "secondary"):
-
-                        st.session_state["ant_scan_img_enhance"] = not enh_ant
-
-                        st.rerun()
-
-
-
-                cb_run1, cb_run2 = st.columns([2.2, 1])
-
-                with cb_run1:
-
-                    if st.button("🚀 Lancer l'analyse IA (Gemini Vision)", type="primary", use_container_width=True, key="btn_ant_run_ia"):
-
-                        with st.spinner("Analyse de la feuille passée et corrélation des joueurs en cours..."):
-
-                            ok_a, res_a = analyser_photo_feuille_match(img_data_ant)
-
-                            if ok_a:
-
-                                res_a = correler_donnees_feuille_avec_ligue(res_a)
-
-                                st.session_state["ant_scan_result_data"] = res_a
-
-                                # Pré-remplir également le formulaire ci-dessous automatiquement pour gagner un clic
-
-                                cb_injecter_scan_dans_match_anterieur(res_a)
-
-                                st.rerun()
-
-                            else:
-
-                                st.error(f"❌ {res_a}")
-
-                with cb_run2:
-
-                    if st.button("🗑️ Effacer scan", use_container_width=True, key="btn_ant_clear_scan"):
-
-                        st.session_state.pop("ant_scan_result_data", None)
-
-                        st.rerun()
+                    cb_run1, cb_run2 = st.columns([2.2, 1])
+                    with cb_run1:
+                        if st.button("🔄 Ré-analyser l'image avec l'IA", type="primary", use_container_width=True, key="btn_ant_run_ia"):
+                            with st.spinner("Analyse de la feuille passée et corrélation des joueurs en cours..."):
+                                ok_a, res_a = analyser_photo_feuille_match(img_data_ant)
+                                if ok_a:
+                                    res_a = correler_donnees_feuille_avec_ligue(res_a)
+                                    st.session_state["ant_scan_result_data"] = res_a
+                                    cb_injecter_scan_dans_match_anterieur(res_a)
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ {res_a}")
+                    with cb_run2:
+                        if st.button("🗑️ Effacer scan", use_container_width=True, key="btn_ant_clear_scan"):
+                            st.session_state.pop("ant_scan_result_data", None)
+                            st.rerun()
 
 
 
@@ -11125,135 +11125,70 @@ def afficher_scanner_ia_match_anterieur():
 
             cm4.metric("🏆 Vainqueur", gagnant_s, delta=f"Écart : {abs(tot_r_s - tot_v_s)} pts")
 
-
+            ca_b2, ca_b1 = st.columns(2)
+            with ca_b2:
+                st.button(
+                    "💾 Archiver directement ce match passé dans l'historique",
+                    use_container_width=True,
+                    type="primary",
+                    key="btn_ant_direct_archive",
+                    on_click=cb_archiver_match_anterieur_scanner,
+                    args=(data_ant_s,),
+                    disabled=existe_hist_s
+                )
+            with ca_b1:
+                st.button(
+                    "📥 Ré-injecter dans le formulaire « Match passé » ci-dessous",
+                    use_container_width=True,
+                    type="secondary",
+                    key="btn_ant_reinject_form",
+                    on_click=cb_injecter_scan_dans_match_anterieur,
+                    args=(data_ant_s,)
+                )
 
             tab_j_ant = []
-
             for idx_p, st_p in enumerate(stats_rec_s):
-
                 duels_p = st_p.get("duels", [])
-
                 m_txt = " | ".join([f"M{d['manche']}: {d['score']} pts (vs {d['adversaire']})" for d in duels_p])
-
                 tab_j_ant.append({
-
                     "Équipe": f"🔴 {rec_n_s}",
-
                     "Joueur": st_p.get("nom", f"Receveur J{idx_p+1}"),
-
                     "Total Points": f"🎯 {st_p.get('total_points', 0)} pts",
-
                     "Bilan (V - D)": f"{st_p.get('victoires', 0)}V - {st_p.get('defaites', 0)}D",
-
                     "Détail des 3 manches": m_txt
-
                 })
-
             for idx_p, st_p in enumerate(stats_vis_s):
-
                 duels_p = st_p.get("duels", [])
-
                 m_txt = " | ".join([f"M{d['manche']}: {d['score']} pts (vs {d['adversaire']})" for d in duels_p])
-
                 tab_j_ant.append({
-
                     "Équipe": f"🔵 {vis_n_s}",
-
                     "Joueur": st_p.get("nom", f"Visiteur J{idx_p+1}"),
-
                     "Total Points": f"🎯 {st_p.get('total_points', 0)} pts",
-
                     "Bilan (V - D)": f"{st_p.get('victoires', 0)}V - {st_p.get('defaites', 0)}D",
-
                     "Détail des 3 manches": m_txt
-
                 })
-
             if tab_j_ant:
-
-                st.markdown("###### 📊 Totaux par joueur détectés")
-
-                afficher_tableau_html_compatible(pd.DataFrame(tab_j_ant))
-
-
+                with st.expander("📊 Totaux par joueur détectés", expanded=False):
+                    afficher_tableau_html_compatible(pd.DataFrame(tab_j_ant))
 
             matchs_ant_dict = data_ant_s.get("matchs", {})
-
             if matchs_ant_dict:
-
                 with st.expander("🎱 Voir le détail des 9 duels détectés & Aperçu A4", expanded=False):
-
                     duels_ant_rows = []
-
                     for i_m in range(1, 10):
-
                         m_it = matchs_ant_dict.get(str(i_m), {})
-
                         sa_i = _safe_int_val(m_it.get("score_a", 0))
-
                         sb_i = _safe_int_val(m_it.get("score_b", 0))
-
                         ja_i = m_it.get("joueur_a", f"J{((i_m-1)%3)+1}")
-
                         jb_i = m_it.get("joueur_b", f"J{((i_m-1)%3)+1}")
-
                         duels_ant_rows.append({
-
                             "Manche": f"Manche {i_m}",
-
                             f"Joueur ({rec_n_s})": ja_i,
-
                             "Score": f"{sa_i} — {sb_i}",
-
                             f"Joueur ({vis_n_s})": jb_i,
-
                             "Vainqueur": f"🔴 {ja_i}" if sa_i > sb_i else (f"🔵 {jb_i}" if sb_i > sa_i else "Égalité")
-
                         })
-
                     afficher_tableau_html_compatible(pd.DataFrame(duels_ant_rows))
-
-
-
-            ca_b1, ca_b2 = st.columns(2)
-
-            with ca_b1:
-
-                st.button(
-
-                    "📥 Ré-injecter dans le formulaire « Match passé » ci-dessous",
-
-                    use_container_width=True,
-
-                    type="secondary",
-
-                    key="btn_ant_reinject_form",
-
-                    on_click=cb_injecter_scan_dans_match_anterieur,
-
-                    args=(data_ant_s,)
-
-                )
-
-            with ca_b2:
-
-                st.button(
-
-                    "💾 Archiver directement ce match passé dans l'historique",
-
-                    use_container_width=True,
-
-                    type="primary",
-
-                    key="btn_ant_direct_archive",
-
-                    on_click=cb_archiver_match_anterieur_scanner,
-
-                    args=(data_ant_s,),
-
-                    disabled=existe_hist_s
-
-                )
 
 
 
@@ -12182,276 +12117,66 @@ def afficher_vue_scanner_feuille_match(label_direct):
 
 
     if img_data:
-
-        # Gestion des ajustements ergonomiques de l'image capturée (rotation 90°/180° et contraste/netteté auto)
-
         import hashlib
-
         raw_hash = hashlib.md5(img_data[:8192] + str(len(img_data)).encode("ascii")).hexdigest()
-
         if st.session_state.get("scan_img_raw_hash") != raw_hash:
-
             st.session_state["scan_img_raw_hash"] = raw_hash
-
             st.session_state["scan_img_rot"] = 0
-
             st.session_state["scan_img_enhance"] = False
 
-
-
         rot_deg = int(st.session_state.get("scan_img_rot", 0)) % 360
-
         enhance_on = bool(st.session_state.get("scan_img_enhance", False))
+        img_data = _appliquer_ajustements_image_scan(img_data, rot_deg, enhance_on)
 
-
-
-        if rot_deg != 0 or enhance_on:
-
-            try:
-
-                from PIL import Image, ImageOps, ImageEnhance, ImageFilter
-
-                import io
-
-                im_adj = Image.open(io.BytesIO(img_data))
-
-                try:
-
-                    im_adj = ImageOps.exif_transpose(im_adj)
-
-                except Exception:
-
-                    pass
-
-                if im_adj.mode != "RGB":
-
-                    im_adj = im_adj.convert("RGB")
-
-                if rot_deg == 90:
-
-                    im_adj = im_adj.transpose(Image.Transpose.ROTATE_270)
-
-                elif rot_deg == 180:
-
-                    im_adj = im_adj.transpose(Image.Transpose.ROTATE_180)
-
-                elif rot_deg == 270:
-
-                    im_adj = im_adj.transpose(Image.Transpose.ROTATE_90)
-
-                if enhance_on:
-
-                    im_adj = ImageOps.autocontrast(im_adj, cutoff=1)
-
-                    im_adj = ImageEnhance.Contrast(im_adj).enhance(1.25)
-
-                    im_adj = im_adj.filter(ImageFilter.SHARPEN)
-
-                buf_adj = io.BytesIO()
-
-                im_adj.save(buf_adj, format="JPEG", quality=92)
-
-                img_data = buf_adj.getvalue()
-
-            except Exception:
-
-                pass
-
-
-
-        st.divider()
-
-        st.success("📸 **Photo capturée avec succès en mode Portrait vertical !** Vérifiez l'aperçu ci-dessous et ajustez l'orientation si nécessaire avant de lancer l'IA.")
-
-        col_prev, col_act = st.columns([1.4, 1.8])
-
-        with col_prev:
-
-            with st.container(border=True):
-
-                st.image(img_data, caption=f"📄 Feuille cadrée en mode Portrait vertical (Rotation : {rot_deg}°{' • Contraste amélioré' if enhance_on else ''})", use_container_width=True)
-
-        with col_act:
-
-            st.markdown("#### 🛠️ Ajustement rapide de la photo & Lancement IA")
-
-            st.caption("Si la photo a été prise de côté ou sous un éclairage faible, ajustez son orientation ou sa netteté en un clic avant de lancer l'analyse :")
-
-            c_adj1, c_adj2, c_adj3, c_adj4 = st.columns(4)
-
-            with c_adj1:
-
-                if st.button("↺ Pivoter Gauche", use_container_width=True, key="btn_rot_left_scan", help="Tourner la photo de 90° vers la gauche"):
-
-                    st.session_state["scan_img_rot"] = (rot_deg - 90) % 360
-
+        # Analyse IA automatique dès qu'une nouvelle photo ou image est fournie
+        if st.session_state.get("scan_last_analyzed_hash") != raw_hash:
+            st.session_state["scan_last_analyzed_hash"] = raw_hash
+            with st.spinner("Analyse automatique de la feuille et corrélation des joueurs actifs en cours par Gemini Vision..."):
+                ok_sc, res_sc = _executer_analyse_scan_principale(img_data)
+                if ok_sc:
                     st.rerun()
-
-            with c_adj2:
-
-                if st.button("↻ Pivoter Droite", use_container_width=True, key="btn_rot_right_scan", help="Tourner la photo de 90° vers la droite"):
-
-                    st.session_state["scan_img_rot"] = (rot_deg + 90) % 360
-
-                    st.rerun()
-
-            with c_adj3:
-
-                if st.button("↕️ Retourner 180°", use_container_width=True, key="btn_rot_180_scan", help="Inverser le haut et le bas de la photo"):
-
-                    st.session_state["scan_img_rot"] = (rot_deg + 180) % 360
-
-                    st.rerun()
-
-            with c_adj4:
-
-                lbl_enh = "✨ Netteté : ON" if enhance_on else "✨ Netteté Auto"
-
-                if st.button(lbl_enh, use_container_width=True, key="btn_enhance_scan", type="primary" if enhance_on else "secondary", help="Augmente automatiquement le contraste et la netteté des chiffres manuscrits"):
-
-                    st.session_state["scan_img_enhance"] = not enhance_on
-
-                    st.rerun()
-
-
-
-            st.info("💡 L'IA détectera l'écriture manuscrite, les 9 duels, vérifiera les totaux et fera la corrélation immédiate avec les joueurs actifs de la ligue.")
-
-            col_b1, col_b2 = st.columns([2.2, 1])
-
-            with col_b1:
-
-                if st.button("🚀 Lancer la numérisation avec l'IA", type="primary", use_container_width=True, key="btn_run_scan_ia"):
-
-                    with st.spinner("Analyse de la feuille et corrélation des joueurs actifs en cours par Gemini Vision..."):
-
-                        ok_sc, res_sc = analyser_photo_feuille_match(img_data)
-
-                        if ok_sc:
-
-                            # Correlation immediate avec les equipes et joueurs officiels
-
-                            res_sc = correler_donnees_feuille_avec_ligue(res_sc)
-
-                            st.session_state["scan_result_data"] = res_sc
-
-                            st.session_state["scan_photo_bytes"] = img_data
-
-
-
-                            # Constitution automatique de la feuille officielle HTML
-
-                            try:
-
-                                match_dict_init = res_sc.get("matchs", {})
-                                rec_sc_i = str(res_sc.get("receveur", "Receveur"))
-                                vis_sc_i = str(res_sc.get("visiteur", "Visiteur"))
-                                d_match_sc_i = normaliser_date_match_feuille(res_sc.get("date"), rec_sc_i, vis_sc_i)
-                                d_enreg_sc_i = datetime.now().strftime("%d/%m/%Y à %H:%M")
-
-                                m_scan_init = {
-
-                                    "date": d_match_sc_i,
-
-                                    "date_match": d_match_sc_i,
-
-                                    "date_enregistrement": d_enreg_sc_i,
-
-                                    "receveur": rec_sc_i,
-
-                                    "visiteur": vis_sc_i,
-
-                                    "total_receveur": _safe_int_val(res_sc.get("total_rec", 0)),
-
-                                    "total_visiteur": _safe_int_val(res_sc.get("total_vis", 0)),
-
-                                    "approbateur_receveur": str(res_sc.get("approbateur_rec", "")),
-
-                                    "approbateur_visiteur": str(res_sc.get("approbateur_vis", "")),
-
-                                    "matchs": {
-
-                                        str(i): {
-
-                                            "score_a": _safe_int_val(match_dict_init.get(str(i), {}).get("score_a", 0)),
-
-                                            "score_b": _safe_int_val(match_dict_init.get(str(i), {}).get("score_b", 0)),
-
-                                            "joueur_a": str(match_dict_init.get(str(i), {}).get("joueur_a", "")),
-
-                                            "joueur_b": str(match_dict_init.get(str(i), {}).get("joueur_b", ""))
-
-                                        } for i in range(1, 10)
-
-                                    }
-
-                                }
-
-                                res_sc["html_officiel"] = obtenir_html_match(m_scan_init)
-
-                                st.session_state["scan_result_data"] = res_sc
-
-                            except Exception:
-
-                                pass
-
-
-
-                            # Verification immediate dans l'historique officiel des matchs
-
-                            existe_deja_scan, idx_deja_scan, _ = verifier_match_scan_dans_historique(res_sc)
-
-                            if existe_deja_scan:
-
-                                st.session_state["select_match_to_rectify"] = idx_deja_scan
-
-                                st.session_state["scan_email_notif"] = (
-
-                                    "warning",
-
-                                    "⚠️ Ce match existe déjà dans l'historique officiel : aucun courriel en doublon n'a été envoyé. Veuillez utiliser la fonction « ✏️ Rectifications » du volet « ⚙️ Administration »."
-
-                                )
-
+                else:
+                    st.error(res_sc)
+
+        with st.expander("🛠️ Ajuster l'image (rotation / netteté) et ré-analyser", expanded=not bool(st.session_state.get("scan_result_data"))):
+            col_prev, col_act = st.columns([1.4, 1.8])
+            with col_prev:
+                with st.container(border=True):
+                    st.image(img_data, caption=f"📄 Feuille capturée (Rotation : {rot_deg}°{' • Contraste amélioré' if enhance_on else ''})", use_container_width=True)
+            with col_act:
+                st.caption("Si la photo est de côté ou sous un éclairage faible, ajustez son orientation ou sa netteté puis relancez l'analyse :")
+                c_adj1, c_adj2, c_adj3, c_adj4 = st.columns(4)
+                with c_adj1:
+                    if st.button("↺ Gauche", use_container_width=True, key="btn_rot_left_scan", help="Tourner la photo de 90° vers la gauche"):
+                        st.session_state["scan_img_rot"] = (rot_deg - 90) % 360
+                        st.rerun()
+                with c_adj2:
+                    if st.button("↻ Droite", use_container_width=True, key="btn_rot_right_scan", help="Tourner la photo de 90° vers la droite"):
+                        st.session_state["scan_img_rot"] = (rot_deg + 90) % 360
+                        st.rerun()
+                with c_adj3:
+                    if st.button("↕️ 180°", use_container_width=True, key="btn_rot_180_scan", help="Inverser le haut et le bas de la photo"):
+                        st.session_state["scan_img_rot"] = (rot_deg + 180) % 360
+                        st.rerun()
+                with c_adj4:
+                    lbl_enh = "✨ Netteté : ON" if enhance_on else "✨ Netteté"
+                    if st.button(lbl_enh, use_container_width=True, key="btn_enhance_scan", type="primary" if enhance_on else "secondary", help="Augmente automatiquement le contraste et la netteté des chiffres manuscrits"):
+                        st.session_state["scan_img_enhance"] = not enhance_on
+                        st.rerun()
+
+                col_b1, col_b2 = st.columns([2.2, 1])
+                with col_b1:
+                    if st.button("🔄 Ré-analyser l'image avec l'IA", type="primary", use_container_width=True, key="btn_run_scan_ia"):
+                        with st.spinner("Analyse de la feuille et corrélation des joueurs actifs en cours par Gemini Vision..."):
+                            ok_sc, res_sc = _executer_analyse_scan_principale(img_data)
+                            if ok_sc:
+                                st.rerun()
                             else:
-
-                                # Envoi automatique aux administrateurs si configure et si le match n'est pas deja dans l'historique
-
-                                cfg_em = charger_config_email()
-
-                                dest_adm = (cfg_em.get("destinataires") or "").strip()
-
-                                if dest_adm and cfg_em.get("smtp_serveur"):
-
-                                    ok_m, msg_m = envoyer_feuille_et_photo_administrateurs(res_sc, photo_bytes=img_data)
-
-                                    if ok_m:
-
-                                        st.session_state["scan_email_notif"] = ("success", f"📧 Feuille officielle et photo transmises aux administrateurs ({dest_adm}) !")
-
-                                    else:
-
-                                        st.session_state["scan_email_notif"] = ("warning", f"⚠️ Envoi courriel admin : {msg_m}")
-
-
-
-                            st.success("✅ Analyse et corrélation des joueurs actifs réussies avec succès !")
-
-                            time.sleep(0.5)
-
-                            st.rerun()
-
-                        else:
-
-                            st.error(res_sc)
-
-            with col_b2:
-
-                if st.button("🔄 Effacer", use_container_width=True):
-
-                    st.session_state.pop("scan_result_data", None)
-
-                    st.rerun()
+                                st.error(res_sc)
+                with col_b2:
+                    if st.button("🔄 Effacer", use_container_width=True, key="btn_effacer_scan_img"):
+                        st.session_state.pop("scan_result_data", None)
+                        st.rerun()
 
 
 
@@ -12575,356 +12300,160 @@ def afficher_vue_scanner_feuille_match(label_direct):
 
                 incertitudes = data_s.get("incertitudes", [])
 
-                with st.container(border=True):
+                if est_partiel:
+                    st.warning(
+                        f"⏳ **Scan partiel détecté ({nb_jouees}/9 manches complétées) :** "
+                        f"Certaines manches n'ont pas encore de pointage inscrit (`0 — 0`). "
+                        f"Vous pouvez injecter ce scan partiel pour poursuivre la saisie des manches restantes."
+                    )
+                elif not incertitudes:
+                    st.success("✅ **Feuille complète (9/9 manches)** — Aucune incertitude ni anomalie arithmétique détectée.")
+                else:
+                    st.success("✅ **Feuille complète :** Les **9/9 manches** comportent des pointages.")
 
-                    st.markdown("##### 🔍 Diagnostic de complétude & Incertitudes de lecture")
+                if incertitudes:
+                    lignes_inc = "\n".join([f"- 🔸 {inc_msg}" for inc_msg in incertitudes])
+                    st.warning(f"⚠️ **Incertitudes ou points d'attention signalés :**\n{lignes_inc}")
 
-                    if est_partiel:
+                # Préparation du document HTML officiel dès maintenant pour la barre d'actions rapide
+                matchs_dict = data_s.get("matchs", {})
+                rec_m_scan = str(data_s.get("receveur", "Receveur"))
+                vis_m_scan = str(data_s.get("visiteur", "Visiteur"))
+                d_m_scan = normaliser_date_match_feuille(data_s.get("date"), rec_m_scan, vis_m_scan)
+                d_enreg_scan = datetime.now().strftime("%d/%m/%Y à %H:%M")
+                m_scan = {
+                    "date": d_m_scan,
+                    "date_match": d_m_scan,
+                    "date_enregistrement": d_enreg_scan,
+                    "receveur": rec_m_scan,
+                    "visiteur": vis_m_scan,
+                    "total_receveur": _safe_int_val(data_s.get("total_rec", 0)),
+                    "total_visiteur": _safe_int_val(data_s.get("total_vis", 0)),
+                    "approbateur_receveur": str(data_s.get("approbateur_rec", "")),
+                    "approbateur_visiteur": str(data_s.get("approbateur_vis", "")),
+                    "matchs": {
+                        str(i): {
+                            "score_a": _safe_int_val(matchs_dict.get(str(i), {}).get("score_a", 0)),
+                            "score_b": _safe_int_val(matchs_dict.get(str(i), {}).get("score_b", 0)),
+                            "joueur_a": str(matchs_dict.get(str(i), {}).get("joueur_a", "")),
+                            "joueur_b": str(matchs_dict.get(str(i), {}).get("joueur_b", ""))
+                        } for i in range(1, 10)
+                    }
+                }
+                html_officiel = data_s.get("html_officiel") or obtenir_html_match(m_scan)
+                data_s["html_officiel"] = html_officiel
 
-                        st.warning(
+                # Barre de validation rapide en haut des résultats
+                if existe_hist:
+                    st.warning("🔒 **Injection et archivage direct verrouillés :** Ce match figure déjà dans l'historique officiel. Utilisez **« 🔙 Retour à la saisie du match »** ou **« ⚙️ Administration → ✏️ Rectifications »**.")
 
-                            f"⏳ **Scan partiel détecté ({nb_jouees}/9 manches complétées) :** "
+                col_act1, col_act2, col_act3 = st.columns([1.6, 1.4, 1.0])
+                with col_act1:
+                    st.button(
+                        "✅ Valider et injecter dans la saisie",
+                        use_container_width=True,
+                        type="primary",
+                        key="btn_injecter_saisie_directe",
+                        on_click=cb_injecter_donnees_scanner,
+                        args=(data_s, label_direct),
+                        disabled=existe_hist,
+                        help="Ce match existe déjà dans l'historique (utilisez ⚙️ Administration → ✏️ Rectifications)" if existe_hist else "Pré-remplit la feuille de match en direct avec ces équipes, joueurs actifs et pointages"
+                    )
+                with col_act2:
+                    st.button(
+                        "💾 Valider et archiver directement",
+                        use_container_width=True,
+                        key="btn_archiver_match_direct",
+                        on_click=cb_archiver_match_scanner,
+                        args=(data_s,),
+                        disabled=(existe_hist or est_partiel),
+                        help="Ce match existe déjà dans l'historique (utilisez ⚙️ Administration → ✏️ Rectifications)" if existe_hist else ("Impossible d'archiver un scan partiel (manches non jouées)" if est_partiel else "Enregistre officiellement ce match avec les noms complets des joueurs dans l'historique")
+                    )
+                with col_act3:
+                    st.download_button(
+                        "📥 Télécharger HTML",
+                        data=html_officiel,
+                        file_name=f"feuille_{rec_nom}_vs_{vis_nom}.html",
+                        mime="text/html",
+                        use_container_width=True,
+                        help="Télécharger le document HTML officiel pour vos archives"
+                    )
 
-                            f"Certaines manches n'ont pas encore de pointage inscrit (`0 — 0`). "
-
-                            f"Vous pouvez injecter ce scan partiel dans **« 🔴 Saisie du match en direct »** pour poursuivre la saisie des manches restantes."
-
-                        )
-
+                if "scan_email_notif" in st.session_state:
+                    typ_n, msg_n = st.session_state.pop("scan_email_notif")
+                    if typ_n == "success":
+                        st.success(msg_n)
                     else:
+                        st.warning(msg_n)
 
-                        st.success("✅ **Feuille complète :** Les **9/9 manches** comportent des pointages.")
-
-
-
-                    if incertitudes:
-
-                        st.warning("⚠️ **Incertitudes ou points d'attention signalés lors de l'analyse :**")
-
-                        for inc_msg in incertitudes:
-
-                            st.markdown(f"- 🔸 {inc_msg}")
-
-                        st.caption("💡 *Astuce : Après avoir cliqué sur « 📥 Injecter dans la saisie du match en direct », vous pouvez ajuster manuellement n'importe quel score ou joueur dans le formulaire.*")
-
-                    else:
-
-                        st.caption("✨ *Aucune incertitude d'écriture ni anomalie arithmétique détectée sur les 9 manches.*")
-
-
-
-                # Recuperation des statistiques individuelles des joueurs (ou recalcul si besoin)
-
+                # Récupération des statistiques individuelles des joueurs (ou recalcul si besoin)
                 stats_rec = data_s.get("stats_joueurs_rec", [])
-
                 stats_vis = data_s.get("stats_joueurs_vis", [])
-
                 corr_r = data_s.get("joueurs_rec", [])
-
                 corr_v = data_s.get("joueurs_vis", [])
-
                 raw_r = data_s.get("raw_joueurs_rec", [])
-
                 raw_v = data_s.get("raw_joueurs_vis", [])
 
-                matchs_dict = data_s.get("matchs", {})
-
-
-
-                # Si absent de la session, recalcul a la volee
-
                 if not stats_rec or not stats_vis:
-
                     grille_loc = {1: (0,0), 2: (1,1), 3: (2,2), 4: (0,1), 5: (1,2), 6: (2,0), 7: (0,2), 8: (1,0), 9: (2,1)}
-
                     stats_rec = []
-
                     for idx_r in range(len(corr_r)):
-
                         nom = corr_r[idx_r]
-
                         pts_tot, vics, duels_l = 0, 0, []
-
                         for m_n, (ri, vi) in grille_loc.items():
-
                             if ri == idx_r:
-
                                 m_i = matchs_dict.get(str(m_n), {})
-
                                 sa = _safe_int_val(m_i.get("score_a", 0))
-
                                 sb = _safe_int_val(m_i.get("score_b", 0))
-
                                 pts_tot += sa
-
                                 if sa > sb: vics += 1
-
                                 adv = m_i.get("joueur_b") or (corr_v[vi] if vi < len(corr_v) else f"J{vi+1}")
-
                                 duels_l.append({"manche": m_n, "score": sa, "score_adv": sb, "adversaire": adv, "victoire": sa > sb})
-
                         stats_rec.append({"nom": nom, "total_points": pts_tot, "victoires": vics, "defaites": len(duels_l) - vics, "duels": duels_l})
-
                     stats_vis = []
-
                     for idx_v in range(len(corr_v)):
-
                         nom = corr_v[idx_v]
-
                         pts_tot, vics, duels_l = 0, 0, []
-
                         for m_n, (ri, vi) in grille_loc.items():
-
                             if vi == idx_v:
-
                                 m_i = matchs_dict.get(str(m_n), {})
-
                                 sa = _safe_int_val(m_i.get("score_a", 0))
-
                                 sb = _safe_int_val(m_i.get("score_b", 0))
-
                                 pts_tot += sb
-
                                 if sb > sa: vics += 1
-
                                 adv = m_i.get("joueur_a") or (corr_r[ri] if ri < len(corr_r) else f"J{ri+1}")
-
                                 duels_l.append({"manche": m_n, "score": sb, "score_adv": sa, "adversaire": adv, "victoire": sb > sa})
-
                         stats_vis.append({"nom": nom, "total_points": pts_tot, "victoires": vics, "defaites": len(duels_l) - vics, "duels": duels_l})
 
-
-
-                # Presentation detaillee des joueurs avec total de points
-
-                st.markdown("##### 👥 Joueurs & Pointages individuels officiels")
-
-                col_jr, col_jv = st.columns(2)
-
-
-
-                with col_jr:
-
-                    st.info(f"**🔴 Équipe Receveuse : {rec_nom}** ({tot_r} pts)")
-
-                    for idx in range(3):
-
-                        nom_complet = corr_r[idx] if idx < len(corr_r) else f"Joueur {idx+1}"
-
-                        nom_manuscrit = raw_r[idx] if idx < len(raw_r) else ""
-
-                        info_manuscrit = f" *(feuille : « {nom_manuscrit} »)*" if nom_manuscrit and nom_manuscrit != nom_complet else ""
-
-                        st_p = stats_rec[idx] if idx < len(stats_rec) else {}
-
-                        pts_j = st_p.get("total_points", 0)
-
-                        vic_j = st_p.get("victoires", 0)
-
-                        def_j = st_p.get("defaites", 0)
-
-                        duels_txt = ", ".join([f"M{d['manche']}: {d['score']} pts" for d in st_p.get("duels", [])])
-
-                        st.markdown(f"- **Joueur {idx+1} :** **{nom_complet}** — 🎯 **{pts_j} points** `({vic_j}V - {def_j}D)`{info_manuscrit}")
-
-                        st.caption(f"&nbsp;&nbsp;&nbsp;&nbsp;🎯 Détail des manches : {duels_txt}")
-
-                    app_r = data_s.get("approbateur_rec")
-
-                    if app_r:
-
-                        st.caption(f"✍️ Signature / Capitaine : **{app_r}**")
-
-
-
-                with col_jv:
-
-                    st.info(f"**🔵 Équipe Visiteuse : {vis_nom}** ({tot_v} pts)")
-
-                    for idx in range(3):
-
-                        nom_complet = corr_v[idx] if idx < len(corr_v) else f"Joueur {idx+1}"
-
-                        nom_manuscrit = raw_v[idx] if idx < len(raw_v) else ""
-
-                        info_manuscrit = f" *(feuille : « {nom_manuscrit} »)*" if nom_manuscrit and nom_manuscrit != nom_complet else ""
-
-                        st_p = stats_vis[idx] if idx < len(stats_vis) else {}
-
-                        pts_j = st_p.get("total_points", 0)
-
-                        vic_j = st_p.get("victoires", 0)
-
-                        def_j = st_p.get("defaites", 0)
-
-                        duels_txt = ", ".join([f"M{d['manche']}: {d['score']} pts" for d in st_p.get("duels", [])])
-
-                        st.markdown(f"- **Joueur {idx+1} :** **{nom_complet}** — 🎯 **{pts_j} points** `({vic_j}V - {def_j}D)`{info_manuscrit}")
-
-                        st.caption(f"&nbsp;&nbsp;&nbsp;&nbsp;🎯 Détail des manches : {duels_txt}")
-
-                    app_v = data_s.get("approbateur_vis")
-
-                    if app_v:
-
-                        st.caption(f"✍️ Signature / Capitaine : **{app_v}**")
-
-
-
-                # Tableau recapitulatif complet des 6 joueurs
-
-                st.markdown("##### 📊 Tableau récapitulatif des totaux par joueur")
-
-                tab_joueurs = []
-
-                for idx, st_p in enumerate(stats_rec):
-
-                    nom = st_p.get("nom", f"Receveur J{idx+1}")
-
-                    pts = st_p.get("total_points", 0)
-
-                    v = st_p.get("victoires", 0)
-
-                    d = st_p.get("defaites", 0)
-
-                    duels = st_p.get("duels", [])
-
-                    m_txt = " | ".join([f"M{duel['manche']}: {duel['score']} pts (vs {duel['adversaire']})" for duel in duels])
-
-                    moy = round(pts / len(duels), 1) if duels else 0.0
-
-                    tab_joueurs.append({
-
-                        "Équipe": f"🔴 {rec_nom}",
-
-                        "Joueur (Nom complet)": nom,
-
-                        "Total Points": f"🎯 {pts} pts",
-
-                        "Moyenne / Duel": f"{moy} pts",
-
-                        "Bilan (V - D)": f"{v}V - {d}D",
-
-                        "Détail des 3 manches": m_txt
-
-                    })
-
-                for idx, st_p in enumerate(stats_vis):
-
-                    nom = st_p.get("nom", f"Visiteur J{idx+1}")
-
-                    pts = st_p.get("total_points", 0)
-
-                    v = st_p.get("victoires", 0)
-
-                    d = st_p.get("defaites", 0)
-
-                    duels = st_p.get("duels", [])
-
-                    m_txt = " | ".join([f"M{duel['manche']}: {duel['score']} pts (vs {duel['adversaire']})" for duel in duels])
-
-                    moy = round(pts / len(duels), 1) if duels else 0.0
-
-                    tab_joueurs.append({
-
-                        "Équipe": f"🔵 {vis_nom}",
-
-                        "Joueur (Nom complet)": nom,
-
-                        "Total Points": f"🎯 {pts} pts",
-
-                        "Moyenne / Duel": f"{moy} pts",
-
-                        "Bilan (V - D)": f"{v}V - {d}D",
-
-                        "Détail des 3 manches": m_txt
-
-                    })
-
-                afficher_tableau_html_compatible(pd.DataFrame(tab_joueurs))
-
-
-
-                # Controle arithmetique de coherence des points
-
-                somme_pts_rec = sum(p.get("total_points", 0) for p in stats_rec)
-
-                somme_pts_vis = sum(p.get("total_points", 0) for p in stats_vis)
-
-                raw_tot_r = _safe_int_val(data_s.get("raw_total_rec", tot_r))
-
-                raw_tot_v = _safe_int_val(data_s.get("raw_total_vis", tot_v))
-
-                if (raw_tot_r == somme_pts_rec and raw_tot_v == somme_pts_vis) or (raw_tot_r == 0 and raw_tot_v == 0):
-
-                    st.success(f"✅ **Contrôle de cohérence :** La somme des points des joueurs ({somme_pts_rec} pts pour {rec_nom} et {somme_pts_vis} pts pour {vis_nom}) correspond exactement aux 9 manches de la feuille.")
-
-                else:
-
-                    st.info(f"ℹ️ **Synchronisation arithmétique automatique :** Les totaux d'équipe ont été alignés sur la somme exacte des 9 manches (**{somme_pts_rec} pts** pour {rec_nom} et **{somme_pts_vis} pts** pour {vis_nom} ; totaux bruts lus au bas de la feuille : {raw_tot_r} pts et {raw_tot_v} pts).")
-
-
-
-                st.markdown("##### 🎱 Détail des 9 duels officiels (avec noms complets)")
-
+                # Vue synthétique directe : les 9 duels
+                st.markdown("##### 🎱 Aperçu rapide des 9 duels")
                 duels_data = []
-
-                matchs_dict = data_s.get("matchs", {})
-
                 for i in range(1, 10):
-
                     m_i = matchs_dict.get(str(i), {})
-
                     sa = _safe_int_val(m_i.get("score_a", 0))
-
                     sb = _safe_int_val(m_i.get("score_b", 0))
-
                     ja = m_i.get("joueur_a", f"J{((i-1)%3)+1}")
-
                     jb = m_i.get("joueur_b", f"J{((i-1)%3)+1}")
-
                     if sa > sb:
-
                         gagnant_duel = f"🔴 {rec_nom} ({ja})"
-
                     elif sb > sa:
-
                         gagnant_duel = f"🔵 {vis_nom} ({jb})"
-
                     else:
-
                         gagnant_duel = "Égalité"
-
-
-
                     duels_data.append({
-
                         "Manche": f"Manche {i}",
-
                         "Joueur Receveur (Nom complet)": ja,
-
                         "Pointage": f"{sa} — {sb}",
-
                         "Joueur Visiteur (Nom complet)": jb,
-
                         "Vainqueur de la manche": gagnant_duel
-
                     })
-
                 afficher_tableau_html_compatible(pd.DataFrame(duels_data))
 
-
-
-                # Mini-éditeur de correction rapide directement dans les résultats du Scanner IA
-
-                with st.expander("✏️ Corriger ou ajuster rapidement un joueur ou un pointage avant d'injecter / archiver", expanded=bool(incertitudes)):
-
+                # Mini-éditeur de correction rapide
+                with st.expander("✏️ Corriger un joueur ou un pointage avant de valider", expanded=bool(incertitudes)):
                     st.caption("Ajustez directement un nom mal lu ou un pointage ambigu : les totaux par joueur (/24), les totaux d'équipe (/72) et la feuille officielle A4 seront recalculés automatiquement.")
-
                     eqs_dispo_scan = charger_liste_equipes_base()
-
                     equipes_dict_scan = charger_equipes_csv()
-
                     reg_scan_live = charger_registre_joueurs()
                     if reg_scan_live:
                         tous_joueurs_scan = [j["nom"] for j in reg_scan_live if j.get("actif", True)]
@@ -12935,10 +12464,7 @@ def afficher_vue_scanner_feuille_match(label_direct):
                                 if _jn and _jn not in tous_joueurs_scan:
                                     tous_joueurs_scan.append(_jn)
 
-
-
                     c_ed_meta1, c_ed_meta2, c_ed_meta3 = st.columns([1.2, 1.4, 1.4])
-
                     with c_ed_meta1:
                         val_date_s_brute = data_s.get("date") or trouver_date_match_dans_horaire(rec_nom, vis_nom) or datetime.today().strftime("%Y-%m-%d")
                         val_date_s_aff = str(val_date_s_brute)
@@ -12949,440 +12475,218 @@ def afficher_vue_scanner_feuille_match(label_direct):
                             except Exception:
                                 pass
                         ed_date_str = st.text_input("📅 Date du match (AAAA-MM-JJ)", value=val_date_s_aff, key="scan_ed_date")
-
                     with c_ed_meta2:
-
                         idx_r_ed = eqs_dispo_scan.index(rec_nom) if rec_nom in eqs_dispo_scan else 0
-
                         ed_rec_nom = st.selectbox("🏠 Équipe Receveuse", options=eqs_dispo_scan, index=idx_r_ed, key="scan_ed_rec")
-
                     with c_ed_meta3:
-
                         idx_v_ed = eqs_dispo_scan.index(vis_nom) if vis_nom in eqs_dispo_scan else min(1, len(eqs_dispo_scan)-1)
-
                         ed_vis_nom = st.selectbox("🚗 Équipe Visiteuse", options=eqs_dispo_scan, index=idx_v_ed, key="scan_ed_vis")
 
-
-
                     st.markdown("###### 👥 Alignement des 6 joueurs (Ordre J1, J2, J3)")
-
                     j_rec_actuels = list(data_s.get("joueurs_rec") or [p.get("nom", "") for p in stats_rec])
-
                     while len(j_rec_actuels) < 3:
-
                         j_rec_actuels.append(f"Joueur {len(j_rec_actuels)+1}")
-
                     j_vis_actuels = list(data_s.get("joueurs_vis") or [p.get("nom", "") for p in stats_vis])
-
                     while len(j_vis_actuels) < 3:
-
                         j_vis_actuels.append(f"Joueur {len(j_vis_actuels)+1}")
 
-
-
                     c_ed_jr, c_ed_jv = st.columns(2)
-
                     nouveaux_j_rec = []
-
                     nouveaux_j_vis = []
-
                     with c_ed_jr:
-
                         st.markdown(f"**🔴 {ed_rec_nom} (Receveur)**")
-
                         for idx_j in range(3):
-
                             val_def_jr = j_rec_actuels[idx_j]
-
                             opts_jr = [val_def_jr] + [p for p in equipes_dict_scan.get(ed_rec_nom, []) if p != val_def_jr] + [p for p in tous_joueurs_scan if p != val_def_jr and p not in equipes_dict_scan.get(ed_rec_nom, [])]
-
                             opts_jr = [x for x in opts_jr if x]
-
                             choix_jr = st.selectbox(f"Receveur J{idx_j+1} (M{idx_j+1})", options=opts_jr if opts_jr else [f"Joueur {idx_j+1}"], index=0, key=f"scan_ed_jr_{idx_j}")
-
                             nouveaux_j_rec.append(choix_jr)
-
                     with c_ed_jv:
-
                         st.markdown(f"**🔵 {ed_vis_nom} (Visiteur)**")
-
                         for idx_j in range(3):
-
                             val_def_jv = j_vis_actuels[idx_j]
-
                             opts_jv = [val_def_jv] + [p for p in equipes_dict_scan.get(ed_vis_nom, []) if p != val_def_jv] + [p for p in tous_joueurs_scan if p != val_def_jv and p not in equipes_dict_scan.get(ed_vis_nom, [])]
-
                             opts_jv = [x for x in opts_jv if x]
-
                             choix_jv = st.selectbox(f"Visiteur J{idx_j+1} (M{idx_j+1})", options=opts_jv if opts_jv else [f"Joueur {idx_j+1}"], index=0, key=f"scan_ed_jv_{idx_j}")
-
                             nouveaux_j_vis.append(choix_jv)
 
-
-
                     st.markdown("###### 🎱 Pointages des 9 manches (0 à 8 pts)")
-
                     rotation_scan_pairs = [
-
                         (1, 0, 0), (2, 1, 1), (3, 2, 2),
-
                         (4, 0, 1), (5, 1, 2), (6, 2, 0),
-
                         (7, 0, 2), (8, 1, 0), (9, 2, 1)
-
                     ]
-
                     ed_scores_manches = {}
-
                     cols_m_ed = st.columns(3)
-
                     for m_num, r_idx, v_idx in rotation_scan_pairs:
-
                         col_m = cols_m_ed[(m_num - 1) % 3]
-
                         m_curr = matchs_dict.get(str(m_num), {})
-
                         sa_curr = max(0, min(8, _safe_int_val(m_curr.get("score_a", 0))))
-
                         sb_curr = max(0, min(8, _safe_int_val(m_curr.get("score_b", 0))))
-
                         nom_a_court = nouveaux_j_rec[r_idx].split()[0] if nouveaux_j_rec[r_idx] else f"J{r_idx+1}"
-
                         nom_b_court = nouveaux_j_vis[v_idx].split()[0] if nouveaux_j_vis[v_idx] else f"J{v_idx+1}"
-
                         with col_m:
-
                             st.caption(f"**M{m_num}** : {nom_a_court} vs {nom_b_court}")
-
                             sc_c1, sc_c2 = st.columns(2)
-
                             with sc_c1:
-
                                 n_sa = st.selectbox(f"M{m_num} {nom_a_court}", options=list(range(9)), index=sa_curr, key=f"scan_ed_sa_{m_num}", label_visibility="collapsed")
-
                             with sc_c2:
-
                                 n_sb = st.selectbox(f"M{m_num} {nom_b_court}", options=list(range(9)), index=sb_curr, key=f"scan_ed_sb_{m_num}", label_visibility="collapsed")
-
                             ed_scores_manches[str(m_num)] = (int(n_sa), int(n_sb), nouveaux_j_rec[r_idx], nouveaux_j_vis[v_idx])
 
-
-
-                    if st.button("💾 Appliquer les corrections au scan et recalculer les totaux", type="primary", use_container_width=True, key="btn_apply_scan_edits"):
-
+                    def _appliquer_editeur_sur_scan():
                         nouv_matchs = {}
-
                         tot_r_calc = 0
-
                         tot_v_calc = 0
-
                         stats_r_map = {i: {"nom": nouveaux_j_rec[i], "total_points": 0, "victoires": 0, "defaites": 0, "duels": []} for i in range(3)}
-
                         stats_v_map = {i: {"nom": nouveaux_j_vis[i], "total_points": 0, "victoires": 0, "defaites": 0, "duels": []} for i in range(3)}
-
                         nb_jouees_ed = 0
-
                         for m_num, r_idx, v_idx in rotation_scan_pairs:
-
                             sa_v, sb_v, ja_v, jb_v = ed_scores_manches[str(m_num)]
-
-                            nouv_matchs[str(m_num)] = {
-
-                                "score_a": sa_v,
-
-                                "score_b": sb_v,
-
-                                "joueur_a": ja_v,
-
-                                "joueur_b": jb_v
-
-                            }
-
+                            nouv_matchs[str(m_num)] = {"score_a": sa_v, "score_b": sb_v, "joueur_a": ja_v, "joueur_b": jb_v}
                             tot_r_calc += sa_v
-
                             tot_v_calc += sb_v
-
                             if sa_v > 0 or sb_v > 0:
-
                                 nb_jouees_ed += 1
-
                             stats_r_map[r_idx]["total_points"] += sa_v
-
                             stats_r_map[r_idx]["duels"].append({"manche": m_num, "score": sa_v, "score_adv": sb_v, "adversaire": jb_v})
-
                             if sa_v > sb_v:
-
                                 stats_r_map[r_idx]["victoires"] += 1
-
                             elif sb_v > sa_v:
-
                                 stats_r_map[r_idx]["defaites"] += 1
-
-
-
                             stats_v_map[v_idx]["total_points"] += sb_v
-
                             stats_v_map[v_idx]["duels"].append({"manche": m_num, "score": sb_v, "score_adv": sa_v, "adversaire": ja_v})
-
                             if sb_v > sa_v:
-
                                 stats_v_map[v_idx]["victoires"] += 1
-
                             elif sa_v > sb_v:
-
                                 stats_v_map[v_idx]["defaites"] += 1
 
-
-
                         data_s["date"] = ed_date_str.strip()
-
                         data_s["receveur"] = ed_rec_nom
-
                         data_s["visiteur"] = ed_vis_nom
-
                         data_s["joueurs_rec"] = nouveaux_j_rec
-
                         data_s["joueurs_vis"] = nouveaux_j_vis
-
                         data_s["matchs"] = nouv_matchs
-
                         data_s["total_rec"] = tot_r_calc
-
                         data_s["total_vis"] = tot_v_calc
-
                         data_s["raw_total_rec"] = tot_r_calc
-
                         data_s["raw_total_vis"] = tot_v_calc
-
                         data_s["stats_joueurs_rec"] = [stats_r_map[i] for i in range(3)]
-
                         data_s["stats_joueurs_vis"] = [stats_v_map[i] for i in range(3)]
-
                         data_s["totaux_joueurs_rec"] = [stats_r_map[i]["total_points"] for i in range(3)]
-
                         data_s["totaux_joueurs_vis"] = [stats_v_map[i]["total_points"] for i in range(3)]
-
                         data_s["est_partiel"] = (nb_jouees_ed < 9)
-
                         data_s["incertitudes"] = []
-
                         data_s.pop("html_officiel", None)
-
                         st.session_state["scan_result_data"] = data_s
 
-                        st.success("✅ Corrections appliquées ! Les totaux par joueur, le score d'équipe et la feuille A4 ont été mis à jour.")
+                    c_ed_btn1, c_ed_btn2 = st.columns(2)
+                    with c_ed_btn1:
+                        if st.button("💾 Appliquer les corrections au scan", type="secondary", use_container_width=True, key="btn_apply_scan_edits"):
+                            _appliquer_editeur_sur_scan()
+                            st.success("✅ Corrections appliquées !")
+                            st.rerun()
+                    with c_ed_btn2:
+                        if st.button("✅ Appliquer et injecter dans la saisie", type="primary", use_container_width=True, key="btn_apply_and_inject_scan_edits", disabled=existe_hist):
+                            _appliquer_editeur_sur_scan()
+                            cb_injecter_donnees_scanner(data_s, label_direct)
+                            st.rerun()
 
-                        st.rerun()
+                # Détails secondaires regroupés dans des expanders
+                with st.expander("👥 Détail complet par joueur & Statistiques individuelles", expanded=False):
+                    col_jr, col_jv = st.columns(2)
+                    with col_jr:
+                        st.info(f"**🔴 Équipe Receveuse : {rec_nom}** ({tot_r} pts)")
+                        for idx in range(3):
+                            nom_complet = corr_r[idx] if idx < len(corr_r) else f"Joueur {idx+1}"
+                            nom_manuscrit = raw_r[idx] if idx < len(raw_r) else ""
+                            info_manuscrit = f" *(feuille : « {nom_manuscrit} »)*" if nom_manuscrit and nom_manuscrit != nom_complet else ""
+                            st_p = stats_rec[idx] if idx < len(stats_rec) else {}
+                            pts_j = st_p.get("total_points", 0)
+                            vic_j = st_p.get("victoires", 0)
+                            def_j = st_p.get("defaites", 0)
+                            duels_txt = ", ".join([f"M{d['manche']}: {d['score']} pts" for d in st_p.get("duels", [])])
+                            st.markdown(f"- **Joueur {idx+1} :** **{nom_complet}** — 🎯 **{pts_j} points** `({vic_j}V - {def_j}D)`{info_manuscrit}")
+                            st.caption(f"&nbsp;&nbsp;&nbsp;&nbsp;🎯 Détail des manches : {duels_txt}")
+                        app_r = data_s.get("approbateur_rec")
+                        if app_r:
+                            st.caption(f"✍️ Signature / Capitaine : **{app_r}**")
 
+                    with col_jv:
+                        st.info(f"**🔵 Équipe Visiteuse : {vis_nom}** ({tot_v} pts)")
+                        for idx in range(3):
+                            nom_complet = corr_v[idx] if idx < len(corr_v) else f"Joueur {idx+1}"
+                            nom_manuscrit = raw_v[idx] if idx < len(raw_v) else ""
+                            info_manuscrit = f" *(feuille : « {nom_manuscrit} »)*" if nom_manuscrit and nom_manuscrit != nom_complet else ""
+                            st_p = stats_vis[idx] if idx < len(stats_vis) else {}
+                            pts_j = st_p.get("total_points", 0)
+                            vic_j = st_p.get("victoires", 0)
+                            def_j = st_p.get("defaites", 0)
+                            duels_txt = ", ".join([f"M{d['manche']}: {d['score']} pts" for d in st_p.get("duels", [])])
+                            st.markdown(f"- **Joueur {idx+1} :** **{nom_complet}** — 🎯 **{pts_j} points** `({vic_j}V - {def_j}D)`{info_manuscrit}")
+                            st.caption(f"&nbsp;&nbsp;&nbsp;&nbsp;🎯 Détail des manches : {duels_txt}")
+                        app_v = data_s.get("approbateur_vis")
+                        if app_v:
+                            st.caption(f"✍️ Signature / Capitaine : **{app_v}**")
 
+                    tab_joueurs = []
+                    for idx, st_p in enumerate(stats_rec):
+                        nom = st_p.get("nom", f"Receveur J{idx+1}")
+                        pts = st_p.get("total_points", 0)
+                        v = st_p.get("victoires", 0)
+                        d = st_p.get("defaites", 0)
+                        duels = st_p.get("duels", [])
+                        m_txt = " | ".join([f"M{duel['manche']}: {duel['score']} pts (vs {duel['adversaire']})" for duel in duels])
+                        moy = round(pts / len(duels), 1) if duels else 0.0
+                        tab_joueurs.append({"Équipe": f"🔴 {rec_nom}", "Joueur (Nom complet)": nom, "Total Points": f"🎯 {pts} pts", "Moyenne / Duel": f"{moy} pts", "Bilan (V - D)": f"{v}V - {d}D", "Détail des 3 manches": m_txt})
+                    for idx, st_p in enumerate(stats_vis):
+                        nom = st_p.get("nom", f"Visiteur J{idx+1}")
+                        pts = st_p.get("total_points", 0)
+                        v = st_p.get("victoires", 0)
+                        d = st_p.get("defaites", 0)
+                        duels = st_p.get("duels", [])
+                        m_txt = " | ".join([f"M{duel['manche']}: {duel['score']} pts (vs {duel['adversaire']})" for duel in duels])
+                        moy = round(pts / len(duels), 1) if duels else 0.0
+                        tab_joueurs.append({"Équipe": f"🔵 {vis_nom}", "Joueur (Nom complet)": nom, "Total Points": f"🎯 {pts} pts", "Moyenne / Duel": f"{moy} pts", "Bilan (V - D)": f"{v}V - {d}D", "Détail des 3 manches": m_txt})
+                    afficher_tableau_html_compatible(pd.DataFrame(tab_joueurs))
 
-                # Section Feuille officielle HTML & Transmission aux administrateurs
-
-                st.divider()
-
-                st.markdown("### 📜 Feuille officielle du match & Transmission aux Administrateurs")
-
-
-
-                matchs_dict = data_s.get("matchs", {})
-                rec_m_scan = str(data_s.get("receveur", "Receveur"))
-                vis_m_scan = str(data_s.get("visiteur", "Visiteur"))
-                d_m_scan = normaliser_date_match_feuille(data_s.get("date"), rec_m_scan, vis_m_scan)
-                d_enreg_scan = datetime.now().strftime("%d/%m/%Y à %H:%M")
-
-                m_scan = {
-
-                    "date": d_m_scan,
-
-                    "date_match": d_m_scan,
-
-                    "date_enregistrement": d_enreg_scan,
-
-                    "receveur": rec_m_scan,
-
-                    "visiteur": vis_m_scan,
-
-                    "total_receveur": _safe_int_val(data_s.get("total_rec", 0)),
-
-                    "total_visiteur": _safe_int_val(data_s.get("total_vis", 0)),
-
-                    "approbateur_receveur": str(data_s.get("approbateur_rec", "")),
-
-                    "approbateur_visiteur": str(data_s.get("approbateur_vis", "")),
-
-                    "matchs": {
-
-                        str(i): {
-
-                            "score_a": _safe_int_val(matchs_dict.get(str(i), {}).get("score_a", 0)),
-
-                            "score_b": _safe_int_val(matchs_dict.get(str(i), {}).get("score_b", 0)),
-
-                            "joueur_a": str(matchs_dict.get(str(i), {}).get("joueur_a", "")),
-
-                            "joueur_b": str(matchs_dict.get(str(i), {}).get("joueur_b", ""))
-
-                        } for i in range(1, 10)
-
-                    }
-
-                }
-
-                html_officiel = data_s.get("html_officiel") or obtenir_html_match(m_scan)
-
-                data_s["html_officiel"] = html_officiel
-
-
-
-                if "scan_email_notif" in st.session_state:
-
-                    typ_n, msg_n = st.session_state.pop("scan_email_notif")
-
-                    if typ_n == "success":
-
-                        st.success(msg_n)
-
+                    somme_pts_rec = sum(p.get("total_points", 0) for p in stats_rec)
+                    somme_pts_vis = sum(p.get("total_points", 0) for p in stats_vis)
+                    raw_tot_r = _safe_int_val(data_s.get("raw_total_rec", tot_r))
+                    raw_tot_v = _safe_int_val(data_s.get("raw_total_vis", tot_v))
+                    if (raw_tot_r == somme_pts_rec and raw_tot_v == somme_pts_vis) or (raw_tot_r == 0 and raw_tot_v == 0):
+                        st.success(f"✅ **Contrôle de cohérence :** La somme des points des joueurs ({somme_pts_rec} pts pour {rec_nom} et {somme_pts_vis} pts pour {vis_nom}) correspond exactement aux 9 manches de la feuille.")
                     else:
+                        st.info(f"ℹ️ **Synchronisation arithmétique automatique :** Les totaux d'équipe ont été alignés sur la somme exacte des 9 manches (**{somme_pts_rec} pts** pour {rec_nom} et **{somme_pts_vis} pts** pour {vis_nom} ; totaux bruts lus au bas de la feuille : {raw_tot_r} pts et {raw_tot_v} pts).")
 
-                        st.warning(msg_n)
-
-
-
-                with st.expander("👁️ Prévisualiser la feuille officielle de match (Format A4 officiel)", expanded=False):
-
+                with st.expander("📜 Feuille officielle A4 & Envoi courriel aux administrateurs", expanded=False):
                     st.components.v1.html(html_officiel, height=520, scrolling=True)
-
-
-
-                with st.container(border=True):
-
                     st.markdown("#### 📧 Envoyer la photo originale et la feuille HTML aux administrateurs")
-
-                    st.caption("Transmet par courriel officiel la feuille de match mise en page (HTML) et la photo originale prise par la caméra aux administrateurs.")
-
                     cfg_em = charger_config_email()
-
                     dest_def = cfg_em.get("destinataires", "")
-
                     col_em1, col_em2 = st.columns([2.8, 1.2])
-
                     with col_em1:
-
                         dest_saisi = st.text_input(
-
                             "Adresse(s) courriel des administrateurs :",
-
                             value=dest_def,
-
                             placeholder="admin@ligue.com, secretaire@ligue.com",
-
                             key="input_dest_admin_scan",
-
                             help="Séparez plusieurs adresses par des virgules."
-
                         )
-
                     with col_em2:
-
                         st.write("")
-
                         btn_send_admin = st.button("📤 Envoyer aux administrateurs", type="primary", use_container_width=True, key="btn_send_admin_scan_action")
 
-
-
                     if btn_send_admin:
-
                         if not dest_saisi.strip():
-
                             st.error("⚠️ Veuillez renseigner au moins une adresse courriel de destinataire.")
-
                         else:
-
                             with st.spinner("Envoi du courriel avec la feuille HTML et la photo en pièce jointe..."):
-
                                 ok_env, msg_env = envoyer_feuille_et_photo_administrateurs(data_s, photo_bytes=st.session_state.get("scan_photo_bytes"), destinataires_custom=dest_saisi.strip())
-
                                 if ok_env:
-
                                     st.success(f"✅ Feuille officielle et photo transmises avec succès à `{dest_saisi.strip()}` !")
-
                                 else:
-
                                     st.error(f"❌ Échec de l'envoi : {msg_env}")
-
-
-
-                st.markdown("#### ⚡ Actions sur la feuille de match")
-
-                if existe_hist:
-
-                    st.warning("🔒 **Injection et archivage direct verrouillés :** Ce match figure déjà dans l'historique officiel. Utilisez le bouton **« 🔙 Retour à la saisie du match »** ou rendez-vous dans **« ⚙️ Administration → ✏️ Rectifications »** pour le modifier.")
-
-                col_act1, col_act2, col_act3 = st.columns([1.6, 1.4, 1.0])
-
-                with col_act1:
-
-                    st.button(
-
-                        "📥 Injecter dans la saisie du match en direct",
-
-                        use_container_width=True,
-
-                        type="primary",
-
-                        key="btn_injecter_saisie_directe",
-
-                        on_click=cb_injecter_donnees_scanner,
-
-                        args=(data_s, label_direct),
-
-                        disabled=existe_hist,
-
-                        help="Ce match existe déjà dans l'historique (utilisez ⚙️ Administration → ✏️ Rectifications)" if existe_hist else "Pré-remplit la feuille de match en direct avec ces équipes, joueurs actifs et pointages"
-
-                    )
-
-
-
-                with col_act2:
-
-                    st.button(
-
-                        "💾 Archiver directement dans l'historique officiel",
-
-                        use_container_width=True,
-
-                        key="btn_archiver_match_direct",
-
-                        on_click=cb_archiver_match_scanner,
-
-                        args=(data_s,),
-
-                        disabled=(existe_hist or est_partiel),
-
-                        help="Ce match existe déjà dans l'historique (utilisez ⚙️ Administration → ✏️ Rectifications)" if existe_hist else ("Impossible d'archiver un scan partiel (manches non jouées)" if est_partiel else "Enregistre officiellement ce match avec les noms complets des joueurs dans l'historique")
-
-                    )
-
-
-
-                with col_act3:
-
-                    st.download_button(
-
-                        "📥 Télécharger HTML",
-
-                        data=html_officiel,
-
-                        file_name=f"feuille_{rec_nom}_vs_{vis_nom}.html",
-
-                        mime="text/html",
-
-                        use_container_width=True,
-
-                        help="Télécharger le document HTML officiel pour vos archives"
-
-                    )
 
         except Exception as e_res_ui:
 
