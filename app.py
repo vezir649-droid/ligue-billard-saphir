@@ -9586,99 +9586,64 @@ def correler_donnees_feuille_avec_ligue(data_s):
 
 
 
+def _extraire_ymd_date_match(val):
+    """Extrait (annee, mois, jour) depuis une chaîne de date (ISO, JJ/MM/AAAA ou mois français)."""
+    s = str(val or "").strip()
+    if not s or s.lower() in ("none", "null", "inconnue", "date inconnue"):
+        return None
+    m_ymd = re.search(r"(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})", s)
+    if m_ymd:
+        return int(m_ymd.group(1)), int(m_ymd.group(2)), int(m_ymd.group(3))
+    m_dmy = re.search(r"(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})", s)
+    if m_dmy:
+        return int(m_dmy.group(3)), int(m_dmy.group(2)), int(m_dmy.group(1))
+    mois_map = {
+        "janvier": 1, "fevrier": 2, "février": 2, "mars": 3, "avril": 4,
+        "mai": 5, "juin": 6, "juillet": 7, "aout": 8, "août": 8,
+        "septembre": 9, "octobre": 10, "novembre": 11, "decembre": 12, "décembre": 12,
+        "janv": 1, "fevr": 2, "févr": 2, "avr": 4, "juil": 7, "sept": 9, "oct": 10, "nov": 11, "dec": 12, "déc": 12,
+    }
+    for m_nom, m_num in mois_map.items():
+        m_txt = re.search(rf"(\d{{1,2}})\s+{m_nom}\.?\w*\s+(\d{{4}})", s, re.IGNORECASE)
+        if m_txt:
+            return int(m_txt.group(2)), m_num, int(m_txt.group(1))
+    return None
+
+
 def verifier_match_scan_dans_historique(data_s, historique=None):
-
-    """Vérifie si le match issu du scan existe déjà dans l'historique officiel des matchs.
-
+    """Vérifie si le match issu du scan existe déjà dans l'historique officiel des matchs
+    (mêmes équipes ET même date).
     Retourne (existe: bool, index_hist: int, match_hist: dict)."""
-
     if not isinstance(data_s, dict):
-
         return False, -1, None
-
     if historique is None:
-
         historique = charger_historique_matchs()
-
     if not historique or not isinstance(historique, list):
-
         return False, -1, None
-
-
 
     eq_r = str(data_s.get("receveur", "")).strip().lower()
-
     eq_v = str(data_s.get("visiteur", "")).strip().lower()
-
     if not eq_r or not eq_v:
-
         return False, -1, None
 
-
-
-    date_scan = str(data_s.get("date", "")).strip()
-
-    m_ymd_s = re.search(r"(\d{4})-(\d{2})-(\d{2})", date_scan)
-
-    m_dmy_s = re.search(r"(\d{1,2})/(\d{1,2})/(\d{4})", date_scan)
-
-    jour_s, mois_s = None, None
-
-    if m_ymd_s:
-
-        mois_s, jour_s = int(m_ymd_s.group(2)), int(m_ymd_s.group(3))
-
-    elif m_dmy_s:
-
-        jour_s, mois_s = int(m_dmy_s.group(1)), int(m_dmy_s.group(2))
-
-
+    ymd_s = _extraire_ymd_date_match(data_s.get("date_match") or data_s.get("date"))
+    if not ymd_s:
+        return False, -1, None
 
     for idx, m_h in enumerate(historique):
-
         if not isinstance(m_h, dict):
-
             continue
-
         h_r = str(m_h.get("receveur", m_h.get("equipe_receveur", ""))).strip().lower()
-
         h_v = str(m_h.get("visiteur", m_h.get("equipe_visiteur", ""))).strip().lower()
 
+        if {h_r, h_v} != {eq_r, eq_v}:
+            continue
 
-
-        # 1. Même receveur et même visiteur dans l'historique de la saison
-
-        if h_r == eq_r and h_v == eq_v:
-
+        ymd_h = _extraire_ymd_date_match(
+            m_h.get("date_match") or m_h.get("date") or m_h.get("date_enregistrement")
+        )
+        if ymd_h and ymd_h == ymd_s:
             return True, idx, m_h
-
-
-
-        # 2. Même paire d'équipes (inversées par erreur sur la feuille) à la même date
-
-        if {h_r, h_v} == {eq_r, eq_v} and jour_s and mois_s:
-
-            d_h = str(m_h.get("date_enregistrement", m_h.get("date", "")))
-
-            m_ymd_h = re.search(r"(\d{4})-(\d{2})-(\d{2})", d_h)
-
-            m_dmy_h = re.search(r"(\d{1,2})/(\d{1,2})/(\d{4})", d_h)
-
-            j_h, mo_h = None, None
-
-            if m_ymd_h:
-
-                mo_h, j_h = int(m_ymd_h.group(2)), int(m_ymd_h.group(3))
-
-            elif m_dmy_h:
-
-                j_h, mo_h = int(m_dmy_h.group(1)), int(m_dmy_h.group(2))
-
-            if j_h == jour_s and mo_h == mois_s:
-
-                return True, idx, m_h
-
-
 
     return False, -1, None
 
