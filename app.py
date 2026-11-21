@@ -30959,7 +30959,7 @@ div[data-testid="stSelectbox"] div[data-baseweb="select"] * {
 
                     if termine:
 
-                        st.markdown(f"{badge_b} **{m_id}** : **{ea}** ({sa}) vs ({sb}) **{eb}**", unsafe_allow_html=True)
+                        st.markdown(f"{badge_b} {badge_horaire} **{m_id}** : **{ea}** ({sa}) vs ({sb}) **{eb}**", unsafe_allow_html=True)
 
                         if m.get("passe_droit"):
 
@@ -30973,13 +30973,13 @@ div[data-testid="stSelectbox"] div[data-baseweb="select"] * {
 
                         if ea == "À déterminer" or eb == "À déterminer":
 
-                            st.markdown(f"{badge_b} **{m_id}** : `{ea}` vs `{eb}`", unsafe_allow_html=True)
+                            st.markdown(f"{badge_b} {badge_horaire} **{m_id}** : `{ea}` vs `{eb}`", unsafe_allow_html=True)
 
                             st.caption("⏳ En attente des vainqueurs / perdants des tours précédents...")
 
                         else:
 
-                            st.markdown(f"{badge_b} **{m_id}** : 🎯 **{ea}** vs **{eb}**", unsafe_allow_html=True)
+                            st.markdown(f"{badge_b} {badge_horaire} **{m_id}** : 🎯 **{ea}** vs **{eb}**", unsafe_allow_html=True)
 
                             st.caption(f"Format officiel : **{m_fmt}** (premier à {m_race} victoires)")
 
@@ -31047,6 +31047,7 @@ div[data-testid="stSelectbox"] div[data-baseweb="select"] * {
 
                                 sauvegarder_tournois_data(tournois_data)
                                 st.success(f"✅ Heure du match {m_id} mise à jour à {str_h} ({nouv_tbl}){msg_sms_extra} et tableau actualisé !")
+                                st.session_state[f"auto_bascule_{key_prefix}{mode}"] = True
                                 time.sleep(0.5)
                                 st.rerun()
 
@@ -31157,6 +31158,8 @@ div[data-testid="stSelectbox"] div[data-baseweb="select"] * {
                                         if est_match_finale or tournoi.get("statut") == "termine":
                                             st.session_state[f"msg_finale_{mode}"] = f"🏆 Finale validée ! Félicitations à {tournoi.get('vainqueur_final', 'Vainqueur')} pour sa victoire. Le tournoi a été automatiquement sauvegardé et la notification officielle a été transmise par courriel aux administrateurs."
 
+                                        st.session_state[f"auto_bascule_{key_prefix}{mode}"] = True
+
                                         st.rerun()
 
 
@@ -31200,6 +31203,8 @@ div[data-testid="stSelectbox"] div[data-baseweb="select"] * {
                                             sauvegarder_tournois_data(td_fresh)
 
                                             st.success(f"🎟️ Passe-droit accordé ! {choix_promo} est promu au tour suivant.")
+
+                                            st.session_state[f"auto_bascule_{key_prefix}{mode}"] = True
 
                                             st.rerun()
 
@@ -31266,6 +31271,7 @@ div[data-testid="stSelectbox"] div[data-baseweb="select"] * {
                                                 else:
                                                     archiver_tournoi(tournoi, mode=mode, notifier_admin=False)
                                                 st.success(f"✅ {msg}")
+                                                st.session_state[f"auto_bascule_{key_prefix}{mode}"] = True
                                                 time.sleep(0.5)
                                                 st.rerun()
                                             else:
@@ -31289,6 +31295,7 @@ div[data-testid="stSelectbox"] div[data-baseweb="select"] * {
                                             else:
                                                 archiver_tournoi(tournoi, mode=mode, notifier_admin=False)
                                             st.success(f"🔄 {msg}")
+                                            st.session_state[f"auto_bascule_{key_prefix}{mode}"] = True
                                             time.sleep(0.5)
                                             st.rerun()
                                         else:
@@ -31298,129 +31305,216 @@ div[data-testid="stSelectbox"] div[data-baseweb="select"] * {
 
 
 
+        def _cle_tri_horaire_match(m_obj, tour_obj=None, idx_obj=0):
+            h_str = m_obj.get("heure_estimee", "")
+            if h_str and h_str != "—":
+                t_obj = parse_heure_str_vers_time(h_str)
+                time_key = (0, t_obj.hour, t_obj.minute)
+            else:
+                time_key = (1, 99, 99)
+            etape_val = m_obj.get("etape", tour_obj.get("numero", 999) if isinstance(tour_obj, dict) else 999)
+            tbl_val = str(m_obj.get("table", "Table 1"))
+            return (*time_key, etape_val, tbl_val, idx_obj)
+
+        def _trouver_prochain_match_horaire(t_data):
+            liste_t = t_data.get("tours", [])
+            tous_m = []
+            seq = 0
+            for tc in liste_t:
+                t_n = tc.get("numero", 1)
+                for mc in tc.get("matchs", []):
+                    tous_m.append((_cle_tri_horaire_match(mc, tc, seq), mc, tc, t_n))
+                    seq += 1
+            if not tous_m:
+                return None, None, None
+            tous_m.sort(key=lambda x: x[0])
+            for _, mc, tc, t_n in tous_m:
+                if not mc.get("termine") and mc.get("equipe_a") != "À déterminer" and mc.get("equipe_b") != "À déterminer":
+                    r_ok, _, _ = verifier_ronde_precedente_terminee(t_data, tc, t_n, mc.get("id"))
+                    if r_ok:
+                        return mc, tc, t_n
+            for _, mc, tc, t_n in tous_m:
+                if not mc.get("termine"):
+                    return mc, tc, t_n
+            _, mc, tc, t_n = tous_m[-1]
+            return mc, tc, t_n
+
+        def _afficher_vue_chronologique(liste_tours, default_race=2, default_fmt="2 de 3"):
+            items_chrono = []
+            seq = 0
+            for tc in liste_tours:
+                t_n = tc["numero"]
+                t_r = tc.get("race_to", default_race)
+                t_f = tc.get("format_label", default_fmt)
+                for mc in tc.get("matchs", []):
+                    items_chrono.append((_cle_tri_horaire_match(mc, tc, seq), mc, tc, t_n, t_r, t_f))
+                    seq += 1
+            items_chrono.sort(key=lambda x: x[0])
+            a_jouer = [it for it in items_chrono if not it[1].get("termine")]
+            termines = [it for it in items_chrono if it[1].get("termine")]
+            if a_jouer:
+                st.markdown("###### ⏳ Matchs à venir / en cours (ordre chronologique)")
+                for _, mc, tc, t_n, t_r, t_f in a_jouer:
+                    afficher_carte_rencontre(mc, tc, t_n, t_r, t_f)
+            else:
+                st.success("🏁 Tous les matchs de ce tournoi sont terminés !")
+            if termines:
+                with st.expander(f"✅ Matchs déjà terminés ({len(termines)})", expanded=not bool(a_jouer)):
+                    for _, mc, tc, t_n, t_r, t_f in termines:
+                        afficher_carte_rencontre(mc, tc, t_n, t_r, t_f)
+
         tours = tournoi.get("tours", [])
-
-
+        prochain_m, prochain_t, prochain_t_num = _trouver_prochain_match_horaire(tournoi)
+        key_auto_flag = f"auto_bascule_{key_prefix}{mode}"
+        doit_basculer = st.session_state.pop(key_auto_flag, False)
+        key_auto_opt = f"opt_auto_bascule_{key_prefix}{mode}"
+        if key_auto_opt not in st.session_state:
+            st.session_state[key_auto_opt] = True
+        bascule_auto_active = bool(st.session_state.get(key_auto_opt, True))
 
         if format_type == "double_elimination":
-
             tours_winner = [t for t in tours if t.get("bracket") == "winner"]
-
             tours_loser = [t for t in tours if t.get("bracket") == "loser"]
-
             tours_finale = [t for t in tours if t.get("bracket") == "finale"]
 
+            cible_bracket = "winner"
+            if prochain_t:
+                cible_bracket = prochain_t.get("bracket", prochain_m.get("bracket", "winner") if prochain_m else "winner")
+            elif prochain_m:
+                cible_bracket = prochain_m.get("bracket", "winner")
 
+            opts_nav_de = ["winner", "loser", "finale", "chrono"]
+            labels_nav_de = {
+                "winner": f"🟦 Tableau des Gagnants ({len(tours_winner)} tours)",
+                "loser": f"🟧 Seconde Chance — Repêchage ({len(tours_loser)} tours)",
+                "finale": "🏆 Grande Finale",
+                "chrono": "⏰ Par horaire (Tous brackets)",
+            }
+            key_nav_de = f"nav_bracket_de_{key_prefix}{mode}"
+            if key_nav_de not in st.session_state or st.session_state[key_nav_de] not in opts_nav_de:
+                st.session_state[key_nav_de] = cible_bracket if cible_bracket in opts_nav_de else "winner"
+            elif bascule_auto_active and doit_basculer and st.session_state[key_nav_de] != "chrono":
+                st.session_state[key_nav_de] = cible_bracket if cible_bracket in opts_nav_de else "winner"
 
-            tab_w, tab_l, tab_f = st.tabs([
+            col_info_de, col_chk_de = st.columns([3.2, 1.3])
+            with col_info_de:
+                if prochain_m and not prochain_m.get("termine"):
+                    lbl_b_prochain = {
+                        "winner": "🟦 Tableau des Gagnants",
+                        "loser": "🟧 Seconde Chance",
+                        "finale": "🏆 Grande Finale",
+                    }.get(cible_bracket, "")
+                    st.info(
+                        f"⏰ **Prochain match à l'horaire :** **{prochain_m.get('id')}** "
+                        f"({prochain_m.get('heure_estimee', '—')} • {prochain_m.get('table', 'Table 1')}) — "
+                        f"**{prochain_m.get('equipe_a')}** vs **{prochain_m.get('equipe_b')}** "
+                        f"*({lbl_b_prochain})*"
+                    )
+            with col_chk_de:
+                st.checkbox(
+                    "🔄 Bascule auto",
+                    key=key_auto_opt,
+                    help="Bascule automatiquement vers le bracket du prochain match à l'horaire après chaque saisie (vous pouvez toujours changer de bracket manuellement).",
+                )
 
-                f"🟦 Tableau des Gagnants ({len(tours_winner)} tours)",
+            nav_de = st.radio(
+                "Bracket actif",
+                options=opts_nav_de,
+                format_func=lambda k: labels_nav_de[k],
+                horizontal=True,
+                key=key_nav_de,
+                label_visibility="collapsed",
+            )
 
-                f"🟧 Seconde Chance — Repêchage ({len(tours_loser)} tours)",
-
-                "🏆 Grande Finale"
-
-            ])
-
-
-
-            with tab_w:
-
-                for tour_courant in tours_winner:
-
+            def _afficher_liste_tours_bracket(liste_tours_b, default_race=2, default_fmt="2 de 3"):
+                tours_tries = sorted(
+                    liste_tours_b,
+                    key=lambda tc: (
+                        min((_cle_tri_horaire_match(mc, tc, i) for i, mc in enumerate(tc.get("matchs", []))), default=(1, 99, 99, tc.get("numero", 999), "", 0)),
+                        tc.get("numero", 999),
+                    ),
+                )
+                for tour_courant in tours_tries:
                     tour_num = tour_courant["numero"]
-
-                    tour_race = tour_courant.get("race_to", 2)
-
-                    tour_fmt = tour_courant.get("format_label", "2 de 3")
-
+                    tour_race = tour_courant.get("race_to", default_race)
+                    tour_fmt = tour_courant.get("format_label", default_fmt)
                     st.markdown(f"###### **{tour_courant['nom']}** — Format `{tour_fmt}` (premier à {tour_race} victoires)")
-
-                    r_ok_w, r_msg_w, _ = verifier_ronde_precedente_terminee(tournoi, tour_courant, tour_num)
-                    if not r_ok_w:
-                        st.warning(f"🔒 **Ronde en attente :** {r_msg_w}")
-
-                    for m in tour_courant.get("matchs", []):
-
+                    r_ok_b, r_msg_b, _ = verifier_ronde_precedente_terminee(tournoi, tour_courant, tour_num)
+                    if not r_ok_b:
+                        st.warning(f"🔒 **Ronde en attente :** {r_msg_b}")
+                    matchs_tries = sorted(
+                        enumerate(tour_courant.get("matchs", [])),
+                        key=lambda pair: _cle_tri_horaire_match(pair[1], tour_courant, pair[0]),
+                    )
+                    for _, m in matchs_tries:
                         afficher_carte_rencontre(m, tour_courant, tour_num, tour_race, tour_fmt)
 
-
-
-            with tab_l:
-
-                for tour_courant in tours_loser:
-
-                    tour_num = tour_courant["numero"]
-
-                    tour_race = tour_courant.get("race_to", 2)
-
-                    tour_fmt = tour_courant.get("format_label", "2 de 3")
-
-                    st.markdown(f"###### **{tour_courant['nom']}** — Format `{tour_fmt}` (premier à {tour_race} victoires)")
-
-                    r_ok_l, r_msg_l, _ = verifier_ronde_precedente_terminee(tournoi, tour_courant, tour_num)
-                    if not r_ok_l:
-                        st.warning(f"🔒 **Ronde en attente :** {r_msg_l}")
-
-                    for m in tour_courant.get("matchs", []):
-
-                        afficher_carte_rencontre(m, tour_courant, tour_num, tour_race, tour_fmt)
-
-
-
-            with tab_f:
-
-                for tour_courant in tours_finale:
-
-                    tour_num = tour_courant["numero"]
-
-                    tour_race = tour_courant.get("race_to", 3)
-
-                    tour_fmt = tour_courant.get("format_label", "3 de 5")
-
-                    st.markdown(f"###### **{tour_courant['nom']}** — Format `{tour_fmt}` (premier à {tour_race} victoires)")
-
-                    r_ok_f, r_msg_f, _ = verifier_ronde_precedente_terminee(tournoi, tour_courant, tour_num)
-                    if not r_ok_f:
-                        st.warning(f"🔒 **Ronde en attente :** {r_msg_f}")
-
-                    for m in tour_courant.get("matchs", []):
-
-                        afficher_carte_rencontre(m, tour_courant, tour_num, tour_race, tour_fmt)
-
-
+            if nav_de == "winner":
+                _afficher_liste_tours_bracket(tours_winner, default_race=2, default_fmt="2 de 3")
+            elif nav_de == "loser":
+                _afficher_liste_tours_bracket(tours_loser, default_race=2, default_fmt="2 de 3")
+            elif nav_de == "finale":
+                _afficher_liste_tours_bracket(tours_finale, default_race=3, default_fmt="3 de 5")
+            else:
+                _afficher_vue_chronologique(tours, default_race=2, default_fmt="2 de 3")
 
         else:
-
             # Elimination directe simple
+            if tours:
+                opts_nav_se = [t["numero"] for t in tours] + ["chrono"]
+                labels_nav_se = {t["numero"]: t["nom"] for t in tours}
+                labels_nav_se["chrono"] = "⏰ Par horaire (Tous tours)"
+                cible_tour_se = prochain_t_num if prochain_t_num in opts_nav_se else tours[0]["numero"]
 
-            tours_onglets = [t["nom"] for t in tours]
+                key_nav_se = f"nav_tour_se_{key_prefix}{mode}"
+                if key_nav_se not in st.session_state or st.session_state[key_nav_se] not in opts_nav_se:
+                    st.session_state[key_nav_se] = cible_tour_se
+                elif bascule_auto_active and doit_basculer and st.session_state[key_nav_se] != "chrono":
+                    st.session_state[key_nav_se] = cible_tour_se
 
-            if tours_onglets:
+                col_info_se, col_chk_se = st.columns([3.2, 1.3])
+                with col_info_se:
+                    if prochain_m and not prochain_m.get("termine"):
+                        nom_t_prochain = prochain_t.get("nom", "") if prochain_t else ""
+                        st.info(
+                            f"⏰ **Prochain match à l'horaire :** **{prochain_m.get('id')}** "
+                            f"({prochain_m.get('heure_estimee', '—')} • {prochain_m.get('table', 'Table 1')}) — "
+                            f"**{prochain_m.get('equipe_a')}** vs **{prochain_m.get('equipe_b')}** "
+                            f"*({nom_t_prochain})*"
+                        )
+                with col_chk_se:
+                    st.checkbox(
+                        "🔄 Bascule auto",
+                        key=key_auto_opt,
+                        help="Bascule automatiquement vers le tour du prochain match à l'horaire après chaque saisie (vous pouvez toujours changer de tour manuellement).",
+                    )
 
-                tabs_t = st.tabs(tours_onglets)
+                nav_se = st.radio(
+                    "Tour actif",
+                    options=opts_nav_se,
+                    format_func=lambda k: labels_nav_se[k],
+                    horizontal=True,
+                    key=key_nav_se,
+                    label_visibility="collapsed",
+                )
 
-                for t_idx, tab_tour in enumerate(tabs_t):
-
-                    tour_courant = tours[t_idx]
-
+                if nav_se == "chrono":
+                    _afficher_vue_chronologique(tours, default_race=2, default_fmt="2 de 3")
+                else:
+                    tour_courant = next((t for t in tours if t["numero"] == nav_se), tours[0])
                     tour_num = tour_courant["numero"]
-
                     tour_race = tour_courant.get("race_to", 3 if tour_num == tournoi.get("total_tours") else 2)
-
                     tour_fmt = tour_courant.get("format_label", "3 de 5" if tour_race == 3 else "2 de 3")
-
-                    with tab_tour:
-
-                        st.markdown(f"###### **{tour_courant['nom']}** — Format `{tour_fmt}` (premier à {tour_race} manches gagnantes)")
-
-                        r_ok_s, r_msg_s, _ = verifier_ronde_precedente_terminee(tournoi, tour_courant, tour_num)
-                        if not r_ok_s:
-                            st.warning(f"🔒 **Ronde en attente :** {r_msg_s}")
-
-                        for m in tour_courant.get("matchs", []):
-
-                            afficher_carte_rencontre(m, tour_courant, tour_num, tour_race, tour_fmt)
+                    st.markdown(f"###### **{tour_courant['nom']}** — Format `{tour_fmt}` (premier à {tour_race} manches gagnantes)")
+                    r_ok_s, r_msg_s, _ = verifier_ronde_precedente_terminee(tournoi, tour_courant, tour_num)
+                    if not r_ok_s:
+                        st.warning(f"🔒 **Ronde en attente :** {r_msg_s}")
+                    matchs_tries = sorted(
+                        enumerate(tour_courant.get("matchs", [])),
+                        key=lambda pair: _cle_tri_horaire_match(pair[1], tour_courant, pair[0]),
+                    )
+                    for _, m in matchs_tries:
+                        afficher_carte_rencontre(m, tour_courant, tour_num, tour_race, tour_fmt)
 
 
 
@@ -31480,7 +31574,17 @@ div[data-testid="stSelectbox"] div[data-baseweb="select"] * {
 
 
 
-        matchs_rr = tournoi.get("matchs", [])
+        def _cle_tri_rr(pair):
+            idx_r, mr = pair
+            h_r = mr.get("heure_estimee", "")
+            if h_r and h_r != "—":
+                t_r = parse_heure_str_vers_time(h_r)
+                tk = (0, t_r.hour, t_r.minute)
+            else:
+                tk = (1, 99, 99)
+            return (*tk, str(mr.get("table", "Table 1")), idx_r)
+
+        matchs_rr = [m for _, m in sorted(enumerate(tournoi.get("matchs", [])), key=_cle_tri_rr)]
 
         tous_termines = True
 
@@ -31504,7 +31608,7 @@ div[data-testid="stSelectbox"] div[data-baseweb="select"] * {
 
             m_tbl = m.get("table", "Table 1")
 
-            badge_horaire_rr = f"<span style='background:#e8f0fe; color:#0b3c5d; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600;'>⏰ {m_h} • {m_tbl}</span>" if m_h else ""
+            badge_horaire_rr = f"<span style='background:#e8f0fe; color:#0b3c5d; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600;'>⏰ {m_h} • {m_tbl}</span>" if (m_h and m_h != "—") else ""
 
 
 
@@ -31520,7 +31624,7 @@ div[data-testid="stSelectbox"] div[data-baseweb="select"] * {
 
                     if termine:
 
-                        st.markdown(f"**{m_id}** : **{ea}** ({sa}) vs ({sb}) **{eb}**", unsafe_allow_html=True)
+                        st.markdown(f"{badge_horaire_rr} **{m_id}** : **{ea}** ({sa}) vs ({sb}) **{eb}**", unsafe_allow_html=True)
 
                         if m.get("passe_droit"):
 
@@ -31532,7 +31636,7 @@ div[data-testid="stSelectbox"] div[data-baseweb="select"] * {
 
                     else:
 
-                        st.markdown(f"**{m_id}** : 🎯 **{ea}** vs **{eb}**", unsafe_allow_html=True)
+                        st.markdown(f"{badge_horaire_rr} **{m_id}** : 🎯 **{ea}** vs **{eb}**", unsafe_allow_html=True)
 
                         st.caption(f"Format officiel : **{rr_fmt}** (premier à {rr_race} victoires)")
 
