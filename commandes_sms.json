@@ -255,5 +255,37 @@
         "message": "[TOURNOI SAPHIR] Appel Table 1 (W1_M1)\nR. Theberge & J. Brochu vs A. St-Pierre & A. Bellemare\nMatch prevu a 09h00. Presentez-vous a votre table !",
         "statut": "en_attente",
         "date": "2026-11-22 20:02:35"
+    },
+    {
+        "id": "cmd_t_1795377757_0_1054",
+        "type": "tournoi_sms",
+        "telephone": "4189072287",
+        "message": "[TOURNOI SAPHIR] Appel Table 2 (W1_M2)\nP. Fortin & G. Labrecque vs G. Vezina & G. Lavoie\nMatch prevu a 09h00. Presentez-vous a votre table !",
+        "statut": "en_attente",
+        "date": "2026-11-22 20:02:37"
+    },
+    {
+        "id": "cmd_t_1795377757_1_449",
+        "type": "tournoi_sms",
+        "telephone": "4186555454",
+        "message": "[TOURNOI SAPHIR] Appel Table 2 (W1_M2)\nP. Fortin & G. Labrecque vs G. Vezina & G. Lavoie\nMatch prevu a 09h00. Presentez-vous a votre table !",
+        "statut": "en_attente",
+        "date": "2026-11-22 20:02:37"
+    },
+    {
+        "id": "cmd_t_1795377757_2_5716",
+        "type": "tournoi_sms",
+        "telephone": "4184077542",
+        "message": "[TOURNOI SAPHIR] Appel Table 2 (W1_M2)\nP. Fortin & G. Labrecque vs G. Vezina & G. Lavoie\nMatch prevu a 09h00. Presentez-vous a votre table !",
+        "statut": "en_attente",
+        "date": "2026-11-22 20:02:37"
+    },
+    {
+        "id": "cmd_t_1795377757_3_6286",
+        "type": "tournoi_sms",
+        "telephone": "4188475277",
+        "message": "[TOURNOI SAPHIR] Appel Table 2 (W1_M2)\nP. Fortin & G. Labrecque vs G. Vezina & G. Lavoie\nMatch prevu a 09h00. Presentez-vous a votre table !",
+        "statut": "en_attente",
+        "date": "2026-11-22 20:02:37"
     }
 ]
