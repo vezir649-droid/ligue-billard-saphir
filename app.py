@@ -20043,7 +20043,7 @@ def envoyer_demande_approbation_tournoi(tournoi_obj, mode="simple"):
         return (1, 99, 99, "")
     actifs = sorted(actifs, key=_tri_approb_h)
 
-    rows_joueurs_html = []
+    cartes_joueurs_html = []
     lignes_groupe_txt = [
         f"LIGUE DE BILLARD BOULE EN MAIN — {titre_t}",
         f"Catégorie : {mode_label} | Horaire : {horaire_txt} ({nb_tables} tables)",
@@ -20051,47 +20051,37 @@ def envoyer_demande_approbation_tournoi(tournoi_obj, mode="simple"):
         "Horaire des joueurs inscrits :",
     ]
     for idx_a, (nom_p, info_m) in enumerate(actifs, start=1):
-        hr_s = (info_m.get("heure") or "—") if info_m else "—"
+        hr_s = (info_m.get("heure") or "").strip() if info_m else ""
+        if not hr_s or hr_s == "—":
+            hr_s = str(tournoi_obj.get("heure_debut") or "—").replace(":", "h")
         tbl_s = (info_m.get("table") or "Table 1") if info_m else "—"
         adv_s = (info_m.get("adversaire") or "") if info_m else ""
         adv_txt = f" vs {adv_s}" if adv_s else ""
         m_s = f"{info_m.get('match_id', '')}{adv_txt} ({info_m.get('phase', '')})" if info_m else "En attente"
-        lignes_groupe_txt.append(f"  {idx_a}. {nom_p} -> Heure: {hr_s} | {tbl_s} | {m_s}")
-        rows_joueurs_html.append(
-            f"<tr>"
-            f"<td style='padding:7px 8px; border-bottom:1px solid #e2e8f0; color:#64748b;'>{idx_a}</td>"
-            f"<td style='padding:7px 8px; border-bottom:1px solid #e2e8f0; font-weight:700; color:#0f172a;'>{nom_p}</td>"
-            f"<td style='padding:7px 8px; border-bottom:1px solid #e2e8f0; white-space:nowrap;'>"
-            f"<span style='display:inline-block; background:#e0f2fe; color:#0369a1; padding:2px 7px; border-radius:6px; font-weight:700;'>⏰ {hr_s}</span></td>"
-            f"<td style='padding:7px 8px; border-bottom:1px solid #e2e8f0; white-space:nowrap;'>{tbl_s}</td>"
-            f"<td style='padding:7px 8px; border-bottom:1px solid #e2e8f0; font-size:12px; color:#475569;'>{m_s}</td>"
-            f"</tr>"
+        lignes_groupe_txt.append(f"  {idx_a}. {hr_s} | {tbl_s} | {nom_p} | {m_s}")
+        cartes_joueurs_html.append(
+            f"<div style='border:1px solid #cbd5e1; border-left:4px solid #0284c7; border-radius:8px; padding:10px 12px; margin-bottom:8px; background:#ffffff;'>"
+            f"<div style='font-size:14px; font-weight:700; color:#0f172a;'>{idx_a}. {nom_p}</div>"
+            f"<div style='margin-top:4px; font-size:13px; font-weight:800; color:#0369a1;'>⏰ Heure du match : {hr_s} &nbsp;•&nbsp; 🎱 {tbl_s}</div>"
+            f"<div style='margin-top:3px; font-size:12px; color:#475569;'>{m_s}</div>"
+            f"</div>"
         )
 
     sujet_groupe = f"🎱 [TOURNOI SAPHIR] {titre_t} ({mode_label}) — Votre horaire de départ"
     html_groupe = f"""<!DOCTYPE html>
 <html lang="fr">
-<head><meta charset="utf-8"></head>
-<body style="font-family: Arial, Helvetica, sans-serif; background:#f8fafc; margin:0; padding:20px; color:#0f172a;">
-    <div style="max-width:740px; margin:0 auto; background:#ffffff; border-radius:10px; border:1px solid #e2e8f0; overflow:hidden;">
-        <div style="background:linear-gradient(135deg, #0b3c5d, #1d4ed8); color:#ffffff; padding:18px 24px;">
-            <div style="font-size:12px; text-transform:uppercase; letter-spacing:1px; opacity:0.85;">Ligue de billard Boule en main — Salle Le Saphir</div>
-            <h2 style="margin:4px 0 0 0; font-size:20px;">🎱 {titre_t}</h2>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="font-family: Arial, Helvetica, sans-serif; background:#f8fafc; margin:0; padding:8px; color:#0f172a;">
+    <div style="max-width:680px; margin:0 auto; background:#ffffff; border-radius:10px; border:1px solid #e2e8f0; overflow:hidden;">
+        <div style="background:linear-gradient(135deg, #0b3c5d, #1d4ed8); color:#ffffff; padding:16px 14px;">
+            <div style="font-size:11px; text-transform:uppercase; letter-spacing:1px; opacity:0.85;">Ligue de billard Boule en main — Salle Le Saphir</div>
+            <h2 style="margin:4px 0 0 0; font-size:18px;">🎱 {titre_t}</h2>
         </div>
-        <div style="padding:20px 24px;">
-            <p style="margin:0 0 12px 0; font-size:14px;">Bonjour, voici l'horaire officiel du tournoi (<strong>{mode_label}</strong>, {horaire_txt}, {nb_tables} tables) :</p>
-            <table style="width:100%; border-collapse:collapse; font-size:13px; border:1px solid #cbd5e1;">
-                <thead><tr style="background:#f1f5f9; color:#334155; text-align:left;">
-                    <th style="padding:8px 10px; border-bottom:2px solid #cbd5e1;">#</th>
-                    <th style="padding:8px 10px; border-bottom:2px solid #cbd5e1;">Joueur / Équipe</th>
-                    <th style="padding:8px 10px; border-bottom:2px solid #cbd5e1;">Heure du match</th>
-                    <th style="padding:8px 10px; border-bottom:2px solid #cbd5e1;">Table</th>
-                    <th style="padding:8px 10px; border-bottom:2px solid #cbd5e1;">Match</th>
-                </tr></thead>
-                <tbody>{''.join(rows_joueurs_html)}</tbody>
-            </table>
+        <div style="padding:14px 12px;">
+            <p style="margin:0 0 12px 0; font-size:13.5px; line-height:1.5;">Bonjour, voici l'horaire officiel du tournoi (<strong>{mode_label}</strong>, {horaire_txt}, {nb_tables} tables) :</p>
+            {''.join(cartes_joueurs_html)}
         </div>
-        <div style="background:#f1f5f9; border-top:1px solid #e2e8f0; padding:12px 24px; text-align:center; font-size:11.5px; color:#64748b;">
+        <div style="background:#f1f5f9; border-top:1px solid #e2e8f0; padding:12px; text-align:center; font-size:11.5px; color:#64748b;">
             Ligue de billard Boule en main — Salle Le Saphir • <a href="{APP_PUBLIC_URL}" style="color:#0284c7;">Suivre le tournoi en direct</a>
         </div>
     </div>
@@ -20143,52 +20133,43 @@ def envoyer_demande_approbation_tournoi(tournoi_obj, mode="simple"):
         + "\n".join(lignes_groupe_txt)
     )
     apercu_html = f"""
-            <div style="margin:18px 0; border:2px dashed #94a3b8; border-radius:10px; background:#f8fafc; padding:14px;">
-                <div style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:#475569; margin-bottom:8px;">
+            <div style="margin:14px 0; border:2px dashed #94a3b8; border-radius:10px; background:#f8fafc; padding:10px;">
+                <div style="font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:#475569; margin-bottom:8px;">
                     👁️ Aperçu du courriel qui sera envoyé aux joueurs
                 </div>
-                <div style="font-size:13px; margin-bottom:10px; padding:8px 10px; background:#ffffff; border:1px solid #e2e8f0; border-radius:6px;">
+                <div style="font-size:12.5px; margin-bottom:8px; padding:8px 10px; background:#ffffff; border:1px solid #e2e8f0; border-radius:6px;">
                     <strong>Objet :</strong> {sujet_groupe}
                 </div>
                 <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; overflow:hidden;">
-                    <div style="background:linear-gradient(135deg, #0b3c5d, #1d4ed8); color:#ffffff; padding:12px 16px;">
-                        <div style="font-size:11px; text-transform:uppercase; opacity:0.85;">Ligue de billard Boule en main — Salle Le Saphir</div>
-                        <div style="font-size:16px; font-weight:700; margin-top:2px;">🎱 {titre_t}</div>
+                    <div style="background:linear-gradient(135deg, #0b3c5d, #1d4ed8); color:#ffffff; padding:12px;">
+                        <div style="font-size:10.5px; text-transform:uppercase; opacity:0.85;">Ligue de billard Boule en main — Salle Le Saphir</div>
+                        <div style="font-size:15px; font-weight:700; margin-top:2px;">🎱 {titre_t}</div>
                     </div>
-                    <div style="padding:14px 16px;">
+                    <div style="padding:10px;">
                         <p style="margin:0 0 10px 0; font-size:13px;">Bonjour, voici l'horaire officiel du tournoi (<strong>{mode_label}</strong>, {horaire_txt}, {nb_tables} tables) :</p>
-                        <table style="width:100%; border-collapse:collapse; font-size:12.5px; border:1px solid #cbd5e1;">
-                            <thead><tr style="background:#f1f5f9; color:#334155; text-align:left;">
-                                <th style="padding:7px 8px; border-bottom:2px solid #cbd5e1;">#</th>
-                                <th style="padding:7px 8px; border-bottom:2px solid #cbd5e1;">Joueur / Équipe</th>
-                                <th style="padding:7px 8px; border-bottom:2px solid #cbd5e1;">Heure du match</th>
-                                <th style="padding:7px 8px; border-bottom:2px solid #cbd5e1;">Table</th>
-                                <th style="padding:7px 8px; border-bottom:2px solid #cbd5e1;">Match</th>
-                            </tr></thead>
-                            <tbody>{''.join(rows_joueurs_html)}</tbody>
-                        </table>
+                        {''.join(cartes_joueurs_html)}
                     </div>
                 </div>
             </div>"""
 
     html_approb = f"""<!DOCTYPE html>
 <html lang="fr">
-<head><meta charset="utf-8"></head>
-<body style="font-family: Arial, Helvetica, sans-serif; background:#f8fafc; margin:0; padding:20px; color:#0f172a;">
-    <div style="max-width:740px; margin:0 auto; background:#ffffff; border-radius:10px; border:1px solid #e2e8f0; overflow:hidden;">
-        <div style="background:linear-gradient(135deg, #0b3c5d, #0f766e); color:#ffffff; padding:18px 24px;">
-            <div style="font-size:12px; text-transform:uppercase; letter-spacing:1px; opacity:0.85;">Approbation administrateur requise</div>
-            <h2 style="margin:4px 0 0 0; font-size:19px;">🔐 Diffusion aux joueurs — {titre_t}</h2>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="font-family: Arial, Helvetica, sans-serif; background:#f8fafc; margin:0; padding:8px; color:#0f172a;">
+    <div style="max-width:680px; margin:0 auto; background:#ffffff; border-radius:10px; border:1px solid #e2e8f0; overflow:hidden;">
+        <div style="background:linear-gradient(135deg, #0b3c5d, #0f766e); color:#ffffff; padding:16px 14px;">
+            <div style="font-size:11px; text-transform:uppercase; letter-spacing:1px; opacity:0.85;">Approbation administrateur requise</div>
+            <h2 style="margin:4px 0 0 0; font-size:18px;">🔐 Diffusion aux joueurs — {titre_t}</h2>
         </div>
-        <div style="padding:20px 24px; font-size:14px; line-height:1.6;">
+        <div style="padding:14px 12px; font-size:13.5px; line-height:1.5;">
             <p style="margin-top:0;">Bonjour, veuillez approuver l'envoi de l'horaire officiel aux <strong>{len(emails_joueurs)} joueur(s) inscrit(s)</strong> ayant une adresse courriel :</p>
-            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 14px; font-size:12.5px; color:#334155; margin-bottom:14px;">
+            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; font-size:12px; color:#334155; margin-bottom:12px; word-break:break-word;">
                 <strong>Destinataires ({len(emails_joueurs)}) :</strong> {liste_dest_txt}
             </div>
             {sans_html}
-            <div style="text-align:center; margin:20px 0;">
-                <a href="{url_approuver}" style="display:inline-block; background:#16a34a; color:#ffffff; text-decoration:none; font-weight:700; padding:13px 24px; border-radius:8px; font-size:15px; margin:4px;">✅ Approuver et envoyer aux {len(emails_joueurs)} joueurs</a>
-                <a href="{url_refuser}" style="display:inline-block; background:#dc2626; color:#ffffff; text-decoration:none; font-weight:700; padding:13px 20px; border-radius:8px; font-size:14px; margin:4px;">❌ Annuler</a>
+            <div style="text-align:center; margin:16px 0;">
+                <a href="{url_approuver}" style="display:block; background:#16a34a; color:#ffffff; text-decoration:none; font-weight:700; padding:13px 16px; border-radius:8px; font-size:15px; margin-bottom:8px;">✅ Approuver et envoyer aux {len(emails_joueurs)} joueurs</a>
+                <a href="{url_refuser}" style="display:block; background:#dc2626; color:#ffffff; text-decoration:none; font-weight:700; padding:11px 16px; border-radius:8px; font-size:14px;">❌ Annuler</a>
             </div>
             {apercu_html}
             <p style="font-size:12px; color:#64748b;">Un seul clic sur <strong>Approuver</strong> déclenche immédiatement l'envoi du courriel groupé ci-dessus via l'application.</p>
