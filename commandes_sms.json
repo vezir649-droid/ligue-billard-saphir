@@ -287,5 +287,37 @@
         "message": "[TOURNOI SAPHIR] Appel Table 2 (W1_M2)\nP. Fortin & G. Labrecque vs G. Vezina & G. Lavoie\nMatch prevu a 09h00. Presentez-vous a votre table !",
         "statut": "en_attente",
         "date": "2026-11-22 20:02:37"
+    },
+    {
+        "id": "cmd_t_1795381068_0_8368",
+        "type": "tournoi_sms",
+        "telephone": "4188476115",
+        "message": "[TOURNOI SAPHIR] Appel Table 1 (W1_M1)\nA. Lauzon & A. Bellemare vs D. Chamberland & M. Caron\nMatch prevu a 09h00. Presentez-vous a votre table !",
+        "statut": "en_attente",
+        "date": "2026-11-22 20:57:48"
+    },
+    {
+        "id": "cmd_t_1795381068_1_3058",
+        "type": "tournoi_sms",
+        "telephone": "4384046870",
+        "message": "[TOURNOI SAPHIR] Appel Table 1 (W1_M1)\nA. Lauzon & A. Bellemare vs D. Chamberland & M. Caron\nMatch prevu a 09h00. Presentez-vous a votre table !",
+        "statut": "en_attente",
+        "date": "2026-11-22 20:57:48"
+    },
+    {
+        "id": "cmd_t_1795381068_2_8659",
+        "type": "tournoi_sms",
+        "telephone": "4188032744",
+        "message": "[TOURNOI SAPHIR] Appel Table 1 (W1_M1)\nA. Lauzon & A. Bellemare vs D. Chamberland & M. Caron\nMatch prevu a 09h00. Presentez-vous a votre table !",
+        "statut": "en_attente",
+        "date": "2026-11-22 20:57:48"
+    },
+    {
+        "id": "cmd_t_1795381068_3_2627",
+        "type": "tournoi_sms",
+        "telephone": "4183765548",
+        "message": "[TOURNOI SAPHIR] Appel Table 1 (W1_M1)\nA. Lauzon & A. Bellemare vs D. Chamberland & M. Caron\nMatch prevu a 09h00. Presentez-vous a votre table !",
+        "statut": "en_attente",
+        "date": "2026-11-22 20:57:48"
     }
 ]
