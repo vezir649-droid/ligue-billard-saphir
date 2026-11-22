@@ -19819,13 +19819,36 @@ def _obtenir_joueurs_actifs_tournoi(tournoi_obj):
     for b_t, t_nom, m in tous_matchs:
         if m.get("termine"):
             continue
-        for side in (m.get("equipe_a"), m.get("equipe_b")):
+        hr_m = (m.get("heure_estimee") or "").strip() or "—"
+        tbl_m = (m.get("table") or "").strip() or "Table 1"
+        ea_m = m.get("equipe_a", "")
+        eb_m = m.get("equipe_b", "")
+        for side, adv in ((ea_m, eb_m), (eb_m, ea_m)):
             if side and side not in ("À déterminer", "Exempt (Passe-droit)", "") and side not in prochain_par_joueur:
                 prochain_par_joueur[side] = {
                     "match_id": m.get("id", ""),
-                    "heure": m.get("heure_estimee", "—"),
-                    "table": m.get("table", "Table 1"),
+                    "heure": hr_m,
+                    "table": tbl_m,
                     "phase": t_nom or b_t,
+                    "adversaire": adv if adv not in ("", None) else "À déterminer",
+                }
+
+    # Repli si un joueur actif n'a que des matchs terminés (ex. test sur tournoi terminé)
+    for b_t, t_nom, m in tous_matchs:
+        if m.get("passe_droit"):
+            continue
+        hr_m = (m.get("heure_estimee") or "").strip() or "—"
+        tbl_m = (m.get("table") or "").strip() or "Table 1"
+        ea_m = m.get("equipe_a", "")
+        eb_m = m.get("equipe_b", "")
+        for side, adv in ((ea_m, eb_m), (eb_m, ea_m)):
+            if side and side not in ("À déterminer", "Exempt (Passe-droit)", "") and side not in prochain_par_joueur:
+                prochain_par_joueur[side] = {
+                    "match_id": m.get("id", ""),
+                    "heure": hr_m,
+                    "table": tbl_m,
+                    "phase": t_nom or b_t,
+                    "adversaire": adv if adv not in ("", None) else "À déterminer",
                 }
 
     actifs = []
@@ -20012,6 +20035,14 @@ def envoyer_demande_approbation_tournoi(tournoi_obj, mode="simple"):
     nb_tables = tournoi_obj.get("nb_tables", 2)
 
     actifs = _obtenir_joueurs_actifs_tournoi(tournoi_obj)
+    def _tri_approb_h(item):
+        _, inf = item
+        if inf and inf.get("heure") and inf.get("heure") != "—":
+            t_o = parse_heure_str_vers_time(inf["heure"])
+            return (0, t_o.hour, t_o.minute, inf.get("table", ""))
+        return (1, 99, 99, "")
+    actifs = sorted(actifs, key=_tri_approb_h)
+
     rows_joueurs_html = []
     lignes_groupe_txt = [
         f"LIGUE DE BILLARD BOULE EN MAIN — {titre_t}",
@@ -20020,17 +20051,20 @@ def envoyer_demande_approbation_tournoi(tournoi_obj, mode="simple"):
         "Horaire des joueurs inscrits :",
     ]
     for idx_a, (nom_p, info_m) in enumerate(actifs, start=1):
-        hr_s = info_m.get("heure", "—") if info_m else "—"
-        tbl_s = info_m.get("table", "Table 1") if info_m else "—"
-        m_s = f"{info_m.get('match_id', '')} ({info_m.get('phase', '')})" if info_m else "En attente"
-        lignes_groupe_txt.append(f"  {idx_a}. {nom_p} -> {hr_s} | {tbl_s} | {m_s}")
+        hr_s = (info_m.get("heure") or "—") if info_m else "—"
+        tbl_s = (info_m.get("table") or "Table 1") if info_m else "—"
+        adv_s = (info_m.get("adversaire") or "") if info_m else ""
+        adv_txt = f" vs {adv_s}" if adv_s else ""
+        m_s = f"{info_m.get('match_id', '')}{adv_txt} ({info_m.get('phase', '')})" if info_m else "En attente"
+        lignes_groupe_txt.append(f"  {idx_a}. {nom_p} -> Heure: {hr_s} | {tbl_s} | {m_s}")
         rows_joueurs_html.append(
             f"<tr>"
-            f"<td style='padding:7px 10px; border-bottom:1px solid #e2e8f0; color:#64748b;'>{idx_a}</td>"
-            f"<td style='padding:7px 10px; border-bottom:1px solid #e2e8f0; font-weight:700; color:#0f172a;'>{nom_p}</td>"
-            f"<td style='padding:7px 10px; border-bottom:1px solid #e2e8f0; white-space:nowrap; font-weight:700; color:#0369a1;'>⏰ {hr_s}</td>"
-            f"<td style='padding:7px 10px; border-bottom:1px solid #e2e8f0; white-space:nowrap;'>{tbl_s}</td>"
-            f"<td style='padding:7px 10px; border-bottom:1px solid #e2e8f0; font-size:12px; color:#475569;'>{m_s}</td>"
+            f"<td style='padding:7px 8px; border-bottom:1px solid #e2e8f0; color:#64748b;'>{idx_a}</td>"
+            f"<td style='padding:7px 8px; border-bottom:1px solid #e2e8f0; font-weight:700; color:#0f172a;'>{nom_p}</td>"
+            f"<td style='padding:7px 8px; border-bottom:1px solid #e2e8f0; white-space:nowrap;'>"
+            f"<span style='display:inline-block; background:#e0f2fe; color:#0369a1; padding:2px 7px; border-radius:6px; font-weight:700;'>⏰ {hr_s}</span></td>"
+            f"<td style='padding:7px 8px; border-bottom:1px solid #e2e8f0; white-space:nowrap;'>{tbl_s}</td>"
+            f"<td style='padding:7px 8px; border-bottom:1px solid #e2e8f0; font-size:12px; color:#475569;'>{m_s}</td>"
             f"</tr>"
         )
 
@@ -20050,7 +20084,7 @@ def envoyer_demande_approbation_tournoi(tournoi_obj, mode="simple"):
                 <thead><tr style="background:#f1f5f9; color:#334155; text-align:left;">
                     <th style="padding:8px 10px; border-bottom:2px solid #cbd5e1;">#</th>
                     <th style="padding:8px 10px; border-bottom:2px solid #cbd5e1;">Joueur / Équipe</th>
-                    <th style="padding:8px 10px; border-bottom:2px solid #cbd5e1;">Heure prévue</th>
+                    <th style="padding:8px 10px; border-bottom:2px solid #cbd5e1;">Heure du match</th>
                     <th style="padding:8px 10px; border-bottom:2px solid #cbd5e1;">Table</th>
                     <th style="padding:8px 10px; border-bottom:2px solid #cbd5e1;">Match</th>
                 </tr></thead>
@@ -20127,7 +20161,7 @@ def envoyer_demande_approbation_tournoi(tournoi_obj, mode="simple"):
                             <thead><tr style="background:#f1f5f9; color:#334155; text-align:left;">
                                 <th style="padding:7px 8px; border-bottom:2px solid #cbd5e1;">#</th>
                                 <th style="padding:7px 8px; border-bottom:2px solid #cbd5e1;">Joueur / Équipe</th>
-                                <th style="padding:7px 8px; border-bottom:2px solid #cbd5e1;">Heure prévue</th>
+                                <th style="padding:7px 8px; border-bottom:2px solid #cbd5e1;">Heure du match</th>
                                 <th style="padding:7px 8px; border-bottom:2px solid #cbd5e1;">Table</th>
                                 <th style="padding:7px 8px; border-bottom:2px solid #cbd5e1;">Match</th>
                             </tr></thead>
