@@ -19716,7 +19716,7 @@ def envoyer_courriel_lancement_winner_bracket(tournoi_obj, mode="simple", destin
             rows_html.append(
                 f"<tr>"
                 f"<td style='padding:8px 10px; border-bottom:1px solid #e2e8f0; font-weight:700; color:#0b3c5d;'>{mid}</td>"
-                f"<td style='padding:8px 10px; border-bottom:1px solid #e2e8f0; white-space:nowrap;'>{hr}</td>"
+                f"<td style='padding:8px 10px; border-bottom:1px solid #e2e8f0; white-space:nowrap; font-weight:700; color:#0369a1;'>⏰ {hr}</td>"
                 f"<td style='padding:8px 10px; border-bottom:1px solid #e2e8f0; white-space:nowrap;'>{tbl}</td>"
                 f"<td style='padding:8px 10px; border-bottom:1px solid #e2e8f0; font-weight:600;'>{ea}</td>"
                 f"<td style='padding:8px 10px; border-bottom:1px solid #e2e8f0; font-weight:600;'>{eb}</td>"
@@ -19751,21 +19751,53 @@ def envoyer_courriel_lancement_winner_bracket(tournoi_obj, mode="simple", destin
             f"</div>"
         )
 
-    participants_liste = tournoi_obj.get("participants", [])
+    actifs_lancement = _obtenir_joueurs_actifs_tournoi(tournoi_obj)
     joueurs_actifs_html = ""
-    if participants_liste:
-        badges_p = "".join(
-            f"<span style='display:inline-block; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:999px; padding:3px 10px; margin:3px 4px 3px 0; font-size:12.5px; font-weight:600; color:#0f172a;'>"
-            f"{idx_p}. {p_nom}</span>"
-            for idx_p, p_nom in enumerate(participants_liste, start=1)
-        )
+    if actifs_lancement:
+        def _tri_j_act(item):
+            _, inf = item
+            if inf and inf.get("heure") and inf.get("heure") != "—":
+                t_o = parse_heure_str_vers_time(inf["heure"])
+                return (0, t_o.hour, t_o.minute, inf.get("table", ""))
+            return (1, 99, 99, "")
+
+        actifs_tries = sorted(actifs_lancement, key=_tri_j_act)
+        rows_j_html = []
+        lignes_texte.append(f"Horaire des joueurs actifs ({len(actifs_tries)}) :")
+        for idx_p, (p_nom, info_m) in enumerate(actifs_tries, start=1):
+            if info_m:
+                hr_p = info_m.get("heure", "—")
+                tbl_p = info_m.get("table", "Table 1")
+                m_p = f"{info_m.get('match_id', '')} ({info_m.get('phase', '')})"
+            else:
+                hr_p, tbl_p, m_p = "—", "—", "En attente"
+            lignes_texte.append(f"  {idx_p}. {p_nom} -> {hr_p} | {tbl_p} | {m_p}")
+            rows_j_html.append(
+                f"<tr>"
+                f"<td style='padding:7px 10px; border-bottom:1px solid #e2e8f0; color:#64748b;'>{idx_p}</td>"
+                f"<td style='padding:7px 10px; border-bottom:1px solid #e2e8f0; font-weight:700; color:#0f172a;'>{p_nom}</td>"
+                f"<td style='padding:7px 10px; border-bottom:1px solid #e2e8f0; white-space:nowrap; font-weight:700; color:#0369a1;'>⏰ {hr_p}</td>"
+                f"<td style='padding:7px 10px; border-bottom:1px solid #e2e8f0; white-space:nowrap;'>{tbl_p}</td>"
+                f"<td style='padding:7px 10px; border-bottom:1px solid #e2e8f0; font-size:12px; color:#475569;'>{m_p}</td>"
+                f"</tr>"
+            )
         joueurs_actifs_html = (
-            f"<div style='margin-top:14px; padding:12px 14px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;'>"
-            f"<div style='font-size:13.5px; font-weight:700; color:#0b3c5d; margin-bottom:6px;'>👥 Joueurs actifs ({len(participants_liste)}) :</div>"
-            f"<div>{badges_p}</div>"
+            f"<div style='margin-top:16px;'>"
+            f"<h3 style='margin:0 0 8px 0; color:#0b3c5d; font-size:15px; border-left:4px solid #16a34a; padding-left:10px;'>"
+            f"👥 Horaire des joueurs actifs ({len(actifs_tries)})</h3>"
+            f"<table style='width:100%; border-collapse:collapse; font-size:13px; background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; overflow:hidden;'>"
+            f"<thead><tr style='background:#f1f5f9; color:#334155; text-align:left;'>"
+            f"<th style='padding:8px 10px; border-bottom:2px solid #cbd5e1;'>#</th>"
+            f"<th style='padding:8px 10px; border-bottom:2px solid #cbd5e1;'>Joueur / Équipe</th>"
+            f"<th style='padding:8px 10px; border-bottom:2px solid #cbd5e1;'>Heure prévue</th>"
+            f"<th style='padding:8px 10px; border-bottom:2px solid #cbd5e1;'>Table</th>"
+            f"<th style='padding:8px 10px; border-bottom:2px solid #cbd5e1;'>Match / Ronde</th>"
+            f"</tr></thead>"
+            f"<tbody>{''.join(rows_j_html)}</tbody>"
+            f"</table>"
             f"</div>"
         )
-        lignes_texte.append(f"Joueurs actifs ({len(participants_liste)}) : " + ", ".join(participants_liste))
+        lignes_texte.append("")
 
     corps_html = f"""<!DOCTYPE html>
 <html lang="fr">
@@ -19794,8 +19826,21 @@ def envoyer_courriel_lancement_winner_bracket(tournoi_obj, mode="simple", destin
 </body>
 </html>"""
 
+    import tempfile
+    slug_titre = re.sub(r"[^a-zA-Z0-9_-]", "_", titre_t)
+    pj_nom = f"lancement_tournoi_{slug_titre}_{mode}.html"
+    pj_path = os.path.join(tempfile.gettempdir(), pj_nom)
+    pieces_jointes = []
+    try:
+        with open(pj_path, "w", encoding="utf-8") as f_pj:
+            f_pj.write(corps_html)
+        if os.path.exists(pj_path):
+            pieces_jointes.append(pj_path)
+    except Exception:
+        pass
+
     texte_brut = "\n".join(lignes_texte)
-    ok, msg = envoyer_courriel(destinataires, sujet, texte_brut, corps_html, config_email)
+    ok, msg = envoyer_courriel(destinataires, sujet, texte_brut, corps_html, config_email, pieces_jointes=pieces_jointes)
     return ok, msg
 
 
