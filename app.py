@@ -20103,13 +20103,45 @@ def envoyer_demande_approbation_tournoi(tournoi_obj, mode="simple"):
         f"Demande d'approbation pour diffusion groupée aux joueurs inscrits au tournoi {titre_t}.\n"
         f"Nombre de destinataires : {len(emails_joueurs)}\n"
         f"Approuver et envoyer : {url_approuver}\n"
-        f"Refuser / Annuler : {url_refuser}\n"
+        f"Refuser / Annuler : {url_refuser}\n\n"
+        f"--- APERÇU DU COURRIEL QUI SERA ENVOYÉ ---\n"
+        f"Objet : {sujet_groupe}\n\n"
+        + "\n".join(lignes_groupe_txt)
     )
+    apercu_html = f"""
+            <div style="margin:18px 0; border:2px dashed #94a3b8; border-radius:10px; background:#f8fafc; padding:14px;">
+                <div style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:#475569; margin-bottom:8px;">
+                    👁️ Aperçu du courriel qui sera envoyé aux joueurs
+                </div>
+                <div style="font-size:13px; margin-bottom:10px; padding:8px 10px; background:#ffffff; border:1px solid #e2e8f0; border-radius:6px;">
+                    <strong>Objet :</strong> {sujet_groupe}
+                </div>
+                <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; overflow:hidden;">
+                    <div style="background:linear-gradient(135deg, #0b3c5d, #1d4ed8); color:#ffffff; padding:12px 16px;">
+                        <div style="font-size:11px; text-transform:uppercase; opacity:0.85;">Ligue de billard Boule en main — Salle Le Saphir</div>
+                        <div style="font-size:16px; font-weight:700; margin-top:2px;">🎱 {titre_t}</div>
+                    </div>
+                    <div style="padding:14px 16px;">
+                        <p style="margin:0 0 10px 0; font-size:13px;">Bonjour, voici l'horaire officiel du tournoi (<strong>{mode_label}</strong>, {horaire_txt}, {nb_tables} tables) :</p>
+                        <table style="width:100%; border-collapse:collapse; font-size:12.5px; border:1px solid #cbd5e1;">
+                            <thead><tr style="background:#f1f5f9; color:#334155; text-align:left;">
+                                <th style="padding:7px 8px; border-bottom:2px solid #cbd5e1;">#</th>
+                                <th style="padding:7px 8px; border-bottom:2px solid #cbd5e1;">Joueur / Équipe</th>
+                                <th style="padding:7px 8px; border-bottom:2px solid #cbd5e1;">Heure prévue</th>
+                                <th style="padding:7px 8px; border-bottom:2px solid #cbd5e1;">Table</th>
+                                <th style="padding:7px 8px; border-bottom:2px solid #cbd5e1;">Match</th>
+                            </tr></thead>
+                            <tbody>{''.join(rows_joueurs_html)}</tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>"""
+
     html_approb = f"""<!DOCTYPE html>
 <html lang="fr">
 <head><meta charset="utf-8"></head>
 <body style="font-family: Arial, Helvetica, sans-serif; background:#f8fafc; margin:0; padding:20px; color:#0f172a;">
-    <div style="max-width:680px; margin:0 auto; background:#ffffff; border-radius:10px; border:1px solid #e2e8f0; overflow:hidden;">
+    <div style="max-width:740px; margin:0 auto; background:#ffffff; border-radius:10px; border:1px solid #e2e8f0; overflow:hidden;">
         <div style="background:linear-gradient(135deg, #0b3c5d, #0f766e); color:#ffffff; padding:18px 24px;">
             <div style="font-size:12px; text-transform:uppercase; letter-spacing:1px; opacity:0.85;">Approbation administrateur requise</div>
             <h2 style="margin:4px 0 0 0; font-size:19px;">🔐 Diffusion aux joueurs — {titre_t}</h2>
@@ -20120,11 +20152,12 @@ def envoyer_demande_approbation_tournoi(tournoi_obj, mode="simple"):
                 <strong>Destinataires ({len(emails_joueurs)}) :</strong> {liste_dest_txt}
             </div>
             {sans_html}
-            <div style="text-align:center; margin:22px 0;">
+            <div style="text-align:center; margin:20px 0;">
                 <a href="{url_approuver}" style="display:inline-block; background:#16a34a; color:#ffffff; text-decoration:none; font-weight:700; padding:13px 24px; border-radius:8px; font-size:15px; margin:4px;">✅ Approuver et envoyer aux {len(emails_joueurs)} joueurs</a>
                 <a href="{url_refuser}" style="display:inline-block; background:#dc2626; color:#ffffff; text-decoration:none; font-weight:700; padding:13px 20px; border-radius:8px; font-size:14px; margin:4px;">❌ Annuler</a>
             </div>
-            <p style="font-size:12px; color:#64748b;">Un seul clic sur <strong>Approuver</strong> déclenche immédiatement l'envoi du courriel groupé via l'application.</p>
+            {apercu_html}
+            <p style="font-size:12px; color:#64748b;">Un seul clic sur <strong>Approuver</strong> déclenche immédiatement l'envoi du courriel groupé ci-dessus via l'application.</p>
         </div>
     </div>
 </body>
