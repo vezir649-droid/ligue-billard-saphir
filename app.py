@@ -19624,6 +19624,142 @@ def envoyer_courriel_arborescence_tournoi(tournoi_obj, mode="simple", destinatai
     return ok, msg
 
 
+def envoyer_courriel_lancement_winner_bracket(tournoi_obj, mode="simple", destinataires_specifiques=None):
+    """Envoie aux administrateurs par courriel en HTML les deux premières rondes de la Winner Bracket lors du lancement d'un tournoi."""
+    config_email = charger_config_email()
+    destinataires = (destinataires_specifiques or config_email.get("destinataires", "")).strip()
+
+    if not destinataires:
+        return False, "Aucun destinataire administrateur configuré pour l'envoi courriel."
+    if not config_email.get("smtp_serveur") or not config_email.get("smtp_expediteur"):
+        return False, "Configuration SMTP incomplète (serveur ou expéditeur manquant)."
+    if not tournoi_obj or not isinstance(tournoi_obj, dict):
+        return False, "Données de tournoi introuvables."
+
+    titre_t = tournoi_obj.get("titre", "Tournoi officiel")
+    mode_label = "Simple (1 contre 1)" if mode == "simple" else "Double / Équipes (2 contre 2)"
+    fmt = tournoi_obj.get("format", "elimination")
+    fmt_label = (
+        "Double élimination (Winner & Loser Bracket)"
+        if fmt == "double_elimination"
+        else "Élimination directe"
+    )
+    nb_participants = len(tournoi_obj.get("participants", []))
+    nb_tables = tournoi_obj.get("nb_tables", 2)
+    h_deb = tournoi_obj.get("heure_debut", "09:00")
+    h_fin = tournoi_obj.get("heure_fin_estimee", "")
+    horaire_txt = f"{h_deb} à ~{h_fin}" if h_fin else f"Début à {h_deb}"
+    promus = tournoi_obj.get("promus_second_tour", [])
+
+    tours = tournoi_obj.get("tours", [])
+    if fmt == "double_elimination":
+        rondes_wb = [t for t in tours if t.get("bracket") == "winner"][:2]
+    else:
+        rondes_wb = tours[:2]
+
+    sujet = f"🎱 [LANCEMENT TOURNOI] {titre_t} ({mode_label}) — 2 premières rondes Winner Bracket"
+
+    lignes_texte = [
+        "LIGUE DE BILLARD BOULE EN MAIN — LANCEMENT DE TOURNOI",
+        "======================================================",
+        f"Tournoi : {titre_t}",
+        f"Catégorie : {mode_label}",
+        f"Formule : {fmt_label}",
+        f"Participants : {nb_participants}",
+        f"Horaire : {horaire_txt} ({nb_tables} tables)",
+        "",
+    ]
+
+    sections_rondes_html = []
+    for r_idx, t_r in enumerate(rondes_wb, start=1):
+        r_nom = t_r.get("nom", f"Ronde {r_idx}")
+        r_fmt = t_r.get("format_label", "2 de 3")
+        lignes_texte.append(f"--- {r_nom} ({r_fmt}) ---")
+
+        rows_html = []
+        for m in t_r.get("matchs", []):
+            mid = m.get("id", "")
+            hr = m.get("heure_estimee", "—")
+            tbl = m.get("table", "Table 1")
+            ea = m.get("equipe_a", "À déterminer")
+            eb = m.get("equipe_b", "À déterminer")
+            if m.get("passe_droit"):
+                statut_m = f"🎟️ Passe-droit ({m.get('vainqueur', '')})"
+            elif m.get("termine"):
+                statut_m = f"✅ {m.get('score_a', 0)} - {m.get('score_b', 0)}"
+            else:
+                statut_m = "⏳ À jouer"
+
+            lignes_texte.append(f"  {mid} | {hr} | {tbl} | {ea} vs {eb} | {statut_m}")
+            rows_html.append(
+                f"<tr>"
+                f"<td style='padding:8px 10px; border-bottom:1px solid #e2e8f0; font-weight:700; color:#0b3c5d;'>{mid}</td>"
+                f"<td style='padding:8px 10px; border-bottom:1px solid #e2e8f0; white-space:nowrap;'>{hr}</td>"
+                f"<td style='padding:8px 10px; border-bottom:1px solid #e2e8f0; white-space:nowrap;'>{tbl}</td>"
+                f"<td style='padding:8px 10px; border-bottom:1px solid #e2e8f0; font-weight:600;'>{ea}</td>"
+                f"<td style='padding:8px 10px; border-bottom:1px solid #e2e8f0; font-weight:600;'>{eb}</td>"
+                f"<td style='padding:8px 10px; border-bottom:1px solid #e2e8f0; font-size:12px; color:#475569;'>{statut_m}</td>"
+                f"</tr>"
+            )
+
+        sections_rondes_html.append(
+            f"<div style='margin-top:18px;'>"
+            f"<h3 style='margin:0 0 8px 0; color:#0b3c5d; font-size:15px; border-left:4px solid #0284c7; padding-left:10px;'>"
+            f"🟦 {r_nom} <span style='font-weight:400; color:#64748b; font-size:13px;'>({r_fmt})</span></h3>"
+            f"<table style='width:100%; border-collapse:collapse; font-size:13px; background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; overflow:hidden;'>"
+            f"<thead><tr style='background:#f1f5f9; color:#334155; text-align:left;'>"
+            f"<th style='padding:8px 10px; border-bottom:2px solid #cbd5e1;'>Match</th>"
+            f"<th style='padding:8px 10px; border-bottom:2px solid #cbd5e1;'>Horaire</th>"
+            f"<th style='padding:8px 10px; border-bottom:2px solid #cbd5e1;'>Table</th>"
+            f"<th style='padding:8px 10px; border-bottom:2px solid #cbd5e1;'>Participant 1</th>"
+            f"<th style='padding:8px 10px; border-bottom:2px solid #cbd5e1;'>Participant 2</th>"
+            f"<th style='padding:8px 10px; border-bottom:2px solid #cbd5e1;'>Statut</th>"
+            f"</tr></thead>"
+            f"<tbody>{''.join(rows_html)}</tbody>"
+            f"</table>"
+            f"</div>"
+        )
+        lignes_texte.append("")
+
+    promus_html = ""
+    if promus:
+        promus_html = (
+            f"<div style='margin-top:12px; padding:10px 14px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; font-size:13px; color:#1e40af;'>"
+            f"🎟️ <strong>Promus d'office au 2ᵉ tour (Passe-droit) :</strong> {', '.join(promus)}"
+            f"</div>"
+        )
+
+    corps_html = f"""<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, Helvetica, sans-serif; background:#f8fafc; margin:0; padding:20px; color:#0f172a;">
+    <div style="max-width:760px; margin:0 auto; background:#ffffff; border-radius:10px; border:1px solid #e2e8f0; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+        <div style="background:linear-gradient(135deg, #0b3c5d, #1d4ed8); color:#ffffff; padding:18px 24px;">
+            <div style="font-size:12px; text-transform:uppercase; letter-spacing:1px; opacity:0.85;">Ligue de billard Boule en main — Salle Le Saphir</div>
+            <h2 style="margin:4px 0 0 0; font-size:20px;">🎱 Lancement : {titre_t}</h2>
+        </div>
+        <div style="padding:20px 24px;">
+            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px 16px; font-size:13.5px; line-height:1.6;">
+                <strong>Catégorie :</strong> {mode_label} &nbsp;|&nbsp;
+                <strong>Formule :</strong> {fmt_label}<br>
+                <strong>Participants :</strong> {nb_participants} &nbsp;|&nbsp;
+                <strong>Horaires :</strong> {horaire_txt} ({nb_tables} tables)
+            </div>
+            {promus_html}
+            {''.join(sections_rondes_html)}
+        </div>
+        <div style="background:#f1f5f9; border-top:1px solid #e2e8f0; padding:12px 24px; text-align:center; font-size:11.5px; color:#64748b;">
+            Courriel automatique envoyé aux administrateurs lors du lancement du tournoi.
+        </div>
+    </div>
+</body>
+</html>"""
+
+    texte_brut = "\n".join(lignes_texte)
+    ok, msg = envoyer_courriel(destinataires, sujet, texte_brut, corps_html, config_email)
+    return ok, msg
+
+
 
 def envoyer_courriel_sauvegarde_tournoi(tournoi_obj=None, mode="simple", destinataires_specifiques=None):
 
@@ -20721,6 +20857,98 @@ def verifier_et_diffuser_sms_tournoi_prochaine_demi_heure(tournoi, tous_les_matc
                 matchs_convoques.append(f"{tbl} ({ea} vs {eb})")
 
     return nb_nouv_sms, matchs_convoques
+
+
+def envoyer_sms_joueurs_en_attente_tournoi(tournoi, tous_les_matchs=None):
+    """
+    Active l'envoi SMS pour le tournoi et expédie immédiatement un SMS aux joueurs en attente
+    (joueurs dont le match est prêt/cédulé ou en attente d'adversaire dans les prochains tours).
+    """
+    if not tournoi or not isinstance(tournoi, dict):
+        return 0, []
+
+    tournoi["sms_tournoi_actif"] = True
+
+    if tous_les_matchs is None:
+        tous_les_matchs = []
+        if "tours" in tournoi and isinstance(tournoi["tours"], list):
+            for t in tournoi["tours"]:
+                if isinstance(t, dict):
+                    tous_les_matchs.extend(t.get("matchs", []))
+        elif "matchs" in tournoi and isinstance(tournoi["matchs"], list):
+            tous_les_matchs = list(tournoi.get("matchs", []))
+
+    convocations = tournoi.setdefault("convocations_sms_envoyees", {})
+    nb_nouv_sms = 0
+    details_envoyes = []
+    now_dt = datetime.now()
+    invalides = {"À déterminer", "Exempt (Passe-droit)", "", None}
+
+    import unicodedata
+    def _gsm7(txt):
+        n = unicodedata.normalize("NFD", str(txt))
+        return "".join(c for c in n if unicodedata.category(c) != "Mn").strip()
+
+    for m in tous_les_matchs:
+        if m.get("termine", False) or m.get("passe_droit", False):
+            continue
+        mid = m.get("id", "")
+        ea = m.get("equipe_a", "")
+        eb = m.get("equipe_b", "")
+        tbl = m.get("table", "Table 1")
+        hr = m.get("heure_estimee", "")
+        h_propre = str(hr).strip().replace(":", "h") if hr and str(hr).strip() not in ("—", "-", "", "None") else ""
+
+        ea_ok = ea not in invalides
+        eb_ok = eb not in invalides
+
+        if ea_ok and eb_ok:
+            cle_m = f"{mid}_{ea}_{eb}_{tbl}"
+            if cle_m in convocations:
+                continue
+            diff_min = calculer_minutes_avant_match(hr, now_dt)
+            if diff_min is None or (-60 <= diff_min <= 30):
+                nb_e, _ = diffuser_convocation_match_tournoi(m, tournoi)
+            else:
+                ea_c = raccourcir_equipe(ea)
+                eb_c = raccourcir_equipe(eb)
+                horaire_part = f"Prevu vers {h_propre} ({tbl})." if h_propre else f"Sur {tbl}."
+                msg_txt = _gsm7(f"[TOURNOI SAPHIR] Match {mid} en attente\n{ea_c} vs {eb_c}\n{horaire_part} Restez prets!")
+                dests = trouver_destinataires_match_tournoi(ea, eb)
+                nb_e, _ = envoyer_sms_groupe_tournoi(dests, msg_txt)
+
+            convocations[cle_m] = {
+                "date": now_dt.strftime("%H:%M"),
+                "nb": nb_e,
+                "table": tbl,
+                "heure": hr,
+                "diff_min": diff_min,
+            }
+            if nb_e > 0:
+                nb_nouv_sms += nb_e
+                details_envoyes.append(f"{mid} ({ea} vs {eb})")
+        elif ea_ok or eb_ok:
+            participant = ea if ea_ok else eb
+            cle_att = f"attente_{mid}_{participant}"
+            if cle_att in convocations:
+                continue
+            p_c = raccourcir_equipe(participant)
+            horaire_part = f"prevu vers {h_propre} ({tbl})" if h_propre else f"sur {tbl}"
+            msg_txt = _gsm7(f"[TOURNOI SAPHIR] En attente ({mid})\n{p_c}, votre prochain match est {horaire_part}. Restez pret!")
+            dests = trouver_destinataires_match_tournoi(participant, "")
+            nb_e, _ = envoyer_sms_groupe_tournoi(dests, msg_txt)
+            convocations[cle_att] = {
+                "date": now_dt.strftime("%H:%M"),
+                "nb": nb_e,
+                "table": tbl,
+                "heure": hr,
+                "type": "attente_adversaire",
+            }
+            if nb_e > 0:
+                nb_nouv_sms += nb_e
+                details_envoyes.append(f"{mid} ({participant})")
+
+    return nb_nouv_sms, details_envoyes
 
 
 def recalculer_heure_fin_tournoi(tournoi):
@@ -30725,6 +30953,14 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
 
                 sauvegarder_tournois_data(td_current)
 
+                ok_mail_wb, msg_mail_wb = envoyer_courriel_lancement_winner_bracket(t_cree, mode=mode)
+                if ok_mail_wb:
+                    st.session_state[f"msg_lancement_mail_{mode}"] = "📧 Courriel HTML des 2 premières rondes de la Winner Bracket envoyé aux administrateurs."
+                else:
+                    st.session_state[f"msg_lancement_mail_{mode}"] = f"⚠️ Tournoi lancé, mais courriel non envoyé : {msg_mail_wb}"
+
+                st.session_state["auto_select_tournoi_mode"] = mode
+
                 st.session_state[f"ouvrir_arborescence_auto_{mode}"] = True
 
                 promus_msg = t_cree.get("promus_second_tour", [])
@@ -31931,6 +32167,14 @@ def afficher_section_tournoi(mode="simple"):
 
         st.info(st.session_state.pop(f"msg_annulation_{mode}"))
 
+    if f"msg_lancement_mail_{mode}" in st.session_state:
+
+        msg_m_wb = st.session_state.pop(f"msg_lancement_mail_{mode}")
+        if msg_m_wb.startswith("📧"):
+            st.success(msg_m_wb)
+        else:
+            st.warning(msg_m_wb)
+
 
 
     # Actualisation systématique si mise à jour du marqueur détectée
@@ -32533,30 +32777,28 @@ def afficher_section_tournoi(mode="simple"):
 
                     st.success("🏁 **Toutes les rencontres de ce tournoi sont terminées !**")
 
-                elif prochains_jouables:
+                else:
 
                     nb_tables_aff = max(2, int(tournoi.get("nb_tables", 2)))
+                    t_uid_sms = re.sub(r'[^a-zA-Z0-9_]', '_', str(tournoi.get('id') or tournoi.get('date_creation') or tournoi.get('titre') or 'defaut'))
 
-                    col_hdr_p1, col_hdr_p2 = st.columns([1.5, 1.2])
-                    with col_hdr_p1:
-                        st.markdown("**🎱 En direct / Matchs prévus dans la prochaine demi-heure :**")
-                    with col_hdr_p2:
-                        if est_editeur:
+                    if est_editeur:
+                        col_sms_1, col_sms_2 = st.columns([1.15, 1.15])
+                        with col_sms_1:
                             sms_auto_val = st.toggle(
-                                "🔔 Convocations SMS automatiques (Prochaine 1/2 h)",
+                                "🔔 Convocations SMS auto (1/2 h)",
                                 value=bool(tournoi.get("sms_tournoi_actif", False)),
-                                key=f"tgl_sms_auto_{mode}_{re.sub(r'[^a-zA-Z0-9_]', '_', str(tournoi.get('id') or tournoi.get('date_creation') or tournoi.get('titre') or 'defaut'))}",
+                                key=f"tgl_sms_auto_{mode}_{t_uid_sms}",
                                 help="Désactivé au lancement du tournoi. Lorsque vous activez l'option, les convocations SMS sont immédiatement expédiées aux joueurs cédulés, puis 30 minutes avant chaque partie."
                             )
                             if sms_auto_val != tournoi.get("sms_tournoi_actif", False):
                                 tournoi["sms_tournoi_actif"] = sms_auto_val
                                 if sms_auto_val:
-                                    # À l'activation, envoyer immédiatement les convocations pour les joueurs cédulés
                                     nb_act, list_act = verifier_et_diffuser_sms_tournoi_prochaine_demi_heure(
                                         tournoi, tous_les_matchs_t, nb_tables=nb_tables_aff, forcer_prochains_tables=True
                                     )
                                     if nb_act > 0:
-                                        st.session_state[f"msg_act_sms_{mode}"] = f"🔔 SMS activés : {nb_act} convocation(s) expédiée(s) pour les joueurs cédulés ({', '.join(list_act)}) !"
+                                        st.session_state[f"msg_act_sms_{mode}"] = f"🔔 SMS activés : {nb_act} convocation(s) expédiée(s) ({', '.join(list_act)}) !"
                                     else:
                                         st.session_state[f"msg_act_sms_{mode}"] = "🔔 SMS activés : convocations programmées 30 minutes avant chaque match."
                                 else:
@@ -32564,79 +32806,99 @@ def afficher_section_tournoi(mode="simple"):
                                 sauvegarder_tournois_data(tournois_data)
                                 st.rerun()
 
+                        with col_sms_2:
+                            if st.button(
+                                "📲 Activer & envoyer SMS aux joueurs en attente",
+                                key=f"btn_sms_attente_{mode}_{t_uid_sms}",
+                                type="secondary",
+                                use_container_width=True,
+                                help="Active l'envoi SMS du tournoi et expédie immédiatement un SMS à tous les joueurs en attente de leur prochain match."
+                            ):
+                                nb_att, list_att = envoyer_sms_joueurs_en_attente_tournoi(tournoi, tous_les_matchs_t)
+                                sauvegarder_tournois_data(tournois_data)
+                                if nb_att > 0:
+                                    st.session_state[f"msg_act_sms_{mode}"] = f"📲 SMS activés : {nb_att} SMS expédié(s) aux joueurs en attente ({', '.join(list_att[:4])}{'...' if len(list_att) > 4 else ''}) !"
+                                else:
+                                    st.session_state[f"msg_act_sms_{mode}"] = "📲 SMS activés : tous les joueurs en attente ont déjà été avisés ou aucun nouveau joueur en attente."
+                                st.rerun()
+
                     if f"msg_act_sms_{mode}" in st.session_state:
                         st.toast(st.session_state.pop(f"msg_act_sms_{mode}"), icon="📲")
 
-                    # Automatisation continue des convocations SMS : envoi pour les joueurs prévus dans la prochaine demi-heure
-                    convocations = tournoi.setdefault("convocations_sms_envoyees", {})
-                    if tournoi.get("sms_tournoi_actif", False):
-                        nb_nouv_sms, liste_convoques = verifier_et_diffuser_sms_tournoi_prochaine_demi_heure(
-                            tournoi, tous_les_matchs_t, nb_tables=nb_tables_aff, forcer_prochains_tables=False
-                        )
-                        if nb_nouv_sms > 0:
-                            sauvegarder_tournois_data(tournois_data)
-                            for c_txt in liste_convoques:
-                                st.toast(f"🔔 SMS de convocation envoyé aux joueurs de la {c_txt} (prévu dans la prochaine demi-heure) !", icon="📲")
+                    if prochains_jouables:
 
-                    # Sélection des cartes : matchs prévus dans la demi-heure en priorité, sinon les prochains jouables
-                    matchs_demi_h = [
-                        m for m in prochains_jouables
-                        if calculer_minutes_avant_match(m.get("heure_estimee")) is not None
-                        and -60 <= calculer_minutes_avant_match(m.get("heure_estimee")) <= 30
-                    ]
-                    cartes_selectionnees = (matchs_demi_h[:max(nb_tables_aff, 4)]) if matchs_demi_h else prochains_jouables[:nb_tables_aff]
+                        st.markdown("**🎱 En direct / Matchs prévus dans la prochaine demi-heure :**")
 
-                    cartes_html = []
+                        # Automatisation continue des convocations SMS : envoi pour les joueurs prévus dans la prochaine demi-heure
+                        convocations = tournoi.setdefault("convocations_sms_envoyees", {})
+                        if tournoi.get("sms_tournoi_actif", False):
+                            nb_nouv_sms, liste_convoques = verifier_et_diffuser_sms_tournoi_prochaine_demi_heure(
+                                tournoi, tous_les_matchs_t, nb_tables=nb_tables_aff, forcer_prochains_tables=False
+                            )
+                            if nb_nouv_sms > 0:
+                                sauvegarder_tournois_data(tournois_data)
+                                for c_txt in liste_convoques:
+                                    st.toast(f"🔔 SMS de convocation envoyé aux joueurs de la {c_txt} (prévu dans la prochaine demi-heure) !", icon="📲")
 
-                    for m_p in cartes_selectionnees:
+                        # Sélection des cartes : matchs prévus dans la demi-heure en priorité, sinon les prochains jouables
+                        matchs_demi_h = [
+                            m for m in prochains_jouables
+                            if calculer_minutes_avant_match(m.get("heure_estimee")) is not None
+                            and -60 <= calculer_minutes_avant_match(m.get("heure_estimee")) <= 30
+                        ]
+                        cartes_selectionnees = (matchs_demi_h[:max(nb_tables_aff, 4)]) if matchs_demi_h else prochains_jouables[:nb_tables_aff]
 
-                        mid_p = m_p.get("id", "")
+                        cartes_html = []
 
-                        ea_p = m_p.get("equipe_a", "")
+                        for m_p in cartes_selectionnees:
 
-                        eb_p = m_p.get("equipe_b", "")
+                            mid_p = m_p.get("id", "")
 
-                        tbl_p = m_p.get("table", "Table 1")
+                            ea_p = m_p.get("equipe_a", "")
 
-                        hr_p = m_p.get("heure_estimee", "")
+                            eb_p = m_p.get("equipe_b", "")
 
-                        hr_badge = f" • ⏰ {hr_p}" if (hr_p and hr_p != "—") else ""
+                            tbl_p = m_p.get("table", "Table 1")
 
-                        cle_m = f"{mid_p}_{ea_p}_{eb_p}_{tbl_p}"
-                        if cle_m in convocations:
-                            info_c = convocations[cle_m]
-                            sms_badge = f" &nbsp;•&nbsp; <span style='background:#e8f5e9; color:#2e7d32; padding:1px 6px; border-radius:3px; font-weight:600; font-size:11px;'>📱 Convoqué ({info_c.get('date')})</span>"
-                        else:
-                            diff_p = calculer_minutes_avant_match(hr_p)
-                            if diff_p is not None and diff_p > 30:
-                                sms_badge = f" &nbsp;•&nbsp; <span style='background:#f5f5f5; color:#616161; padding:1px 6px; border-radius:3px; font-size:11px;'>⏳ SMS à H-30m ({diff_p}m)</span>"
-                            elif diff_p is not None and -60 <= diff_p <= 30:
-                                sms_badge = f" &nbsp;•&nbsp; <span style='background:#fff3e0; color:#e65100; padding:1px 6px; border-radius:3px; font-size:11px;'>⚡ En cours de convocation</span>"
+                            hr_p = m_p.get("heure_estimee", "")
+
+                            hr_badge = f" • ⏰ {hr_p}" if (hr_p and hr_p != "—") else ""
+
+                            cle_m = f"{mid_p}_{ea_p}_{eb_p}_{tbl_p}"
+                            if cle_m in convocations:
+                                info_c = convocations[cle_m]
+                                sms_badge = f" &nbsp;•&nbsp; <span style='background:#e8f5e9; color:#2e7d32; padding:1px 6px; border-radius:3px; font-weight:600; font-size:11px;'>📱 Convoqué ({info_c.get('date')})</span>"
                             else:
-                                sms_badge = ""
+                                diff_p = calculer_minutes_avant_match(hr_p)
+                                if diff_p is not None and diff_p > 30:
+                                    sms_badge = f" &nbsp;•&nbsp; <span style='background:#f5f5f5; color:#616161; padding:1px 6px; border-radius:3px; font-size:11px;'>⏳ SMS à H-30m ({diff_p}m)</span>"
+                                elif diff_p is not None and -60 <= diff_p <= 30:
+                                    sms_badge = f" &nbsp;•&nbsp; <span style='background:#fff3e0; color:#e65100; padding:1px 6px; border-radius:3px; font-size:11px;'>⚡ En cours de convocation</span>"
+                                else:
+                                    sms_badge = ""
 
-                        cartes_html.append(
-                            f"<div class='saphir-light-card' style='background:#f0f7ff; border:1px solid #90caf9; border-left:4px solid #0b3c5d; border-radius:6px; padding:6px 10px; font-size:12.5px; color:#0f172a !important;'>"
-                            f"<strong class='saphir-primary' style='color:#0b3c5d !important;'>🎱 {tbl_p}{hr_badge} ({mid_p}) :</strong> "
-                            f"<strong style='color:#0f172a !important;'>{ea_p}</strong> <span class='saphir-muted' style='color:#475569 !important;'>vs</span> <strong style='color:#0f172a !important;'>{eb_p}</strong>{sms_badge}"
-                            f"</div>"
+                            cartes_html.append(
+                                f"<div class='saphir-light-card' style='background:#f0f7ff; border:1px solid #90caf9; border-left:4px solid #0b3c5d; border-radius:6px; padding:6px 10px; font-size:12.5px; color:#0f172a !important;'>"
+                                f"<strong class='saphir-primary' style='color:#0b3c5d !important;'>🎱 {tbl_p}{hr_badge} ({mid_p}) :</strong> "
+                                f"<strong style='color:#0f172a !important;'>{ea_p}</strong> <span class='saphir-muted' style='color:#475569 !important;'>vs</span> <strong style='color:#0f172a !important;'>{eb_p}</strong>{sms_badge}"
+                                f"</div>"
+                            )
+
+                        st.markdown(
+
+                            "<div style='display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:8px;'>"
+
+                            + "".join(cartes_html)
+
+                            + "</div>",
+
+                            unsafe_allow_html=True
+
                         )
 
-                    st.markdown(
+                    else:
 
-                        "<div style='display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:8px;'>"
-
-                        + "".join(cartes_html)
-
-                        + "</div>",
-
-                        unsafe_allow_html=True
-
-                    )
-
-                else:
-
-                    st.info("⏳ En attente de la fin des rencontres précédentes pour déterminer les prochaines affiches.")
+                        st.info("⏳ En attente de la fin des rencontres précédentes pour déterminer les prochaines affiches.")
 
 
 
@@ -33265,33 +33527,50 @@ def afficher_onglet_tournois():
 
 
 
-    # Disposition stable et constante des onglets pour garantir une navigation fluide sans permutation d'index
-    tabs = st.tabs([
+    opts_nav_t = ["simple", "double", "nouveau", "historique"]
+    labels_nav_t = {
+        "simple": lbl_simple,
+        "double": lbl_double,
+        "nouveau": "➕ Créer un nouveau tournoi",
+        "historique": "📜 Liste des tournois sauvegardés & Historique",
+    }
+    key_nav_t = "nav_onglet_tournois"
 
-        lbl_simple,
+    cible_active = None
+    if simple_actif and not double_actif:
+        cible_active = "simple"
+    elif double_actif and not simple_actif:
+        cible_active = "double"
+    elif simple_actif and double_actif:
+        cible_active = st.session_state.get(key_nav_t) if st.session_state.get(key_nav_t) in ("simple", "double") else "simple"
 
-        lbl_double,
+    mode_force = st.session_state.pop("auto_select_tournoi_mode", None)
+    if mode_force in opts_nav_t:
+        st.session_state[key_nav_t] = mode_force
+    elif key_nav_t not in st.session_state or st.session_state[key_nav_t] not in opts_nav_t:
+        st.session_state[key_nav_t] = cible_active or "simple"
+    elif cible_active and st.session_state[key_nav_t] in ("simple", "double"):
+        if (st.session_state[key_nav_t] == "simple" and not simple_actif and double_actif) or (
+            st.session_state[key_nav_t] == "double" and not double_actif and simple_actif
+        ):
+            st.session_state[key_nav_t] = cible_active
 
-        "➕ Créer un nouveau tournoi",
+    nav_t = st.radio(
+        "Section tournoi",
+        options=opts_nav_t,
+        format_func=lambda k: labels_nav_t[k],
+        horizontal=True,
+        key=key_nav_t,
+        label_visibility="collapsed",
+    )
 
-        "📜 Liste des tournois sauvegardés & Historique"
-
-    ])
-
-    with tabs[0]:
-
+    if nav_t == "simple":
         afficher_section_tournoi(mode="simple")
-
-    with tabs[1]:
-
+    elif nav_t == "double":
         afficher_section_tournoi(mode="double")
-
-    with tabs[2]:
-
+    elif nav_t == "nouveau":
         afficher_onglet_nouveau_tournoi()
-
-    with tabs[3]:
-
+    else:
         afficher_section_historique_tournois()
 
 
