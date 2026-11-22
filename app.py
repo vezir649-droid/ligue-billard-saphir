@@ -775,6 +775,28 @@ div.stButton > button:active {
 
                     }
 
+                    // 4. Empêcher l'ouverture du clavier virtuel sur mobile lors de la saisie des scores (tournois et matchs)
+                    var selectInputs = doc.querySelectorAll('div[data-baseweb="select"] input');
+                    for (var s = 0; s < selectInputs.length; s++) {
+                        var sInp = selectInputs[s];
+                        var sLabel = (sInp.getAttribute('aria-label') || '');
+                        var sContainer = sInp.closest('div[data-baseweb="select"]');
+                        var sText = sContainer ? (sContainer.innerText || '') : '';
+                        if (
+                            sLabel.indexOf('Points de') !== -1 ||
+                            sLabel.indexOf('🎱') !== -1 ||
+                            sLabel.indexOf('Table') !== -1 ||
+                            sText.indexOf('Score :') !== -1
+                        ) {
+                            if (sInp.getAttribute('inputmode') !== 'none') {
+                                sInp.setAttribute('inputmode', 'none');
+                            }
+                            if (!sInp.hasAttribute('readonly')) {
+                                sInp.setAttribute('readonly', 'readonly');
+                            }
+                        }
+                    }
+
                 } catch(e) {}
 
             }
@@ -19729,6 +19751,22 @@ def envoyer_courriel_lancement_winner_bracket(tournoi_obj, mode="simple", destin
             f"</div>"
         )
 
+    participants_liste = tournoi_obj.get("participants", [])
+    joueurs_actifs_html = ""
+    if participants_liste:
+        badges_p = "".join(
+            f"<span style='display:inline-block; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:999px; padding:3px 10px; margin:3px 4px 3px 0; font-size:12.5px; font-weight:600; color:#0f172a;'>"
+            f"{idx_p}. {p_nom}</span>"
+            for idx_p, p_nom in enumerate(participants_liste, start=1)
+        )
+        joueurs_actifs_html = (
+            f"<div style='margin-top:14px; padding:12px 14px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;'>"
+            f"<div style='font-size:13.5px; font-weight:700; color:#0b3c5d; margin-bottom:6px;'>👥 Joueurs actifs ({len(participants_liste)}) :</div>"
+            f"<div>{badges_p}</div>"
+            f"</div>"
+        )
+        lignes_texte.append(f"Joueurs actifs ({len(participants_liste)}) : " + ", ".join(participants_liste))
+
     corps_html = f"""<!DOCTYPE html>
 <html lang="fr">
 <head><meta charset="utf-8"></head>
@@ -19746,6 +19784,7 @@ def envoyer_courriel_lancement_winner_bracket(tournoi_obj, mode="simple", destin
                 <strong>Horaires :</strong> {horaire_txt} ({nb_tables} tables)
             </div>
             {promus_html}
+            {joueurs_actifs_html}
             {''.join(sections_rondes_html)}
         </div>
         <div style="background:#f1f5f9; border-top:1px solid #e2e8f0; padding:12px 24px; text-align:center; font-size:11.5px; color:#64748b;">
@@ -19757,6 +19796,119 @@ def envoyer_courriel_lancement_winner_bracket(tournoi_obj, mode="simple", destin
 
     texte_brut = "\n".join(lignes_texte)
     ok, msg = envoyer_courriel(destinataires, sujet, texte_brut, corps_html, config_email)
+    return ok, msg
+
+
+def _obtenir_joueurs_actifs_tournoi(tournoi_obj):
+    """Retourne la liste des joueurs/équipes encore actifs dans le tournoi avec leur prochain match planifié."""
+    participants = list(tournoi_obj.get("participants", []) or [])
+    fmt = tournoi_obj.get("format", "elimination")
+    elimines = set()
+    prochain_par_joueur = {}
+
+    tous_matchs = []
+    if "tours" in tournoi_obj and isinstance(tournoi_obj["tours"], list):
+        for t in tournoi_obj["tours"]:
+            if isinstance(t, dict):
+                b_t = t.get("bracket", "winner")
+                for m in t.get("matchs", []):
+                    tous_matchs.append((b_t, t.get("nom", ""), m))
+    elif "matchs" in tournoi_obj and isinstance(tournoi_obj["matchs"], list):
+        for m in tournoi_obj["matchs"]:
+            tous_matchs.append(("round_robin", "Round-Robin", m))
+
+    for b_t, _, m in tous_matchs:
+        if m.get("termine") and not m.get("passe_droit"):
+            perdant = m.get("perdant")
+            if not perdant and m.get("vainqueur"):
+                ea, eb = m.get("equipe_a"), m.get("equipe_b")
+                perdant = eb if m.get("vainqueur") == ea else ea
+            if perdant and perdant not in ("À déterminer", "Exempt (Passe-droit)", ""):
+                if fmt == "elimination":
+                    elimines.add(perdant)
+                elif fmt == "double_elimination" and b_t in ("loser", "finale"):
+                    elimines.add(perdant)
+
+    for b_t, t_nom, m in tous_matchs:
+        if m.get("termine"):
+            continue
+        for side in (m.get("equipe_a"), m.get("equipe_b")):
+            if side and side not in ("À déterminer", "Exempt (Passe-droit)", "") and side not in prochain_par_joueur:
+                prochain_par_joueur[side] = {
+                    "match_id": m.get("id", ""),
+                    "heure": m.get("heure_estimee", "—"),
+                    "table": m.get("table", "Table 1"),
+                    "phase": t_nom or b_t,
+                }
+
+    actifs = []
+    for p in participants:
+        if p not in elimines:
+            actifs.append((p, prochain_par_joueur.get(p)))
+    return actifs
+
+
+def envoyer_courriel_horaire_joueurs_actifs(tournoi_obj, mode="simple", destinataires_specifiques=None):
+    """Crée et envoie aux administrateurs un courriel HTML contenant les joueurs actifs et leur horaire lors de l'activation."""
+    config_email = charger_config_email()
+    destinataires = (destinataires_specifiques or config_email.get("destinataires", "")).strip()
+    if not destinataires or not config_email.get("smtp_serveur") or not config_email.get("smtp_expediteur"):
+        return False, "Configuration SMTP ou destinataires manquants."
+    if not tournoi_obj or not isinstance(tournoi_obj, dict):
+        return False, "Données de tournoi introuvables."
+
+    titre_t = tournoi_obj.get("titre", "Tournoi officiel")
+    mode_label = "Simple (1 contre 1)" if mode == "simple" else "Double / Équipes (2 contre 2)"
+    actifs = _obtenir_joueurs_actifs_tournoi(tournoi_obj)
+    sujet = f"⏰ [HORAIRE TOURNOI ACTIVÉ] {titre_t} ({mode_label}) — {len(actifs)} joueurs actifs"
+
+    lignes_txt = [f"HORAIRE TOURNOI ACTIVÉ : {titre_t} ({mode_label})", f"Joueurs actifs ({len(actifs)}) :", ""]
+    rows_html = []
+    for idx_a, (nom_p, info_m) in enumerate(actifs, start=1):
+        if info_m:
+            m_str = f"{info_m['match_id']} ({info_m['phase']})"
+            hr_str = info_m["heure"]
+            tbl_str = info_m["table"]
+        else:
+            m_str, hr_str, tbl_str = "En attente du tirage", "—", "—"
+        lignes_txt.append(f"  {idx_a}. {nom_p} | {hr_str} | {tbl_str} | {m_str}")
+        rows_html.append(
+            f"<tr>"
+            f"<td style='padding:8px 10px; border-bottom:1px solid #e2e8f0; color:#64748b;'>{idx_a}</td>"
+            f"<td style='padding:8px 10px; border-bottom:1px solid #e2e8f0; font-weight:700; color:#0f172a;'>{nom_p}</td>"
+            f"<td style='padding:8px 10px; border-bottom:1px solid #e2e8f0; white-space:nowrap;'>{hr_str}</td>"
+            f"<td style='padding:8px 10px; border-bottom:1px solid #e2e8f0; white-space:nowrap;'>{tbl_str}</td>"
+            f"<td style='padding:8px 10px; border-bottom:1px solid #e2e8f0; font-size:12.5px; color:#0b3c5d;'>{m_str}</td>"
+            f"</tr>"
+        )
+
+    corps_html = f"""<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, Helvetica, sans-serif; background:#f8fafc; margin:0; padding:20px; color:#0f172a;">
+    <div style="max-width:740px; margin:0 auto; background:#ffffff; border-radius:10px; border:1px solid #e2e8f0; overflow:hidden;">
+        <div style="background:linear-gradient(135deg, #0b3c5d, #0284c7); color:#ffffff; padding:16px 24px;">
+            <div style="font-size:12px; text-transform:uppercase; letter-spacing:1px; opacity:0.85;">Ligue de billard Boule en main — Salle Le Saphir</div>
+            <h2 style="margin:4px 0 0 0; font-size:19px;">⏰ Horaire activé — Joueurs actifs ({len(actifs)})</h2>
+        </div>
+        <div style="padding:20px 24px;">
+            <p style="margin:0 0 14px 0; font-size:13.5px;"><strong>Tournoi :</strong> {titre_t} ({mode_label})</p>
+            <table style="width:100%; border-collapse:collapse; font-size:13px; border:1px solid #cbd5e1;">
+                <thead><tr style="background:#f1f5f9; color:#334155; text-align:left;">
+                    <th style="padding:8px 10px; border-bottom:2px solid #cbd5e1;">#</th>
+                    <th style="padding:8px 10px; border-bottom:2px solid #cbd5e1;">Joueur / Équipe actif</th>
+                    <th style="padding:8px 10px; border-bottom:2px solid #cbd5e1;">Horaire</th>
+                    <th style="padding:8px 10px; border-bottom:2px solid #cbd5e1;">Table</th>
+                    <th style="padding:8px 10px; border-bottom:2px solid #cbd5e1;">Prochain match</th>
+                </tr></thead>
+                <tbody>{''.join(rows_html)}</tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>"""
+
+    ok, msg = envoyer_courriel(destinataires, sujet, "\n".join(lignes_txt), corps_html, config_email)
     return ok, msg
 
 
@@ -32797,10 +32949,12 @@ def afficher_section_tournoi(mode="simple"):
                                     nb_act, list_act = verifier_et_diffuser_sms_tournoi_prochaine_demi_heure(
                                         tournoi, tous_les_matchs_t, nb_tables=nb_tables_aff, forcer_prochains_tables=True
                                     )
+                                    ok_mail_act, _ = envoyer_courriel_horaire_joueurs_actifs(tournoi, mode=mode)
+                                    mail_note = " + courriel joueurs actifs envoyé" if ok_mail_act else ""
                                     if nb_act > 0:
-                                        st.session_state[f"msg_act_sms_{mode}"] = f"🔔 SMS activés : {nb_act} convocation(s) expédiée(s) ({', '.join(list_act)}) !"
+                                        st.session_state[f"msg_act_sms_{mode}"] = f"🔔 SMS activés{mail_note} : {nb_act} convocation(s) expédiée(s) ({', '.join(list_act)}) !"
                                     else:
-                                        st.session_state[f"msg_act_sms_{mode}"] = "🔔 SMS activés : convocations programmées 30 minutes avant chaque match."
+                                        st.session_state[f"msg_act_sms_{mode}"] = f"🔔 SMS activés{mail_note} : convocations programmées 30 minutes avant chaque match."
                                 else:
                                     st.session_state[f"msg_act_sms_{mode}"] = "🔕 Envoi de SMS désactivé pour ce tournoi."
                                 sauvegarder_tournois_data(tournois_data)
@@ -32815,11 +32969,13 @@ def afficher_section_tournoi(mode="simple"):
                                 help="Active l'envoi SMS du tournoi et expédie immédiatement un SMS à tous les joueurs en attente de leur prochain match."
                             ):
                                 nb_att, list_att = envoyer_sms_joueurs_en_attente_tournoi(tournoi, tous_les_matchs_t)
+                                ok_mail_att, _ = envoyer_courriel_horaire_joueurs_actifs(tournoi, mode=mode)
+                                mail_note = " + courriel joueurs actifs envoyé" if ok_mail_att else ""
                                 sauvegarder_tournois_data(tournois_data)
                                 if nb_att > 0:
-                                    st.session_state[f"msg_act_sms_{mode}"] = f"📲 SMS activés : {nb_att} SMS expédié(s) aux joueurs en attente ({', '.join(list_att[:4])}{'...' if len(list_att) > 4 else ''}) !"
+                                    st.session_state[f"msg_act_sms_{mode}"] = f"📲 SMS activés{mail_note} : {nb_att} SMS expédié(s) aux joueurs en attente ({', '.join(list_att[:4])}{'...' if len(list_att) > 4 else ''}) !"
                                 else:
-                                    st.session_state[f"msg_act_sms_{mode}"] = "📲 SMS activés : tous les joueurs en attente ont déjà été avisés ou aucun nouveau joueur en attente."
+                                    st.session_state[f"msg_act_sms_{mode}"] = f"📲 SMS activés{mail_note} : tous les joueurs en attente ont déjà été avisés ou aucun nouveau joueur en attente."
                                 st.rerun()
 
                     if f"msg_act_sms_{mode}" in st.session_state:
