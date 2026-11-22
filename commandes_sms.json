@@ -1,14 +1,5 @@
 [
     {
-        "id": "cmd_1794166457_348",
-        "type": "test_sms",
-        "telephone": "4188720836",
-        "message": "[TOURNOI SAPHIR] Horaire modifie (M4)\nG. Dumais & G. Vezina vs M. Larouche & D. Viens\nVotre match Table 2 est reporte a 20h19. Presentez-vous a cette heure !",
-        "statut": "envoye",
-        "date": "2026-11-08 19:34:17",
-        "date_envoi": "2026-11-08 14:34:18"
-    },
-    {
         "id": "cmd_1794166500_454",
         "type": "test_sms",
         "telephone": "4188720836",
@@ -319,5 +310,37 @@
         "message": "[TOURNOI SAPHIR] Appel Table 1 (W1_M1)\nA. Lauzon & A. Bellemare vs D. Chamberland & M. Caron\nMatch prevu a 09h00. Presentez-vous a votre table !",
         "statut": "en_attente",
         "date": "2026-11-22 20:57:48"
+    },
+    {
+        "id": "cmd_t_1795381070_0_6198",
+        "type": "tournoi_sms",
+        "telephone": "4189534241",
+        "message": "[TOURNOI SAPHIR] Appel Table 2 (W1_M2)\nD. Beaudoin & G. Dumais vs R. Lavoie & V. Turcotte\nMatch prevu a 09h00. Presentez-vous a votre table !",
+        "statut": "en_attente",
+        "date": "2026-11-22 20:57:50"
+    },
+    {
+        "id": "cmd_t_1795381070_1_2089",
+        "type": "tournoi_sms",
+        "telephone": "4188430300",
+        "message": "[TOURNOI SAPHIR] Appel Table 2 (W1_M2)\nD. Beaudoin & G. Dumais vs R. Lavoie & V. Turcotte\nMatch prevu a 09h00. Presentez-vous a votre table !",
+        "statut": "en_attente",
+        "date": "2026-11-22 20:57:50"
+    },
+    {
+        "id": "cmd_t_1795381070_2_6619",
+        "type": "tournoi_sms",
+        "telephone": "4184564959",
+        "message": "[TOURNOI SAPHIR] Appel Table 2 (W1_M2)\nD. Beaudoin & G. Dumais vs R. Lavoie & V. Turcotte\nMatch prevu a 09h00. Presentez-vous a votre table !",
+        "statut": "en_attente",
+        "date": "2026-11-22 20:57:50"
+    },
+    {
+        "id": "cmd_t_1795381070_3_7517",
+        "type": "tournoi_sms",
+        "telephone": "4185763878",
+        "message": "[TOURNOI SAPHIR] Appel Table 2 (W1_M2)\nD. Beaudoin & G. Dumais vs R. Lavoie & V. Turcotte\nMatch prevu a 09h00. Presentez-vous a votre table !",
+        "statut": "en_attente",
+        "date": "2026-11-22 20:57:50"
     }
 ]
