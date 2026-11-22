@@ -19673,13 +19673,7 @@ def envoyer_courriel_lancement_winner_bracket(tournoi_obj, mode="simple", destin
     horaire_txt = f"{h_deb} à ~{h_fin}" if h_fin else f"Début à {h_deb}"
     promus = tournoi_obj.get("promus_second_tour", [])
 
-    tours = tournoi_obj.get("tours", [])
-    if fmt == "double_elimination":
-        rondes_wb = [t for t in tours if t.get("bracket") == "winner"][:2]
-    else:
-        rondes_wb = tours[:2]
-
-    sujet = f"🎱 [LANCEMENT TOURNOI] {titre_t} ({mode_label}) — 2 premières rondes Winner Bracket"
+    sujet = f"🎱 [LANCEMENT TOURNOI] {titre_t} ({mode_label}) — Horaire des joueurs actifs"
 
     lignes_texte = [
         "LIGUE DE BILLARD BOULE EN MAIN — LANCEMENT DE TOURNOI",
@@ -19691,57 +19685,6 @@ def envoyer_courriel_lancement_winner_bracket(tournoi_obj, mode="simple", destin
         f"Horaire : {horaire_txt} ({nb_tables} tables)",
         "",
     ]
-
-    sections_rondes_html = []
-    for r_idx, t_r in enumerate(rondes_wb, start=1):
-        r_nom = t_r.get("nom", f"Ronde {r_idx}")
-        r_fmt = t_r.get("format_label", "2 de 3")
-        lignes_texte.append(f"--- {r_nom} ({r_fmt}) ---")
-
-        rows_html = []
-        for m in t_r.get("matchs", []):
-            mid = m.get("id", "")
-            hr = m.get("heure_estimee", "—")
-            tbl = m.get("table", "Table 1")
-            ea = m.get("equipe_a", "À déterminer")
-            eb = m.get("equipe_b", "À déterminer")
-            if m.get("passe_droit"):
-                statut_m = f"🎟️ Passe-droit ({m.get('vainqueur', '')})"
-            elif m.get("termine"):
-                statut_m = f"✅ {m.get('score_a', 0)} - {m.get('score_b', 0)}"
-            else:
-                statut_m = "⏳ À jouer"
-
-            lignes_texte.append(f"  {mid} | {hr} | {tbl} | {ea} vs {eb} | {statut_m}")
-            rows_html.append(
-                f"<tr>"
-                f"<td style='padding:8px 10px; border-bottom:1px solid #e2e8f0; font-weight:700; color:#0b3c5d;'>{mid}</td>"
-                f"<td style='padding:8px 10px; border-bottom:1px solid #e2e8f0; white-space:nowrap; font-weight:700; color:#0369a1;'>⏰ {hr}</td>"
-                f"<td style='padding:8px 10px; border-bottom:1px solid #e2e8f0; white-space:nowrap;'>{tbl}</td>"
-                f"<td style='padding:8px 10px; border-bottom:1px solid #e2e8f0; font-weight:600;'>{ea}</td>"
-                f"<td style='padding:8px 10px; border-bottom:1px solid #e2e8f0; font-weight:600;'>{eb}</td>"
-                f"<td style='padding:8px 10px; border-bottom:1px solid #e2e8f0; font-size:12px; color:#475569;'>{statut_m}</td>"
-                f"</tr>"
-            )
-
-        sections_rondes_html.append(
-            f"<div style='margin-top:18px;'>"
-            f"<h3 style='margin:0 0 8px 0; color:#0b3c5d; font-size:15px; border-left:4px solid #0284c7; padding-left:10px;'>"
-            f"🟦 {r_nom} <span style='font-weight:400; color:#64748b; font-size:13px;'>({r_fmt})</span></h3>"
-            f"<table style='width:100%; border-collapse:collapse; font-size:13px; background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; overflow:hidden;'>"
-            f"<thead><tr style='background:#f1f5f9; color:#334155; text-align:left;'>"
-            f"<th style='padding:8px 10px; border-bottom:2px solid #cbd5e1;'>Match</th>"
-            f"<th style='padding:8px 10px; border-bottom:2px solid #cbd5e1;'>Horaire</th>"
-            f"<th style='padding:8px 10px; border-bottom:2px solid #cbd5e1;'>Table</th>"
-            f"<th style='padding:8px 10px; border-bottom:2px solid #cbd5e1;'>Participant 1</th>"
-            f"<th style='padding:8px 10px; border-bottom:2px solid #cbd5e1;'>Participant 2</th>"
-            f"<th style='padding:8px 10px; border-bottom:2px solid #cbd5e1;'>Statut</th>"
-            f"</tr></thead>"
-            f"<tbody>{''.join(rows_html)}</tbody>"
-            f"</table>"
-            f"</div>"
-        )
-        lignes_texte.append("")
 
     promus_html = ""
     if promus:
@@ -19817,7 +19760,6 @@ def envoyer_courriel_lancement_winner_bracket(tournoi_obj, mode="simple", destin
             </div>
             {promus_html}
             {joueurs_actifs_html}
-            {''.join(sections_rondes_html)}
         </div>
         <div style="background:#f1f5f9; border-top:1px solid #e2e8f0; padding:12px 24px; text-align:center; font-size:11.5px; color:#64748b;">
             Courriel automatique envoyé aux administrateurs lors du lancement du tournoi.
@@ -31152,7 +31094,7 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
 
                 ok_mail_wb, msg_mail_wb = envoyer_courriel_lancement_winner_bracket(t_cree, mode=mode)
                 if ok_mail_wb:
-                    st.session_state[f"msg_lancement_mail_{mode}"] = "📧 Courriel HTML des 2 premières rondes de la Winner Bracket envoyé aux administrateurs."
+                    st.session_state[f"msg_lancement_mail_{mode}"] = "📧 Courriel HTML de l'horaire des joueurs actifs envoyé aux administrateurs."
                 else:
                     st.session_state[f"msg_lancement_mail_{mode}"] = f"⚠️ Tournoi lancé, mais courriel non envoyé : {msg_mail_wb}"
 
