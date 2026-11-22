@@ -19899,6 +19899,301 @@ def envoyer_courriel_horaire_joueurs_actifs(tournoi_obj, mode="simple", destinat
     return ok, msg
 
 
+APP_PUBLIC_URL = "https://billard-saphir.streamlit.app/"
+
+
+def obtenir_premier_administrateur_email():
+    """Retourne la première adresse courriel d'administrateur enregistrée dans la configuration SMTP."""
+    config_email = charger_config_email()
+    dest_raw = str(config_email.get("destinataires", "") or "").strip()
+    if not dest_raw:
+        try:
+            dest_raw = str(st.secrets.get("EMAIL_DESTINATAIRES") or st.secrets.get("ADMIN_EMAILS") or "").strip()
+        except Exception:
+            dest_raw = ""
+    for part in re.split(r"[,;\s]+", dest_raw):
+        adr = part.strip()
+        if "@" in adr and "." in adr.split("@")[-1]:
+            return adr
+    return ""
+
+
+def trouver_courriels_joueurs_tournoi(tournoi_obj):
+    """Retourne (emails_uniques, details_trouves, joueurs_sans_courriel) pour tous les joueurs inscrits au tournoi."""
+    import unicodedata
+
+    def _norm(s):
+        if not s:
+            return ""
+        n = unicodedata.normalize("NFD", str(s))
+        n = "".join(c for c in n if unicodedata.category(c) != "Mn")
+        return re.sub(r"[^a-zA-Z0-9]", "", n).lower()
+
+    base_j = []
+    try:
+        base_j.extend(charger_joueurs() or [])
+    except Exception:
+        pass
+    try:
+        base_j.extend(charger_joueurs_sms() or [])
+    except Exception:
+        pass
+
+    index_emails = {}
+    for j in base_j:
+        if not isinstance(j, dict):
+            continue
+        nom_j = j.get("nom", "")
+        mail_j = str(j.get("courriel", "") or "").strip()
+        if nom_j and "@" in mail_j and "." in mail_j.split("@")[-1]:
+            k = _norm(nom_j)
+            if k and k not in index_emails:
+                index_emails[k] = (nom_j, mail_j)
+
+    participants = list((tournoi_obj or {}).get("participants", []) or [])
+    noms_individuels = []
+    vus_noms = set()
+    for p in participants:
+        for membre in re.split(r"\s*(?:&|/)\s*", str(p)):
+            m_clean = membre.strip()
+            if m_clean and m_clean not in ("À déterminer", "Exempt (Passe-droit)") and _norm(m_clean) not in vus_noms:
+                vus_noms.add(_norm(m_clean))
+                noms_individuels.append(m_clean)
+
+    emails_uniques = []
+    vus_emails = set()
+    details_trouves = []
+    sans_courriel = []
+
+    for nom_p in noms_individuels:
+        k_p = _norm(nom_p)
+        trouve = index_emails.get(k_p)
+        if not trouve and k_p:
+            for k_idx, val_idx in index_emails.items():
+                if k_p in k_idx or k_idx in k_p:
+                    trouve = val_idx
+                    break
+        if trouve:
+            _, adr = trouve
+            details_trouves.append((nom_p, adr))
+            if adr.lower() not in vus_emails:
+                vus_emails.add(adr.lower())
+                emails_uniques.append(adr)
+        else:
+            sans_courriel.append(nom_p)
+
+    return emails_uniques, details_trouves, sans_courriel
+
+
+def envoyer_demande_approbation_tournoi(tournoi_obj, mode="simple"):
+    """
+    Crée une demande d'approbation sécurisée et envoie un courriel au premier administrateur.
+    Un clic sur le lien d'approbation dans ce courriel déclenche l'envoi de l'horaire aux joueurs inscrits.
+    """
+    config_email = charger_config_email()
+    if not config_email.get("smtp_serveur") or not config_email.get("smtp_expediteur"):
+        return False, "Configuration SMTP incomplète (serveur ou expéditeur manquant)."
+    if not tournoi_obj or not isinstance(tournoi_obj, dict):
+        return False, "Données de tournoi introuvables."
+
+    approbateur = obtenir_premier_administrateur_email()
+    if not approbateur:
+        return False, "Aucun premier administrateur configuré dans les destinataires SMTP."
+
+    emails_joueurs, details_joueurs, sans_courriel = trouver_courriels_joueurs_tournoi(tournoi_obj)
+    if not emails_joueurs:
+        return False, "Aucun joueur inscrit au tournoi n'a d'adresse courriel enregistrée."
+
+    titre_t = tournoi_obj.get("titre", "Tournoi officiel")
+    mode_label = "Simple (1 contre 1)" if mode == "simple" else "Double / Équipes (2 contre 2)"
+    h_deb = tournoi_obj.get("heure_debut", "09:00")
+    h_fin = tournoi_obj.get("heure_fin_estimee", "")
+    horaire_txt = f"{h_deb} à ~{h_fin}" if h_fin else f"Début à {h_deb}"
+    nb_tables = tournoi_obj.get("nb_tables", 2)
+
+    actifs = _obtenir_joueurs_actifs_tournoi(tournoi_obj)
+    rows_joueurs_html = []
+    lignes_groupe_txt = [
+        f"LIGUE DE BILLARD BOULE EN MAIN — {titre_t}",
+        f"Catégorie : {mode_label} | Horaire : {horaire_txt} ({nb_tables} tables)",
+        "",
+        "Horaire des joueurs inscrits :",
+    ]
+    for idx_a, (nom_p, info_m) in enumerate(actifs, start=1):
+        hr_s = info_m.get("heure", "—") if info_m else "—"
+        tbl_s = info_m.get("table", "Table 1") if info_m else "—"
+        m_s = f"{info_m.get('match_id', '')} ({info_m.get('phase', '')})" if info_m else "En attente"
+        lignes_groupe_txt.append(f"  {idx_a}. {nom_p} -> {hr_s} | {tbl_s} | {m_s}")
+        rows_joueurs_html.append(
+            f"<tr>"
+            f"<td style='padding:7px 10px; border-bottom:1px solid #e2e8f0; color:#64748b;'>{idx_a}</td>"
+            f"<td style='padding:7px 10px; border-bottom:1px solid #e2e8f0; font-weight:700; color:#0f172a;'>{nom_p}</td>"
+            f"<td style='padding:7px 10px; border-bottom:1px solid #e2e8f0; white-space:nowrap; font-weight:700; color:#0369a1;'>⏰ {hr_s}</td>"
+            f"<td style='padding:7px 10px; border-bottom:1px solid #e2e8f0; white-space:nowrap;'>{tbl_s}</td>"
+            f"<td style='padding:7px 10px; border-bottom:1px solid #e2e8f0; font-size:12px; color:#475569;'>{m_s}</td>"
+            f"</tr>"
+        )
+
+    sujet_groupe = f"🎱 [TOURNOI SAPHIR] {titre_t} ({mode_label}) — Votre horaire de départ"
+    html_groupe = f"""<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, Helvetica, sans-serif; background:#f8fafc; margin:0; padding:20px; color:#0f172a;">
+    <div style="max-width:740px; margin:0 auto; background:#ffffff; border-radius:10px; border:1px solid #e2e8f0; overflow:hidden;">
+        <div style="background:linear-gradient(135deg, #0b3c5d, #1d4ed8); color:#ffffff; padding:18px 24px;">
+            <div style="font-size:12px; text-transform:uppercase; letter-spacing:1px; opacity:0.85;">Ligue de billard Boule en main — Salle Le Saphir</div>
+            <h2 style="margin:4px 0 0 0; font-size:20px;">🎱 {titre_t}</h2>
+        </div>
+        <div style="padding:20px 24px;">
+            <p style="margin:0 0 12px 0; font-size:14px;">Bonjour, voici l'horaire officiel du tournoi (<strong>{mode_label}</strong>, {horaire_txt}, {nb_tables} tables) :</p>
+            <table style="width:100%; border-collapse:collapse; font-size:13px; border:1px solid #cbd5e1;">
+                <thead><tr style="background:#f1f5f9; color:#334155; text-align:left;">
+                    <th style="padding:8px 10px; border-bottom:2px solid #cbd5e1;">#</th>
+                    <th style="padding:8px 10px; border-bottom:2px solid #cbd5e1;">Joueur / Équipe</th>
+                    <th style="padding:8px 10px; border-bottom:2px solid #cbd5e1;">Heure prévue</th>
+                    <th style="padding:8px 10px; border-bottom:2px solid #cbd5e1;">Table</th>
+                    <th style="padding:8px 10px; border-bottom:2px solid #cbd5e1;">Match</th>
+                </tr></thead>
+                <tbody>{''.join(rows_joueurs_html)}</tbody>
+            </table>
+        </div>
+        <div style="background:#f1f5f9; border-top:1px solid #e2e8f0; padding:12px 24px; text-align:center; font-size:11.5px; color:#64748b;">
+            Ligue de billard Boule en main — Salle Le Saphir • <a href="{APP_PUBLIC_URL}" style="color:#0284c7;">Suivre le tournoi en direct</a>
+        </div>
+    </div>
+</body>
+</html>"""
+
+    import uuid
+    token = uuid.uuid4().hex
+    td = charger_tournois_data()
+    approbations = td.setdefault("approbations_courriel", {})
+    if len(approbations) > 20:
+        cles_anc = list(approbations.keys())[:-19]
+        for c_old in cles_anc:
+            approbations.pop(c_old, None)
+
+    approbations[token] = {
+        "token": token,
+        "statut": "en_attente",
+        "date_creation": datetime.now().strftime("%d/%m/%Y à %H:%M"),
+        "tournoi_titre": titre_t,
+        "mode": mode,
+        "approbateur": approbateur,
+        "destinataires": emails_joueurs,
+        "nb_destinataires": len(emails_joueurs),
+        "sans_courriel": sans_courriel,
+        "sujet_groupe": sujet_groupe,
+        "texte_groupe": "\n".join(lignes_groupe_txt),
+        "html_groupe": html_groupe,
+    }
+    sauvegarder_tournois_data(td)
+
+    base_url = APP_PUBLIC_URL.rstrip("/")
+    url_approuver = f"{base_url}/?approbation={token}"
+    url_refuser = f"{base_url}/?refus={token}"
+    sans_html = (
+        f"<p style='color:#b45309; font-size:12.5px;'>⚠️ <strong>Sans courriel enregistré ({len(sans_courriel)}) :</strong> {', '.join(sans_courriel)}</p>"
+        if sans_courriel else ""
+    )
+    liste_dest_txt = ", ".join(f"{n} ({e})" for n, e in details_joueurs)
+
+    sujet_approb = f"🔐 [APPROBATION REQUISE] Diffusion horaire aux {len(emails_joueurs)} joueurs — {titre_t}"
+    texte_approb = (
+        f"Demande d'approbation pour diffusion groupée aux joueurs inscrits au tournoi {titre_t}.\n"
+        f"Nombre de destinataires : {len(emails_joueurs)}\n"
+        f"Approuver et envoyer : {url_approuver}\n"
+        f"Refuser / Annuler : {url_refuser}\n"
+    )
+    html_approb = f"""<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, Helvetica, sans-serif; background:#f8fafc; margin:0; padding:20px; color:#0f172a;">
+    <div style="max-width:680px; margin:0 auto; background:#ffffff; border-radius:10px; border:1px solid #e2e8f0; overflow:hidden;">
+        <div style="background:linear-gradient(135deg, #0b3c5d, #0f766e); color:#ffffff; padding:18px 24px;">
+            <div style="font-size:12px; text-transform:uppercase; letter-spacing:1px; opacity:0.85;">Approbation administrateur requise</div>
+            <h2 style="margin:4px 0 0 0; font-size:19px;">🔐 Diffusion aux joueurs — {titre_t}</h2>
+        </div>
+        <div style="padding:20px 24px; font-size:14px; line-height:1.6;">
+            <p style="margin-top:0;">Bonjour, veuillez approuver l'envoi de l'horaire officiel aux <strong>{len(emails_joueurs)} joueur(s) inscrit(s)</strong> ayant une adresse courriel :</p>
+            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 14px; font-size:12.5px; color:#334155; margin-bottom:14px;">
+                <strong>Destinataires ({len(emails_joueurs)}) :</strong> {liste_dest_txt}
+            </div>
+            {sans_html}
+            <div style="text-align:center; margin:22px 0;">
+                <a href="{url_approuver}" style="display:inline-block; background:#16a34a; color:#ffffff; text-decoration:none; font-weight:700; padding:13px 24px; border-radius:8px; font-size:15px; margin:4px;">✅ Approuver et envoyer aux {len(emails_joueurs)} joueurs</a>
+                <a href="{url_refuser}" style="display:inline-block; background:#dc2626; color:#ffffff; text-decoration:none; font-weight:700; padding:13px 20px; border-radius:8px; font-size:14px; margin:4px;">❌ Annuler</a>
+            </div>
+            <p style="font-size:12px; color:#64748b;">Un seul clic sur <strong>Approuver</strong> déclenche immédiatement l'envoi du courriel groupé via l'application.</p>
+        </div>
+    </div>
+</body>
+</html>"""
+
+    ok, msg = envoyer_courriel(approbateur, sujet_approb, texte_approb, html_approb, config_email)
+    return ok, (f"Demande d'approbation envoyée à {approbateur} ({len(emails_joueurs)} joueur(s) ciblé(s))." if ok else msg)
+
+
+def traiter_lien_approbation_courriel():
+    """Traite les paramètres URL ?approbation=<token> ou ?refus=<token> ouverts depuis le courriel de l'approbateur."""
+    token_app = st.query_params.get("approbation")
+    token_ref = st.query_params.get("refus")
+    if isinstance(token_app, list):
+        token_app = token_app[0] if token_app else ""
+    if isinstance(token_ref, list):
+        token_ref = token_ref[0] if token_ref else ""
+
+    token = str(token_app or token_ref or "").strip()
+    est_approbation = bool(token_app)
+    if not token:
+        return False
+
+    st.markdown("## 🔐 Validation d'envoi groupé — Ligue de billard Saphir")
+    td = charger_tournois_data()
+    approbations = td.get("approbations_courriel", {})
+    rec = approbations.get(token)
+
+    if not rec:
+        st.error("❌ Jeton d'approbation introuvable ou expiré.")
+        if st.button("🏠 Retour à l'application", type="primary"):
+            st.query_params.clear()
+            st.rerun()
+        return True
+
+    statut_rec = rec.get("statut", "en_attente")
+    if statut_rec == "approuve":
+        st.success(f"✅ Cette demande pour **{rec.get('tournoi_titre')}** a déjà été approuvée et envoyée le {rec.get('date_traitement', '')} ({rec.get('nb_destinataires', 0)} destinataires).")
+    elif statut_rec == "refuse":
+        st.warning(f"❌ Cette demande pour **{rec.get('tournoi_titre')}** a été annulée le {rec.get('date_traitement', '')}.")
+    elif est_approbation:
+        cfg = charger_config_email()
+        dest_list = rec.get("destinataires", [])
+        ok, msg = envoyer_courriel(
+            ", ".join(dest_list),
+            rec.get("sujet_groupe", ""),
+            rec.get("texte_groupe", ""),
+            rec.get("html_groupe", ""),
+            cfg,
+        )
+        if ok:
+            rec["statut"] = "approuve"
+            rec["date_traitement"] = datetime.now().strftime("%d/%m/%Y à %H:%M")
+            sauvegarder_tournois_data(td)
+            st.success(f"✅ Approuvé ! Le courriel a été expédié aux **{len(dest_list)} joueur(s) inscrit(s)** au tournoi **{rec.get('tournoi_titre')}**.")
+        else:
+            st.error(f"❌ Erreur lors de l'envoi au groupe : {msg}")
+    else:
+        rec["statut"] = "refuse"
+        rec["date_traitement"] = datetime.now().strftime("%d/%m/%Y à %H:%M")
+        sauvegarder_tournois_data(td)
+        st.info(f"❌ L'envoi groupé pour **{rec.get('tournoi_titre')}** a été annulé.")
+
+    if st.button("🏠 Accéder à l'application", type="primary"):
+        st.query_params.clear()
+        st.rerun()
+    return True
+
+
 
 def envoyer_courriel_sauvegarde_tournoi(tournoi_obj=None, mode="simple", destinataires_specifiques=None):
 
@@ -31093,8 +31388,10 @@ def afficher_formulaire_creation_tournoi(mode="simple", key_suffix="", est_edite
                 sauvegarder_tournois_data(td_current)
 
                 ok_mail_wb, msg_mail_wb = envoyer_courriel_lancement_winner_bracket(t_cree, mode=mode)
+                ok_app_j, msg_app_j = envoyer_demande_approbation_tournoi(t_cree, mode=mode)
                 if ok_mail_wb:
-                    st.session_state[f"msg_lancement_mail_{mode}"] = "📧 Courriel HTML de l'horaire des joueurs actifs envoyé aux administrateurs."
+                    extra_app = f" • 🔐 {msg_app_j}" if ok_app_j else ""
+                    st.session_state[f"msg_lancement_mail_{mode}"] = f"📧 Courriel HTML de l'horaire des joueurs actifs envoyé aux administrateurs{extra_app}"
                 else:
                     st.session_state[f"msg_lancement_mail_{mode}"] = f"⚠️ Tournoi lancé, mais courriel non envoyé : {msg_mail_wb}"
 
@@ -32651,6 +32948,18 @@ def afficher_section_tournoi(mode="simple"):
                     else:
 
                         st.error(f"❌ {msg_act_m}")
+
+                if est_editeur:
+                    st.divider()
+                    st.markdown("##### 🔐 Approbation → Joueurs inscrits")
+                    st.caption("Envoie un courriel au 1ᵉʳ administrateur avec un bouton de validation en 1 clic pour diffuser l'horaire aux joueurs inscrits.")
+                    if st.button("📩 Demander approbation (→ joueurs)", type="secondary", use_container_width=True, key=f"btn_req_approb_{mode}"):
+                        with st.spinner("Envoi de la demande d'approbation..."):
+                            ok_ap, msg_ap = envoyer_demande_approbation_tournoi(tournoi, mode=mode)
+                        if ok_ap:
+                            st.success(f"✅ {msg_ap}")
+                        else:
+                            st.error(f"❌ {msg_ap}")
 
 
 
@@ -36205,6 +36514,11 @@ est_vue_tv = (
 if est_vue_tv:
 
     afficher_mode_televiseur_tournoi()
+
+    st.stop()
+
+
+if traiter_lien_approbation_courriel():
 
     st.stop()
 
