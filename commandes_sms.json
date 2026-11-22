@@ -130,16 +130,18 @@
         "type": "tournoi_sms",
         "telephone": "4188720836",
         "message": "[TOURNOI SAPHIR] Appel Table 1 (T1_M1)\nR. Vezina vs V. Turcotte\nMatch prevu a 13h00. Presentez-vous a votre table !",
-        "statut": "en_attente",
-        "date": "2026-11-09 15:59:57"
+        "statut": "envoye",
+        "date": "2026-11-09 15:59:57",
+        "date_envoi": "2026-11-11 16:27:34"
     },
     {
         "id": "cmd_t_1794239997_1_218",
         "type": "tournoi_sms",
         "telephone": "4185763878",
         "message": "[TOURNOI SAPHIR] Appel Table 1 (T1_M1)\nR. Vezina vs V. Turcotte\nMatch prevu a 13h00. Presentez-vous a votre table !",
-        "statut": "en_attente",
-        "date": "2026-11-09 15:59:57"
+        "statut": "envoye",
+        "date": "2026-11-09 15:59:57",
+        "date_envoi": "2026-11-11 16:27:34"
     },
     {
         "id": "cmd_t_1794239999_0_2809",
@@ -164,55 +166,94 @@
         "type": "tournoi_sms",
         "telephone": "4185763878",
         "message": "[TOURNOI SAPHIR] Appel Table 1 (T1_M2)\nV. Turcotte vs G. Vezina\nMatch prevu a 13h30. Presentez-vous a votre table !",
-        "statut": "en_attente",
-        "date": "2026-11-09 16:05:31"
+        "statut": "envoye",
+        "date": "2026-11-09 16:05:31",
+        "date_envoi": "2026-11-11 16:27:34"
     },
     {
         "id": "cmd_t_1794240331_1_604",
         "type": "tournoi_sms",
         "telephone": "4184077542",
         "message": "[TOURNOI SAPHIR] Appel Table 1 (T1_M2)\nV. Turcotte vs G. Vezina\nMatch prevu a 13h30. Presentez-vous a votre table !",
-        "statut": "en_attente",
-        "date": "2026-11-09 16:05:31"
+        "statut": "envoye",
+        "date": "2026-11-09 16:05:31",
+        "date_envoi": "2026-11-11 16:27:34"
     },
     {
         "id": "cmd_t_1794241189_0_7696",
         "type": "tournoi_sms",
         "telephone": "4188720836",
         "message": "[TOURNOI SAPHIR] Appel Table 1 (T2_M1)\nR. Vezina vs V. Turcotte\nMatch prevu a 14h00. Presentez-vous a votre table !",
-        "statut": "en_attente",
-        "date": "2026-11-09 16:19:49"
+        "statut": "envoye",
+        "date": "2026-11-09 16:19:49",
+        "date_envoi": "2026-11-11 16:27:34"
     },
     {
         "id": "cmd_t_1794241189_1_257",
         "type": "tournoi_sms",
         "telephone": "4185763878",
         "message": "[TOURNOI SAPHIR] Appel Table 1 (T2_M1)\nR. Vezina vs V. Turcotte\nMatch prevu a 14h00. Presentez-vous a votre table !",
-        "statut": "en_attente",
-        "date": "2026-11-09 16:19:49"
+        "statut": "envoye",
+        "date": "2026-11-09 16:19:49",
+        "date_envoi": "2026-11-11 16:27:35"
     },
     {
         "id": "cmd_t_1794251209_0_7845",
         "type": "tournoi_sms",
         "telephone": "4188720836",
         "message": "[TOURNOI SAPHIR] Appel Table 1 (T2_M1)\nR. Vezina vs V. Turcotte\nMatch prevu a 10h00. Presentez-vous a votre table !",
-        "statut": "en_attente",
-        "date": "2026-11-09 19:06:49"
+        "statut": "envoye",
+        "date": "2026-11-09 19:06:49",
+        "date_envoi": "2026-11-11 16:27:35"
     },
     {
         "id": "cmd_t_1794251209_1_8699",
         "type": "tournoi_sms",
         "telephone": "4185763878",
         "message": "[TOURNOI SAPHIR] Appel Table 1 (T2_M1)\nR. Vezina vs V. Turcotte\nMatch prevu a 10h00. Presentez-vous a votre table !",
-        "statut": "en_attente",
-        "date": "2026-11-09 19:06:49"
+        "statut": "envoye",
+        "date": "2026-11-09 19:06:49",
+        "date_envoi": "2026-11-11 16:27:35"
     },
     {
         "id": "cmd_1794256745_449",
         "type": "nouveau_match",
         "telephone": "4188720836",
         "message": "[LIGUE SAPHIR] Echo (66) vs Alpha (58)\nEcho: G.Dumais:21, G.Vezina:21, A.St-Pierre:24\nAlpha: L.Morin:18, G.Lavoie:20, C.Harvey:20",
+        "statut": "envoye",
+        "date": "2026-11-09 20:39:05",
+        "date_envoi": "2026-11-11 16:27:35"
+    },
+    {
+        "id": "cmd_t_1795377755_0_5589",
+        "type": "tournoi_sms",
+        "telephone": "4188061492",
+        "message": "[TOURNOI SAPHIR] Appel Table 1 (W1_M1)\nR. Theberge & J. Brochu vs A. St-Pierre & A. Bellemare\nMatch prevu a 09h00. Presentez-vous a votre table !",
         "statut": "en_attente",
-        "date": "2026-11-09 20:39:05"
+        "date": "2026-11-22 20:02:35"
+    },
+    {
+        "id": "cmd_t_1795377755_1_1108",
+        "type": "tournoi_sms",
+        "telephone": "3673806038",
+        "message": "[TOURNOI SAPHIR] Appel Table 1 (W1_M1)\nR. Theberge & J. Brochu vs A. St-Pierre & A. Bellemare\nMatch prevu a 09h00. Presentez-vous a votre table !",
+        "statut": "en_attente",
+        "date": "2026-11-22 20:02:35"
+    },
+    {
+        "id": "cmd_t_1795377755_2_7647",
+        "type": "tournoi_sms",
+        "telephone": "4189311177",
+        "message": "[TOURNOI SAPHIR] Appel Table 1 (W1_M1)\nR. Theberge & J. Brochu vs A. St-Pierre & A. Bellemare\nMatch prevu a 09h00. Presentez-vous a votre table !",
+        "statut": "en_attente",
+        "date": "2026-11-22 20:02:35"
+    },
+    {
+        "id": "cmd_t_1795377755_3_7818",
+        "type": "tournoi_sms",
+        "telephone": "4384046870",
+        "message": "[TOURNOI SAPHIR] Appel Table 1 (W1_M1)\nR. Theberge & J. Brochu vs A. St-Pierre & A. Bellemare\nMatch prevu a 09h00. Presentez-vous a votre table !",
+        "statut": "en_attente",
+        "date": "2026-11-22 20:02:35"
     }
 ]
