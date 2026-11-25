@@ -15241,8 +15241,21 @@ def raccourcir_equipe(equipe_str):
     return _court(equipe_str)
 
 
+def est_sms_admin_actif():
+    """Verifie si l'envoi automatique des SMS est active globalement dans le volet Administration."""
+    try:
+        cfg_sms = charger_config_sms()
+        if isinstance(cfg_sms, dict):
+            return bool(cfg_sms.get("sms_actif", True))
+    except Exception:
+        pass
+    return True
+
+
 def trouver_destinataires_match_tournoi(ea, eb, base_sms=None):
-    """Localise les numeros de cellulaire des joueurs d'une rencontre de tournoi (simple ou double)."""
+    """Localise les numeros de cellulaire des joueurs autorises d'une rencontre de tournoi (simple ou double).
+    Respecte les restrictions du volet Administration : consentement SMS coche et joueur actif.
+    """
     if base_sms is None:
         try:
             base_sms = charger_joueurs_sms()
@@ -15274,11 +15287,13 @@ def trouver_destinataires_match_tournoi(ea, eb, base_sms=None):
             if nom_norm and entry_norm and (nom_norm in entry_norm or entry_norm in nom_norm):
                 trouve = j_entry
                 break
+        consentement_ok = bool(trouve.get("consentement", False)) if trouve else False
+        actif_ok = bool(trouve.get("actif", True)) if trouve else False
         tel = re.sub(r"[^0-9+]", "", str(trouve.get("telephone", ""))) if trouve else ""
-        if len(tel) >= 7:
-            destinataires.append({"nom": nom_j, "telephone": tel})
+        if trouve and consentement_ok and actif_ok and len(tel) >= 7:
+            destinataires.append({"nom": nom_j, "telephone": tel, "consentement": True, "actif": True})
         else:
-            destinataires.append({"nom": nom_j, "telephone": None})
+            destinataires.append({"nom": nom_j, "telephone": None, "consentement": consentement_ok, "actif": actif_ok})
     return destinataires
 
 
@@ -15319,12 +15334,21 @@ def formater_sms_changement_horaire_tournoi(mid, ea, eb, table, nouvelle_heure):
 
 def envoyer_sms_groupe_tournoi(destinataires, message_texte):
     """Enregistre un lot de SMS pour les joueurs du tournoi et diffuse un signal Pub/Sub unique."""
+    if not est_sms_admin_actif():
+        return 0, "Service SMS desactive globalement dans l'administration."
+
     if not destinataires:
         return 0, "Aucun destinataire."
 
-    valides = [d for d in destinataires if d.get("telephone") and len(str(d.get("telephone", "")).strip()) >= 7]
+    valides = [
+        d for d in destinataires
+        if d.get("telephone")
+        and len(str(d.get("telephone", "")).strip()) >= 7
+        and d.get("consentement", True)
+        and d.get("actif", True)
+    ]
     if not valides:
-        return 0, "Aucun numero de cellulaire valide parmi les participants."
+        return 0, "Aucun joueur autorise (consentement SMS requis / joueur actif) avec un numero valide."
 
     commandes = charger_commandes_sms()
     nb_ajoutes = 0
@@ -21277,6 +21301,8 @@ def verifier_et_diffuser_sms_tournoi_prochaine_demi_heure(tournoi, tous_les_matc
     """
     if not tournoi or not isinstance(tournoi, dict) or not tournoi.get("sms_tournoi_actif", False):
         return 0, []
+    if not est_sms_admin_actif():
+        return 0, []
 
     if tous_les_matchs is None:
         tous_les_matchs = []
@@ -21350,6 +21376,8 @@ def envoyer_sms_joueurs_en_attente_tournoi(tournoi, tous_les_matchs=None):
         return 0, []
 
     tournoi["sms_tournoi_actif"] = True
+    if not est_sms_admin_actif():
+        return 0, []
 
     if tous_les_matchs is None:
         tous_les_matchs = []
@@ -21528,6 +21556,8 @@ def envoyer_convocations_changement_heure_match(tournoi, match_obj, nouvelle_heu
     Traite également les matchs ultérieurs décalés s'ils sont prêts ou déjà convoqués.
     """
     if not tournoi or not isinstance(tournoi, dict) or not match_obj or not isinstance(match_obj, dict):
+        return 0, []
+    if not est_sms_admin_actif():
         return 0, []
 
     convocations = tournoi.setdefault("convocations_sms_envoyees", {})
