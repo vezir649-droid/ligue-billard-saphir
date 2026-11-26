@@ -8254,38 +8254,6 @@ def cb_victoire_rapide_8pts(num_manche, cote):
 
 
 
-def cb_inverser_ordre_joueurs_rapide(cote_eq, pos1, pos2):
-
-    """Permet de permuter rapidement deux joueurs (ex: J1 ↔ J2 ou J2 ↔ J3) dans l'alignement depuis le panneau mobile."""
-
-    k1 = f"sel_{pos1}_{cote_eq}"
-
-    k2 = f"sel_{pos2}_{cote_eq}"
-
-    v1 = st.session_state.get(k1)
-
-    v2 = st.session_state.get(k2)
-
-    if v1 is not None and v2 is not None:
-
-        st.session_state[k1] = v2
-
-        st.session_state[k2] = v1
-
-        st.session_state[f"last_nom_{pos1}_{cote_eq}"] = v2
-
-        st.session_state[f"last_nom_{pos2}_{cote_eq}"] = v1
-
-        st.session_state[f"moy_{pos1}_{cote_eq}"] = obtenir_moyenne_joueur(v2)
-
-        st.session_state[f"moy_{pos2}_{cote_eq}"] = obtenir_moyenne_joueur(v1)
-
-        st.session_state[f"pts_{pos1}_{cote_eq}"] = calculer_score_absent(st.session_state[f"moy_{pos1}_{cote_eq}"])
-
-        st.session_state[f"pts_{pos2}_{cote_eq}"] = calculer_score_absent(st.session_state[f"moy_{pos2}_{cote_eq}"])
-
-
-
 # ==============================================================================
 
 # MODULE DE NUMÉRISATION ET RECONNAISSANCE DE FEUILLE DE MATCH (GEMINI VISION)
@@ -39464,26 +39432,18 @@ with tab_feuille:
 
 
         st.markdown(f"**👥 Alignement — {equipe_receveur}**")
-        b_sw_r1, b_sw_r2, b_sw_r3 = st.columns(3)
-        b_sw_r1.button("🔀 J1↔J2", key="btn_sw_r_12", use_container_width=True, disabled=not est_editeur, on_click=cb_inverser_ordre_joueurs_rapide, args=("rec", "j1", "j2"), help="Permuter Joueur 1 et Joueur 2")
-        b_sw_r2.button("🔀 J2↔J3", key="btn_sw_r_23", use_container_width=True, disabled=not est_editeur, on_click=cb_inverser_ordre_joueurs_rapide, args=("rec", "j2", "j3"), help="Permuter Joueur 2 et Joueur 3")
-        b_sw_r3.button("🔀 J1↔J3", key="btn_sw_r_13", use_container_width=True, disabled=not est_editeur, on_click=cb_inverser_ordre_joueurs_rapide, args=("rec", "j1", "j3"), help="Permuter Joueur 1 et Joueur 3")
-
-
 
         # Registre des joueurs actifs pour alimenter les listes déroulantes
         reg_match_live = charger_registre_joueurs()
-        noms_actifs_ligue = [j["nom"] for j in reg_match_live if j.get("actif", True)]
         dict_actifs_ligue = {j["nom"].strip().lower(): bool(j.get("actif", True)) for j in reg_match_live}
 
         # Filtrer le roster receveur pour écarter les inactifs
         roster_rec_clean = [p for p in roster_rec if dict_actifs_ligue.get(p.strip().lower(), True) or (p.lower().startswith("joueur ") and len(p) <= 9 and p[7:].isdigit())]
         while len(roster_rec_clean) < 3:
             roster_rec_clean.append(f"Joueur {len(roster_rec_clean) + 1}")
-        remplacants_rec_dispos = [p for p in noms_actifs_ligue if p not in roster_rec_clean]
 
-        # Options sécurisées pour Joueur 1
-        options_j1_rec = list(roster_rec_clean) + remplacants_rec_dispos + ["Remplaçant..."]
+        # Options limitées aux joueurs de l'équipe pour Joueur 1
+        options_j1_rec = list(roster_rec_clean)
 
         if "sel_j1_rec" in st.session_state and st.session_state["sel_j1_rec"] not in options_j1_rec:
             st.session_state["sel_j1_rec"] = options_j1_rec[0]
@@ -39494,10 +39454,7 @@ with tab_feuille:
 
         col_j1_r1, col_j1_r2 = st.columns([3, 2])
         sel_j1_rec = col_j1_r1.selectbox("Sélection Joueur 1 :", options_j1_rec, index=def_idx_j1_rec, key="sel_j1_rec", disabled=not est_editeur)
-        if sel_j1_rec == "Remplaçant...":
-            j1_rec = st.text_input("Nom Joueur 1 (Remplaçant)", value=st.session_state.get("cust_j1_rec", "Remplaçant 1"), key="cust_j1_rec", disabled=not est_editeur)
-        else:
-            j1_rec = sel_j1_rec
+        j1_rec = sel_j1_rec
 
         if "last_nom_j1_rec" not in st.session_state or st.session_state["last_nom_j1_rec"] != j1_rec:
             st.session_state["last_nom_j1_rec"] = j1_rec
@@ -39526,8 +39483,8 @@ with tab_feuille:
         else:
             j1_rec_pts = int(st.session_state.get("pts_j1_rec", 0))
 
-        # Options sécurisées pour Joueur 2
-        options_j2_rec = [p for p in roster_rec_clean if p != sel_j1_rec] + [p for p in remplacants_rec_dispos if p != sel_j1_rec] + ["Remplaçant..."]
+        # Options limitées aux joueurs restants de l'équipe pour Joueur 2
+        options_j2_rec = [p for p in roster_rec_clean if p != sel_j1_rec]
 
         if "sel_j2_rec" in st.session_state and st.session_state["sel_j2_rec"] not in options_j2_rec:
             st.session_state["sel_j2_rec"] = options_j2_rec[0]
@@ -39538,10 +39495,7 @@ with tab_feuille:
 
         col_j2_r1, col_j2_r2 = st.columns([3, 2])
         sel_j2_rec = col_j2_r1.selectbox("Sélection Joueur 2 :", options_j2_rec, index=def_idx_j2_rec, key="sel_j2_rec", disabled=not est_editeur)
-        if sel_j2_rec == "Remplaçant...":
-            j2_rec = st.text_input("Nom Joueur 2 (Remplaçant)", value=st.session_state.get("cust_j2_rec", "Remplaçant 2"), key="cust_j2_rec", disabled=not est_editeur)
-        else:
-            j2_rec = sel_j2_rec
+        j2_rec = sel_j2_rec
 
         if "last_nom_j2_rec" not in st.session_state or st.session_state["last_nom_j2_rec"] != j2_rec:
             st.session_state["last_nom_j2_rec"] = j2_rec
@@ -39570,26 +39524,28 @@ with tab_feuille:
         else:
             j2_rec_pts = int(st.session_state.get("pts_j2_rec", 0))
 
-        # Options sécurisées pour Joueur 3 (déduit automatiquement ou remplaçant)
-        options_j3_rec = [p for p in roster_rec_clean if p != sel_j1_rec and p != sel_j2_rec] + [p for p in remplacants_rec_dispos if p != sel_j1_rec and p != sel_j2_rec] + ["Remplaçant..."]
-
-        if "sel_j3_rec" in st.session_state and st.session_state["sel_j3_rec"] not in options_j3_rec:
-            st.session_state["sel_j3_rec"] = options_j3_rec[0]
-
-        def_idx_j3_rec = 0
-        if "sel_j3_rec" in st.session_state and st.session_state["sel_j3_rec"] in options_j3_rec:
-            def_idx_j3_rec = options_j3_rec.index(st.session_state["sel_j3_rec"])
+        # Joueur 3 déduit automatiquement parmi les joueurs de l'équipe
+        options_j3_rec = [p for p in roster_rec_clean if p != sel_j1_rec and p != sel_j2_rec]
 
         col_j3_r1, col_j3_r2 = st.columns([3, 2])
-        sel_j3_rec = col_j3_r1.selectbox("Sélection Joueur 3 :", options_j3_rec, index=def_idx_j3_rec, key="sel_j3_rec", disabled=not est_editeur)
-
-        if sel_j3_rec == "Remplaçant...":
-
-            j3_rec = st.text_input("Nom Joueur 3 (Remplaçant)", value=st.session_state.get("cust_j3_rec", "Remplaçant 3"), key="cust_j3_rec", disabled=not est_editeur)
-
-        else:
-
+        if len(options_j3_rec) == 1:
+            sel_j3_rec = options_j3_rec[0]
+            st.session_state["sel_j3_rec"] = sel_j3_rec
             j3_rec = sel_j3_rec
+            col_j3_r1.markdown(f"**Joueur 3 (déduit) :**  \n{j3_rec}")
+        elif len(options_j3_rec) > 1:
+            if "sel_j3_rec" in st.session_state and st.session_state["sel_j3_rec"] not in options_j3_rec:
+                st.session_state["sel_j3_rec"] = options_j3_rec[0]
+            def_idx_j3_rec = 0
+            if "sel_j3_rec" in st.session_state and st.session_state["sel_j3_rec"] in options_j3_rec:
+                def_idx_j3_rec = options_j3_rec.index(st.session_state["sel_j3_rec"])
+            sel_j3_rec = col_j3_r1.selectbox("Sélection Joueur 3 :", options_j3_rec, index=def_idx_j3_rec, key="sel_j3_rec", disabled=not est_editeur)
+            j3_rec = sel_j3_rec
+        else:
+            sel_j3_rec = "Joueur 3"
+            st.session_state["sel_j3_rec"] = sel_j3_rec
+            j3_rec = sel_j3_rec
+            col_j3_r1.markdown(f"**Joueur 3 :**  \n{j3_rec}")
 
 
 
@@ -39690,21 +39646,14 @@ with tab_feuille:
 
 
         st.markdown(f"**👥 Alignement — {equipe_visiteur}**")
-        b_sw_v1, b_sw_v2, b_sw_v3 = st.columns(3)
-        b_sw_v1.button("🔀 J1↔J2", key="btn_sw_v_12", use_container_width=True, disabled=not est_editeur, on_click=cb_inverser_ordre_joueurs_rapide, args=("vis", "j1", "j2"), help="Permuter Joueur 1 et Joueur 2")
-        b_sw_v2.button("🔀 J2↔J3", key="btn_sw_v_23", use_container_width=True, disabled=not est_editeur, on_click=cb_inverser_ordre_joueurs_rapide, args=("vis", "j2", "j3"), help="Permuter Joueur 2 et Joueur 3")
-        b_sw_v3.button("🔀 J1↔J3", key="btn_sw_v_13", use_container_width=True, disabled=not est_editeur, on_click=cb_inverser_ordre_joueurs_rapide, args=("vis", "j1", "j3"), help="Permuter Joueur 1 et Joueur 3")
-
-
 
         # Filtrer le roster visiteur pour écarter les inactifs
         roster_vis_clean = [p for p in roster_vis if dict_actifs_ligue.get(p.strip().lower(), True) or (p.lower().startswith("joueur ") and len(p) <= 9 and p[7:].isdigit())]
         while len(roster_vis_clean) < 3:
             roster_vis_clean.append(f"Joueur {len(roster_vis_clean) + 1}")
-        remplacants_vis_dispos = [p for p in noms_actifs_ligue if p not in roster_vis_clean]
 
-        # Options sécurisées pour Joueur 1
-        options_j1_vis = list(roster_vis_clean) + remplacants_vis_dispos + ["Remplaçant..."]
+        # Options limitées aux joueurs de l'équipe pour Joueur 1
+        options_j1_vis = list(roster_vis_clean)
 
         if "sel_j1_vis" in st.session_state and st.session_state["sel_j1_vis"] not in options_j1_vis:
             st.session_state["sel_j1_vis"] = options_j1_vis[0]
@@ -39715,10 +39664,7 @@ with tab_feuille:
 
         col_j1_v1, col_j1_v2 = st.columns([3, 2])
         sel_j1_vis = col_j1_v1.selectbox("Sélection Joueur 1 :", options_j1_vis, index=def_idx_j1_vis, key="sel_j1_vis", disabled=not est_editeur)
-        if sel_j1_vis == "Remplaçant...":
-            j1_vis = st.text_input("Nom Visiteur 1 (Remplaçant)", value=st.session_state.get("cust_j1_vis", "Remplaçant 1"), key="cust_j1_vis", disabled=not est_editeur)
-        else:
-            j1_vis = sel_j1_vis
+        j1_vis = sel_j1_vis
 
         if "last_nom_j1_vis" not in st.session_state or st.session_state["last_nom_j1_vis"] != j1_vis:
             st.session_state["last_nom_j1_vis"] = j1_vis
@@ -39747,8 +39693,8 @@ with tab_feuille:
         else:
             j1_vis_pts = int(st.session_state.get("pts_j1_vis", 0))
 
-        # Options sécurisées pour Joueur 2
-        options_j2_vis = [p for p in roster_vis_clean if p != sel_j1_vis] + [p for p in remplacants_vis_dispos if p != sel_j1_vis] + ["Remplaçant..."]
+        # Options limitées aux joueurs restants de l'équipe pour Joueur 2
+        options_j2_vis = [p for p in roster_vis_clean if p != sel_j1_vis]
 
         if "sel_j2_vis" in st.session_state and st.session_state["sel_j2_vis"] not in options_j2_vis:
             st.session_state["sel_j2_vis"] = options_j2_vis[0]
@@ -39759,10 +39705,7 @@ with tab_feuille:
 
         col_j2_v1, col_j2_v2 = st.columns([3, 2])
         sel_j2_vis = col_j2_v1.selectbox("Sélection Joueur 2 :", options_j2_vis, index=def_idx_j2_vis, key="sel_j2_vis", disabled=not est_editeur)
-        if sel_j2_vis == "Remplaçant...":
-            j2_vis = st.text_input("Nom Visiteur 2 (Remplaçant)", value=st.session_state.get("cust_j2_vis", "Remplaçant 2"), key="cust_j2_vis", disabled=not est_editeur)
-        else:
-            j2_vis = sel_j2_vis
+        j2_vis = sel_j2_vis
 
         if "last_nom_j2_vis" not in st.session_state or st.session_state["last_nom_j2_vis"] != j2_vis:
             st.session_state["last_nom_j2_vis"] = j2_vis
@@ -39791,26 +39734,28 @@ with tab_feuille:
         else:
             j2_vis_pts = int(st.session_state.get("pts_j2_vis", 0))
 
-        # Options sécurisées pour Joueur 3 (déduit automatiquement ou remplaçant)
-        options_j3_vis = [p for p in roster_vis_clean if p != sel_j1_vis and p != sel_j2_vis] + [p for p in remplacants_vis_dispos if p != sel_j1_vis and p != sel_j2_vis] + ["Remplaçant..."]
-
-        if "sel_j3_vis" in st.session_state and st.session_state["sel_j3_vis"] not in options_j3_vis:
-            st.session_state["sel_j3_vis"] = options_j3_vis[0]
-
-        def_idx_j3_vis = 0
-        if "sel_j3_vis" in st.session_state and st.session_state["sel_j3_vis"] in options_j3_vis:
-            def_idx_j3_vis = options_j3_vis.index(st.session_state["sel_j3_vis"])
+        # Joueur 3 déduit automatiquement parmi les joueurs de l'équipe
+        options_j3_vis = [p for p in roster_vis_clean if p != sel_j1_vis and p != sel_j2_vis]
 
         col_j3_v1, col_j3_v2 = st.columns([3, 2])
-        sel_j3_vis = col_j3_v1.selectbox("Sélection Joueur 3 :", options_j3_vis, index=def_idx_j3_vis, key="sel_j3_vis", disabled=not est_editeur)
-
-        if sel_j3_vis == "Remplaçant...":
-
-            j3_vis = st.text_input("Nom Visiteur 3 (Remplaçant)", value=st.session_state.get("cust_j3_vis", "Remplaçant 3"), key="cust_j3_vis", disabled=not est_editeur)
-
-        else:
-
+        if len(options_j3_vis) == 1:
+            sel_j3_vis = options_j3_vis[0]
+            st.session_state["sel_j3_vis"] = sel_j3_vis
             j3_vis = sel_j3_vis
+            col_j3_v1.markdown(f"**Joueur 3 (déduit) :**  \n{j3_vis}")
+        elif len(options_j3_vis) > 1:
+            if "sel_j3_vis" in st.session_state and st.session_state["sel_j3_vis"] not in options_j3_vis:
+                st.session_state["sel_j3_vis"] = options_j3_vis[0]
+            def_idx_j3_vis = 0
+            if "sel_j3_vis" in st.session_state and st.session_state["sel_j3_vis"] in options_j3_vis:
+                def_idx_j3_vis = options_j3_vis.index(st.session_state["sel_j3_vis"])
+            sel_j3_vis = col_j3_v1.selectbox("Sélection Joueur 3 :", options_j3_vis, index=def_idx_j3_vis, key="sel_j3_vis", disabled=not est_editeur)
+            j3_vis = sel_j3_vis
+        else:
+            sel_j3_vis = "Joueur 3"
+            st.session_state["sel_j3_vis"] = sel_j3_vis
+            j3_vis = sel_j3_vis
+            col_j3_v1.markdown(f"**Joueur 3 :**  \n{j3_vis}")
 
 
 
