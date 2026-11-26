@@ -10869,7 +10869,9 @@ def afficher_scanner_ia_match_anterieur():
 
                   div[data-testid="stCameraInput"] {
 
-                    max-width: 560px !important;
+                    width: 100% !important;
+
+                    max-width: 850px !important;
 
                     margin: 0 auto !important;
 
@@ -10883,13 +10885,23 @@ def afficher_scanner_ia_match_anterieur():
 
                   }
 
+                  div[data-testid="stCameraInput"] > div {
+
+                    width: 100% !important;
+
+                    max-width: 100% !important;
+
+                  }
+
                   div[data-testid="stCameraInput"] video {
 
                     aspect-ratio: 3 / 4 !important;
 
-                    max-height: 64vh !important;
+                    max-height: 82vh !important;
 
-                    object-fit: cover !important;
+                    width: 100% !important;
+
+                    object-fit: contain !important;
 
                     border-radius: 10px !important;
 
@@ -10901,7 +10913,9 @@ def afficher_scanner_ia_match_anterieur():
 
                     aspect-ratio: 3 / 4 !important;
 
-                    max-height: 64vh !important;
+                    max-height: 82vh !important;
+
+                    width: 100% !important;
 
                     object-fit: contain !important;
 
@@ -11421,9 +11435,11 @@ def afficher_vue_scanner_feuille_match(label_direct):
 
             const aspectCss = isPort ? "3 / 4" : "16 / 9";
 
-            const maxHCss = isPort ? "66vh" : "48vh";
+            const maxHCss = isPort ? "82vh" : "78vh";
 
-            const maxWCss = isPort ? "560px" : "100%";
+            const maxWCss = isPort ? "850px" : "100%";
+
+            const fitCss = (pWin.__saphir_fit === "cover") ? "cover" : "contain";
 
             styleEl.textContent = `
 
@@ -11441,9 +11457,19 @@ def afficher_vue_scanner_feuille_match(label_direct):
 
                 box-shadow: 0 8px 24px rgba(0,0,0,0.4) !important;
 
+                width: 100% !important;
+
                 max-width: ${maxWCss} !important;
 
                 margin: 0 auto !important;
+
+              }
+
+              div[data-testid="stCameraInput"] > div {
+
+                width: 100% !important;
+
+                max-width: 100% !important;
 
               }
 
@@ -11455,7 +11481,7 @@ def afficher_vue_scanner_feuille_match(label_direct):
 
                 width: 100% !important;
 
-                object-fit: cover !important;
+                object-fit: ${fitCss} !important;
 
                 background: #020617 !important;
 
