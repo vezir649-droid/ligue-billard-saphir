@@ -775,25 +775,23 @@ div.stButton > button:active {
 
                     }
 
-                    // 4. Empêcher l'ouverture du clavier virtuel sur mobile lors de la saisie des scores (tournois et matchs)
-                    var selectInputs = doc.querySelectorAll('div[data-baseweb="select"] input');
-                    for (var s = 0; s < selectInputs.length; s++) {
-                        var sInp = selectInputs[s];
-                        var sLabel = (sInp.getAttribute('aria-label') || '');
-                        var sContainer = sInp.closest('div[data-baseweb="select"]');
-                        var sText = sContainer ? (sContainer.innerText || '') : '';
-                        if (
-                            sLabel.indexOf('Points de') !== -1 ||
-                            sLabel.indexOf('🎱') !== -1 ||
-                            sLabel.indexOf('Table') !== -1 ||
-                            sText.indexOf('Score :') !== -1
-                        ) {
-                            if (sInp.getAttribute('inputmode') !== 'none') {
-                                sInp.setAttribute('inputmode', 'none');
-                            }
-                            if (!sInp.hasAttribute('readonly')) {
-                                sInp.setAttribute('readonly', 'readonly');
-                            }
+                    // 4. Empêcher l'ouverture du clavier virtuel sur mobile lorsque non nécessaire (listes déroulantes, sélecteurs de date/heure)
+                    var noKeyboardInputs = doc.querySelectorAll(
+                        'div[data-testid="stSelectbox"] input, ' +
+                        'div[data-testid="stDateInput"] input, ' +
+                        'div[data-testid="stTimeInput"] input, ' +
+                        'div[data-baseweb="select"] input'
+                    );
+                    for (var s = 0; s < noKeyboardInputs.length; s++) {
+                        var sInp = noKeyboardInputs[s];
+                        if (sInp.closest('div[data-testid="stMultiSelect"]')) {
+                            continue;
+                        }
+                        if (sInp.getAttribute('inputmode') !== 'none') {
+                            sInp.setAttribute('inputmode', 'none');
+                        }
+                        if (!sInp.hasAttribute('readonly')) {
+                            sInp.setAttribute('readonly', 'readonly');
                         }
                     }
 
