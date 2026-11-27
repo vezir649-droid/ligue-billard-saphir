@@ -8376,11 +8376,11 @@ def analyser_photo_feuille_match(image_bytes, cle_api=None):
 
             im = im.convert("RGB")
 
-        im.thumbnail((2000, 2000), Image.Resampling.LANCZOS)
+        im.thumbnail((1600, 1600), Image.Resampling.LANCZOS)
 
         buf = io.BytesIO()
 
-        im.save(buf, format="JPEG", quality=92, subsampling=0, optimize=True)
+        im.save(buf, format="JPEG", quality=88, optimize=True)
 
         mime_img = "image/jpeg"
 
@@ -8392,9 +8392,9 @@ def analyser_photo_feuille_match(image_bytes, cle_api=None):
 
 
 
-    # 2. Modèles disponibles par ordre de priorité (privilégier les modèles haute précision)
+    # 2. Modèles disponibles par ordre de priorité (privilégier les modèles rapides et précis)
 
-    models_vision = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-flash-latest"]
+    models_vision = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-pro", "gemini-flash-latest"]
 
     # Chargement de la liste officielle des équipes et de leurs 3 joueurs réguliers
     equipes_dict_ref = charger_equipes_csv()
@@ -8499,6 +8499,20 @@ Consignes strictes :
 
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={api_k}"
 
+        gen_cfg = {
+
+            "temperature": 0.0,
+
+            "maxOutputTokens": 4096,
+
+            "responseMimeType": "application/json"
+
+        }
+
+        if "2.5-flash" in m:
+
+            gen_cfg["thinkingConfig"] = {"thinkingBudget": 512}
+
         payload = {
 
             "contents": [
@@ -8517,15 +8531,7 @@ Consignes strictes :
 
             ],
 
-            "generationConfig": {
-
-                "temperature": 0.0,
-
-                "maxOutputTokens": 4096,
-
-                "responseMimeType": "application/json"
-
-            }
+            "generationConfig": gen_cfg
 
         }
 
@@ -8541,7 +8547,7 @@ Consignes strictes :
 
         try:
 
-            with urllib.request.urlopen(req, timeout=75) as resp:
+            with urllib.request.urlopen(req, timeout=30) as resp:
 
                 data = json.loads(resp.read().decode("utf-8"))
 
