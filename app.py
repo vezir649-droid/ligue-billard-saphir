@@ -8358,7 +8358,7 @@ def analyser_photo_feuille_match(image_bytes, cle_api=None):
 
     
 
-    # 1. Redimensionnement haute netteté sans perte (PNG) avec rotation EXIF pour lecture optimale des chiffres manuscrits
+    # 1. Redimensionnement haute netteté (JPEG 4:4:4 sans sous-échantillonnage) avec rotation EXIF
 
     try:
 
@@ -8376,21 +8376,13 @@ def analyser_photo_feuille_match(image_bytes, cle_api=None):
 
             im = im.convert("RGB")
 
-        im.thumbnail((2400, 2400), Image.Resampling.LANCZOS)
+        im.thumbnail((2000, 2000), Image.Resampling.LANCZOS)
 
         buf = io.BytesIO()
 
-        im.save(buf, format="PNG", optimize=True)
+        im.save(buf, format="JPEG", quality=92, subsampling=0, optimize=True)
 
-        mime_img = "image/png"
-
-        if buf.tell() > 6 * 1024 * 1024:
-
-            buf = io.BytesIO()
-
-            im.save(buf, format="JPEG", quality=95, subsampling=0)
-
-            mime_img = "image/jpeg"
+        mime_img = "image/jpeg"
 
         b64_img = base64.b64encode(buf.getvalue()).decode("ascii")
 
@@ -8549,7 +8541,7 @@ Consignes strictes :
 
         try:
 
-            with urllib.request.urlopen(req, timeout=45) as resp:
+            with urllib.request.urlopen(req, timeout=75) as resp:
 
                 data = json.loads(resp.read().decode("utf-8"))
 
