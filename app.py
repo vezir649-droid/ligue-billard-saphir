@@ -8358,7 +8358,7 @@ def analyser_photo_feuille_match(image_bytes, cle_api=None):
 
     
 
-    # 1. Redimensionnement haute netteté avec rotation EXIF pour lecture optimale des chiffres manuscrits
+    # 1. Redimensionnement haute netteté sans perte (PNG) avec rotation EXIF pour lecture optimale des chiffres manuscrits
 
     try:
 
@@ -8376,11 +8376,21 @@ def analyser_photo_feuille_match(image_bytes, cle_api=None):
 
             im = im.convert("RGB")
 
-        im.thumbnail((2000, 2000), Image.Resampling.LANCZOS)
+        im.thumbnail((2400, 2400), Image.Resampling.LANCZOS)
 
         buf = io.BytesIO()
 
-        im.save(buf, format="JPEG", quality=90)
+        im.save(buf, format="PNG", optimize=True)
+
+        mime_img = "image/png"
+
+        if buf.tell() > 6 * 1024 * 1024:
+
+            buf = io.BytesIO()
+
+            im.save(buf, format="JPEG", quality=95, subsampling=0)
+
+            mime_img = "image/jpeg"
 
         b64_img = base64.b64encode(buf.getvalue()).decode("ascii")
 
@@ -8390,9 +8400,9 @@ def analyser_photo_feuille_match(image_bytes, cle_api=None):
 
 
 
-    # 2. Modèles disponibles par ordre de priorité
+    # 2. Modèles disponibles par ordre de priorité (privilégier les modèles haute précision)
 
-    models_vision = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"]
+    models_vision = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-flash-latest"]
 
     # Chargement de la liste officielle des équipes et de leurs 3 joueurs réguliers
     equipes_dict_ref = charger_equipes_csv()
@@ -8479,6 +8489,8 @@ Consignes strictes :
 
 - score_a et score_b sont des entiers compris entre 0 et 8 inclusivement (mets 0 si une manche n'est pas encore jouée / case vide).
 
+- RÈGLE MÉTIER CRUCIALE POUR LES CHIFFRES : Au billard « Boule en main », dans presque chaque manche jouée, le gagnant obtient exactement 8 points et le perdant obtient entre 0 et 7 points. Observe très attentivement chaque chiffre manuscrit (distingue bien 1 vs 7, 3 vs 8, 5 vs 6, 4 vs 9, 0 vs 6/8) et valide ta lecture en additionnant les 3 manches de chaque joueur pour vérifier qu'elles correspondent exactement au total individuel inscrit sur la feuille (totaux_joueurs_rec / totaux_joueurs_vis) ainsi qu'aux totaux d'équipe (total_rec / total_vis).
+
 - est_partiel vaut true si certaines manches ne sont pas encore jouées (cases vides) ou si la feuille est incomplète, sinon false.
 
 - incertitudes est une liste de chaînes signalant toute rature, chiffre manuscrit ambigu (ex: hésitation entre 5 et 6), nom difficile à lire ou déduit des équipes cédulées.
@@ -8503,7 +8515,7 @@ Consignes strictes :
 
                     "parts": [
 
-                        {"inline_data": {"mime_type": "image/jpeg", "data": b64_img}},
+                        {"inline_data": {"mime_type": mime_img, "data": b64_img}},
 
                         {"text": prompt}
 
@@ -8517,7 +8529,9 @@ Consignes strictes :
 
                 "temperature": 0.0,
 
-                "maxOutputTokens": 2048
+                "maxOutputTokens": 4096,
+
+                "responseMimeType": "application/json"
 
             }
 
@@ -8535,7 +8549,7 @@ Consignes strictes :
 
         try:
 
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with urllib.request.urlopen(req, timeout=45) as resp:
 
                 data = json.loads(resp.read().decode("utf-8"))
 
@@ -8552,6 +8566,10 @@ Consignes strictes :
                     clean = m_json.group(0)
 
                 res_dict = json.loads(clean)
+
+                if isinstance(res_dict, dict):
+
+                    res_dict["_modele_utilise"] = m
 
                 return True, res_dict
 
@@ -10635,7 +10653,7 @@ def _appliquer_ajustements_image_scan(img_bytes, rot_deg=0, enhance_on=False):
             im_adj = ImageEnhance.Contrast(im_adj).enhance(1.25)
             im_adj = im_adj.filter(ImageFilter.SHARPEN)
         buf_adj = io.BytesIO()
-        im_adj.save(buf_adj, format="JPEG", quality=92)
+        im_adj.save(buf_adj, format="PNG")
         return buf_adj.getvalue()
     except Exception:
         return img_bytes
@@ -12303,6 +12321,10 @@ def afficher_vue_scanner_feuille_match(label_direct):
                 if incertitudes:
                     lignes_inc = "\n".join([f"- 🔸 {inc_msg}" for inc_msg in incertitudes])
                     st.warning(f"⚠️ **Incertitudes ou points d'attention signalés :**\n{lignes_inc}")
+
+                modele_scan = data_s.get("_modele_utilise")
+                if modele_scan:
+                    st.caption(f"🤖 Analyse effectuée par le modèle : `{modele_scan}`")
 
                 # Préparation du document HTML officiel dès maintenant pour la barre d'actions rapide
                 matchs_dict = data_s.get("matchs", {})
