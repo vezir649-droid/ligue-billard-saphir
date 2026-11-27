@@ -8392,9 +8392,9 @@ def analyser_photo_feuille_match(image_bytes, cle_api=None):
 
 
 
-    # 2. Modèles disponibles par ordre de priorité (privilégier les modèles rapides et précis)
+    # 2. Modèles disponibles par ordre de priorité (modèles actifs et rapides)
 
-    models_vision = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-pro", "gemini-flash-latest", "gemini-2.5-flash-lite"]
+    models_vision = ["gemini-4-hydrogen", "gemini-flash-lite-latest", "gemini-3-flash-preview", "gemini-flash-latest"]
 
     # Chargement de la liste officielle des équipes et de leurs 3 joueurs réguliers
     equipes_dict_ref = charger_equipes_csv()
@@ -8545,7 +8545,7 @@ Consignes strictes :
 
         )
 
-        nb_essais = 2 if m == "gemini-2.5-flash" else 1
+        nb_essais = 2 if m == "gemini-4-hydrogen" else 1
 
         for essai in range(nb_essais):
 
