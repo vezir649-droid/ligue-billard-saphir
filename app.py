@@ -8394,7 +8394,7 @@ def analyser_photo_feuille_match(image_bytes, cle_api=None):
 
     # 2. Modèles disponibles par ordre de priorité (privilégier les modèles rapides et précis)
 
-    models_vision = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-pro", "gemini-flash-latest"]
+    models_vision = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-pro", "gemini-flash-latest", "gemini-2.5-flash-lite"]
 
     # Chargement de la liste officielle des équipes et de leurs 3 joueurs réguliers
     equipes_dict_ref = charger_equipes_csv()
@@ -8493,7 +8493,7 @@ Consignes strictes :
 
 
 
-    dernier_err = ""
+    erreurs_details = []
 
     for m in models_vision:
 
@@ -8545,39 +8545,51 @@ Consignes strictes :
 
         )
 
-        try:
+        nb_essais = 2 if m == "gemini-2.5-flash" else 1
 
-            with urllib.request.urlopen(req, timeout=30) as resp:
+        for essai in range(nb_essais):
 
-                data = json.loads(resp.read().decode("utf-8"))
+            try:
 
-                raw_text = data["candidates"][0]["content"]["parts"][0]["text"]
+                with urllib.request.urlopen(req, timeout=30) as resp:
 
-                clean = re.sub(r"^```(?:json)?\s*", "", raw_text.strip(), flags=re.IGNORECASE)
+                    data = json.loads(resp.read().decode("utf-8"))
 
-                clean = re.sub(r"\s*```$", "", clean).strip()
+                    raw_text = data["candidates"][0]["content"]["parts"][0]["text"]
 
-                m_json = re.search(r"\{.*\}", clean, re.DOTALL)
+                    clean = re.sub(r"^```(?:json)?\s*", "", raw_text.strip(), flags=re.IGNORECASE)
 
-                if m_json:
+                    clean = re.sub(r"\s*```$", "", clean).strip()
 
-                    clean = m_json.group(0)
+                    m_json = re.search(r"\{.*\}", clean, re.DOTALL)
 
-                res_dict = json.loads(clean)
+                    if m_json:
 
-                if isinstance(res_dict, dict):
+                        clean = m_json.group(0)
 
-                    res_dict["_modele_utilise"] = m
+                    res_dict = json.loads(clean)
 
-                return True, res_dict
+                    if isinstance(res_dict, dict):
 
-        except Exception as e:
+                        res_dict["_modele_utilise"] = m
 
-            dernier_err = str(e)
+                    return True, res_dict
 
-            continue
+            except Exception as e:
 
-            
+                err_str = str(e)
+
+                if essai < nb_essais - 1 and ("503" in err_str or "Unavailable" in err_str or "429" in err_str):
+
+                    time.sleep(1.5)
+
+                    continue
+
+                erreurs_details.append(f"{m}: {err_str}")
+
+                break
+
+    dernier_err = " | ".join(erreurs_details) if erreurs_details else "Erreur inconnue"
 
     return False, f"Impossible d'analyser la photo avec Gemini Vision ({dernier_err})"
 
