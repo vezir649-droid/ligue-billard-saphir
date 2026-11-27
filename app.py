@@ -8753,6 +8753,10 @@ def correler_donnees_feuille_avec_ligue(data_s):
 
         return data_s
 
+    if data_s.get("corrections_manuelles"):
+
+        return data_s
+
 
 
     import unicodedata
@@ -10206,9 +10210,15 @@ def cb_injecter_donnees_scanner(data_s, label_direct=None):
 
     st.session_state["mode_vue_active"] = None
 
-    st.session_state["choix_match_vue"] = lbl_direct
-
     st.session_state["pending_choix_match_vue"] = lbl_direct
+
+    try:
+
+        st.session_state["choix_match_vue"] = lbl_direct
+
+    except Exception:
+
+        pass
 
     st.session_state["toast_scan_injecte"] = True
 
@@ -12514,14 +12524,24 @@ def afficher_vue_scanner_feuille_match(label_direct):
                             ed_scores_manches[str(m_num)] = (int(n_sa), int(n_sb), nouveaux_j_rec[r_idx], nouveaux_j_vis[v_idx])
 
                     def _appliquer_editeur_sur_scan():
+                        ed_date_val = str(st.session_state.get("scan_ed_date", ed_date_str)).strip()
+                        ed_rec_val = st.session_state.get("scan_ed_rec", ed_rec_nom)
+                        ed_vis_val = st.session_state.get("scan_ed_vis", ed_vis_nom)
+                        ed_jr_vals = [st.session_state.get(f"scan_ed_jr_{idx_j}", nouveaux_j_rec[idx_j]) for idx_j in range(3)]
+                        ed_jv_vals = [st.session_state.get(f"scan_ed_jv_{idx_j}", nouveaux_j_vis[idx_j]) for idx_j in range(3)]
+
                         nouv_matchs = {}
                         tot_r_calc = 0
                         tot_v_calc = 0
-                        stats_r_map = {i: {"nom": nouveaux_j_rec[i], "total_points": 0, "victoires": 0, "defaites": 0, "duels": []} for i in range(3)}
-                        stats_v_map = {i: {"nom": nouveaux_j_vis[i], "total_points": 0, "victoires": 0, "defaites": 0, "duels": []} for i in range(3)}
+                        stats_r_map = {i: {"nom": ed_jr_vals[i], "total_points": 0, "victoires": 0, "defaites": 0, "duels": []} for i in range(3)}
+                        stats_v_map = {i: {"nom": ed_jv_vals[i], "total_points": 0, "victoires": 0, "defaites": 0, "duels": []} for i in range(3)}
                         nb_jouees_ed = 0
                         for m_num, r_idx, v_idx in rotation_scan_pairs:
-                            sa_v, sb_v, ja_v, jb_v = ed_scores_manches[str(m_num)]
+                            sa_def, sb_def, _, _ = ed_scores_manches[str(m_num)]
+                            sa_v = int(st.session_state.get(f"scan_ed_sa_{m_num}", sa_def))
+                            sb_v = int(st.session_state.get(f"scan_ed_sb_{m_num}", sb_def))
+                            ja_v = ed_jr_vals[r_idx]
+                            jb_v = ed_jv_vals[v_idx]
                             nouv_matchs[str(m_num)] = {"score_a": sa_v, "score_b": sb_v, "joueur_a": ja_v, "joueur_b": jb_v}
                             tot_r_calc += sa_v
                             tot_v_calc += sb_v
@@ -12540,11 +12560,11 @@ def afficher_vue_scanner_feuille_match(label_direct):
                             elif sa_v > sb_v:
                                 stats_v_map[v_idx]["defaites"] += 1
 
-                        data_s["date"] = ed_date_str.strip()
-                        data_s["receveur"] = ed_rec_nom
-                        data_s["visiteur"] = ed_vis_nom
-                        data_s["joueurs_rec"] = nouveaux_j_rec
-                        data_s["joueurs_vis"] = nouveaux_j_vis
+                        data_s["date"] = ed_date_val
+                        data_s["receveur"] = ed_rec_val
+                        data_s["visiteur"] = ed_vis_val
+                        data_s["joueurs_rec"] = ed_jr_vals
+                        data_s["joueurs_vis"] = ed_jv_vals
                         data_s["matchs"] = nouv_matchs
                         data_s["total_rec"] = tot_r_calc
                         data_s["total_vis"] = tot_v_calc
@@ -12556,8 +12576,13 @@ def afficher_vue_scanner_feuille_match(label_direct):
                         data_s["totaux_joueurs_vis"] = [stats_v_map[i]["total_points"] for i in range(3)]
                         data_s["est_partiel"] = (nb_jouees_ed < 9)
                         data_s["incertitudes"] = []
+                        data_s["corrections_manuelles"] = True
                         data_s.pop("html_officiel", None)
                         st.session_state["scan_result_data"] = data_s
+
+                    def _cb_appliquer_et_injecter_scan():
+                        _appliquer_editeur_sur_scan()
+                        cb_injecter_donnees_scanner(data_s, label_direct)
 
                     c_ed_btn1, c_ed_btn2 = st.columns(2)
                     with c_ed_btn1:
@@ -12566,10 +12591,14 @@ def afficher_vue_scanner_feuille_match(label_direct):
                             st.success("✅ Corrections appliquées !")
                             st.rerun()
                     with c_ed_btn2:
-                        if st.button("✅ Appliquer et injecter dans la saisie", type="primary", use_container_width=True, key="btn_apply_and_inject_scan_edits", disabled=existe_hist):
-                            _appliquer_editeur_sur_scan()
-                            cb_injecter_donnees_scanner(data_s, label_direct)
-                            st.rerun()
+                        st.button(
+                            "✅ Appliquer et injecter dans la saisie",
+                            type="primary",
+                            use_container_width=True,
+                            key="btn_apply_and_inject_scan_edits",
+                            on_click=_cb_appliquer_et_injecter_scan,
+                            disabled=existe_hist
+                        )
 
                 # Détails secondaires regroupés dans des expanders
                 with st.expander("👥 Détail complet par joueur & Statistiques individuelles", expanded=False):
